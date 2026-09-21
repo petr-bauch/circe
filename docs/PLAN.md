@@ -251,7 +251,17 @@ env and Lean lets; per-op lemmas required before admitting each op.
 - **Termination:** recursion from loops. Mitigate: length-paired arrays +
   fuel/variant requirement in `validate`.
 
-## 10. Next Actions (Phase 1 COMPLETE 2026-09-21; Phase 0 done 2026-09-20)
+## 10. Next Actions (Phase 2 COMPLETE 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+
+Phase 2 (done): `Circe.Base` checked ops + lemmas (`checkedAddI32` nsw-checking
+with ok/err/range/comm lemmas, `checkedNegI32`/`checkedDivI32`,
+wrapping + strict `u32` variants, `BoundedList`/`bget`, `Point`/
+`pointTranslate`); `Circe.Eval` values/envs/loans (`envLookup`/`envExtend` +
+`EnvWF` lemmas, `LoanState` + `LoanWF` lemmas, `evalExpr` + const/var/add
+lemmas, `evalStmt_is_ok`); `docs/SEMANTICS.md` full fragment table.
+`lake build` green, no errors/warnings.
+
+Phase 1 (done):
 
 - [x] Record pinned `llvm-project` + Lean/Mathlib versions → `docs/PINS.md`
       (`32080ff` worktree pin, Lean 4.34.0; Mathlib `v4.34.0` → `5ed2965`).

@@ -1,13 +1,39 @@
 # circe
 
-## GitHub configuration
+CIR → Lean 4 verification pipeline for C (MVP subset), Aeneas-style:
+C source → ClangIR (CIR, raw `CIRGen` output) → pure, memory-free Lean 4
+via a verified emitter, with functional-correctness proofs as pure equations.
+No memory model, no separation logic in the common case.
+See `docs/PLAN.md` for the full plan.
 
-To set up your new GitHub repository, follow these steps:
+## Requirements
 
-* Under your repository name, click **Settings**.
-* In the **Actions** section of the sidebar, click "General".
-* Check the box **Allow GitHub Actions to create and approve pull requests**.
-* Click the **Pages** section of the settings sidebar.
-* In the **Source** dropdown menu, select "GitHub Actions".
+- [elan](https://github.com/leanprover/elan) 4.2.4 (provides `lean`, `lake`)
+- Lean 4.34.0 (`lean-toolchain`: `leanprover/lean4:v4.34.0`)
+- Mathlib `v4.34.0` (pinned in `lake-manifest.json`; prebuilt oleans are
+  downloaded automatically, no local Mathlib build needed)
+- System `clang` for the native C corpus driver (any recent clang)
+- CIR-enabled `clang` + `cir-opt` **only** to re-capture CIR goldens:
+  `~/code/llvm-project-cir/build/bin/{clang,cir-opt}` at the pinned SHA
+  (see `docs/PINS.md`). Not needed for `lake build`.
 
-After following the steps above, you can remove this section from the README file.
+## How to run
+
+```sh
+# one-time: install elan, then fetch Mathlib oleans
+lake update        # refresh deps (optional; manifest is pinned)
+lake build         # typecheck everything, including Phase 2 lemmas
+
+# run the C corpus natively (no CIR build needed)
+for f in tests/c/*.c; do clang -O0 "$f" -o "/tmp/$(basename $f .c)"; done
+
+# re-capture CIR goldens (requires the CIR-enabled clang, see docs/PINS.md)
+tools/emit-cir.sh  # writes tests/cir/*.cir
+```
+
+Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`
+(verified IR), `Circe/Eval.lean` (loan-based value semantics),
+`Circe/Validator.lean` (verified gate), `Circe/Emit.lean` (emitter),
+`Circe/Parser/` + `Circe/Oracle/` (trusted front ends).
+Docs: `docs/PLAN.md`, `docs/PINS.md`, `docs/CIR_SUBSET.md`,
+`docs/OWNERSHIP.md`, `docs/SEMANTICS.md`, `docs/VERIFYING.md`.
