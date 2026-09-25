@@ -1,11 +1,12 @@
-# Semantics Table (CIR → CoreIR → Lean) — Phase 3
+# Semantics Table (CIR → CoreIR → Lean) — Phase 4
 
 `Eval` is Aeneas-style: environments map variables to **values with
 loan/borrow bookkeeping** (`Env` + `LoanState` in `Circe/Eval`); there is
-no heap and no addresses. Phase 3 adds statement semantics for
-`skip`/`seq`/`let_`/`return_`, whole-function `evalFunc`, and the
-`emit_correct` theorems for the `add`/`incr` fragment; `if_`/`while_`/
-`call`/`assign` and `validate` admission land in Phase 4.
+no heap and no addresses. Phase 4 adds `assign`/`if_` and fuel-bounded
+`while_` (`EVAL_FUEL`), `uadd`/`ult`/`idx` expressions, whole-function
+`evalFuncFuel`, `choose` forward/backward with lens laws, the `sum`
+bounded-loop proof, and the real `validate` + oracle gate; `call` and
+full struct `Eval`/`Emit` land after v0.1.
 
 ## Evaluated fragment (lemmas compile, `lake build` green)
 
@@ -13,6 +14,9 @@ no heap and no addresses. Phase 3 adds statement semantics for
 |---|---|---|---|
 | `a + b` (`int32_t`, `nsw`) | `cir.add nsw` on `!cir.int<s,32>` with `__retval` alloca/store/load/return | `CExpr.add` (`CoreIR`) over `Value.i32`; `evalFunc addFunc [a,b]` | `out/Add.lean`: `add_fwd = checkedAddI32`; `emit_correct_add` + ok/err corollaries |
 | `*p = *p + 1` | `cir.load` / `cir.add` / `cir.store` through `!cir.ptr<!s32i>` | `mutBorrow` param; `evalFunc incrFunc [p]` (value in, updated value out) | `out/Incr.lean`: `incr_fwd = checkedIncrI32`, caller `y ← incr_fwd y`; `emit_correct_incr` + ok/err corollaries |
+| `b ? x : y` (`int32_t *`) | `cir.ternary` + `bool→int→bool` cast chain, `{llvm.noalias}` params | `CStmt.if_` over `Value.b`; `evalFunc chooseFunc [b,x,y]`; single-region (`r1 == r2`) | `out/Choose.lean`: `choose_fwd` + `choose_back`; `emit_correct_choose`, lens laws `choose_back_get_put/put_get` |
+| `s += a[i]` (`uint32_t`, bounded) | `cir.for` cond/body/step + `cir.ptr_stride` + plain `cir.add`, length param `n` | `uadd` (wraps) / `ult` / `idx` (`OOB` off-end); `assign`; fuel-bounded `while_` (`EVAL_FUEL`); `evalFuncFuel` | `out/SumArray.lean`: `sum_fwd` over `BoundedList` via `prefixSumU32`; `emit_correct_sum` (fuel induction) + OOB corollary |
+| `validate` gate | signature attrs + op-presence in CIR text | `RawFunc`/`RawParam` (trusted parse) → canonical `Func` or `RejectCode` | `runPipelineOpt` + `native_decide`: `.cir → .lean` bytes proved for all 4 translatable corpus functions |
 | `-a`, `a / b` (`int32_t`) | `cir.unary neg`, `cir.binop div` | `evalExpr` extension point (same `Result` plumbing) | `checkedNegI32` (fails only on `INT_MIN`), `checkedDivI32` (`DivZero` + `INT_MIN/-1`); lemmas `checkedNegI32_ok/err`, `checkedDivI32_zero` |
 | `a + b` (`uint32_t`) | plain `cir.add` (no `nsw`) | `Value.u32` | `checkedAddU32` (wraps, always `ok`; lemma `checkedAddU32_ok`); `checkedAddU32Strict` (carry → `Overflow`) for bounds arithmetic |
 | `a[i]`, `0 ≤ i < n` | `cir.ptr_stride` + `cir.load` | `Value.arr32` + length witness | `BoundedList α n` (`l.length = n`), `bget` (else `OOB`); lemmas `bget_ok/oob/length` |
@@ -30,11 +34,13 @@ pattern; `bool→int→bool` cast chains around `cir.ternary` conditions and
 `cir.add nsw` (signed, checked) vs plain `cir.add` (unsigned, wrapping);
 `cir.scope` nesting; module attrs (`cir.triple`, `dlti.dl_spec`) to ignore.
 
-## Deferred to Phase 4
+## Deferred after v0.1
 
-`if_`/`while_`/`for` control flow over `CStmt`, `call`/`assign`,
-`validate` admission per op (+ oracle `noalias` gate), and
-borrow-return (`choose`-shape) forward/backward synthesis with
-`emit_correct` extensions. E2E harness: `tools/check-phase3.sh`
-(build → regenerate `out/` → golden `diff` → `lake env lean` typecheck →
-native drivers → `tests/lean/DiffPhase3.lean` differential fuzz).
+`call` (function calls, Phase 5+), full struct `Eval`/`Emit`
+(`cir.get_member` admitted in `Base`, rejected by `validate` with a
+dedicated message), generalized `emit_correct` over all `matchFrag`-
+accepted shapes (currently proved for canonical `Func`s; the pipeline only
+feeds validator-produced canonical `Func`s). E2E harness:
+`tools/check-phase4.sh` (build → regenerate `out/` → golden `diff` →
+`lake env lean` typecheck → native drivers → `DiffPhase3`/`DiffPhase4`
+fuzz → `GoldenPhase4` pipeline + rejection suite).

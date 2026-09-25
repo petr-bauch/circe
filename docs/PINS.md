@@ -67,8 +67,10 @@ Date: 2026-09-20. Update this file on every toolchain bump.
       -Xclang -clangir-disable-passes`), all 5 `cir-opt` VERIFY-OK.
 - [x] Oracle evidence: `__restrict__` params surface as
       `{llvm.noalias, llvm.noundef}` attrs in goldens (e.g. `incr`,
-      `choose`, `sum_array`). Deeper `-fsave-optimization-record` dumps
-      deferred to Phase 4 (`tests/oracle/` placeholder remains).
+      `choose`, `sum_array`). Phase 4 checks in per-function verdicts
+      (`tests/oracle/verdicts.txt`, parsed by `Circe.Oracle`) and gates
+      `validate` on them (see `docs/OWNERSHIP.md` Oracle). Deeper
+      `-fsave-optimization-record` dumps remain future work.
 - [x] Mathlib revision pinned at Phase 1 `lake init` time
       (`v4.34.0` → `5ed2965`, see Lean section above).
 

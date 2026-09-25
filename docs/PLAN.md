@@ -251,7 +251,29 @@ env and Lean lets; per-op lemmas required before admitting each op.
 - **Termination:** recursion from loops. Mitigate: length-paired arrays +
   fuel/variant requirement in `validate`.
 
-## 10. Next Actions (Phase 3 COMPLETE 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+## 10. Next Actions (Phase 4 COMPLETE 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+
+Phase 4 (done): `CoreIR` gains `CLit.u32`, `CExpr.uadd/ult/idx`;
+`Eval` gains `envUpdate`, `assign`/`if_` semantics, and fuel-bounded
+`while_` (`EVAL_FUEL = 4096`; loop-free skeleton `evalStmtWith` shared by
+zero/succ fuel; named handlers `evalStmtZeroHandler`/`evalStmtSuccHandler`
+so proofs can state rewrite rules — inlined `match` lambdas get
+per-definition `*.match_1` auxiliaries that never match syntactically).
+`Emit` gains canonical `chooseFunc`/`sumFunc`, verified `chooseFwd`/
+`chooseBack` (lens laws `choose_back_get_put/put_get`), `sumFwd`, and
+`emit_correct_choose/sum` (+ OOB corollary) by fuel induction, plus
+`matchFrag` arms (contract: everything semantic pinned), `choose`/`sum`
+rendering (`out/Choose.lean` with backward def, `out/SumArray.lean` over
+`BoundedList`), and `emitFileText` golden linkage.
+`Parser` extracts real signatures/op-features from CIR text (tested on all
+5 goldens); `Oracle` imports `tests/oracle/verdicts.txt`; `validate`
+enforces §4 + oracle `noalias` with precise codes, mapping the four shapes
+to canonical `Func`s. Machine-checked linkage: `runPipelineOpt` +
+`native_decide` proves `.cir → .lean` bytes for all 4 translatable corpus
+functions (+ struct rejection) in `lake build`. E2E:
+`tools/check-phase4.sh` green incl. 1000-trial diffs (`DIFF-OK 2019`,
+`DIFF4-OK 3024`), 18 golden/rejection checks (`GOLDEN4-OK`), and negative
+tests (tampered native fails). `lake build` green, no errors/warnings.
 
 Phase 3 (done): `CoreIR` gains `CLit`/`CExpr`, statements carry pure
 expressions; `Eval` gains real `evalStmt` (`skip`/`seq`/`let_`/`return_`)

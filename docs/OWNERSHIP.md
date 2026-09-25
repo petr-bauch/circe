@@ -30,7 +30,13 @@ not addresses. The Clang/CIR + LLVM-AA oracle certifies uniqueness;
    ```
    Single-region only in v0.1; nested/multiple regions are rejected.
 7. Loops over arrays require the length-paired form (`sum_array`); general
-   pointer-chasing loops are out.
+   pointer-chasing loops are out. v0.1 loops must terminate within
+   `EVAL_FUEL` (4096) iterations; exhaustion reports `AssertFail`
+   (incompleteness, never unsoundness), and over-long lengths report `OOB`.
+
+`validate` maps each admitted shape to its canonical `Func`
+(`addFunc`/`incrFunc`/`chooseFunc`/`sumFunc` with the source name) — the
+only `Func`s the emitter handles (`matchFrag` contract, `Circe.Emit`).
 
 ## Normative translation schema (PLAN.md §6)
 

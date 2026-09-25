@@ -4,10 +4,14 @@ Circe.Eval — loan-based, value-only ownership semantics (spec for
 
 Environments map variables to *values with loan/borrow bookkeeping*;
 there is no heap and no addresses (Aeneas-style, see PLAN.md §6).
-Phase 3: `evalStmt` covers `skip`/`seq`/`let_`/`return_` (the `add`/`incr`
-fragment) plus `bindArgs`/`evalFunc` whole-function semantics; `if_`/
-`while_`/`call`/`assign` arrive in Phase 4 with per-op `emit_correct`
-extensions.
+Phase 4: `evalExpr` covers `lit`/`var`/`add` (signed `nsw`-checked) plus
+`uadd` (wrapping unsigned), `ult` (unsigned comparison), and `idx`
+(bounded indexing, `OOB` on violation); `evalStmt` covers the full
+loop-free fragment (`skip`/`seq`/`let_`/`assign`/`if_`/`return_`) plus
+fuel-bounded `while_` (`EVAL_FUEL`; exhaustion is `AssertFail`, and
+`validate` admits only bounded loops). `call` stays a stub (Phase 5+).
+`bindArgs`/`evalFunc` give whole-function semantics; `evalFuncFuel`
+exposes the fuel for induction (loop proofs generalize it).
 -/
 import Circe.Base
 import Circe.CoreIR
@@ -78,6 +82,105 @@ theorem envWF_extend_mem_false (ρ : Env) (x : String) (v : Value)
   rw [List.nodup_cons] at hwf'
   exact hwf'.1
 
+/-- Point update for `assign`: replace the first binding of `x`, or `none`
+    if `x` is unbound (loud `Uninit` at the statement level, never silent). -/
+def envUpdate : Env → String → Value → Option Env
+  | [], _, _ => none
+  | (k, v) :: rest, x, v' =>
+    if x = k then some ((k, v') :: rest)
+    else
+      match envUpdate rest x v' with
+      | none => none
+      | some rest' => some ((k, v) :: rest')
+
+theorem envUpdate_empty (x : String) (v : Value) :
+    envUpdate [] x v = none := rfl
+
+theorem envUpdate_hit (k : String) (v v' : Value) (rest : Env) :
+    envUpdate ((k, v) :: rest) k v' = some ((k, v') :: rest) := by
+  simp [envUpdate]
+
+theorem envUpdate_miss (k x : String) (v v' : Value) (rest : Env)
+    (h : x ≠ k) :
+    envUpdate ((k, v) :: rest) x v' =
+      match envUpdate rest x v' with
+      | none => none
+      | some rest' => some ((k, v) :: rest') := by
+  simp [envUpdate, h]
+
+/-- Lookup after a hitting update sees the new value. -/
+theorem envLookup_update_hit (ρ : Env) (x : String) (v : Value)
+    (ρ' : Env) (h : envUpdate ρ x v = some ρ') :
+    envLookup ρ' x = some v := by
+  induction ρ generalizing ρ' with
+  | nil => simp [envUpdate] at h
+  | cons kv rest ih =>
+    obtain ⟨k, w⟩ := kv
+    by_cases heq : x = k
+    · subst heq
+      rw [envUpdate_hit] at h
+      cases h
+      simp [envLookup]
+    · rw [envUpdate_miss _ _ _ _ _ heq] at h
+      match he : envUpdate rest x v with
+      | none => simp [he] at h
+      | some rest' =>
+        simp only [he] at h
+        cases h
+        by_cases hx : x = k
+        · exact absurd hx heq
+        · simp [envLookup, hx, ih _ he]
+
+/-- Lookup of any *other* variable is unaffected by an update. -/
+theorem envLookup_update_miss (ρ : Env) (x y : String) (v : Value)
+    (ρ' : Env) (hne : x ≠ y) (h : envUpdate ρ y v = some ρ') :
+    envLookup ρ' x = envLookup ρ x := by
+  induction ρ generalizing ρ' with
+  | nil => simp [envUpdate] at h
+  | cons kv rest ih =>
+    obtain ⟨k, w⟩ := kv
+    by_cases heq : y = k
+    · subst heq
+      rw [envUpdate_hit] at h
+      cases h
+      simp [envLookup, hne]
+    · rw [envUpdate_miss _ _ _ _ _ heq] at h
+      match he : envUpdate rest y v with
+      | none => simp [he] at h
+      | some rest' =>
+        simp only [he] at h
+        cases h
+        by_cases hx : x = k
+        · simp [envLookup, hx]
+        · simp [envLookup, hx, ih _ he]
+
+/-- Update preserves the key set, hence well-formedness. -/
+theorem envKeys_update (ρ : Env) (x : String) (v : Value) (ρ' : Env)
+    (h : envUpdate ρ x v = some ρ') : envKeys ρ' = envKeys ρ := by
+  induction ρ generalizing ρ' with
+  | nil => simp [envUpdate] at h
+  | cons kv rest ih =>
+    obtain ⟨k, w⟩ := kv
+    by_cases heq : x = k
+    · subst heq
+      rw [envUpdate_hit] at h
+      cases h
+      rfl
+    · rw [envUpdate_miss _ _ _ _ _ heq] at h
+      match he : envUpdate rest x v with
+      | none => simp [he] at h
+      | some rest' =>
+        simp only [he] at h
+        cases h
+        show (k :: envKeys rest') = (k :: envKeys rest)
+        rw [ih _ he]
+
+theorem envWF_update (ρ : Env) (x : String) (v : Value) (ρ' : Env)
+    (hwf : EnvWF ρ) (h : envUpdate ρ x v = some ρ') : EnvWF ρ' := by
+  show List.Nodup (envKeys ρ')
+  rw [envKeys_update ρ x v ρ' h]
+  exact hwf
+
 /-! ## Loan state (region bookkeeping, value-only) -/
 
 /-- Which variables are loaned out to which region, and which borrows are
@@ -128,11 +231,16 @@ theorem loanWF_endRegion (s : LoanState) (r : Nat)
 /-- Literal denotation: no addresses, just values. -/
 def litVal : CLit → Value
   | .i32 v => .i32 v
+  | .u32 v => .u32 v
   | .b v => .b v
 
-/-- Pure evaluator: `add` on `i32` goes through `checkedAddI32`
-    (overflow → `.error .Overflow`); mismatched types are `AssertFail`;
-    unbound variables are `Uninit`. -/
+/-- Pure evaluator:
+    - `add` on `i32` goes through `checkedAddI32` (overflow → `Overflow`);
+    - `uadd` on `u32` wraps (plain `cir.add`; never fails);
+    - `ult` on `u32` is unsigned comparison;
+    - `idx a i` looks up `arr32` array `a` at `u32` index `i`
+      (`OOB` off the end, mirroring `bget`);
+    mismatched types are `AssertFail`; unbound variables are `Uninit`. -/
 def evalExpr : CExpr → Env → Result Value
   | .lit l, _ => .ok (litVal l)
   | .var x, ρ =>
@@ -145,6 +253,30 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .uadd a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x + y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .ult a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .idx arr ie, ρ =>
+    match envLookup ρ arr with
+    | none => .error .Uninit
+    | some (.arr32 l) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u32 i) =>
+        match l[i.toNat]? with
+        | some x => .ok (.u32 x)
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
 
 theorem evalExpr_lit (l : CLit) (ρ : Env) :
     evalExpr (.lit l) ρ = .ok (litVal l) := rfl
@@ -175,40 +307,210 @@ theorem evalExpr_add_mismatch (ρ : Env) :
       .error .AssertFail := by
   simp [evalExpr, litVal]
 
-/-! ## Statement evaluator (fragment: `skip`/`seq`/`let_`/`return_`) -/
+/-- `uadd` on two `u32` literals wraps. -/
+theorem evalExpr_uadd_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.uadd (.lit (.u32 x)) (.lit (.u32 y))) ρ =
+      .ok (.u32 (x + y)) := by
+  simp [evalExpr, litVal]
 
-/-- Loan-based statement evaluator. `skip`/`seq`/`let_`/`return_` have full
-    value semantics (error-propagating); `if_`/`while_`/`call`/`assign`
-    stay `fellThrough` stubs until Phase 4 admits them with per-op lemmas. -/
-def evalStmt : CStmt → Env → Result (Env × Outcome)
+/-- `uadd` type mismatches are rejected. -/
+theorem evalExpr_uadd_mismatch (ρ : Env) :
+    evalExpr (.uadd (.lit (.u32 0)) (.lit (.b true))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `ult` on two `u32` literals is unsigned comparison. -/
+theorem evalExpr_ult_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.ult (.lit (.u32 x)) (.lit (.u32 y))) ρ =
+      .ok (.b (x.ult y)) := by
+  simp [evalExpr, litVal]
+
+/-- `ult` type mismatches are rejected. -/
+theorem evalExpr_ult_mismatch (ρ : Env) :
+    evalExpr (.ult (.lit (.i32 0)) (.lit (.i32 1))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- In-bounds indexing succeeds. -/
+theorem evalExpr_idx_hit (arr : String) (l : List (BitVec 32)) (i : BitVec 32)
+    (ρ : Env) (x : BitVec 32)
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hidx : l[i.toNat]? = some x) :
+    evalExpr (.idx arr (.lit (.u32 i))) ρ = .ok (.u32 x) := by
+  simp [evalExpr, litVal, harr, hidx]
+
+/-- Out-of-bounds indexing reports `OOB`. -/
+theorem evalExpr_idx_oob (arr : String) (l : List (BitVec 32)) (i : BitVec 32)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hidx : l[i.toNat]? = none) :
+    evalExpr (.idx arr (.lit (.u32 i))) ρ = .error .OOB := by
+  simp [evalExpr, litVal, harr, hidx]
+
+/-- Indexing a non-array is rejected, never silently modeled. -/
+theorem evalExpr_idx_notarray (arr : String) (v : BitVec 32) (i : BitVec 32)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.i32 v)) :
+    evalExpr (.idx arr (.lit (.u32 i))) ρ = .error .AssertFail := by
+  simp [evalExpr, harr]
+
+/-! ## Statement evaluator (fuel-bounded `while_`) -/
+
+/-- Default fuel: v0.1 loops must terminate within this many iterations.
+    Exhaustion reports `AssertFail` (incompleteness, not unsoundness:
+    `validate` admits only bounded loops; see `docs/OWNERSHIP.md`). -/
+def EVAL_FUEL : Nat := 4096
+
+/-- Loop-free statement skeleton parameterized by the `while_` handler.
+    Structural on `s`, so all equation lemmas and kernel reduction work;
+    fuel lives only in `evalStmtFuel` below. -/
+def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
+    CStmt → Env → Result (Env × Outcome)
   | .skip, ρ => .ok (ρ, .fellThrough)
   | .seq a b, ρ =>
-    match evalStmt a ρ with
+    match evalStmtWith wh a ρ with
     | .error e => .error e
     | .ok (ρ', .returned v) => .ok (ρ', .returned v)
-    | .ok (ρ', .fellThrough) => evalStmt b ρ'
+    | .ok (ρ', .fellThrough) => evalStmtWith wh b ρ'
   | .let_ x _ e, ρ =>
     match evalExpr e ρ with
     | .error err => .error err
     | .ok v => .ok (envExtend ρ x v, .fellThrough)
+  | .assign x e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok v =>
+      match envUpdate ρ x v with
+      | none => .error .Uninit
+      | some ρ' => .ok (ρ', .fellThrough)
+  | .if_ c t e, ρ =>
+    match evalExpr c ρ with
+    | .error err => .error err
+    | .ok (.b true) => evalStmtWith wh t ρ
+    | .ok (.b false) => evalStmtWith wh e ρ
+    | .ok _ => .error .AssertFail
+  | .while_ c b, ρ => wh c b ρ
+  | .call _ _, ρ => .ok (ρ, .fellThrough)
   | .return_ e, ρ =>
     match evalExpr e ρ with
     | .error err => .error err
     | .ok v => .ok (ρ, .returned v)
-  | _, ρ => .ok (ρ, .fellThrough)
+
+/-- Zero-fuel `while_` handler, named (not inline) so that proofs can
+    state rewrite rules about the unfolded loop form: every `match` gets a
+    per-definition auxiliary (`*.match_1`), so copies of a handler never
+    match syntactically — only the shared named head does. -/
+def evalStmtZeroHandler : CExpr → CStmt → Env → Result (Env × Outcome) :=
+  fun c _ ρ =>
+    match evalExpr c ρ with
+    | .ok (.b false) => .ok (ρ, .fellThrough)
+    | .ok _ => .error .AssertFail
+    | .error err => .error err
+
+/-- Zero fuel: no further iterations allowed, but a loop whose condition
+    is already false still exits cleanly (fuel counts iterations, not
+    condition checks). Errors always propagate. -/
+def evalStmtZero : CStmt → Env → Result (Env × Outcome) :=
+  evalStmtWith evalStmtZeroHandler
+
+/-- Positive-fuel `while_` handler, named for the same reason. Takes the
+    predecessor-fuel evaluator as a parameter (no mutual recursion, so
+    `evalStmtFuel` stays structural on fuel). -/
+def evalStmtSuccHandler (rec : CStmt → Env → Result (Env × Outcome)) :
+    CExpr → CStmt → Env → Result (Env × Outcome) :=
+  fun c b ρ =>
+    match evalExpr c ρ with
+    | .error err => .error err
+    | .ok (.b false) => .ok (ρ, .fellThrough)
+    | .ok (.b true) =>
+      match rec b ρ with
+      | .error e => .error e
+      | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+      | .ok (ρ', .fellThrough) => rec (.while_ c b) ρ'
+    | .ok _ => .error .AssertFail
+
+/-- Fuel-bounded statement evaluator. Only `while_` consumes fuel
+    (one per iteration); all other statements thread it through.
+    Structural on `fuel`, so `cases fuel` + `simp` reasoning works and
+    `lake build` equation lemmas fire on concrete `EVAL_FUEL`. -/
+def evalStmtFuel : Nat → CStmt → Env → Result (Env × Outcome)
+  | 0, s, ρ => evalStmtZero s ρ
+  | f + 1, s, ρ => evalStmtWith (evalStmtSuccHandler (evalStmtFuel f)) s ρ
+
+/-- The top-level evaluator fixes the default fuel. -/
+def evalStmt (s : CStmt) (ρ : Env) : Result (Env × Outcome) :=
+  evalStmtFuel EVAL_FUEL s ρ
 
 theorem evalStmt_skip (ρ : Env) :
     evalStmt .skip ρ = .ok (ρ, .fellThrough) := rfl
 
+/-- `return_` at any fuel (loop proofs generalize the fuel). -/
+theorem evalStmtFuel_return (f : Nat) (e : CExpr) (ρ : Env) (v : Value)
+    (h : evalExpr e ρ = .ok v) :
+    evalStmtFuel f (.return_ e) ρ = .ok (ρ, .returned v) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h]
+
 theorem evalStmt_return (e : CExpr) (ρ : Env) (v : Value)
     (h : evalExpr e ρ = .ok v) :
-    evalStmt (.return_ e) ρ = .ok (ρ, .returned v) := by
-  simp [evalStmt, h]
+    evalStmt (.return_ e) ρ = .ok (ρ, .returned v) :=
+  evalStmtFuel_return EVAL_FUEL e ρ v h
+
+theorem evalStmtFuel_return_err (f : Nat) (e : CExpr) (ρ : Env) (err : Panic)
+    (h : evalExpr e ρ = .error err) :
+    evalStmtFuel f (.return_ e) ρ = .error err := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h]
 
 theorem evalStmt_return_err (e : CExpr) (ρ : Env) (err : Panic)
     (h : evalExpr e ρ = .error err) :
-    evalStmt (.return_ e) ρ = .error err := by
-  simp [evalStmt, h]
+    evalStmt (.return_ e) ρ = .error err :=
+  evalStmtFuel_return_err EVAL_FUEL e ρ err h
+
+/-- `if_` on `true` takes the branch (any fuel). -/
+theorem evalStmtFuel_if_true (f : Nat) (c : CExpr) (t e : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b true)) :
+    evalStmtFuel f (.if_ c t e) ρ = evalStmtFuel f t ρ := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h]
+
+/-- `if_` on `false` takes the else-branch (any fuel). -/
+theorem evalStmtFuel_if_false (f : Nat) (c : CExpr) (t e : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b false)) :
+    evalStmtFuel f (.if_ c t e) ρ = evalStmtFuel f e ρ := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h]
+
+/-- `if_` on a non-boolean is rejected. -/
+theorem evalStmtFuel_if_nobool (f : Nat) (c : CExpr) (t e : CStmt) (ρ : Env)
+    (v : Value) (hv : ∀ b : Bool, v ≠ .b b)
+    (h : evalExpr c ρ = .ok v) :
+    evalStmtFuel f (.if_ c t e) ρ = .error .AssertFail := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, h] <;>
+    (cases v <;> simp_all)
+
+/-- `assign` updates the first binding (any fuel). -/
+theorem evalStmtFuel_assign (f : Nat) (x : String) (e : CExpr) (ρ : Env)
+    (v : Value) (ρ' : Env)
+    (h : evalExpr e ρ = .ok v) (hu : envUpdate ρ x v = some ρ') :
+    evalStmtFuel f (.assign x e) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h, hu]
+
+/-- `assign` to an unbound variable is `Uninit`. -/
+theorem evalStmtFuel_assign_unbound (f : Nat) (x : String) (e : CExpr)
+    (ρ : Env) (v : Value)
+    (h : evalExpr e ρ = .ok v) (hu : envUpdate ρ x v = none) :
+    evalStmtFuel f (.assign x e) ρ = .error .Uninit := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h, hu]
+
+/-- Zero fuel exits a loop whose condition is already false. -/
+theorem evalStmtFuel_zero_while_exit (c : CExpr) (b : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b false)) :
+    evalStmtFuel 0 (.while_ c b) ρ = .ok (ρ, .fellThrough) := by
+  simp [evalStmtFuel, evalStmtZero, evalStmtZeroHandler, evalStmtWith, h]
+
+/-- Zero fuel exhausts a loop that wants another iteration. -/
+theorem evalStmtFuel_zero_while_enter (c : CExpr) (b : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b true)) :
+    evalStmtFuel 0 (.while_ c b) ρ = .error .AssertFail := by
+  simp [evalStmtFuel, evalStmtZero, evalStmtZeroHandler, evalStmtWith, h]
 
 /-! ## Function entry: argument binding + outcome -/
 
@@ -222,17 +524,21 @@ def bindArgs : List Param → List Value → Option Env
     | some ρ => some ((p.name, v) :: ρ)
   | _, _ => none
 
-/-- Whole-function semantics: bind, run the body, demand a `return`.
-    Falling off the end without returning is `AssertFail` (the C corpus
-    always returns; `validate` will enforce it in Phase 4). -/
-def evalFunc (f : Func) (args : List Value) : Result Value :=
+/-- Whole-function semantics at explicit fuel (loop proofs generalize it). -/
+def evalFuncFuel (fuel : Nat) (f : Func) (args : List Value) : Result Value :=
   match bindArgs f.args args with
   | none => .error .AssertFail
   | some ρ =>
-    match evalStmt f.body ρ with
+    match evalStmtFuel fuel f.body ρ with
     | .error e => .error e
     | .ok (_, .returned v) => .ok v
     | .ok (_, .fellThrough) => .error .AssertFail
+
+/-- Whole-function semantics: bind, run the body, demand a `return`.
+    Falling off the end without returning is `AssertFail` (the C corpus
+    always returns; `validate` enforces it). -/
+def evalFunc (f : Func) (args : List Value) : Result Value :=
+  evalFuncFuel EVAL_FUEL f args
 
 theorem bindArgs_nil : bindArgs [] [] = some [] := rfl
 
@@ -242,4 +548,9 @@ theorem bindArgs_mismatch (p : Param) (ps : List Param) :
 theorem evalFunc_arity (f : Func) (args : List Value)
     (h : bindArgs f.args args = none) :
     evalFunc f args = .error .AssertFail := by
-  simp [evalFunc, h]
+  simp [evalFunc, evalFuncFuel, h]
+
+theorem evalFuncFuel_arity (fuel : Nat) (f : Func) (args : List Value)
+    (h : bindArgs f.args args = none) :
+    evalFuncFuel fuel f args = .error .AssertFail := by
+  simp [evalFuncFuel, h]

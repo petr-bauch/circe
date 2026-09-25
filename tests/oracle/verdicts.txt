@@ -1,0 +1,15 @@
+# Ownership-oracle verdicts (Phase 4). Format: `<func> <verdict>` where
+# verdict is `noalias` | `mayAlias` | `unknown` (`#` comments, blank lines ok).
+#
+# Verdicts mirror the `llvm.noalias` evidence in tests/cir/*.cir
+# (`__restrict__` params lower to `{llvm.noalias, llvm.noundef}` attrs;
+# see docs/PINS.md Status). `add` is pure (no pointer params) so its
+# verdict is `unknown` — pure functions skip the oracle check, and the
+# Phase 4 golden test asserts `add` validates under `unknown`
+# (see tests/lean/GoldenPhase4.lean). `translate` (struct_by_value) is
+# rejected downstream of the oracle gate (`cir.get_member`), also `unknown`.
+add unknown
+incr noalias
+choose noalias
+sum_array noalias
+translate unknown

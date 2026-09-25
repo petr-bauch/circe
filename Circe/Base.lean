@@ -212,3 +212,21 @@ theorem pointTranslate_err_x (p : Point) (dx dy : BitVec 32) (e : Panic)
     (hx : checkedAddI32 p.x dx = .error e) :
     pointTranslate p dx dy = .error e := by
   simp [pointTranslate, hx]
+
+/-! ## Bounded prefix sum: `sum_array` corpus (Phase 4) -/
+
+/-- Wrapping prefix sum of the first `k` elements (`sum_array` accumulates
+    `uint32_t`, so addition wraps mod 2^32 and never fails). -/
+def prefixSumU32 : List (BitVec 32) → Nat → BitVec 32
+  | [], _ => 0
+  | _, 0 => 0
+  | x :: xs, k + 1 => x + prefixSumU32 xs k
+
+theorem prefixSumU32_nil (k : Nat) : prefixSumU32 [] k = 0 := by
+  cases k <;> rfl
+
+theorem prefixSumU32_zero (l : List (BitVec 32)) : prefixSumU32 l 0 = 0 := by
+  cases l <;> rfl
+
+theorem prefixSumU32_cons (x : BitVec 32) (xs : List (BitVec 32)) (k : Nat) :
+    prefixSumU32 (x :: xs) (k + 1) = x + prefixSumU32 xs k := rfl

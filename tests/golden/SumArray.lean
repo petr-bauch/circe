@@ -6,7 +6,6 @@
 
 import Circe.Base
 
-/-- Pure translation of `incr` (`*p = *p + 1`, functionalized).
-    Caller rewrite: `incr(&y)` becomes `y ← incr_fwd y`. -/
-def incr_fwd (p : BitVec 32) : Result (BitVec 32) :=
-  checkedIncrI32 p
+/-- Pure translation of `sum_array` (bounded `u32` accumulation, wrapping). -/
+def sum_array_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=
+  .ok (prefixSumU32 a.val a.val.length)
