@@ -31,18 +31,36 @@ structure Param : Type where
   ty : CType
   role : BorrowRole
 
-/-- Minimal statement language for Phase 1. Extended op-by-op in
-    Phases 3–4; each new constructor requires per-op `Eval`/`Emit` lemmas
-    before admission (PLAN.md §6). -/
+/-- Literals of the Phase 3 fragment. Integer width is checked against the
+    context `CType` by `validate` (Phase 4); `Eval` interprets `i32` as
+    `Value.i32` and `b` as `Value.b`. -/
+inductive CLit : Type
+  | i32 : BitVec 32 → CLit
+  | b : Bool → CLit
+  deriving DecidableEq, Repr
+
+/-- Minimal C expressions for the admitted fragment (Phase 3: `lit`/`var`/
+    `add`; extended op-by-op in Phase 4 with per-op `Eval`/`Emit` lemmas). -/
+inductive CExpr : Type
+  | lit : CLit → CExpr
+  | var : String → CExpr
+  | add : CExpr → CExpr → CExpr
+  deriving DecidableEq, Repr
+
+/-- Minimal statement language. `let_`/`assign` bind pure expressions and
+    `return_` returns one; `if_`/`while_` conditions are pure expressions.
+    Phase 3 gives `Eval` semantics to `skip`/`seq`/`let_`/`return_` (the
+    `add`/`incr` fragment); `if_`/`while_`/`call`/`assign` arrive in Phase 4
+    and are `fellThrough` stubs until then. -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
-  | let_ (name : String) (ty : CType) (val : CStmt)
-  | assign (name : String) (val : CStmt)
-  | if_ (cond : CStmt) (then_ else_ : CStmt)
-  | while_ (cond : CStmt) (body : CStmt)
+  | let_ (name : String) (ty : CType) (val : CExpr)
+  | assign (name : String) (val : CExpr)
+  | if_ (cond : CExpr) (then_ else_ : CStmt)
+  | while_ (cond : CExpr) (body : CStmt)
   | call (func : String) (args : List String)
-  | return_ (val : CStmt)
+  | return_ (val : CExpr)
 
 /-- A validated function: name, params, return type, and body. -/
 structure Func : Type where

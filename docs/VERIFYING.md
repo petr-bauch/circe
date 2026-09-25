@@ -1,4 +1,4 @@
-# Verifying Functional Correctness — Phase 1 stub
+# Verifying Functional Correctness
 
 Target workflow (Phase 5): pure equational specs over emitted code, à la
 Aeneas — no memory model, no separation logic, no framing lemmas.
@@ -15,8 +15,15 @@ theorem sum_correct : sum_fwd a n h = .ok (a.sum …)  -- against `List.sum`
 unfolding): plain `simp`/`omega`/`bv_decide` suffice in the common case.
 Documented here when the tactic lands.
 
-## Current status (Phase 1)
+## Current status (Phase 3)
 
-Nothing to verify yet: the validator gate is closed (every input rejected
-as `outOfSubset`) and `emitFunc` produces `-- skeleton` placeholders.
-This file will grow with the first `emit_correct` fragment in Phase 3.
+First `emit_correct` fragment is proved: `emit_correct_add`/`emit_correct_incr`
+(`Circe/Emit.lean`, with ok/err corollaries) relate `evalFunc` on the
+canonical `addFunc`/`incrFunc` to the verified `addFwd`/`incrFwd`.
+`emitFunc` renders the admitted shapes to `out/Add.lean`/`out/Incr.lean`
+(trusted tag-erasing pretty-printing; pinned by `tests/golden/*.lean`,
+typechecked by `lake env lean`) and rejects everything else with
+`EmitError.notFragment`. `tools/check-phase3.sh` runs the whole E2E
+including the `tests/lean/DiffPhase3.lean` differential fuzz vs native.
+The validator gate is still closed (every input rejected as `outOfSubset`)
+until Phase 4 wires `validate` to the emitter.

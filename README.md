@@ -29,6 +29,10 @@ for f in tests/c/*.c; do clang -O0 "$f" -o "/tmp/$(basename $f .c)"; done
 
 # re-capture CIR goldens (requires the CIR-enabled clang, see docs/PINS.md)
 tools/emit-cir.sh  # writes tests/cir/*.cir
+
+# Phase 3 end-to-end: build, regenerate out/, golden diff, typecheck emitted
+# files, build native drivers, differential fuzz vs native (default 1000 trials)
+tools/check-phase3.sh [trials]
 ```
 
 Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`

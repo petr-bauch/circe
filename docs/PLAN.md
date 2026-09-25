@@ -251,7 +251,18 @@ env and Lean lets; per-op lemmas required before admitting each op.
 - **Termination:** recursion from loops. Mitigate: length-paired arrays +
   fuel/variant requirement in `validate`.
 
-## 10. Next Actions (Phase 2 COMPLETE 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+## 10. Next Actions (Phase 3 COMPLETE 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+
+Phase 3 (done): `CoreIR` gains `CLit`/`CExpr`, statements carry pure
+expressions; `Eval` gains real `evalStmt` (`skip`/`seq`/`let_`/`return_`)
+plus `bindArgs`/`evalFunc`; `Emit` has `matchFrag`, verified `addFwd`/
+`incrFwd`, `emit_correct_add`/`emit_correct_incr` theorems with ok/err
+corollaries,
+and `emitFunc` rendering `out/Add.lean`/`out/Incr.lean` (pinned by
+`tests/golden/`, `native_decide` linkage, `lake env lean` typecheck).
+E2E: `tools/check-phase3.sh` green incl. 1000-trial differential fuzz
+(`DIFF-OK passed=2019`); negative test (tampered native) fails as required.
+`lake build` green, no errors/warnings.
 
 Phase 2 (done): `Circe.Base` checked ops + lemmas (`checkedAddI32` nsw-checking
 with ok/err/range/comm lemmas, `checkedNegI32`/`checkedDivI32`,

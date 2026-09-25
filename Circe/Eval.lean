@@ -4,10 +4,10 @@ Circe.Eval — loan-based, value-only ownership semantics (spec for
 
 Environments map variables to *values with loan/borrow bookkeeping*;
 there is no heap and no addresses (Aeneas-style, see PLAN.md §6).
-Phase 2: values (incl. struct/array), environments with well-formedness
-lemmas, loan-state bookkeeping, and an expression evaluator over
-`Circe.Base` checked ops. Statement-level `Eval` control flow and the
-`emit_correct` simulation proof arrive in Phases 3–4.
+Phase 3: `evalStmt` covers `skip`/`seq`/`let_`/`return_` (the `add`/`incr`
+fragment) plus `bindArgs`/`evalFunc` whole-function semantics; `if_`/
+`while_`/`call`/`assign` arrive in Phase 4 with per-op `emit_correct`
+extensions.
 -/
 import Circe.Base
 import Circe.CoreIR
@@ -125,18 +125,16 @@ theorem loanWF_endRegion (s : LoanState) (r : Nat)
 
 /-! ## Expression evaluator (pure, over `Circe.Base`) -/
 
-/-- Minimal C expressions for the Phase 2 fragment. -/
-inductive CExpr : Type
-  | const : Value → CExpr
-  | var : String → CExpr
-  | add : CExpr → CExpr → CExpr
-  deriving DecidableEq, Repr
+/-- Literal denotation: no addresses, just values. -/
+def litVal : CLit → Value
+  | .i32 v => .i32 v
+  | .b v => .b v
 
 /-- Pure evaluator: `add` on `i32` goes through `checkedAddI32`
     (overflow → `.error .Overflow`); mismatched types are `AssertFail`;
     unbound variables are `Uninit`. -/
 def evalExpr : CExpr → Env → Result Value
-  | .const v, _ => .ok v
+  | .lit l, _ => .ok (litVal l)
   | .var x, ρ =>
     match envLookup ρ x with
     | some v => .ok v
@@ -148,8 +146,8 @@ def evalExpr : CExpr → Env → Result Value
     | .error e, _ => .error e
     | _, .error e => .error e
 
-theorem evalExpr_const (v : Value) (ρ : Env) :
-    evalExpr (.const v) ρ = .ok v := rfl
+theorem evalExpr_lit (l : CLit) (ρ : Env) :
+    evalExpr (.lit l) ρ = .ok (litVal l) := rfl
 
 theorem evalExpr_var_hit (ρ : Env) (x : String) (v : Value)
     (h : envLookup ρ x = some v) :
@@ -165,30 +163,83 @@ theorem evalExpr_var_empty (x : String) :
     evalExpr (.var x) [] = .error .Uninit := by
   simp [evalExpr, envLookup]
 
-/-- `add` on two `i32` constants forwards to `checkedAddI32`. -/
-theorem evalExpr_add_const (x y : BitVec 32) (ρ : Env) :
-    evalExpr (.add (.const (.i32 x)) (.const (.i32 y))) ρ =
+/-- `add` on two `i32` literals forwards to `checkedAddI32`. -/
+theorem evalExpr_add_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.add (.lit (.i32 x)) (.lit (.i32 y))) ρ =
       (checkedAddI32 x y).map .i32 := by
-  simp [evalExpr]
+  simp [evalExpr, litVal]
 
 /-- `add` type mismatches are rejected, never silently modeled. -/
 theorem evalExpr_add_mismatch (ρ : Env) :
-    evalExpr (.add (.const (.i32 0)) (.const (.b true))) ρ =
+    evalExpr (.add (.lit (.i32 0)) (.lit (.b true))) ρ =
       .error .AssertFail := by
-  simp [evalExpr]
+  simp [evalExpr, litVal]
 
-/-! ## Statement evaluator (stub, control flow in Phases 3–4) -/
+/-! ## Statement evaluator (fragment: `skip`/`seq`/`let_`/`return_`) -/
 
-/-- Loan-based evaluator stub. Phase 2 handles values, environments, loans,
-    and expressions above; statement control flow and borrow tracking arrive
-    in Phases 3–4 with the `emit_correct` simulation proof. -/
+/-- Loan-based statement evaluator. `skip`/`seq`/`let_`/`return_` have full
+    value semantics (error-propagating); `if_`/`while_`/`call`/`assign`
+    stay `fellThrough` stubs until Phase 4 admits them with per-op lemmas. -/
 def evalStmt : CStmt → Env → Result (Env × Outcome)
   | .skip, ρ => .ok (ρ, .fellThrough)
-  | .seq _ _, ρ => .ok (ρ, .fellThrough)
-  | .return_ _, ρ => .ok (ρ, .fellThrough)
+  | .seq a b, ρ =>
+    match evalStmt a ρ with
+    | .error e => .error e
+    | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+    | .ok (ρ', .fellThrough) => evalStmt b ρ'
+  | .let_ x _ e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok v => .ok (envExtend ρ x v, .fellThrough)
+  | .return_ e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok v => .ok (ρ, .returned v)
   | _, ρ => .ok (ρ, .fellThrough)
 
-/-- The stub never fails: failures surface via `evalExpr`, not control flow. -/
-theorem evalStmt_is_ok (s : CStmt) (ρ : Env) :
-    ∃ p, evalStmt s ρ = .ok p := by
-  cases s <;> exact ⟨_, rfl⟩
+theorem evalStmt_skip (ρ : Env) :
+    evalStmt .skip ρ = .ok (ρ, .fellThrough) := rfl
+
+theorem evalStmt_return (e : CExpr) (ρ : Env) (v : Value)
+    (h : evalExpr e ρ = .ok v) :
+    evalStmt (.return_ e) ρ = .ok (ρ, .returned v) := by
+  simp [evalStmt, h]
+
+theorem evalStmt_return_err (e : CExpr) (ρ : Env) (err : Panic)
+    (h : evalExpr e ρ = .error err) :
+    evalStmt (.return_ e) ρ = .error err := by
+  simp [evalStmt, h]
+
+/-! ## Function entry: argument binding + outcome -/
+
+/-- Bind actuals to formals (names only; types/roles are `validate`'s job
+    in Phase 4). Arity mismatch is `none`, and `evalFunc` rejects it. -/
+def bindArgs : List Param → List Value → Option Env
+  | [], [] => some []
+  | p :: ps, v :: vs =>
+    match bindArgs ps vs with
+    | none => none
+    | some ρ => some ((p.name, v) :: ρ)
+  | _, _ => none
+
+/-- Whole-function semantics: bind, run the body, demand a `return`.
+    Falling off the end without returning is `AssertFail` (the C corpus
+    always returns; `validate` will enforce it in Phase 4). -/
+def evalFunc (f : Func) (args : List Value) : Result Value :=
+  match bindArgs f.args args with
+  | none => .error .AssertFail
+  | some ρ =>
+    match evalStmt f.body ρ with
+    | .error e => .error e
+    | .ok (_, .returned v) => .ok v
+    | .ok (_, .fellThrough) => .error .AssertFail
+
+theorem bindArgs_nil : bindArgs [] [] = some [] := rfl
+
+theorem bindArgs_mismatch (p : Param) (ps : List Param) :
+    bindArgs (p :: ps) [] = none := rfl
+
+theorem evalFunc_arity (f : Func) (args : List Value)
+    (h : bindArgs f.args args = none) :
+    evalFunc f args = .error .AssertFail := by
+  simp [evalFunc, h]

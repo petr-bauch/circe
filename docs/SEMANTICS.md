@@ -1,17 +1,18 @@
-# Semantics Table (CIR → CoreIR → Lean) — Phase 2
+# Semantics Table (CIR → CoreIR → Lean) — Phase 3
 
 `Eval` is Aeneas-style: environments map variables to **values with
 loan/borrow bookkeeping** (`Env` + `LoanState` in `Circe/Eval`); there is
-no heap and no addresses. Statement-level control flow and the
-`emit_correct` simulation proof land in Phases 3–4; this table records the
-fragment with a full `Eval` semantics plus `Circe.Base` lemmas today.
+no heap and no addresses. Phase 3 adds statement semantics for
+`skip`/`seq`/`let_`/`return_`, whole-function `evalFunc`, and the
+`emit_correct` theorems for the `add`/`incr` fragment; `if_`/`while_`/
+`call`/`assign` and `validate` admission land in Phase 4.
 
 ## Evaluated fragment (lemmas compile, `lake build` green)
 
-| C | Raw CIRGen idiom (from `tests/cir/*.cir`) | CoreIR / `Eval` | Lean (`Circe.Base`) |
+| C | Raw CIRGen idiom (from `tests/cir/*.cir`) | CoreIR / `Eval` | Lean (`Circe.Base` / emitted) |
 |---|---|---|---|
-| `a + b` (`int32_t`, `nsw`) | `cir.add nsw` on `!cir.int<s,32>` with `__retval` alloca/store/load/return | `CExpr.add` over `Value.i32`; `evalExpr` forwards to `checkedAddI32` | `checkedAddI32`: `.error .Overflow` off-range; lemmas `checkedAddI32_ok/err/ok_implies_range/err_implies_outside/ok_value/comm` |
-| `*p = *p + 1` | `cir.load` / `cir.add` / `cir.store` through `!cir.ptr<!s32i>` | `mutBorrow` param role (no address values); caller `y ← incr_fwd y` | `checkedIncrI32 = checkedAddI32 · 1`; lemma `checkedIncrI32_ok` |
+| `a + b` (`int32_t`, `nsw`) | `cir.add nsw` on `!cir.int<s,32>` with `__retval` alloca/store/load/return | `CExpr.add` (`CoreIR`) over `Value.i32`; `evalFunc addFunc [a,b]` | `out/Add.lean`: `add_fwd = checkedAddI32`; `emit_correct_add` + ok/err corollaries |
+| `*p = *p + 1` | `cir.load` / `cir.add` / `cir.store` through `!cir.ptr<!s32i>` | `mutBorrow` param; `evalFunc incrFunc [p]` (value in, updated value out) | `out/Incr.lean`: `incr_fwd = checkedIncrI32`, caller `y ← incr_fwd y`; `emit_correct_incr` + ok/err corollaries |
 | `-a`, `a / b` (`int32_t`) | `cir.unary neg`, `cir.binop div` | `evalExpr` extension point (same `Result` plumbing) | `checkedNegI32` (fails only on `INT_MIN`), `checkedDivI32` (`DivZero` + `INT_MIN/-1`); lemmas `checkedNegI32_ok/err`, `checkedDivI32_zero` |
 | `a + b` (`uint32_t`) | plain `cir.add` (no `nsw`) | `Value.u32` | `checkedAddU32` (wraps, always `ok`; lemma `checkedAddU32_ok`); `checkedAddU32Strict` (carry → `Overflow`) for bounds arithmetic |
 | `a[i]`, `0 ≤ i < n` | `cir.ptr_stride` + `cir.load` | `Value.arr32` + length witness | `BoundedList α n` (`l.length = n`), `bget` (else `OOB`); lemmas `bget_ok/oob/length` |
@@ -29,10 +30,11 @@ pattern; `bool→int→bool` cast chains around `cir.ternary` conditions and
 `cir.add nsw` (signed, checked) vs plain `cir.add` (unsigned, wrapping);
 `cir.scope` nesting; module attrs (`cir.triple`, `dlti.dl_spec`) to ignore.
 
-## Deferred to Phases 3–4
+## Deferred to Phase 4
 
-Statement-level `Eval` control flow (`if`/`while`/`for` over `CStmt`),
-`validate` admission per op, `emitFunc` forward/backward synthesis, and the
-`emit_correct` simulation theorem. The stub `evalStmt` never fails by
-construction (`evalStmt_is_ok`); all Phase 2 failure semantics live in
-`evalExpr` + `Circe.Base`.
+`if_`/`while_`/`for` control flow over `CStmt`, `call`/`assign`,
+`validate` admission per op (+ oracle `noalias` gate), and
+borrow-return (`choose`-shape) forward/backward synthesis with
+`emit_correct` extensions. E2E harness: `tools/check-phase3.sh`
+(build → regenerate `out/` → golden `diff` → `lake env lean` typecheck →
+native drivers → `tests/lean/DiffPhase3.lean` differential fuzz).
