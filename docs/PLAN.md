@@ -251,7 +251,25 @@ env and Lean lets; per-op lemmas required before admitting each op.
 - **Termination:** recursion from loops. Mitigate: length-paired arrays +
   fuel/variant requirement in `validate`.
 
-## 10. Next Actions (Phase 4 COMPLETE 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+## 10. Next Actions (Phase 5 COMPLETE 2026-09-26; Phase 4 done 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+
+Phase 5 (done): functional-verification workflow + three pure-equation
+specs (§8 DoD item 2), all `lake build` green. `Circe/Specs.lean` proves
+`incr_correct` (successor + `nsw` certificate / genuine-overflow),
+`choose_lens_laws` (get-put + put-get over tag-free `BitVec` mirrors
+`chooseFwdBV`/`chooseBackBV`, bridged to Value-level `chooseFwd`/
+`chooseBack` by `rfl`), and `sum_correct` (`sumFwd` in-range =
+`List.sum` of the taken prefix via new `Base` bridge
+`prefixSumU32_take_sum`/`prefixSumU32_full`), plus `sum_correct_full`
+(the emitted `BoundedList` body), `sum_correct_oob`, `sum_empty`.
+`Circe/Tactics.lean` provides `cir_simp` (checked-op unfoldings,
+`prefixSumU32` + sum bridge, `bget`/`pointTranslate`, `Result`
+bind/map computation rules; composes with plain `simp`) with `rfl`
+bind/map lemmas. Specs target `Base` ops that are literally the emitted
+bodies in `out/*.lean`; transfer enforced by golden `native_decide` +
+`diff` and new `grep` body assertions in `tools/check-phase5.sh`
+(superset E2E: phase-4 pipeline + bodies + specs typecheck → `PHASE5-OK`).
+`docs/VERIFYING.md` documents the workflow + tactics.
 
 Phase 4 (done): `CoreIR` gains `CLit.u32`, `CExpr.uadd/ult/idx`;
 `Eval` gains `envUpdate`, `assign`/`if_` semantics, and fuel-bounded

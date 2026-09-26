@@ -1,11 +1,14 @@
-# Semantics Table (CIR → CoreIR → Lean) — Phase 4
+# Semantics Table (CIR → CoreIR → Lean) — Phase 5
 
 `Eval` is Aeneas-style: environments map variables to **values with
 loan/borrow bookkeeping** (`Env` + `LoanState` in `Circe/Eval`); there is
 no heap and no addresses. Phase 4 adds `assign`/`if_` and fuel-bounded
 `while_` (`EVAL_FUEL`), `uadd`/`ult`/`idx` expressions, whole-function
 `evalFuncFuel`, `choose` forward/backward with lens laws, the `sum`
-bounded-loop proof, and the real `validate` + oracle gate; `call` and
+bounded-loop proof, and the real `validate` + oracle gate. Phase 5 adds
+the user-facing specs layer (`Circe.Specs`: `incr_correct`,
+`choose_lens_laws`, `sum_correct` over `Base` ops identical to the
+emitted bodies) and `cir_simp` (`Circe.Tactics`); `call` and
 full struct `Eval`/`Emit` land after v0.1.
 
 ## Evaluated fragment (lemmas compile, `lake build` green)
@@ -41,6 +44,7 @@ pattern; `bool→int→bool` cast chains around `cir.ternary` conditions and
 dedicated message), generalized `emit_correct` over all `matchFrag`-
 accepted shapes (currently proved for canonical `Func`s; the pipeline only
 feeds validator-produced canonical `Func`s). E2E harness:
-`tools/check-phase4.sh` (build → regenerate `out/` → golden `diff` →
+`tools/check-phase5.sh` (superset: phase-4 pipeline → golden `diff` →
 `lake env lean` typecheck → native drivers → `DiffPhase3`/`DiffPhase4`
-fuzz → `GoldenPhase4` pipeline + rejection suite).
+fuzz → `GoldenPhase4` pipeline + rejection suite → emitted-body
+correspondence → specs typecheck).

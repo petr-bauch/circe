@@ -230,3 +230,20 @@ theorem prefixSumU32_zero (l : List (BitVec 32)) : prefixSumU32 l 0 = 0 := by
 
 theorem prefixSumU32_cons (x : BitVec 32) (xs : List (BitVec 32)) (k : Nat) :
     prefixSumU32 (x :: xs) (k + 1) = x + prefixSumU32 xs k := rfl
+
+/-- Bridge to the spec world: a prefix sum is the `List.sum` of the taken
+    prefix (Phase 5 functional specs build on this). -/
+theorem prefixSumU32_take_sum (l : List (BitVec 32)) (k : Nat) :
+    prefixSumU32 l k = (l.take k).sum := by
+  induction l generalizing k with
+  | nil => cases k <;> rfl
+  | cons x xs ih =>
+    cases k with
+    | zero => rfl
+    | succ k => simp [prefixSumU32, List.sum_cons, ih]
+
+/-- Full-length prefix sum is the whole-list sum. -/
+theorem prefixSumU32_full (l : List (BitVec 32)) :
+    prefixSumU32 l l.length = l.sum := by
+  have h := prefixSumU32_take_sum l l.length
+  rwa [List.take_length] at h

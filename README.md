@@ -37,6 +37,10 @@ tools/check-phase3.sh [trials]
 # Phase 4 end-to-end (superset): above plus choose/sum outputs, both fuzzers,
 # and the golden pipeline + rejection suite (18 checks)
 tools/check-phase4.sh [trials]
+
+# Phase 5 end-to-end (superset): phase-4 pipeline plus emitted-body
+# correspondence and functional-specs typecheck (incr/choose/sum)
+tools/check-phase5.sh [trials]
 ```
 
 Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`

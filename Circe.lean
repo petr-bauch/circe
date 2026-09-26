@@ -5,3 +5,5 @@ import Circe.Oracle
 import Circe.Eval
 import Circe.Validator
 import Circe.Emit
+import Circe.Tactics
+import Circe.Specs
