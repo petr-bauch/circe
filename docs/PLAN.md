@@ -251,7 +251,30 @@ env and Lean lets; per-op lemmas required before admitting each op.
 - **Termination:** recursion from loops. Mitigate: length-paired arrays +
   fuel/variant requirement in `validate`.
 
-## 10. Next Actions (Phase 6 hardening done 2026-09-26; Phase 5 done 2026-09-26; Phase 4 done 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+## 10. Next Actions (Phase 7 vec-heap done 2026-09-26; Phase 6 hardening done 2026-09-26; Phase 5 done 2026-09-26; Phase 4 done 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+
+Phase 7 (done): uniquely-owned heap, `u32`-only, strict-`free`
+(`docs/ROADMAP.md` item 1). `Circe.Base` gains `Vec32` (capacity =
+`val.length`, zero-init, `freed` affine token; unbounded allocation) with
+`vecNew`/`vecSet`/`vecGet`/`vecFree` + ok/err/get-set/length/token lemmas,
+plus `vecFillLoop`/`vecSumLoop`/`vecFillSumU32` program combinators with
+the `vecFillSumU32_correct` bridge (allocate/fill/sum/free = `range`
+prefix sum). `CoreIR` gains `CExpr.vnew/vget`, `CStmt.vset/vfree`,
+`CType.vecBlock`; `Eval` gains `Value.vecVal` with full small-step rules
+(use-after-free/double-free → `AssertFail`). `Emit` gains `vecFunc`
+(fill-with-indices/sum/free/return over two fuel-bounded loops),
+`vecFwd`, and `emit_correct_vec` by two-loop fuel induction reusing the
+named-handler discipline, rendering `out/VecAlloc.lean`. `validate`
+admits the `vec_alloc` shape (real CIRGen output: `cir.call @malloc`,
+two `cir.for` loops over `cir.ptr_stride`, exactly one `cir.call @free`)
+and rejects missing-`free`/double-`free`/misshapen-heap with dedicated
+messages; `forbiddenOp` heap-adjacent branches went line-aware after real
+CIR showed `cir.get_global @malloc/@free` plumbing and `cir.func private`
+decls (`call`-site counting, not `@free(` occurrences). Corpus:
+`tests/c/vec_alloc.c` + real captured `tests/cir/vec_alloc.cir` + oracle
+verdict; `native_decide` pipeline linkage; `DiffVec` fuzz vs native;
+`GoldenPhase7` (6 checks); `vec_correct`/`vec_empty` specs;
+`tools/check-phase7.sh` superset E2E → `PHASE7-OK`.
 
 Phase 6 (done): hardening + meaningful CI (§8 DoD items 3–4).
 `forbiddenOp` grows from 12 to 27 branches: every previously untested

@@ -5,7 +5,17 @@ the three accepted follow-ups from `docs/PLAN.md` §7 Phase 6, in priority
 order, each with an acceptance sketch. Nothing here is implemented; the
 `validate` gate stays closed-by-default until each lands with proofs.
 
-## 1. Uniquely-owned heap (`malloc` as `Vec`)
+## 1. Uniquely-owned heap (`malloc` as `Vec`) — DONE (Phase 7, `u32`-only)
+
+Landed as `vec_alloc` (see `docs/PLAN.md` Next Actions): `Circe.Base`
+`Vec32` + `vecFillSumU32`, `CoreIR`/`Eval` heap constructs, `vecFunc` +
+`emit_correct_vec`, `validate` `isVecShape` with strict
+missing-`free`/double-`free` rejections, real-CIR corpus + `DiffVec` fuzz
++ `GoldenPhase7` + `vec_correct` spec, `tools/check-phase7.sh` →
+`PHASE7-OK`. Remaining (still open): other element types, multiple live
+allocations, `realloc`, looser `free` discipline — each needs its own
+shape + `emit_correct` + golden before admission. The original sketch
+(targeted pre-Phase-7 wording) is kept below for reference.
 
 Today `malloc`/`free` are `out-of-subset` (see `forbiddenOp` in
 `Circe/Validator.lean`). The plan: model a uniquely-owned heap block as a

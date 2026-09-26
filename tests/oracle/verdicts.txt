@@ -13,3 +13,4 @@ incr noalias
 choose noalias
 sum_array noalias
 translate unknown
+vec_alloc unknown

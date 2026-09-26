@@ -46,6 +46,12 @@ tools/check-phase5.sh [trials]
 # rejection suite (heap/globals/func-ptrs/VLA/variadics/switch/goto/
 # wrapping-arithmetic, 18 checks) and roadmap/docs linkage
 tools/check-phase6.sh [trials]
+
+# Phase 7 end-to-end (superset): phase-5 pipeline plus the uniquely-owned
+# heap fragment (vec_alloc golden, DiffVec fuzz vs native, 6-check
+# golden + heap rejection suite, vec emitted-body correspondence,
+# vec specs typecheck)
+tools/check-phase7.sh [trials]
 ```
 
 Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`

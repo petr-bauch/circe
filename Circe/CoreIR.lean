@@ -15,6 +15,7 @@ inductive CType : Type
   | u (w : Nat)
   | array (t : CType) (n : Nat)
   | struct (name : String) (fields : List CType)
+  | vecBlock
 
 /-- Ownership role of a function parameter or return. `mutBorrow` is a
     `T *__restrict` param unique for its region; `sharedBorrow` is a
@@ -53,6 +54,8 @@ inductive CExpr : Type
   | uadd : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
   | idx : String → CExpr → CExpr
+  | vnew : CExpr → CExpr
+  | vget : String → CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and
@@ -67,6 +70,8 @@ inductive CStmt : Type
   | seq (a b : CStmt)
   | let_ (name : String) (ty : CType) (val : CExpr)
   | assign (name : String) (val : CExpr)
+  | vset (vec : String) (idx val : CExpr)
+  | vfree (vec : String)
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)
   | call (func : String) (args : List String)

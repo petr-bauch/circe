@@ -12,12 +12,16 @@ is rejected with a precise code + message (golden-tested in
 Check order (first hit wins — rejection codes are priority-ordered):
 1. oracle wiring (fact must name this function);
 2. forbidden constructs (EH, int↔ptr casts, `void*`, volatile/atomics,
-   float, heap (`malloc`/`free`), `setjmp`/`longjmp`, globals,
+   float, `setjmp`/`longjmp`, globals,
    function pointers, VLAs, variadics, `switch`, `goto` (`cir.br`),
-   bitfields, signed wrapping arithmetic without `nsw`, calls — all `outOfSubset`);
+   bitfields, signed wrapping arithmetic without `nsw` — all `outOfSubset`);
+   heap (`malloc`/`free`) and calls are shape-aware (see step 5):
+   the admitted `vec_alloc` shape passes, all other heap/call uses are
+   `outOfSubset` with dedicated messages (missing-`free`, double-`free`,
+   heap-shape, calls);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`,
    or oracle verdict other than `noalias` with live pointer params);
-4. shape admission (canonical `Func` or a precise code: `escapeReject`
+5. shape admission (canonical `Func` or a precise code: `escapeReject`
    for non-`choose` pointer returns, `oobPossible` for unbounded
    `ptr_stride`, `outOfSubset` otherwise, including struct ops which live
    in `Base` but are pending `Eval`/`Emit`).
@@ -111,6 +115,61 @@ def isSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
+/-! ## Heap-plumbing predicates (line-aware) -/
+
+/-- A line defining a real global (`cir.global @g = ...`), as opposed to
+    merely *using* one (`cir.get_global`, which `malloc`/`free` plumbing
+    also does — those lines contain `get_`). -/
+def lineHasGlobalDef (line : String) : Bool :=
+  containsSubstr line "cir.global" && !containsSubstr line "cir.get_global"
+
+/-- A `cir.get_global` line unrelated to `malloc`/`free` plumbing
+    (real CIR takes `@malloc`/`@free` addresses via `get_global`; those
+    lines are heap plumbing, gated by the vec shape instead). -/
+def lineHasNonHeapGlobal (line : String) : Bool :=
+  containsSubstr line "cir.get_global" &&
+  !containsSubstr line "@malloc" && !containsSubstr line "@free"
+
+/-- A function-pointer type outside `malloc`/`free` plumbing (whose
+    `get_global` ascriptions mention `cir.func<`). Actual indirect calls
+    are still caught by `call_indirect` above. -/
+def lineHasBareFuncPtr (line : String) : Bool :=
+  containsSubstr line "cir.func<" && !containsSubstr line "get_global"
+
+/-- Whole-text wrappers (split on newlines, cf. `hasWrappingSignedArith`). -/
+def hasGlobalDef (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasGlobalDef
+
+def hasNonHeapGlobal (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasNonHeapGlobal
+
+def hasBareFuncPtr (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasBareFuncPtr
+
+/-- `free` *call* sites (`cir.call @free(`/n): the `cir.func private @free`
+    declaration also contains `@free(`, so a bare `@free(` needle would
+    double-count every file. -/
+def freeCallCount (text : String) : Nat :=
+  ((text.splitOn "\n").filter (fun line =>
+    containsSubstr line "cir.call @free(")).length
+
+/-- `vec_alloc`: length param, `u32` return, `malloc` + bounded `cir.for`
+    loops over `cir.ptr_stride` + exactly one `free` call. -/
+def isVecShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [n] =>
+    isLengthType n.ctype && !isPtrType n.ctype &&
+    isU32 raw.ret &&
+    containsSubstr raw.text "malloc" &&
+    containsSubstr raw.text "cir.call @free(" &&
+    !(1 < freeCallCount raw.text) &&
+    containsSubstr raw.text "cir.for" &&
+    containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.switch"
+  | _ => false
+
 /-! ## Forbidden constructs (all `outOfSubset`) -/
 
 /-- One source line performs signed `add`/`sub`/`mul` on `i32` without the
@@ -142,14 +201,12 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "inline_asm" then some "inline assembly"
   else if containsSubstr text "!cir.float" then some "float type"
   else if containsSubstr text "!cir.double" then some "double type"
-  else if containsSubstr text "malloc" then some "heap allocation (`malloc`: uniquely-owned heap lands after v0.1, see docs/ROADMAP.md)"
-  else if containsSubstr text "@free" then some "heap deallocation (`free`: uniquely-owned heap lands after v0.1, see docs/ROADMAP.md)"
   else if containsSubstr text "setjmp" then some "`setjmp` (non-local control flow)"
   else if containsSubstr text "longjmp" then some "`longjmp` (non-local control flow)"
-  else if containsSubstr text "cir.global" then some "global state (`cir.global`: only read-only `const` globals, and none yet in v0.1)"
-  else if containsSubstr text "cir.get_global" then some "global access (`cir.get_global`: only read-only `const` globals, and none yet in v0.1)"
+  else if hasGlobalDef text then some "global state (`cir.global`: only read-only `const` globals, and none yet in v0.1)"
+  else if hasNonHeapGlobal text then some "global access (`cir.get_global`: only read-only `const` globals, and none yet in v0.1)"
   else if containsSubstr text "call_indirect" then some "function pointer (indirect call: no function pointers in v0.1)"
-  else if containsSubstr text "cir.func<" then some "function pointer type (no function pointers in v0.1)"
+  else if hasBareFuncPtr text then some "function pointer type (no function pointers in v0.1)"
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
@@ -157,14 +214,14 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "cir.br" then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
   else if hasWrappingSignedArith text then some "signed wrapping arithmetic without `nsw` (signed overflow is UB in C: mark the op `nsw` or use unsigned arithmetic)"
-  else if containsSubstr text "cir.call" then some "function call (calls land in Phase 5+)"
   else none
 
 /-! ## The gate -/
 
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
-    Only the four canonical shapes pass; everything else is rejected with
-    a precise code (see the module docstring for check order). -/
+    Only the five canonical shapes pass (`add`/`incr`/`choose`/`sum` from
+    Phases 3–4 plus `vec_alloc` from Phase 7); everything else is rejected
+    with a precise code (see the module docstring for check order). -/
 def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
   if raw.name != oracle.funcName then
     reject raw.name .outOfSubset
@@ -194,6 +251,22 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { chooseFunc with name := raw.name }
       else if isSumShape raw then
         .ok { sumFunc with name := raw.name }
+      else if isVecShape raw then
+        .ok { vecFunc with name := raw.name }
+      else if containsSubstr raw.text "malloc" &&
+          !containsSubstr raw.text "cir.call @free(" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls `malloc` without a matching `free`: heap blocks must be freed exactly once on every path (strict linear discipline, see docs/OWNERSHIP.md rule 8 and docs/ROADMAP.md)"
+      else if 1 < freeCallCount raw.text then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls `free` twice: double-`free` is rejected (heap blocks are freed exactly once, see docs/OWNERSHIP.md rule 8)"
+      else if containsSubstr raw.text "malloc" ||
+          containsSubstr raw.text "cir.call @free(" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` shape (see docs/ROADMAP.md)"
+      else if containsSubstr raw.text "cir.call" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses function call (calls land in Phase 5+), outside the v0.1 Ownable-C subset (see docs/CIR_SUBSET.md)"
       else if isPtrType raw.ret then
         reject raw.name .escapeReject
           s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/OWNERSHIP.md rule 6)"
@@ -251,6 +324,12 @@ example : runPipelineOpt (include_str "../tests/cir/choose_ptr.cir")
 example : runPipelineOpt (include_str "../tests/cir/sum_array.cir")
     ⟨"sum_array", .noalias⟩
     = some (include_str "../tests/golden/SumArray.lean") := by native_decide
+
+/-- The checked-in `vec_alloc` CIR (real CIRGen output with `malloc`/`free`
+    plumbing) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/vec_alloc.cir")
+    ⟨"vec_alloc", .unknown⟩
+    = some (include_str "../tests/golden/VecAlloc.lean") := by native_decide
 
 /-- The checked-in struct corpus is rejected (struct ops pending). -/
 example : runPipelineOpt (include_str "../tests/cir/struct_by_value.cir")

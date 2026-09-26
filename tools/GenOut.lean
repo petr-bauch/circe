@@ -1,7 +1,8 @@
--- Generator for the Phase 4 emitted files.
+-- Generator for the Phase 4 emitted files (plus Phase 7 `VecAlloc`).
 -- Run from the repo root: `lake env lean --run tools/GenOut.lean`
--- Writes `out/{Add,Incr,Choose,SumArray}.lean` from `Circe.Emit.emitFunc`
--- (single source of truth; `tests/golden/*.lean` pins the bytes).
+-- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc}.lean` from
+-- `Circe.Emit.emitFunc` (single source of truth;
+-- `tests/golden/*.lean` pins the bytes).
 import Circe.Emit
 
 def emitOrDie (f : Func) : IO EmittedFunc := do
@@ -14,13 +15,17 @@ def main : IO Unit := do
   let incr ← emitOrDie incrFunc
   let choose ← emitOrDie chooseFunc
   let sum ← emitOrDie sumFunc
+  let vec ← emitOrDie vecFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
   IO.FS.writeFile "out/SumArray.lean" (emitFileText (.ok sum))
+  IO.FS.writeFile "out/VecAlloc.lean" (emitFileText (.ok vec))
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
   if sum.backward.isSome then
     throw (IO.userError "sum must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean"
+  if vec.backward.isSome then
+    throw (IO.userError "vec must not have a backward definition")
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean"

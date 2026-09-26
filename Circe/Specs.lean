@@ -10,12 +10,14 @@ of the emitted definitions in `out/*.lean`:
 - `out/Choose.lean`:    `choose_fwd b x y := .ok (if b then x else y)`
 - `out/Choose.lean`:    `choose_back b x y ret := .ok (if b then (ret, y) else (x, ret))`
 - `out/SumArray.lean`:  `sum_array_fwd a := .ok (prefixSumU32 a.val a.val.length)`
+- `out/VecAlloc.lean`:  `vec_alloc_fwd n := vecFillSumU32 n.toNat`
 
 Body identity is machine-checked: `tests/golden/*.lean` pin the bytes
 (`native_decide` linkage in `Circe.Emit`, `diff` in
 `tools/check-phase4.sh`), so every theorem below transfers verbatim to
 the emitted files. The required three (§8 DoD item 2) are `incr_correct`,
-`choose_lens_laws`, and `sum_correct`; surrounding lemmas package the
+`choose_lens_laws`, and `sum_correct`; Phase 7 adds the heap spec
+`vec_correct` (+ `vec_empty`); surrounding lemmas package the
 ok/err sides. `cir_simp` (`Circe.Tactics`) is used throughout.
 -/
 import Circe.Base
@@ -112,3 +114,27 @@ theorem sum_correct_oob (l : List (BitVec 32)) (n : BitVec 32)
     (h : ¬ n.toNat ≤ l.length) :
     sumFwd l n = .error .OOB :=
   sumFwd_oob l n h
+
+/-! ## `vec_alloc`: index-sum is `List.sum` of the filled range -/
+
+/-- Functional correctness for `vec_alloc` (Phase 7 heap spec): the pure
+    heap program delivers the `List.sum` of indices `[0, n)` (wrapping
+    `u32` arithmetic is exactly `BitVec` addition). Applies verbatim to
+    `out/VecAlloc.lean:vec_alloc_fwd` (body-identical:
+    `vecFillSumU32 n.toNat`). -/
+theorem vec_correct (n : Nat) :
+    vecFillSumU32 n = .ok (((List.range n).map (BitVec.ofNat 32)).sum) := by
+  have hlen : ((List.range n).map (BitVec.ofNat 32)).length = n := by simp
+  have htake : ((List.range n).map (BitVec.ofNat 32)).take n =
+      (List.range n).map (BitVec.ofNat 32) := by
+    have h2 : ((List.range n).map (BitVec.ofNat 32)).take
+        (((List.range n).map (BitVec.ofNat 32)).length) =
+        (List.range n).map (BitVec.ofNat 32) :=
+      List.take_length
+    rwa [hlen] at h2
+  rw [vecFillSumU32_correct, prefixSumU32_take_sum, htake]
+
+/-- The empty heap program sums to zero. -/
+theorem vec_empty : vecFillSumU32 0 = .ok 0 := by
+  rw [vec_correct]
+  simp

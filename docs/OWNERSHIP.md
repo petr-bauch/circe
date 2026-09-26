@@ -33,10 +33,18 @@ not addresses. The Clang/CIR + LLVM-AA oracle certifies uniqueness;
    pointer-chasing loops are out. v0.1 loops must terminate within
    `EVAL_FUEL` (4096) iterations; exhaustion reports `AssertFail`
    (incompleteness, never unsoundness), and over-long lengths report `OOB`.
+8. Uniquely-owned heap, `u32`-only (Phase 7): `malloc(n * sizeof(uint32_t))`
+   with `n` a same-function length argument; only `v[i]` for `0 <= i < n`;
+   `free(v)` exactly once on every path (strict linear discipline —
+   missing-`free` and double-`free` are rejected); no escaping (never
+   stored, returned, or passed on); single live allocation per function.
+   The block is a value with an affine token (`Vec32.freed`), not an
+   address; `free` ends the region (Aeneas §4 close).
 
 `validate` maps each admitted shape to its canonical `Func`
-(`addFunc`/`incrFunc`/`chooseFunc`/`sumFunc` with the source name) — the
-only `Func`s the emitter handles (`matchFrag` contract, `Circe.Emit`).
+(`addFunc`/`incrFunc`/`chooseFunc`/`sumFunc`/`vecFunc` with the source
+name) — the only `Func`s the emitter handles (`matchFrag` contract,
+`Circe.Emit`).
 
 ## Normative translation schema (PLAN.md §6)
 

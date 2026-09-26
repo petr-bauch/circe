@@ -213,7 +213,359 @@ theorem pointTranslate_err_x (p : Point) (dx dy : BitVec 32) (e : Panic)
     pointTranslate p dx dy = .error e := by
   simp [pointTranslate, hx]
 
-/-! ## Bounded prefix sum: `sum_array` corpus (Phase 4) -/
+/-! ## Uniquely-owned heap: `Vec32` (Phase 7, u32-only) -/
+
+/-- A uniquely-owned `u32` heap block (`malloc`/`free` functionalized).
+    Capacity is `val.length` (fixed at creation, zero-initialized);
+    `freed` is the affine token: `vecFree` sets it, and every use checks
+    it (`AssertFail` on use-after-free / double-free — incompleteness,
+    never unsoundness). Allocation is unbounded (`vecNew` never fails);
+    bounds are enforced per-access (`OOB`). -/
+structure Vec32 where
+  val : List (BitVec 32)
+  freed : Bool
+  deriving DecidableEq, Repr
+
+/-- `malloc(n * sizeof(uint32_t))`: fresh zeroed block, live token.
+    Never fails (unbounded allocation; see the module note). -/
+def vecNew (n : Nat) : Result Vec32 :=
+  .ok ⟨List.replicate n 0, false⟩
+
+/-- `v[i] = x`: token then bounds, else the updated block. -/
+def vecSet (v : Vec32) (i : Nat) (x : BitVec 32) : Result Vec32 :=
+  if v.freed then .error .AssertFail
+  else if _ : i < v.val.length then .ok ⟨v.val.set i x, false⟩
+  else .error .OOB
+
+/-- `v[i]`: token then bounds, else the element. -/
+def vecGet (v : Vec32) (i : Nat) : Result (BitVec 32) :=
+  if v.freed then .error .AssertFail
+  else
+    match v.val[i]? with
+    | some x => .ok x
+    | none => .error .OOB
+
+/-- `free(v)`: consumes the token (double-free is `AssertFail`). -/
+def vecFree (v : Vec32) : Result Vec32 :=
+  if v.freed then .error .AssertFail
+  else .ok ⟨v.val, true⟩
+
+/-- Allocation delivers a zeroed live block of the requested length. -/
+theorem vecNew_ok (n : Nat) :
+    vecNew n = .ok ⟨List.replicate n 0, false⟩ := rfl
+
+theorem vecNew_length (n : Nat) (v : Vec32)
+    (h : vecNew n = .ok v) : v.val.length = n := by
+  rw [vecNew_ok] at h
+  cases h
+  simp
+
+theorem vecNew_live (n : Nat) (v : Vec32)
+    (h : vecNew n = .ok v) : v.freed = false := by
+  rw [vecNew_ok] at h
+  cases h
+  rfl
+
+/-- In-bounds set on a live block succeeds. -/
+theorem vecSet_ok (v : Vec32) (i : Nat) (x : BitVec 32)
+    (hlive : v.freed = false) (hb : i < v.val.length) :
+    vecSet v i x = .ok ⟨v.val.set i x, false⟩ := by
+  simp [vecSet, hlive, hb]
+
+/-- Set on a freed block is rejected, never silently modeled. -/
+theorem vecSet_freed (v : Vec32) (i : Nat) (x : BitVec 32)
+    (h : v.freed = true) : vecSet v i x = .error .AssertFail := by
+  simp [vecSet, h]
+
+/-- Out-of-bounds set on a live block reports `OOB`. -/
+theorem vecSet_oob (v : Vec32) (i : Nat) (x : BitVec 32)
+    (hlive : v.freed = false) (hb : ¬ i < v.val.length) :
+    vecSet v i x = .error .OOB := by
+  simp [vecSet, hlive, hb]
+
+/-- Set preserves the capacity. -/
+theorem vecSet_length (v : Vec32) (i : Nat) (x : BitVec 32) (w : Vec32)
+    (h : vecSet v i x = .ok w) : w.val.length = v.val.length := by
+  unfold vecSet at h
+  split at h
+  · next => simp at h
+  · next =>
+    split at h
+    · next => cases h; simp
+    · next => simp at h
+
+/-- Set keeps the block live. -/
+theorem vecSet_live (v : Vec32) (i : Nat) (x : BitVec 32) (w : Vec32)
+    (h : vecSet v i x = .ok w) : w.freed = false := by
+  unfold vecSet at h
+  split at h
+  · next => simp at h
+  · next =>
+    split at h
+    · next => cases h; rfl
+    · next => simp at h
+
+/-- In-bounds get on a live block succeeds. -/
+theorem vecGet_ok (v : Vec32) (i : Nat) (x : BitVec 32)
+    (hlive : v.freed = false) (hget : v.val[i]? = some x) :
+    vecGet v i = .ok x := by
+  simp [vecGet, hlive, hget]
+
+/-- Get on a freed block is rejected. -/
+theorem vecGet_freed (v : Vec32) (i : Nat)
+    (h : v.freed = true) : vecGet v i = .error .AssertFail := by
+  simp [vecGet, h]
+
+/-- Out-of-bounds get on a live block reports `OOB`. -/
+theorem vecGet_oob (v : Vec32) (i : Nat)
+    (hlive : v.freed = false) (hget : v.val[i]? = none) :
+    vecGet v i = .error .OOB := by
+  simp [vecGet, hlive, hget]
+
+/-- Freeing a live block sets the token, keeping the contents. -/
+theorem vecFree_ok (v : Vec32)
+    (hlive : v.freed = false) :
+    vecFree v = .ok ⟨v.val, true⟩ := by
+  simp [vecFree, hlive]
+
+/-- Double-free is rejected. -/
+theorem vecFree_double (v : Vec32)
+    (h : v.freed = true) : vecFree v = .error .AssertFail := by
+  simp [vecFree, h]
+
+/-- `List.set` then `get?` at the same in-bounds index reads back. -/
+theorem getElem?_set_self (l : List (BitVec 32)) (i : Nat)
+    (x : BitVec 32) (h : i < l.length) :
+    (l.set i x)[i]? = some x := by
+  induction l generalizing i with
+  | nil => simp at h
+  | cons y ys ih =>
+    cases i with
+    | zero => simp [List.set]
+    | succ i => simp [List.set]; exact ih i (by simpa using h)
+
+/-- Get-after-set on a live block reads the written value. -/
+theorem vecGet_set_same (v : Vec32) (i : Nat) (x : BitVec 32) (w : Vec32)
+    (hlive : v.freed = false) (hb : i < v.val.length)
+    (hset : vecSet v i x = .ok w) :
+    vecGet w i = .ok x := by
+  have hlen : w.val.length = v.val.length := vecSet_length v i x w hset
+  have hset' : w.val = v.val.set i x := by
+    rw [vecSet_ok v i x hlive hb] at hset
+    cases hset
+    rfl
+  rw [vecGet_ok w i x (vecSet_live v i x w hset)]
+  rw [hset']
+  exact getElem?_set_self v.val i x hb
+
+/-- Fill loop: write indices `[k, n)` into a live capacity-`n` block. -/
+def vecFillLoopAux (v : Vec32) (k r : Nat) : Result Vec32 :=
+  match r with
+  | 0 => .ok v
+  | r + 1 =>
+    match vecSet v k (BitVec.ofNat 32 k) with
+    | .error e => .error e
+    | .ok v' => vecFillLoopAux v' (k + 1) r
+
+/-- Fill from `0` to `n`. -/
+def vecFillLoop (v : Vec32) (n : Nat) : Result Vec32 :=
+  vecFillLoopAux v 0 n
+
+/-- Sum loop: accumulate `v[k .. k+r)` into `acc` (wrapping `u32`). -/
+def vecSumLoopAux (v : Vec32) (k r : Nat) (acc : BitVec 32) :
+    Result (BitVec 32) :=
+  match r with
+  | 0 => .ok acc
+  | r + 1 =>
+    match vecGet v k with
+    | .error e => .error e
+    | .ok x => vecSumLoopAux v (k + 1) r (acc + x)
+
+/-- Sum the whole `n`-prefix from `0`. -/
+def vecSumLoop (v : Vec32) (n : Nat) : Result (BitVec 32) :=
+  vecSumLoopAux v 0 n 0
+
+/-- Whole heap program, purely: allocate, fill with indices, sum, free.
+    `free` is value-invisible (contents kept, token set); missing-`free`
+    strictness lives in `validate`, not here. -/
+def vecFillSumU32 (n : Nat) : Result (BitVec 32) :=
+  match vecNew n with
+  | .error e => .error e
+  | .ok v0 =>
+    match vecFillLoop v0 n with
+    | .error e => .error e
+    | .ok v1 =>
+      match vecSumLoop v1 n with
+      | .error e => .error e
+      | .ok s =>
+        match vecFree v1 with
+        | .error e => .error e
+        | .ok _ => .ok s
+
+/-- Fill preserves capacity. -/
+theorem vecFillLoopAux_length (v : Vec32) (k r : Nat) (w : Vec32)
+    (h : vecFillLoopAux v k r = .ok w) :
+    w.val.length = v.val.length := by
+  induction r generalizing v k w with
+  | zero => simp [vecFillLoopAux] at h; cases h; rfl
+  | succ r ih =>
+    unfold vecFillLoopAux at h
+    match hs : vecSet v k (BitVec.ofNat 32 k) with
+    | .error e => simp [hs] at h
+    | .ok v' =>
+      simp [hs] at h
+      have hlen := vecSet_length v k (BitVec.ofNat 32 k) v' hs
+      have ihr := ih v' (k + 1) w h
+      omega
+
+/-- Fill keeps the block live (every step succeeds on a live block, so the
+    token can only come from the input). -/
+theorem vecFillLoopAux_live (v : Vec32) (k r : Nat) (w : Vec32)
+    (hlive : v.freed = false)
+    (h : vecFillLoopAux v k r = .ok w) :
+    w.freed = false := by
+  induction r generalizing v k w with
+  | zero => simp [vecFillLoopAux] at h; cases h; exact hlive
+  | succ r ih =>
+    unfold vecFillLoopAux at h
+    match hs : vecSet v k (BitVec.ofNat 32 k) with
+    | .error e => simp [hs] at h
+    | .ok v' =>
+      simp [hs] at h
+      exact ih v' (k + 1) w (vecSet_live v k (BitVec.ofNat 32 k) v' hs) h
+
+/-- `List.set` at `i` leaves every other position's `get?` alone. -/
+theorem getElem?_set_ne (l : List (BitVec 32)) (i j : Nat)
+    (x : BitVec 32) (h : j ≠ i) :
+    (l.set i x)[j]? = l[j]? := by
+  induction l generalizing i j with
+  | nil => rfl
+  | cons y ys ih =>
+    cases i with
+    | zero =>
+      cases j with
+      | zero => exact absurd rfl h
+      | succ j => rfl
+    | succ i =>
+      cases j with
+      | zero => rfl
+      | succ j => simp [List.set]; exact ih i j (by omega)
+
+/-- Get-after-set at a different position reads the old value. -/
+theorem vecSet_get_other (v : Vec32) (i j : Nat) (x y : BitVec 32)
+    (w : Vec32) (hne : j ≠ i)
+    (hset : vecSet v i x = .ok w) (hget : vecGet v j = .ok y) :
+    vecGet w j = .ok y := by
+  have hlive : v.freed = false := by
+    unfold vecSet at hset
+    split at hset
+    · next h => simp at hset
+    · next h =>
+      cases hv : v.freed
+      · rfl
+      · simp_all
+  have hb : i < v.val.length := by
+    rcases Nat.lt_or_ge i v.val.length with hb | hge
+    · exact hb
+    · have herr := vecSet_oob v i x hlive (by omega)
+      rw [herr] at hset
+      simp at hset
+  have hsetw : w = ⟨v.val.set i x, false⟩ := by
+    rw [vecSet_ok v i x hlive hb] at hset
+    cases hset
+    rfl
+  have hget' : v.val[j]? = some y := by
+    match hm : v.val[j]? with
+    | some z =>
+      have h2 : vecGet v j = .ok z := vecGet_ok v j z hlive hm
+      have hzy : z = y := by
+        rw [h2] at hget
+        simpa using hget
+      exact congrArg some hzy
+    | none =>
+      have h2 : vecGet v j = .error .OOB := vecGet_oob v j hlive hm
+      rw [h2] at hget
+      simp at hget
+  subst hsetw
+  show vecGet ⟨v.val.set i x, false⟩ j = .ok y
+  rw [vecGet_ok _ _ _ rfl (by
+    show (v.val.set i x)[j]? = some y
+    rw [getElem?_set_ne _ _ _ _ hne]
+    exact hget')]
+
+/-- Filling `[k, k+r)` preserves reads below `k`. -/
+theorem vecFillLoopAux_preserve (v : Vec32) (k r j : Nat) (y : BitVec 32)
+    (w : Vec32) (hlt : j < k) (hget : vecGet v j = .ok y)
+    (h : vecFillLoopAux v k r = .ok w) :
+    vecGet w j = .ok y := by
+  induction r generalizing v k w with
+  | zero => simp [vecFillLoopAux] at h; cases h; exact hget
+  | succ r ih =>
+    unfold vecFillLoopAux at h
+    match hs : vecSet v k (BitVec.ofNat 32 k) with
+    | .error e => simp [hs] at h
+    | .ok v' =>
+      simp [hs] at h
+      have hne : j ≠ k := by omega
+      exact ih v' (k + 1) w (by omega)
+        (vecSet_get_other v k j _ y v' hne hs hget) h
+
+/-- A filled block reads back the index at every filled position. -/
+theorem vecFillLoopAux_get (v : Vec32) (k r : Nat) (w : Vec32)
+    (hlive : v.freed = false) (hlen : v.val.length = k + r)
+    (h : vecFillLoopAux v k r = .ok w) (j : Nat)
+    (hjlo : k ≤ j) (hjhi : j < k + r) :
+    vecGet w j = .ok (BitVec.ofNat 32 j) := by
+  induction r generalizing v k w j with
+  | zero => omega
+  | succ r ih =>
+    unfold vecFillLoopAux at h
+    have hk : k < v.val.length := by omega
+    have hs : vecSet v k (BitVec.ofNat 32 k) =
+        .ok ⟨v.val.set k (BitVec.ofNat 32 k), false⟩ :=
+      vecSet_ok v k _ hlive hk
+    rw [hs] at h
+    simp only at h
+    by_cases hjk : j = k
+    · subst j
+      have hhere : vecGet ⟨v.val.set k (BitVec.ofNat 32 k), false⟩ k =
+          .ok (BitVec.ofNat 32 k) := by
+        rw [vecGet_ok _ _ _ rfl]
+        exact getElem?_set_self v.val k _ hk
+      have hlen' : (⟨v.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
+          = (k + 1) + r := by
+        show (v.val.set k (BitVec.ofNat 32 k)).length = (k + 1) + r
+        rw [List.length_set]
+        omega
+      have := vecFillLoopAux_preserve _ (k + 1) r k _ w (by omega) hhere h
+      simpa using this
+    · have hlen' : (⟨v.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
+          = (k + 1) + r := by
+        show (v.val.set k (BitVec.ofNat 32 k)).length = (k + 1) + r
+        rw [List.length_set]
+        omega
+      exact ih _ _ _ (by rfl) hlen' h j (by omega) (by omega)
+
+/-- Fill on a live capacity-`(k+r)` block always succeeds. -/
+theorem vecFillLoopAux_fresh_ok (l : List (BitVec 32)) (k r : Nat)
+    (h : l.length = k + r) :
+    ∃ w, vecFillLoopAux ⟨l, false⟩ k r = .ok w := by
+  induction r generalizing l k with
+  | zero => exact ⟨⟨l, false⟩, rfl⟩
+  | succ r ih =>
+    have hk : k < (⟨l, false⟩ : Vec32).val.length := by
+      show k < l.length
+      omega
+    have hs : vecSet ⟨l, false⟩ k (BitVec.ofNat 32 k) =
+        .ok ⟨l.set k (BitVec.ofNat 32 k), false⟩ :=
+      vecSet_ok _ _ _ rfl hk
+    unfold vecFillLoopAux
+    rw [hs]
+    simp only
+    have hlen : (l.set k (BitVec.ofNat 32 k)).length = (k + 1) + r := by
+      rw [List.length_set]
+      omega
+    exact ih _ _ hlen
 
 /-- Wrapping prefix sum of the first `k` elements (`sum_array` accumulates
     `uint32_t`, so addition wraps mod 2^32 and never fails). -/
@@ -247,3 +599,58 @@ theorem prefixSumU32_full (l : List (BitVec 32)) :
     prefixSumU32 l l.length = l.sum := by
   have h := prefixSumU32_take_sum l l.length
   rwa [List.take_length] at h
+
+/-! ## Heap program bridges (need `prefixSumU32`, so they live last) -/
+
+/-- Sum loop over filled positions folds the `range'` prefix. -/
+theorem vecSumLoopAux_correct (v : Vec32) (k r : Nat) (acc : BitVec 32)
+    (hget : ∀ j, k ≤ j → j < k + r → vecGet v j = .ok (BitVec.ofNat 32 j)) :
+    vecSumLoopAux v k r acc =
+      .ok (acc + prefixSumU32 ((List.range' k r).map (BitVec.ofNat 32)) r) := by
+  induction r generalizing k acc with
+  | zero =>
+    simp [vecSumLoopAux, prefixSumU32_zero, BitVec.add_zero]
+  | succ r ih =>
+    have hk : k < k + (r + 1) := by omega
+    have hgetk : vecGet v k = .ok (BitVec.ofNat 32 k) :=
+      hget k (Nat.le_refl _) hk
+    unfold vecSumLoopAux
+    rw [hgetk]
+    simp only
+    rw [ih (k + 1) (acc + BitVec.ofNat 32 k) (by
+      intro j hjlo hjhi
+      exact hget j (by omega) (by omega))]
+    congr 1
+    rw [List.range'_succ, List.map_cons, prefixSumU32_cons]
+    exact BitVec.add_assoc acc _ _
+
+/-- Whole-program bridge: allocate/fill/sum/free equals the `range` prefix
+    sum (the spec world; `free` is value-invisible). -/
+theorem vecFillSumU32_correct (n : Nat) :
+    vecFillSumU32 n =
+      .ok (prefixSumU32 ((List.range n).map (BitVec.ofNat 32)) n) := by
+  have hfill := vecFillLoopAux_fresh_ok (List.replicate n 0) 0 n (by simp)
+  obtain ⟨w, hw⟩ := hfill
+  have hlive : w.freed = false :=
+    vecFillLoopAux_live _ _ _ _ rfl hw
+  have hlenFresh : (⟨List.replicate n 0, false⟩ : Vec32).val.length = 0 + n := by
+    simp
+  have hget : ∀ j, 0 ≤ j → j < 0 + n →
+      vecGet w j = .ok (BitVec.ofNat 32 j) :=
+    fun j hjlo hjhi => vecFillLoopAux_get _ 0 n _ rfl hlenFresh
+      hw j hjlo hjhi
+  have hsum := vecSumLoopAux_correct w 0 n 0 (by
+    intro j hjlo hjhi
+    exact hget j hjlo hjhi)
+  have hfree : vecFree w = .ok ⟨w.val, true⟩ := vecFree_ok w hlive
+  have hrange : List.range' 0 n = List.range n := by
+    simp [List.range_eq_range']
+  simp only [vecFillSumU32, vecNew_ok, vecFillLoop, hw] at *
+  simp only [vecSumLoop] at hsum ⊢
+  rw [hsum]
+  simp only
+  rw [hfree]
+  simp only
+  congr 1
+  rw [hrange]
+  simp [BitVec.zero_add]

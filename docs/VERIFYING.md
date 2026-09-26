@@ -11,6 +11,7 @@ the emitted definitions in `out/*.lean`, so they transfer verbatim:
 | `incr_correct` | ok → `r = p + 1` + `nsw` range certificate; overflow → genuinely out of range | `out/Incr.lean`: `incr_fwd p := checkedIncrI32 p` |
 | `choose_lens_laws` | get-put + put-get over plain `BitVec` (`chooseBackBV`/`chooseFwdBV` mirrors, tag-free) | `out/Choose.lean`: `.ok (if b then x else y)` / `.ok (if b then (ret, y) else (x, ret))` |
 | `sum_correct` | in-range `sumFwd l n = .ok (.u32 ((l.take n.toNat).sum))` via `prefixSumU32_take_sum`; `sum_correct_full` is the emitted `BoundedList` body | `out/SumArray.lean`: `.ok (prefixSumU32 a.val a.val.length)` |
+| `vec_correct` (Phase 7) | heap program `= .ok` of `List.sum` of indices `[0, n)` via `vecFillSumU32_correct` + `prefixSumU32_take_sum`; `vec_empty` is the `n = 0` case | `out/VecAlloc.lean`: `vecFillSumU32 n.toNat` |
 
 Supporting lemmas: `incr_spec_ok/err`, `chooseFwdBV_agrees`/`chooseBackBV_agrees`
 (Value-level bridge to `chooseFwd`/`chooseBack` and their Emit lens laws),
@@ -43,12 +44,16 @@ theorem sum_correct_full {n : Nat} (a : BoundedList (BitVec 32) n) :
 Plain `simp`/`omega`/`bv_decide` suffice in the common case; `cir_simp`
 just saves re-listing the set. Used throughout `Circe.Specs`.
 
-## Current status (Phase 5)
+## Current status (Phase 7)
 
 Three pure functional-correctness theorems proved (`Circe.Specs`:
 `incr_correct`, `choose_lens_laws`, `sum_correct`, all `lake build`
-green). `tools/check-phase5.sh` runs the whole E2E: everything in
-`check-phase4.sh` (both differential fuzzers, 18-case golden/rejection
-suite) plus emitted-body correspondence and specs typecheck.
-Next: Phase 6 hardening (reject-suite CI, in-subset fuzzing, heap/C++
-roadmap).
+green) plus the Phase 7 heap spec (`vec_correct`, `vec_empty`).
+`tools/check-phase7.sh` runs the whole E2E: everything in
+`tools/check-phase5.sh` (both differential fuzzers, 18-case
+golden/rejection suite) plus the vec golden `diff`, emitted-file
+typecheck, native vec driver, `DiffVec` fuzz, `GoldenPhase7` pipeline +
+heap rejection suite (6 checks), emitted-body correspondence, and specs
+typecheck.
+Next: C++-lite constructors, then shrinking oracle trust (see
+`docs/ROADMAP.md`).

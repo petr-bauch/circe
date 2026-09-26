@@ -15,5 +15,5 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: leanprover/lean-action@v1
-      - name: Phase 6 end-to-end (small fuzz)
-        run: tools/check-phase6.sh 100
+      - name: Phase 7 end-to-end (small fuzz)
+        run: tools/check-phase7.sh 100

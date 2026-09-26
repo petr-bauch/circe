@@ -18,14 +18,15 @@ import Circe.CoreIR
 
 /-- Runtime values: no addresses. C `int` → `BitVec 32`; arrays are pure
     length-paired lists of integers and structs are named field lists —
-    never pointers (flat-value fragment; nested values arrive with heap
-    support after v0.1). -/
+    never pointers (flat-value fragment; uniquely-owned heap blocks are
+    `vecVal` values with an affine token, Phase 7). -/
 inductive Value : Type
   | i32 : BitVec 32 → Value
   | u32 : BitVec 32 → Value
   | b : Bool → Value
   | unit : Value
   | arr32 : List (BitVec 32) → Value
+  | vecVal : Vec32 → Value
   | structVal : String → List (String × BitVec 32) → Value
   deriving DecidableEq, Repr
 
@@ -277,6 +278,26 @@ def evalExpr : CExpr → Env → Result Value
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
+  | .vnew se, ρ =>
+    match evalExpr se ρ with
+    | .error e => .error e
+    | .ok (.u32 n) =>
+      match vecNew n.toNat with
+      | .error e => .error e
+      | .ok v => .ok (.vecVal v)
+    | .ok _ => .error .AssertFail
+  | .vget arr ie, ρ =>
+    match envLookup ρ arr with
+    | none => .error .Uninit
+    | some (.vecVal v) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u32 i) =>
+        match vecGet v i.toNat with
+        | .error e => .error e
+        | .ok x => .ok (.u32 x)
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
 
 theorem evalExpr_lit (l : CLit) (ρ : Env) :
     evalExpr (.lit l) ρ = .ok (litVal l) := rfl
@@ -354,6 +375,40 @@ theorem evalExpr_idx_notarray (arr : String) (v : BitVec 32) (i : BitVec 32)
     evalExpr (.idx arr (.lit (.u32 i))) ρ = .error .AssertFail := by
   simp [evalExpr, harr]
 
+/-- `vnew` on a `u32` size allocates a zeroed live block. -/
+theorem evalExpr_vnew_lit (n : BitVec 32) (ρ : Env) :
+    evalExpr (.vnew (.lit (.u32 n))) ρ =
+      .ok (.vecVal ⟨List.replicate n.toNat 0, false⟩) := by
+  simp [evalExpr, litVal, vecNew]
+
+/-- `vnew` on a non-`u32` size is rejected. -/
+theorem evalExpr_vnew_mismatch (ρ : Env) :
+    evalExpr (.vnew (.lit (.i32 0))) ρ = .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- In-bounds heap read succeeds. -/
+theorem evalExpr_vget_hit (arr : String) (v : Vec32) (i : BitVec 32)
+    (ρ : Env) (x : BitVec 32)
+    (harr : envLookup ρ arr = some (.vecVal v))
+    (hget : vecGet v i.toNat = .ok x) :
+    evalExpr (.vget arr (.lit (.u32 i))) ρ = .ok (.u32 x) := by
+  simp [evalExpr, litVal, harr, hget]
+
+/-- Heap read errors (OOB/use-after-free) propagate. -/
+theorem evalExpr_vget_err (arr : String) (v : Vec32) (i : BitVec 32)
+    (ρ : Env) (e : Panic)
+    (harr : envLookup ρ arr = some (.vecVal v))
+    (hget : vecGet v i.toNat = .error e) :
+    evalExpr (.vget arr (.lit (.u32 i))) ρ = .error e := by
+  simp [evalExpr, litVal, harr, hget]
+
+/-- Reading a non-block is rejected, never silently modeled. -/
+theorem evalExpr_vget_notvec (arr : String) (v : BitVec 32) (i : BitVec 32)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.i32 v)) :
+    evalExpr (.vget arr (.lit (.u32 i))) ρ = .error .AssertFail := by
+  simp [evalExpr, harr]
+
 /-! ## Statement evaluator (fuel-bounded `while_`) -/
 
 /-- Default fuel: v0.1 loops must terminate within this many iterations.
@@ -383,6 +438,33 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
       match envUpdate ρ x v with
       | none => .error .Uninit
       | some ρ' => .ok (ρ', .fellThrough)
+  | .vset x ie ve, ρ =>
+    match evalExpr ie ρ, evalExpr ve ρ with
+    | .ok (.u32 i), .ok (.u32 xv) =>
+      match envLookup ρ x with
+      | none => .error .Uninit
+      | some (.vecVal b) =>
+        match vecSet b i.toNat xv with
+        | .error e => .error e
+        | .ok b' =>
+          match envUpdate ρ x (.vecVal b') with
+          | none => .error .Uninit
+          | some ρ' => .ok (ρ', .fellThrough)
+      | some _ => .error .AssertFail
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .vfree x, ρ =>
+    match envLookup ρ x with
+    | none => .error .Uninit
+    | some (.vecVal b) =>
+      match vecFree b with
+      | .error e => .error e
+      | .ok b' =>
+        match envUpdate ρ x (.vecVal b') with
+        | none => .error .Uninit
+        | some ρ' => .ok (ρ', .fellThrough)
+    | some _ => .error .AssertFail
   | .if_ c t e, ρ =>
     match evalExpr c ρ with
     | .error err => .error err
@@ -499,6 +581,36 @@ theorem evalStmtFuel_assign_unbound (f : Nat) (x : String) (e : CExpr)
     (h : evalExpr e ρ = .ok v) (hu : envUpdate ρ x v = none) :
     evalStmtFuel f (.assign x e) ρ = .error .Uninit := by
   cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h, hu]
+
+/-- `vset` stores through a live block and updates the binding (any fuel). -/
+theorem evalStmtFuel_vset (f : Nat) (x : String) (ie ve : CExpr) (ρ : Env)
+    (i xv : BitVec 32) (b b' : Vec32) (ρ' : Env)
+    (hi : evalExpr ie ρ = .ok (.u32 i))
+    (hv : evalExpr ve ρ = .ok (.u32 xv))
+    (harr : envLookup ρ x = some (.vecVal b))
+    (hset : vecSet b i.toNat xv = .ok b')
+    (hu : envUpdate ρ x (.vecVal b') = some ρ') :
+    evalStmtFuel f (.vset x ie ve) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset, hu]
+
+/-- `vset` errors (OOB/use-after-free) propagate (any fuel). -/
+theorem evalStmtFuel_vset_err (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i xv : BitVec 32) (b : Vec32) (e : Panic)
+    (hi : evalExpr ie ρ = .ok (.u32 i))
+    (hv : evalExpr ve ρ = .ok (.u32 xv))
+    (harr : envLookup ρ x = some (.vecVal b))
+    (hset : vecSet b i.toNat xv = .error e) :
+    evalStmtFuel f (.vset x ie ve) ρ = .error e := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset]
+
+/-- `vfree` consumes the token and updates the binding (any fuel). -/
+theorem evalStmtFuel_vfree (f : Nat) (x : String) (ρ : Env)
+    (b b' : Vec32) (ρ' : Env)
+    (harr : envLookup ρ x = some (.vecVal b))
+    (hfree : vecFree b = .ok b')
+    (hu : envUpdate ρ x (.vecVal b') = some ρ') :
+    evalStmtFuel f (.vfree x) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
 
 /-- Zero fuel exits a loop whose condition is already false. -/
 theorem evalStmtFuel_zero_while_exit (c : CExpr) (b : CStmt) (ρ : Env)
