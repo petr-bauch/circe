@@ -251,7 +251,28 @@ env and Lean lets; per-op lemmas required before admitting each op.
 - **Termination:** recursion from loops. Mitigate: length-paired arrays +
   fuel/variant requirement in `validate`.
 
-## 10. Next Actions (Phase 5 COMPLETE 2026-09-26; Phase 4 done 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+## 10. Next Actions (Phase 6 hardening done 2026-09-26; Phase 5 done 2026-09-26; Phase 4 done 2026-09-25; Phase 3 done 2026-09-25; Phase 2 done 2026-09-21; Phase 1 done 2026-09-21; Phase 0 done 2026-09-20)
+
+Phase 6 (done): hardening + meaningful CI (§8 DoD items 3–4).
+`forbiddenOp` grows from 12 to 27 branches: every previously untested
+branch now has a golden case (volatile/atomics/inline-asm, `double`,
+`int_to_ptr`, `landingpad`, `void*` returns) plus new actionable
+rejections — heap (`malloc`/`@free` → `docs/ROADMAP.md`),
+`setjmp`/`longjmp`, globals (`cir.global`/`cir.get_global`), function
+pointers (`call_indirect`/`cir.func<`), VLAs (`stack_save`/`stack_restore`),
+variadics (`va_arg`), `switch` (`cir.switch`), `goto` (`cir.br`, while
+structured `cir.cond_br` stays admitted), bitfields, and signed wrapping
+arithmetic without `nsw` (per-line op+type check, so `sum_array`'s unsigned
+wrapping add stays admitted). All patterns verified absent from the corpus;
+`lake build` green with all `native_decide` linkages intact. Parser fix:
+empty parameter lists (`int f(void)`) now parse to `[]` (found via the
+global-rejection snippet). New `tests/lean/GoldenPhase6.lean` (18 checks,
+`GOLDEN6-OK`) is additive — Phase 4/5 artifacts untouched. New
+`tools/check-phase6.sh` (superset E2E → `PHASE6-OK`), new
+`.github/workflows/e2e.yml` CI (build + `check-phase6.sh 100` on
+push/PR), new `docs/ROADMAP.md` (uniquely-owned heap as `Vec`, C++-lite
+ctors without EH, Stacked-Borrows oracle justification). Mismatch policy:
+in-subset C → Lean divergence is P0; out-of-subset must reject loudly.
 
 Phase 5 (done): functional-verification workflow + three pure-equation
 specs (§8 DoD item 2), all `lake build` green. `Circe/Specs.lean` proves

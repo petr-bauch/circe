@@ -33,5 +33,14 @@ no function pointers, no `malloc/free` (v0.1), read-only `const` globals only.
 
 `cir.try`, cleanup/EH ops, vtables, atomics, `volatile` ops, complex/float
 (beyond bit-stub), inline asm, `void*` casts, int-ptr casts, escaping
-address-of, unbounded pointer arithmetic. Each rejection carries a code:
+address-of, unbounded pointer arithmetic, heap (`malloc`/`free`, see
+`docs/ROADMAP.md`), `setjmp`/`longjmp`, globals (`cir.global`/
+`cir.get_global`), function pointers (indirect calls), VLAs
+(`stack_save`/`stack_restore`), variadics (`va_arg`), `switch`
+(`cir.switch`; lower to an if-chain before CIR), `goto` (`cir.br`;
+structured `cir.cond_br`/`cir.for` only), bitfields, and signed wrapping
+arithmetic without `nsw` (per-line check: the op and its `i32` type must
+share a line; unsigned wrapping `add` as in `sum_array` stays admitted).
+Each rejection carries a code:
 `alias-reject`, `escape-reject`, `oob-possible`, `out-of-subset`.
+Full adversarial coverage in `tests/lean/GoldenPhase6.lean` (18 checks).

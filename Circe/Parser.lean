@@ -157,7 +157,10 @@ def parseSigAt (text : String) (off : Nat) :
   let tail := text.toList.drop openRel
   let closeRel ← findCloseParen tail 0 0
   let paramsText := String.ofList ((text.toList.drop (openRel + 1)).take (closeRel - 1))
-  let params ← (splitTopLevel paramsText).mapM parseParam
+  -- Empty parameter list (`int f(void)`) parses to `[]`; otherwise split
+  -- at top-level commas (a blank split would fail `parseParam` loudly).
+  let params ← if (trimList paramsText.toList).isEmpty then pure []
+    else (splitTopLevel paramsText).mapM parseParam
   let after := trimList (text.toList.drop (openRel + closeRel + 1))
   let ret := match after with
     | '-' :: '>' :: rest =>

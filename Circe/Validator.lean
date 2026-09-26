@@ -12,7 +12,9 @@ is rejected with a precise code + message (golden-tested in
 Check order (first hit wins — rejection codes are priority-ordered):
 1. oracle wiring (fact must name this function);
 2. forbidden constructs (EH, int↔ptr casts, `void*`, volatile/atomics,
-   float, calls — all `outOfSubset`);
+   float, heap (`malloc`/`free`), `setjmp`/`longjmp`, globals,
+   function pointers, VLAs, variadics, `switch`, `goto` (`cir.br`),
+   bitfields, signed wrapping arithmetic without `nsw`, calls — all `outOfSubset`);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`,
    or oracle verdict other than `noalias` with live pointer params);
 4. shape admission (canonical `Func` or a precise code: `escapeReject`
@@ -109,7 +111,23 @@ def isSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
-/-! ## The gate -/
+/-! ## Forbidden constructs (all `outOfSubset`) -/
+
+/-- One source line performs signed `add`/`sub`/`mul` on `i32` without the
+    `nsw` marker (wrapping signed overflow: UB in C, untranslatable).
+    Per-line (not whole-text): `sum_array` legitimately mixes an unsigned
+    wrapping `cir.add` (`!u32i`) with `!s32i` casts elsewhere, so the type
+    and the op must occur on the same line. -/
+def lineHasWrappingSignedArith (line : String) : Bool :=
+  (containsSubstr line "cir.add " || containsSubstr line "cir.sub " ||
+    containsSubstr line "cir.mul ") &&
+  (containsSubstr line "!s32i" || containsSubstr line "<s, 32>" ||
+    containsSubstr line "<s,32>") &&
+  !containsSubstr line "nsw"
+
+/-- Whole-text wrapper (split on newlines; `String.splitOn` is core Lean). -/
+def hasWrappingSignedArith (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasWrappingSignedArith
 
 /-- First forbidden construct found (all `outOfSubset` in v0.1), if any. -/
 def forbiddenOp (text : String) : Option String :=
@@ -124,8 +142,25 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "inline_asm" then some "inline assembly"
   else if containsSubstr text "!cir.float" then some "float type"
   else if containsSubstr text "!cir.double" then some "double type"
+  else if containsSubstr text "malloc" then some "heap allocation (`malloc`: uniquely-owned heap lands after v0.1, see docs/ROADMAP.md)"
+  else if containsSubstr text "@free" then some "heap deallocation (`free`: uniquely-owned heap lands after v0.1, see docs/ROADMAP.md)"
+  else if containsSubstr text "setjmp" then some "`setjmp` (non-local control flow)"
+  else if containsSubstr text "longjmp" then some "`longjmp` (non-local control flow)"
+  else if containsSubstr text "cir.global" then some "global state (`cir.global`: only read-only `const` globals, and none yet in v0.1)"
+  else if containsSubstr text "cir.get_global" then some "global access (`cir.get_global`: only read-only `const` globals, and none yet in v0.1)"
+  else if containsSubstr text "call_indirect" then some "function pointer (indirect call: no function pointers in v0.1)"
+  else if containsSubstr text "cir.func<" then some "function pointer type (no function pointers in v0.1)"
+  else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
+  else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
+  else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
+  else if containsSubstr text "cir.switch" then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
+  else if containsSubstr text "cir.br" then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
+  else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
+  else if hasWrappingSignedArith text then some "signed wrapping arithmetic without `nsw` (signed overflow is UB in C: mark the op `nsw` or use unsigned arithmetic)"
   else if containsSubstr text "cir.call" then some "function call (calls land in Phase 5+)"
   else none
+
+/-! ## The gate -/
 
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
     Only the four canonical shapes pass; everything else is rejected with
