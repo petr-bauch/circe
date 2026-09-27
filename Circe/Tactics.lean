@@ -31,7 +31,7 @@ theorem result_map_err {α β : Type} (e : Panic) (f : α → β) :
     `cir_simp [...]` form is deliberately absent: `simp` argument splicing
     does not accept raw `term` lists, so composition is the interface.) -/
 macro "cir_simp" : tactic =>
-  `(tactic| simp [checkedAddI32, checkedIncrI32, checkedAddU32,
+  `(tactic| simp [checkedAddI32, checkedAddI64, checkedIncrI32, checkedAddU32,
     checkedAddU32Strict, checkedNegI32, checkedDivI32,
     prefixSumU32, prefixSumU32_take_sum, bget, pointTranslate,
     result_bind_ok, result_bind_err, result_map_ok, result_map_err])

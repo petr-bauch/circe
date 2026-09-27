@@ -282,18 +282,70 @@ def isVecShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.switch"
   | _ => false
 
+/-! ## S3b: 64-bit loop-free widths (`add64`, `addu64`) -/
+
+/-- `add64`: two by-value `i64`s, `i64` return, `nsw` add, no control
+    flow, no calls — the `add` shape at width 64. -/
+def isAdd64Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isI64 a.ctype && isI64 b.ctype && isI64 raw.ret &&
+    containsSubstr raw.text "cir.add nsw" &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `addu64`: two by-value `u64`s, `u64` return, plain (wrapping)
+    unsigned add, no `nsw`, no control flow, no calls. -/
+def isAddu64Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isU64 a.ctype && isU64 b.ctype && isU64 raw.ret &&
+    containsSubstr raw.text "cir.add " &&
+    !containsSubstr raw.text "nsw" &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- Small-width promotion: 8/16-bit integers appear only via `cir.cast`
+    promotion to `i32` (S3b probe); there is no native small-width
+    arithmetic to model, so any occurrence rejects loudly. -/
+def hasSmallWidthInt (text : String) : Bool :=
+  containsSubstr text "!s8i" || containsSubstr text "!u8i" ||
+  containsSubstr text "!s16i" || containsSubstr text "!u16i" ||
+  containsSubstr text "<s, 8>" || containsSubstr text "<s,8>" ||
+  containsSubstr text "<u, 8>" || containsSubstr text "<u,8>" ||
+  containsSubstr text "<s, 16>" || containsSubstr text "<s,16>" ||
+  containsSubstr text "<u, 16>" || containsSubstr text "<u,16>"
+
 /-! ## Forbidden constructs (all `outOfSubset`) -/
 
-/-- One source line performs signed `add`/`sub`/`mul` on `i32` without the
-    `nsw` marker (wrapping signed overflow: UB in C, untranslatable).
-    Per-line (not whole-text): `sum_array` legitimately mixes an unsigned
-    wrapping `cir.add` (`!u32i`) with `!s32i` casts elsewhere, so the type
-    and the op must occur on the same line. -/
+/-- One source line performs signed `add`/`sub`/`mul` on `i32`/`i64`
+    without the `nsw` marker (wrapping signed overflow: UB in C,
+    untranslatable). Per-line (not whole-text): `sum_array` legitimately
+    mixes an unsigned wrapping `cir.add` (`!u32i`) with `!s32i` casts
+    elsewhere, so the type and the op must occur on the same line. -/
 def lineHasWrappingSignedArith (line : String) : Bool :=
   (containsSubstr line "cir.add " || containsSubstr line "cir.sub " ||
     containsSubstr line "cir.mul ") &&
   (containsSubstr line "!s32i" || containsSubstr line "<s, 32>" ||
-    containsSubstr line "<s,32>") &&
+    containsSubstr line "<s,32>" ||
+    containsSubstr line "!s64i" || containsSubstr line "<s, 64>" ||
+    containsSubstr line "<s,64>") &&
   !containsSubstr line "nsw"
 
 /-- Whole-text wrapper (cf. `hasWrappingSignedArith`). -/
@@ -478,7 +530,8 @@ def forbiddenOp (text : String) : Option String :=
 
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
     Only the canonical shapes pass (`add`/`incr`/`choose`/`sum`,
-    `vec_alloc`, S1 DAG callers, S2 `translate`); everything else is
+    `vec_alloc`, S1 DAG callers, S2 `translate`, S3a control flow,
+    S3b 64-bit loop-free `add64`/`addu64`); everything else is
     rejected with a precise code (see the module docstring for check
     order). -/
 def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
@@ -526,6 +579,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { findEqFunc with name := raw.name }
       else if isClsShape raw then
         .ok { clsFunc with name := raw.name }
+      else if isAdd64Shape raw then
+        .ok { add64Func with name := raw.name }
+      else if isAddu64Shape raw then
+        .ok { addu64Func with name := raw.name }
       else if callsFunc raw.text raw.name then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls itself (recursive call): S1 admits DAG calls into call-free leaves only (see docs/ROADMAP.md S1)"
@@ -559,6 +616,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           containsSubstr raw.text "cir.continue" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses `break`/`continue` outside the admitted `skip_sum` shape (S3a: single bounded `u32` loop, `continue` at `i == 2`, `break` at `i == 8`, wrapping `s += i` only; see docs/SUBSET.md)"
+      else if hasSmallWidthInt raw.text then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses 8/16-bit integers (CIRGen promotes them to `i32` via `cir.cast`: no native small-width arithmetic to model; S3b admits 64-bit loop-free widths only, see docs/SUBSET.md)"
       else
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' is not in the admitted Phase-4 fragment (see `matchFrag` contract in `Circe.Emit`)"
@@ -655,3 +715,15 @@ example : runPipelineOpt (include_str "../tests/cir/find_eq.cir")
 example : runPipelineOpt (include_str "../tests/cir/cls.cir")
     ⟨"cls", .unknown⟩
     = some (include_str "../tests/golden/Cls.lean") := by native_decide
+
+/-- The checked-in `add64` CIR (real CIRGen output, `nsw` add on
+    `!s64i`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/add64.cir")
+    ⟨"add64", .unknown⟩
+    = some (include_str "../tests/golden/Add64.lean") := by native_decide
+
+/-- The checked-in `addu64` CIR (real CIRGen output, wrapping add on
+    `!u64i`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/addu64.cir")
+    ⟨"addu64", .unknown⟩
+    = some (include_str "../tests/golden/Addu64.lean") := by native_decide

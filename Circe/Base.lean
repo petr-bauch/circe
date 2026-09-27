@@ -134,6 +134,75 @@ theorem checkedIncrI32_ok (a : BitVec 32)
     checkedIncrI32 a = .ok (a + 1) := by
   simp [checkedIncrI32, checkedAddI32, h]
 
+/-! ## Checked signed-64 ops (S3b: 64-bit loop-free widths) -/
+
+/-- Minimum `Int` value of C `int64_t`. -/
+def int64Min : Int := -(2 ^ 63)
+
+/-- Maximum `Int` value of C `int64_t`. -/
+def int64Max : Int := 2 ^ 63 - 1
+
+/-- Decidable range check for signed-64 (`nsw` sites on `!s64i`). -/
+def inInt64Range (z : Int) : Bool :=
+  decide (int64Min ≤ z ∧ z ≤ int64Max)
+
+/-- Propositional version of `inInt64Range` (for specs). -/
+theorem inInt64Range_iff (z : Int) :
+    inInt64Range z = true ↔ int64Min ≤ z ∧ z ≤ int64Max := by
+  simp [inInt64Range]
+
+/-- Checked signed-64 addition: `cir.add nsw` on `!cir.int<s,64>`.
+    Returns `.error .Overflow` on signed overflow instead of wrapping. -/
+def checkedAddI64 (a b : BitVec 64) : Result (BitVec 64) :=
+  if inInt64Range (a.toInt + b.toInt) then .ok (a + b)
+  else .error .Overflow
+
+/-- `checkedAddI64` succeeds exactly on the `nsw` range condition. -/
+theorem checkedAddI64_ok (a b : BitVec 64)
+    (h : inInt64Range (a.toInt + b.toInt) = true) :
+    checkedAddI64 a b = .ok (a + b) := by
+  simp [checkedAddI64, h]
+
+/-- `checkedAddI64` reports overflow exactly off the range. -/
+theorem checkedAddI64_err (a b : BitVec 64)
+    (h : inInt64Range (a.toInt + b.toInt) = false) :
+    checkedAddI64 a b = .error .Overflow := by
+  simp [checkedAddI64, h]
+
+/-- Success implies the mathematical sum is in range. -/
+theorem checkedAddI64_ok_implies_range (a b r : BitVec 64)
+    (h : checkedAddI64 a b = .ok r) :
+    int64Min ≤ a.toInt + b.toInt ∧ a.toInt + b.toInt ≤ int64Max := by
+  unfold checkedAddI64 at h
+  split at h
+  · next hc => exact (inInt64Range_iff _).mp hc
+  · next => simp at h
+
+/-- Overflow implies the mathematical sum is out of range. -/
+theorem checkedAddI64_err_implies_outside (a b : BitVec 64)
+    (h : checkedAddI64 a b = .error .Overflow) :
+    ¬ (int64Min ≤ a.toInt + b.toInt ∧ a.toInt + b.toInt ≤ int64Max) := by
+  unfold checkedAddI64 at h
+  split at h
+  · next => simp at h
+  · next hc => exact fun hp => absurd ((inInt64Range_iff _).mpr hp) (by simp [hc])
+
+/-- On success the delivered value is the wrap sum. -/
+theorem checkedAddI64_ok_value (a b r : BitVec 64)
+    (h : checkedAddI64 a b = .ok r) : r = a + b := by
+  unfold checkedAddI64 at h
+  split at h
+  · next => simp at h; exact h.symm
+  · next => simp at h
+
+/-- Checked addition commutes (both the range check and the sum do). -/
+theorem checkedAddI64_comm (a b : BitVec 64) :
+    checkedAddI64 a b = checkedAddI64 b a := by
+  unfold checkedAddI64
+  have hsum : a.toInt + b.toInt = b.toInt + a.toInt := Int.add_comm _ _
+  have hadd : a + b = b + a := BitVec.add_comm _ _
+  rw [hsum, hadd]
+
 /-! ## Unsigned-32 ops -/
 
 /-- Wrapping unsigned-32 addition (C unsigned arithmetic wraps; never fails). -/

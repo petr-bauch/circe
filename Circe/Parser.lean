@@ -212,6 +212,23 @@ def ptrInner (t : String) : Option String :=
 def isI32 (t : String) : Bool :=
   t == "!s32i" || t == "!cir.int<s, 32>" || t == "!cir.int<s,32>"
 
+/-- Canonical signed-64 spellings (S3b). -/
+def isI64 (t : String) : Bool :=
+  t == "!s64i" || t == "!cir.int<s, 64>" || t == "!cir.int<s,64>"
+
+/-- Small signed widths (8/16-bit): CIRGen promotes these to `i32`
+    (casts + `s32` add + truncate — see S3b probe), so they never appear
+    as native arithmetic widths; `validate` rejects them loudly with the
+    promotion message. -/
+def isSmallSigned (t : String) : Bool :=
+  t == "!s8i" || t == "!cir.int<s, 8>" || t == "!cir.int<s,8>" ||
+  t == "!s16i" || t == "!cir.int<s, 16>" || t == "!cir.int<s,16>"
+
+/-- Small unsigned widths (8/16-bit): same promotion story as signed. -/
+def isSmallUnsigned (t : String) : Bool :=
+  t == "!u8i" || t == "!cir.int<u, 8>" || t == "!cir.int<u,8>" ||
+  t == "!u16i" || t == "!cir.int<u, 16>" || t == "!cir.int<u,16>"
+
 /-- Canonical unsigned-32 spellings. -/
 def isU32 (t : String) : Bool :=
   t == "!u32i" || t == "!cir.int<u, 32>" || t == "!cir.int<u,32>"

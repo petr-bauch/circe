@@ -34,16 +34,21 @@ structure Param : Type where
 
 /-- Literals of the Phase 3–4 fragment. Integer width is checked against the
     context `CType` by `validate`; `Eval` interprets `i32` as `Value.i32`,
-    `u32` as `Value.u32`, and `b` as `Value.b`. -/
+    `u32` as `Value.u32`, `i64` as `Value.i64`, `u64` as `Value.u64`,
+    and `b` as `Value.b`. -/
 inductive CLit : Type
   | i32 : BitVec 32 → CLit
   | u32 : BitVec 32 → CLit
+  | i64 : BitVec 64 → CLit
+  | u64 : BitVec 64 → CLit
   | b : Bool → CLit
   deriving DecidableEq, Repr
 
 /-- C expressions for the admitted fragment. `add` is signed `nsw`-checked
-    addition (`cir.add nsw`); `uadd` is wrapping unsigned addition (plain
-    `cir.add`); `umul` is wrapping unsigned multiplication (plain
+    addition (`cir.add nsw`, width-polymorphic over the `Value` tags:
+    `i32` via `checkedAddI32`, `i64` via `checkedAddI64` — S3b);
+    `uadd` is wrapping unsigned addition (plain `cir.add`, over
+    `u32`/`u64`); `umul` is wrapping unsigned multiplication (plain
     `cir.mul` on unsigned: C unsigned arithmetic wraps, never fails);
     `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
     `ueq` is unsigned equality (`cir.cmp eq` on unsigned);

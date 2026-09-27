@@ -4,9 +4,10 @@ Circe.Eval — loan-based, value-only ownership semantics (spec for
 
 Environments map variables to *values with loan/borrow bookkeeping*;
 there is no heap and no addresses (Aeneas-style, see docs/PIPELINE.md).
-Phase 4: `evalExpr` covers `lit`/`var`/`add` (signed `nsw`-checked) plus
-`uadd`/`umul` (wrapping unsigned), `ult`/`ueq` (unsigned
-comparison/equality), and `idx`
+Phase 4: `evalExpr` covers `lit`/`var`/`add` (signed `nsw`-checked,
+over `i32`/`i64` — S3b) plus
+`uadd`/`umul` (wrapping unsigned, over `u32`/`u64`), `ult`/`ueq` (unsigned
+comparison/equality, over `u32`/`u64`), and `idx`
 (bounded indexing, `OOB` on violation); `evalStmt` covers the full
 loop-free fragment (`skip`/`seq`/`let_`/`assign`/`if_`/`return_`) plus
 fuel-bounded `while_` (`EVAL_FUEL`; exhaustion is `AssertFail`, and
@@ -20,13 +21,18 @@ exposes the fuel for induction (loop proofs generalize it).
 import Circe.Base
 import Circe.CoreIR
 
-/-- Runtime values: no addresses. C `int` → `BitVec 32`; arrays are pure
-    length-paired lists of integers and structs are named field lists —
-    never pointers (flat-value fragment; uniquely-owned heap blocks are
-    `vecVal` values with an affine token, Phase 7). -/
+/-- Runtime values: no addresses. C `int` → `BitVec 32` (`i32`) or
+    `BitVec 64` (`i64`, S3b); unsigned likewise (`u32`/`u64`); arrays are
+    pure length-paired lists of integers and structs are named field
+    lists — never pointers (flat-value fragment; uniquely-owned heap
+    blocks are `vecVal` values with an affine token, Phase 7).
+    64-bit arrays/loops are future work (S3b admits loop-free 64-bit
+    adds only); a `u64` index into a 32-bit array is `AssertFail`. -/
 inductive Value : Type
   | i32 : BitVec 32 → Value
   | u32 : BitVec 32 → Value
+  | i64 : BitVec 64 → Value
+  | u64 : BitVec 64 → Value
   | b : Bool → Value
   | unit : Value
   | arr32 : List (BitVec 32) → Value
@@ -242,6 +248,8 @@ theorem loanWF_endRegion (s : LoanState) (r : Nat)
 def litVal : CLit → Value
   | .i32 v => .i32 v
   | .u32 v => .u32 v
+  | .i64 v => .i64 v
+  | .u64 v => .u64 v
   | .b v => .b v
 
 /-- Field lookup in a flat struct value (fields are `BitVec 32`;
@@ -263,8 +271,12 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
 
 /-- Pure evaluator:
     - `add` on `i32` goes through `checkedAddI32` (overflow → `Overflow`);
-    - `uadd`/`umul` on `u32` wrap (plain `cir.add`/`cir.mul`; never fail);
-    - `ult`/`ueq` on `u32` are unsigned comparison/equality;
+      on `i64` through `checkedAddI64` (S3b); mixed widths are
+      `AssertFail`;
+    - `uadd`/`umul` on `u32`/`u64` wrap (plain `cir.add`/`cir.mul`;
+      never fail); mixed widths are `AssertFail`;
+    - `ult`/`ueq` on `u32`/`u64` are unsigned comparison/equality;
+      mixed widths are `AssertFail`;
     - `idx a i` looks up `arr32` array `a` at `u32` index `i`
       (`OOB` off the end, mirroring `bget`);
     - `fget o f` projects field `f` from `structVal` `o` (missing
@@ -280,30 +292,35 @@ def evalExpr : CExpr → Env → Result Value
   | .add a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.i32 x), .ok (.i32 y) => (checkedAddI32 x y).map .i32
+    | .ok (.i64 x), .ok (.i64 y) => (checkedAddI64 x y).map .i64
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
   | .uadd a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x + y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.u64 (x + y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
   | .umul a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x * y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.u64 (x * y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
   | .ult a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x.ult y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
   | .ueq a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x == y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x == y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -384,6 +401,30 @@ theorem evalExpr_add_mismatch (ρ : Env) :
       .error .AssertFail := by
   simp [evalExpr, litVal]
 
+/-- `add` on two `i64` literals forwards to `checkedAddI64`. -/
+theorem evalExpr_add64_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.add (.lit (.i64 x)) (.lit (.i64 y))) ρ =
+      (checkedAddI64 x y).map .i64 := by
+  simp [evalExpr, litVal]
+
+/-- `add` across widths is rejected, never silently modeled. -/
+theorem evalExpr_add_width_mismatch (ρ : Env) :
+    evalExpr (.add (.lit (.i32 0)) (.lit (.i64 0))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `uadd` on two `u64` literals wraps. -/
+theorem evalExpr_uadd64_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.uadd (.lit (.u64 x)) (.lit (.u64 y))) ρ =
+      .ok (.u64 (x + y)) := by
+  simp [evalExpr, litVal]
+
+/-- `uadd` across widths is rejected. -/
+theorem evalExpr_uadd_width_mismatch (ρ : Env) :
+    evalExpr (.uadd (.lit (.u32 0)) (.lit (.u64 0))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
 /-- `uadd` on two `u32` literals wraps. -/
 theorem evalExpr_uadd_lit (x y : BitVec 32) (ρ : Env) :
     evalExpr (.uadd (.lit (.u32 x)) (.lit (.u32 y))) ρ =
@@ -430,6 +471,24 @@ theorem evalExpr_ueq_lit (x y : BitVec 32) (ρ : Env) :
 theorem evalExpr_ueq_mismatch (ρ : Env) :
     evalExpr (.ueq (.lit (.i32 0)) (.lit (.i32 1))) ρ =
       .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `umul` on two `u64` literals wraps. -/
+theorem evalExpr_umul64_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.umul (.lit (.u64 x)) (.lit (.u64 y))) ρ =
+      .ok (.u64 (x * y)) := by
+  simp [evalExpr, litVal]
+
+/-- `ult` on two `u64` literals is unsigned comparison. -/
+theorem evalExpr_ult64_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.ult (.lit (.u64 x)) (.lit (.u64 y))) ρ =
+      .ok (.b (x.ult y)) := by
+  simp [evalExpr, litVal]
+
+/-- `ueq` on two `u64` literals is unsigned equality. -/
+theorem evalExpr_ueq64_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.ueq (.lit (.u64 x)) (.lit (.u64 y))) ρ =
+      .ok (.b (x == y)) := by
   simp [evalExpr, litVal]
 
 /-- In-bounds indexing succeeds. -/

@@ -23,6 +23,8 @@ input rejects loudly, never silently models memory.
 | break/continue | `skip_sum` | `skipSumU32` capped range | `emit_correct_skip` (unconditional: ≤9 iterations) |
 | early return | `find_eq` | `findEqOut` first-match | `emit_correct_find` (hit/miss + OOB) |
 | switch-as-if-chain | `cls` | if-chain on `ueq` | `emit_correct_cls` (loop-free) |
+| 64-bit `add` | `add64` (`int64_t`, `nsw`) | `add64_fwd = checkedAddI64` | `emit_correct_add64` + ok/err |
+| 64-bit wrapping `add` | `addu64` (`uint64_t`) | `addu64_fwd = .ok (a + b)` | `emit_correct_addu64` (always succeeds) |
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), verified gate (`validate` + oracle verdicts), emitter
@@ -47,7 +49,9 @@ rejection suite → struct golden `diff` → native struct driver →
 suite → emitted-body correspondence → control-flow golden `diff`s →
 native control-flow drivers → `DiffFlow` fuzz vs native →
 `GoldenFlow` pipeline + rejection suite → emitted-body correspondence
-→ `CHECK-OK`).
+→ 64-bit golden `diff`s → native 64-bit drivers → `DiffWidth` fuzz
+vs native (boundary values per width) → `GoldenWidth` pipeline +
+rejection suite → emitted-body correspondence → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

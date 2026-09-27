@@ -6,9 +6,11 @@ In-subset divergence is P0; out-of-subset must reject loudly.
 
 ## Types
 
-`void`, `_Bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64` (current proofs
-concentrate on `i32`/`u32`; other widths parse, generalize per
-`ROADMAP.md` S3), `T*` (disciplined only, see below), arrays via
+`void`, `_Bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64` (proved:
+loop-free `i32`/`u32` throughout plus 64-bit `add64`/`addu64` per
+`ROADMAP.md` S3b; 8/16-bit promote to `i32` in CIRGen and are rejected
+with the promotion message; 64-bit loops/arrays/heap/structs are future
+work), `T*` (disciplined only, see below), arrays via
 length-paired params, structs by value (S2: `Point { i32 x, y }`
 only; no bitfields).
 No `void*`, no int↔ptr casts, no `volatile`/`_Atomic`,
@@ -96,6 +98,13 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     a plain loop. Misshapen uses (break outside loops, non-lowerable
     switches, wrong-signature lowerings, single-return searches) are
     rejected with dedicated messages.
+12. Widths (S3b): loop-free 64-bit adds only —
+    `add64` (`!s64i` params/return, `cir.add nsw`, checked via
+    `checkedAddI64`) and `addu64` (`!u64i`, plain wrapping `cir.add`).
+    Semantics: `add`/`uadd`/`umul`/`ult`/`ueq` dispatch on the `Value`
+    tags (`i32`/`i64`, `u32`/`u64`); mixed widths are `AssertFail`.
+    Misshapen uses (width-mixed adds, `nsw`-less signed-64 arithmetic,
+    8/16-bit promotion shapes) are rejected with dedicated messages.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -113,6 +122,8 @@ on pinned consts + `default`, all other switches rejected),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
 `cir.get_global @malloc/@free` plumbing allowed in vec shape only.
+64-bit spellings (`!s64i`/`!u64i` + long forms) in the S3b `add64` /
+`addu64` shapes only; 8/16-bit spellings always rejected (promotion).
 
 ## Rejected (loud, with dedicated messages)
 
@@ -122,7 +133,7 @@ pointer arithmetic, non-`vec_alloc` heap uses, `setjmp`/`longjmp`,
 globals, function pointers, VLAs, variadics, non-lowerable
 `cir.switch`, `goto` (`cir.br`, matched line-aware so `cir.break`
 never trips it), bitfields, signed wrapping arithmetic without `nsw`
-(per-line check).
+(per-line check, `i32` + `i64`).
 Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
-+ `GoldenFlow.lean` (10).
++ `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5).

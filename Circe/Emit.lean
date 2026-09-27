@@ -7,8 +7,8 @@ struct-by-value, S3a control flow).
 - `matchFrag` recognizes the admitted `Func` shapes (by-value `add`;
   single-`mutBorrow` `incr`; single-region borrow-return `choose`;
   bounded-loop `sum`; heap `vec`; S1 callers; S2 `translate`; S3a
-  `nested`/`skip`/`findEq`/`cls`). See the `matchFrag` contract note:
-  everything semantically relevant is pinned.
+  `nested`/`skip`/`findEq`/`cls`; S3b 64-bit `add64`/`addu64`). See the
+  `matchFrag` contract note: everything semantically relevant is pinned.
 - `addFwd`/`incrFwd`/`chooseFwd`(+`chooseBack`)`/`sumFwd` are the verified
   forward (and backward) functions (Value level); `emit_correct_*` prove
   they agree with `evalFunc` on the canonical `*Func`s, with
@@ -34,11 +34,15 @@ import Circe.Eval
 /-- The admitted fragment: `add`/`incr`/`choose`/`sum`/`vec`, extended in
     S1 with DAG calls (`addCall` = double-`add`, `sumCall` = `sum_array`
     delegation), in S2 with struct-by-value (`translate` = field-wise
-    `Point` translation), and in S3a with control flow (`nested` =
+    `Point` translation), in S3a with control flow (`nested` =
     nested bounded loops, `skip` = break/continue loop, `findEq` =
-    early-return search, `cls` = switch-as-if-chain). -/
+    early-return search, `cls` = switch-as-if-chain), and in S3b with
+    64-bit loop-free widths (`add64` = signed-`nsw` `i64` add,
+    `addu64` = wrapping `u64` add). -/
 inductive FragKind : Type
   | add
+  | add64
+  | addu64
   | incr
   | choose
   | sum
@@ -87,6 +91,10 @@ theorem ofNat32_ult (k : Nat) (n : BitVec 32) (h : k < 2 ^ 32) :
 def matchFrag : Func → Option FragKind
   | ⟨_, [⟨"a", .i 32, .owned⟩, ⟨"b", .i 32, .owned⟩], _,
       .return_ (.add (.var "a") (.var "b"))⟩ => some .add
+  | ⟨_, [⟨"a", .i 64, .owned⟩, ⟨"b", .i 64, .owned⟩], _,
+      .return_ (.add (.var "a") (.var "b"))⟩ => some .add64
+  | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
+      .return_ (.uadd (.var "a") (.var "b"))⟩ => some .addu64
   | ⟨_, [⟨"p", .i 32, .mutBorrow _⟩], _,
       .return_ (.add (.var "p") (.lit (.i32 one)))⟩ =>
     if one == 1 then some .incr else none
@@ -311,6 +319,95 @@ theorem emit_correct_incr_ok (p r : BitVec 32)
   unfold incrFwd
   rw [h]
   exact i32_map_ok r
+
+/-! ## S3b: 64-bit loop-free widths (`add64`, `addu64`) -/
+
+/-- Canonical CoreIR for `tests/c/add64.c`
+    (`int64_t add64(int64_t a, int64_t b) { return a + b; }`):
+    same shape as `add`, at width 64. -/
+def add64Func : Func :=
+  ⟨"add64", [{ name := "a", ty := .i 64, role := .owned },
+             { name := "b", ty := .i 64, role := .owned }],
+   .i 64, .return_ (.add (.var "a") (.var "b"))⟩
+
+/-- Canonical CoreIR for `tests/c/addu64.c`
+    (`uint64_t addu64(uint64_t a, uint64_t b) { return a + b; }`):
+    wrapping unsigned addition at width 64. -/
+def addu64Func : Func :=
+  ⟨"addu64", [{ name := "a", ty := .u 64, role := .owned },
+              { name := "b", ty := .u 64, role := .owned }],
+   .u 64, .return_ (.uadd (.var "a") (.var "b"))⟩
+
+/-- Verified forward function for `add64` (cf. rendered `add64_fwd`). -/
+def add64Fwd (a b : BitVec 64) : Result Value := .i64 <$> checkedAddI64 a b
+
+/-- Verified forward function for `addu64` (cf. rendered `addu64_fwd`):
+    wrapping, never fails. -/
+def addu64Fwd (a b : BitVec 64) : Result Value := .ok (.u64 (a + b))
+
+/-- `(<$>)` on `Result` computes on both constructors (for the 64-bit
+    corollaries; cf. `i32_map_error`/`i32_map_ok`). -/
+theorem i64_map_error (e : Panic) :
+    Value.i64 <$> (Except.error e : Result (BitVec 64)) = .error e := rfl
+
+theorem i64_map_ok (r : BitVec 64) :
+    Value.i64 <$> (Except.ok r : Result (BitVec 64)) = .ok (.i64 r) := rfl
+
+/-- Env facts for the 64-bit add shapes. -/
+theorem envLookup_add64_a (a b : BitVec 64) :
+    envLookup [("a", .i64 a), ("b", .i64 b)] "a" = some (.i64 a) := by
+  simp [envLookup]
+
+theorem envLookup_add64_b (a b : BitVec 64) :
+    envLookup [("a", .i64 a), ("b", .i64 b)] "b" = some (.i64 b) := by
+  simp [envLookup, show ("b" : String) ≠ "a" by decide]
+
+theorem envLookup_addu64_a (a b : BitVec 64) :
+    envLookup [("a", .u64 a), ("b", .u64 b)] "a" = some (.u64 a) := by
+  simp [envLookup]
+
+theorem envLookup_addu64_b (a b : BitVec 64) :
+    envLookup [("a", .u64 a), ("b", .u64 b)] "b" = some (.u64 b) := by
+  simp [envLookup, show ("b" : String) ≠ "a" by decide]
+
+/-- Emitter correctness, `add64` (all inputs, ok and error paths). -/
+theorem emit_correct_add64 (a b : BitVec 64) :
+    evalFunc add64Func [.i64 a, .i64 b] = add64Fwd a b := by
+  have ha := envLookup_add64_a a b
+  have hb := envLookup_add64_b a b
+  simp only [evalFunc, evalFuncFuel, add64Func, bindArgs, evalStmtFuel,
+    evalStmtWith, EVAL_FUEL, evalExpr, add64Fwd, ha, hb]
+  cases checkedAddI64 a b <;> rfl
+
+/-- Emitter correctness, `addu64` (wrapping: always succeeds). -/
+theorem emit_correct_addu64 (a b : BitVec 64) :
+    evalFunc addu64Func [.u64 a, .u64 b] = addu64Fwd a b := by
+  have ha := envLookup_addu64_a a b
+  have hb := envLookup_addu64_b a b
+  simp [evalFunc, evalFuncFuel, addu64Func, bindArgs, evalStmtFuel,
+    evalStmtWith, EVAL_FUEL, evalExpr, addu64Fwd, ha, hb]
+
+/-- Corollary: `add64` errors are preserved exactly. -/
+theorem emit_correct_add64_err (a b : BitVec 64) (e : Panic)
+    (h : checkedAddI64 a b = .error e) :
+    evalFunc add64Func [.i64 a, .i64 b] = .error e := by
+  rw [emit_correct_add64]
+  unfold add64Fwd
+  rw [h]
+  exact i64_map_error e
+
+/-- Corollary: `add64` successes deliver the wrap sum as a value. -/
+theorem emit_correct_add64_ok (a b r : BitVec 64)
+    (h : checkedAddI64 a b = .ok r) :
+    evalFunc add64Func [.i64 a, .i64 b] = .ok (.i64 r) := by
+  rw [emit_correct_add64]
+  unfold add64Fwd
+  rw [h]
+  exact i64_map_ok r
+
+theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
+
+theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
 
 /-! ## `choose`: borrow-return (forward + backward) -/
 
@@ -2984,6 +3081,23 @@ def emitIncrText (name : String) : String :=
   ++ s!"def {name}_fwd (p : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  checkedIncrI32 p\n"
 
+/-- Render the `add64` forward definition (`add64_fwd`, S3b). -/
+def emitAdd64Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  checkedAddI64 a b\n"
+
+/-- Render the `addu64` forward definition (`addu64_fwd`, S3b:
+    wrapping unsigned addition, never fails). -/
+def emitAddu64Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (wrapping `u64` addition). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  .ok (a + b)\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader
@@ -3099,6 +3213,8 @@ def emitClsText (name : String) : String :=
 def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   match matchFrag f with
   | some .add => .ok ⟨emitAddText f.name, none⟩
+  | some .add64 => .ok ⟨emitAdd64Text f.name, none⟩
+  | some .addu64 => .ok ⟨emitAddu64Text f.name, none⟩
   | some .incr => .ok ⟨emitIncrText f.name, none⟩
   | some .choose =>
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩

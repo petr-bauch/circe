@@ -18,6 +18,12 @@
 #    pipeline + rejection suite.
 # 6. Asserts the emitted bodies the S3a proofs reason about are exactly
 #    the golden-pinned text.
+# 7. Regenerates + diffs the S3b 64-bit goldens, typechecks the emitted
+#    files, builds the native 64-bit drivers, runs the 64-bit
+#    differential fuzzer (boundary values per width), and runs the
+#    64-bit golden pipeline + rejection suite.
+# 8. Asserts the emitted bodies the S3b proofs reason about are exactly
+#    the golden-pinned text.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -33,6 +39,8 @@ NESTED_BIN="$WORKDIR/circe_nested_native"
 SKIP_BIN="$WORKDIR/circe_skip_native"
 FIND_BIN="$WORKDIR/circe_find_native"
 CLS_BIN="$WORKDIR/circe_cls_native"
+ADD64_BIN="$WORKDIR/circe_add64_native"
+ADDU64_BIN="$WORKDIR/circe_addu64_native"
 
 tools/check-phase7.sh "$TRIALS"
 
@@ -124,5 +132,33 @@ grep -qF "skipSumU32 n.toNat" out/SkipSum.lean
 grep -qF "findEqOut a n.toNat k" out/FindEq.lean
 grep -qF "if x == 0 then .ok 10" out/Cls.lean
 echo "emitted control-flow bodies match Emit assumptions"
+
+echo "== regenerate out/ (S3b 64-bit widths) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (S3b 64-bit widths) =="
+diff -u tests/golden/Add64.lean out/Add64.lean
+diff -u tests/golden/Addu64.lean out/Addu64.lean
+echo "64-bit goldens in sync"
+
+echo "== typecheck emitted 64-bit files =="
+lake env lean out/Add64.lean
+lake env lean out/Addu64.lean
+echo "emitted 64-bit files typecheck"
+
+echo "== native 64-bit drivers =="
+cc -O0 -Wall tests/c/add64.c tests/diff/driver_add64.c -o "$ADD64_BIN"
+cc -O0 -Wall tests/c/addu64.c tests/diff/driver_addu64.c -o "$ADDU64_BIN"
+
+echo "== differential test 64-bit widths (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffWidth.lean "$ADD64_BIN" "$ADDU64_BIN" "$TRIALS"
+
+echo "== golden pipeline + 64-bit rejection suite =="
+lake env lean --run tests/lean/GoldenWidth.lean
+
+echo "== emitted-body correspondence (S3b emit_correct transfer) =="
+grep -qF "checkedAddI64 a b" out/Add64.lean
+grep -qF ".ok (a + b)" out/Addu64.lean
+echo "emitted 64-bit bodies match Emit assumptions"
 
 echo "CHECK-OK"

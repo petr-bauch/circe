@@ -1,7 +1,7 @@
 -- Generator for the emitted files (Phases 4+7, S1 callers, S2 structs,
--- S3a control flow).
+-- S3a control flow, S3b 64-bit widths).
 -- Run from the repo root: `lake env lean --run tools/GenOut.lean`
--- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls}.lean`
+-- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}.lean`
 -- from `Circe.Emit.emitFunc` (single source of truth;
 -- `tests/golden/*.lean` pins the bytes).
 import Circe.Emit
@@ -24,6 +24,8 @@ def main : IO Unit := do
   let skip ← emitOrDie skipFunc
   let findEq ← emitOrDie findEqFunc
   let cls ← emitOrDie clsFunc
+  let add64 ← emitOrDie add64Func
+  let addu64 ← emitOrDie addu64Func
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -36,6 +38,8 @@ def main : IO Unit := do
   IO.FS.writeFile "out/SkipSum.lean" (emitFileText (.ok skip))
   IO.FS.writeFile "out/FindEq.lean" (emitFileText (.ok findEq))
   IO.FS.writeFile "out/Cls.lean" (emitFileText (.ok cls))
+  IO.FS.writeFile "out/Add64.lean" (emitFileText (.ok add64))
+  IO.FS.writeFile "out/Addu64.lean" (emitFileText (.ok addu64))
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -57,4 +61,8 @@ def main : IO Unit := do
     throw (IO.userError "findEq must not have a backward definition")
   if cls.backward.isSome then
     throw (IO.userError "cls must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean"
+  if add64.backward.isSome then
+    throw (IO.userError "add64 must not have a backward definition")
+  if addu64.backward.isSome then
+    throw (IO.userError "addu64 must not have a backward definition")
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean"

@@ -59,6 +59,10 @@ early `cir.return` inside a loop body (propagates through the
 `while_` handler); `cir.switch` with `cir.case(equal, [const])` +
 `default` where every case is a bare const `return` (lowered to a
 nested-`if_` canonical `Func`; anything else stays rejected).
+Width idioms (S3b): same `__retval` shape as 32-bit `add`, at
+`!s64i` (`cir.add nsw`, checked via `checkedAddI64`) and `!u64i`
+(plain `cir.add`, wrapping); 8/16-bit params lower through `i32`
+casts (integer promotion — rejected with the promotion message).
 
 ## Trust boundary
 

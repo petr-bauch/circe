@@ -83,13 +83,29 @@ Acceptance met: four corpus entries (real CIRGen output, `cir-opt`
 VERIFY-OK) translate, verify, fuzz clean (`DiffFlow`,
 tamper-checked); `GoldenFlow.lean` 10/10; `CHECK-OK`.
 
-### S3b. Width generalization (remaining)
+### S3b. Width generalization — DONE (2026-09-27, scoped: 64-bit loop-free)
 
-Generalize `i32`-only / `u32`-only proofs to the `i8–i64`/`u8–u64`
-family (checked-op table + width-parameterized lemmas; `Vec<T,w>`
-design sketched but not required).
-Acceptance: width-parameterized corpus entries, no `sorry`, fuzz
-covers boundary values per width.
+`i64`/`u64` end to end on the loop-free add shapes; everything wider
+than the slice rejects loudly. New `Value.i64`/`u64` +
+`CLit.i64`/`u64`; `add`/`uadd`/`umul`/`ult`/`ueq` dispatch on the value
+tags (mixed widths are `AssertFail`) with per-op 64-bit lemmas;
+`Base` gains `checkedAddI64` (+ range/ok/err/value/comm lemmas
+mirroring 32-bit) and `cir_simp` includes it. Canonical `add64Func` /
+`addu64Func` with `emit_correct` (+ ok/err corollaries for `add64`),
+`FragKind.add64`/`addu64`, `matchFrag` arms, rendered `add64_fwd` /
+`addu64_fwd`. Validator: `isAdd64Shape` / `isAddu64Shape` (exact
+`!s64i`/`!u64i` pins), `nsw`-less signed-64 arithmetic folded into the
+per-line wrapping check, dedicated 8/16-bit promotion rejection
+(CIRGen lowers small widths through `i32` casts — probed — so there is
+no native small-width arithmetic to model).
+Acceptance met: two corpus entries (real CIRGen output, `cir-opt`
+VERIFY-OK) translate, verify, fuzz clean (`DiffWidth` with
+`INT64_MIN`/`MAX`/`UINT64_MAX` boundaries, tamper-checked);
+`GoldenWidth.lean` 5/5 (width-mix, missing-`nsw`, promotion);
+`CHECK-OK`.
+Remaining widths work (deferred): small-width casts, 64-bit
+loops/arrays/heap/structs, `checkedNeg`/`Div` at 64 bits, unifying the
+32/64 checked-op lemmas behind one width parameter.
 
 ## S4. Tactics stage 1 + spec skeletons (parallelizable after S1)
 
