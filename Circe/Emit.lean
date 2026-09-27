@@ -1,7 +1,8 @@
 /-
 Circe.Emit — verified emitter `CoreIR → Lean` (forward + backward defs).
 
-Phase 4: emitter for the `add`/`incr`/`choose`/`sum` fragment.
+Emitter for the admitted fragment (`add`/`incr`, borrow-return `choose`,
+bounded-loop `sum`, uniquely-owned heap `vec`, S1 DAG calls).
 - `matchFrag` recognizes the four admitted `Func` shapes (by-value `add`;
   single-`mutBorrow` `incr`; single-region borrow-return `choose`;
   bounded-loop `sum`). See the `matchFrag` contract note: everything
@@ -17,7 +18,7 @@ Phase 4: emitter for the `add`/`incr`/`choose`/`sum` fragment.
 Trust note: the *rendering* (Value-tag erasure to `BitVec` text) is
 trusted, like the parser; what is verified is that the rendered
 definitions have exactly the semantics of `evalFunc` on the fragment.
-`tools/check-phase4.sh` regenerates the outputs and `diff`s them against
+`tools/check.sh` regenerates the outputs and `diff`s them against
 the checked-in goldens (`tests/golden/*.lean`, also spot-checked by the
 `native_decide` examples below on clean builds), and `lake env lean`
 typechecks the rendered files.
@@ -28,15 +29,17 @@ import Circe.Eval
 
 /-! ## Fragment shapes -/
 
-/-- The Phase 4 admitted fragment (`add`/`incr` from Phase 3, plus
-    borrow-return `choose` and bounded-loop `sum`), extended in Phase 7
-    with uniquely-owned heap `vec`. -/
+/-- The admitted fragment: `add`/`incr`/`choose`/`sum`/`vec`, extended in
+    S1 with DAG calls (`addCall` = double-`add`, `sumCall` = `sum_array`
+    delegation). -/
 inductive FragKind : Type
   | add
   | incr
   | choose
   | sum
   | vec
+  | addCall
+  | sumCall
   deriving DecidableEq, Repr
 
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
@@ -85,11 +88,26 @@ def matchFrag : Func → Option FragKind
     if i0 == 0 && s0 == 0 && j0 == 0 && one1 == 1 && one2 == 1 then
       some .vec
     else none
+  | ⟨_, [⟨"x", .i 32, .owned⟩, ⟨"y", .i 32, .owned⟩,
+         ⟨"z", .i 32, .owned⟩], _, body⟩ =>
+    -- Body matched separately: list-literal patterns (`["x", "y"]`)
+    -- nested inside a `⟨⟩` Func pattern hit a Lean parser quirk
+    -- (unexpected `)`); matching `body` at `CStmt` level parses fine.
+    match body with
+    | .seq (.callRet "t" "add" ["x", "y"])
+        (.seq (.callRet "r" "add" ["t", "z"])
+              (.return_ (.var "r"))) => some .addCall
+    | _ => none
+  | ⟨_, [⟨"a", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"n", .u 32, .owned⟩], _, body⟩ =>
+    match body with
+    | .seq (.callRet "s" "sum_array" ["a", "n"])
+        (.return_ (.var "s")) => some .sumCall
+    | _ => none
   | _ => none
 
 /-- Canonical CoreIR for `tests/c/add.c`
-    (`int32_t add(int32_t a, int32_t b) { return a + b; }`).
-    Stands in for validated CoreIR until the parser lands in Phase 4. -/
+    (`int32_t add(int32_t a, int32_t b) { return a + b; }`). -/
 def addFunc : Func :=
   ⟨"add", [{ name := "a", ty := .i 32, role := .owned },
            { name := "b", ty := .i 32, role := .owned }],
@@ -197,7 +215,7 @@ theorem emit_correct_incr_ok (p r : BitVec 32)
 
 /-- Canonical CoreIR for `tests/c/choose_ptr.c`
     (`int32_t *choose(bool b, int32_t *__restrict x, int32_t *__restrict y)`).
-    Single-region (both borrows share region 0, per `docs/OWNERSHIP.md` rule 6);
+    Single-region (both borrows share region 0, per `docs/SUBSET.md` rule 6);
     the returned borrow is functionalized to the selected *value*, and writes
     through it are propagated by `chooseBack` (Aeneas §4.3). -/
 def chooseFunc : Func :=
@@ -315,8 +333,8 @@ def sumWhile : CStmt :=
   .while_ (.ult (.var "i") (.var "n")) sumBody
 
 /-- Canonical CoreIR for `tests/c/sum_array.c`. `a` is a `sharedBorrow`
-    (pure list value, copy semantics); `n` is the 32-bit length (v0.1
-    restriction: C `size_t` lengths must fit 32 bits — `validate` narrows
+    (pure list value, copy semantics); `n` is the 32-bit length
+    (C `size_t` lengths must fit 32 bits — `validate` narrows
     them, runtime excess is `OOB`). The static array bound (4096) equals
     `EVAL_FUEL`: capacity and fuel coincide by construction. -/
 def sumFunc : Func :=
@@ -1130,10 +1148,248 @@ theorem emit_correct_vec_ok (nv : BitVec 32) (r : BitVec 32)
   rw [h]
   exact u32_map_ok r
 
+/-! ## S1: DAG calls (`add_caller`, `sum_caller`) -/
+
+/-- `emit_correct` for `add` at any fuel (loop-free body, so every fuel
+    agrees; loop proofs and program steps generalize the fuel). -/
+theorem evalFuncFuel_add (F : Nat) (a b : BitVec 32) :
+    evalFuncFuel F addFunc [.i32 a, .i32 b] = addFwd a b := by
+  have ha := envLookup_add_a a b
+  have hb := envLookup_add_b a b
+  cases F <;>
+    simp only [evalFuncFuel, addFunc, bindArgs, evalStmtFuel, evalStmtZero,
+      evalStmtWith, evalExpr, addFwd, ha, hb] <;>
+    (cases checkedAddI32 a b <;> rfl)
+
+/-- Canonical CoreIR for `tests/c/add_caller.c`: two DAG calls into `add`
+    (`t = add(x,y); return add(t,z)`). Both call sites target the
+    call-free leaf `addFunc` (matched by name in `evalProgStmt`). -/
+def addCallerFunc : Func :=
+  ⟨"add_caller",
+   [{ name := "x", ty := .i 32, role := .owned },
+    { name := "y", ty := .i 32, role := .owned },
+    { name := "z", ty := .i 32, role := .owned }],
+   .i 32,
+   .seq (.callRet "t" "add" ["x", "y"])
+   (.seq (.callRet "r" "add" ["t", "z"])
+         (.return_ (.var "r")))⟩
+
+/-- Canonical CoreIR for `tests/c/sum_caller.c`: single DAG call
+    delegating to `sum_array`. -/
+def sumCallerFunc : Func :=
+  ⟨"sum_caller",
+   [{ name := "a", ty := .array (.u 32) 4096, role := .sharedBorrow },
+    { name := "n", ty := .u 32, role := .owned }],
+   .u 32,
+   .seq (.callRet "s" "sum_array" ["a", "n"])
+        (.return_ (.var "s"))⟩
+
+theorem matchFrag_addCaller : matchFrag addCallerFunc = some .addCall := rfl
+
+theorem matchFrag_sumCaller : matchFrag sumCallerFunc = some .sumCall := rfl
+
+/-- Value-level forward for `add_caller`: sequential `Result` binds over
+    the leaf op (cf. rendered `add_caller_fwd`). -/
+def addCallerFwd (x y z : BitVec 32) : Result Value :=
+  match checkedAddI32 x y with
+  | .error e => .error e
+  | .ok t => .i32 <$> checkedAddI32 t z
+
+/-- The forward is literally two `add_fwd` calls sequenced (call structure
+    explicit; the second match arm is unreachable since `addFwd` only
+    produces `i32` values). -/
+theorem addCallerFwd_as_calls (x y z : BitVec 32) :
+    addCallerFwd x y z =
+      match addFwd x y with
+      | .error e => .error e
+      | .ok (.i32 t) => .i32 <$> checkedAddI32 t z
+      | .ok _ => .error .AssertFail := by
+  cases h : checkedAddI32 x y <;>
+    simp [addCallerFwd, addFwd, h, i32_map_error, i32_map_ok]
+
+/-- Value-level forward for `sum_caller`: direct delegation to `sumFwd`
+    (cf. rendered `sum_caller_fwd`). -/
+def sumCallerFwd (l : List (BitVec 32)) (n : BitVec 32) : Result Value :=
+  sumFwd l n
+
+theorem sumCallerFwd_is_call (l : List (BitVec 32)) (n : BitVec 32) :
+    sumCallerFwd l n = sumFwd l n := rfl
+
+/-- Env facts for the `add_caller` shape. -/
+theorem envLookup_addCaller_x (x y z : BitVec 32) :
+    envLookup [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)] "x" =
+      some (.i32 x) := by
+  simp [envLookup]
+
+theorem envLookup_addCaller_y (x y z : BitVec 32) :
+    envLookup [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)] "y" =
+      some (.i32 y) := by
+  simp [envLookup, show ("y" : String) ≠ "x" by decide]
+
+theorem envLookup_addCaller_z (x y z : BitVec 32) :
+    envLookup [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)] "z" =
+      some (.i32 z) := by
+  simp [envLookup, show ("z" : String) ≠ "x" by decide,
+    show ("z" : String) ≠ "y" by decide]
+
+/-- Env facts for the `sum_caller` shape. -/
+theorem envLookup_sumCaller_a (l : List (BitVec 32)) (nv : BitVec 32) :
+    envLookup [("a", .arr32 l), ("n", .u32 nv)] "a" =
+      some (.arr32 l) := by
+  simp [envLookup]
+
+theorem envLookup_sumCaller_n (l : List (BitVec 32)) (nv : BitVec 32) :
+    envLookup [("a", .arr32 l), ("n", .u32 nv)] "n" = some (.u32 nv) := by
+  simp [envLookup, show ("n" : String) ≠ "a" by decide]
+
+/-- `emit_correct` for `add_caller`: program evaluation over `[addFunc]`
+    agrees with the forward on all inputs (ok and error paths). -/
+theorem evalProgFunc_addCaller (F : Nat) (x y z : BitVec 32) :
+    evalProgFunc [addFunc] F addCallerFunc [.i32 x, .i32 y, .i32 z] =
+      addCallerFwd x y z := by
+  have hbind : bindArgs addCallerFunc.args [.i32 x, .i32 y, .i32 z] =
+      some [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)] := rfl
+  have hbody : addCallerFunc.body =
+      .seq (.callRet "t" "add" ["x", "y"])
+      (.seq (.callRet "r" "add" ["t", "z"])
+            (.return_ (.var "r"))) := rfl
+  have hx := envLookup_addCaller_x x y z
+  have hy := envLookup_addCaller_y x y z
+  have hfind : findFunc [addFunc] "add" = some addFunc :=
+    findFunc_hit addFunc []
+  cases h1 : checkedAddI32 x y with
+  | error e =>
+    have hc1 : evalFuncFuel F addFunc [.i32 x, .i32 y] = .error e := by
+      rw [evalFuncFuel_add]
+      unfold addFwd
+      rw [h1]
+      exact i32_map_error e
+    have hargs1 : lookupArgs [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)]
+        ["x", "y"] = some [.i32 x, .i32 y] := by
+      simp [lookupArgs, hx, hy]
+    have hstep1 := evalProgStmt_callRet_err [addFunc] F "t" "add" ["x", "y"]
+      [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)]
+      [.i32 x, .i32 y] addFunc e hargs1 hfind hc1
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstep1]
+    simp [addCallerFwd, h1]
+  | ok t =>
+    have hc1 : evalFuncFuel F addFunc [.i32 x, .i32 y] =
+        .ok (.i32 t) := by
+      rw [evalFuncFuel_add]
+      unfold addFwd
+      rw [h1]
+      exact i32_map_ok t
+    have hargs1 : lookupArgs [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)]
+        ["x", "y"] = some [.i32 x, .i32 y] := by
+      simp [lookupArgs, hx, hy]
+    have hstep1 := evalProgStmt_callRet_ok [addFunc] F "t" "add" ["x", "y"]
+      [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)]
+      [.i32 x, .i32 y] addFunc (.i32 t) hargs1 hfind hc1
+    have htz : envLookup (envExtend [("x", .i32 x), ("y", .i32 y),
+        ("z", .i32 z)] "t" (.i32 t)) "t" = some (.i32 t) :=
+      envExtend_hit _ _ _
+    have htz2 : envLookup (envExtend [("x", .i32 x), ("y", .i32 y),
+        ("z", .i32 z)] "t" (.i32 t)) "z" = some (.i32 z) := by
+      simp [envExtend, envLookup, show ("z" : String) ≠ "t" by decide]
+    cases h2 : checkedAddI32 t z with
+    | error e =>
+      have hc2 : evalFuncFuel F addFunc [.i32 t, .i32 z] = .error e := by
+        rw [evalFuncFuel_add]
+        unfold addFwd
+        rw [h2]
+        exact i32_map_error e
+      have hargs2 : lookupArgs (envExtend [("x", .i32 x), ("y", .i32 y),
+          ("z", .i32 z)] "t" (.i32 t)) ["t", "z"] =
+          some [.i32 t, .i32 z] := by
+        simp [lookupArgs, htz, htz2]
+      have hstep2 := evalProgStmt_callRet_err [addFunc] F "r" "add"
+        ["t", "z"] (envExtend [("x", .i32 x), ("y", .i32 y),
+          ("z", .i32 z)] "t" (.i32 t))
+        [.i32 t, .i32 z] addFunc e hargs2 hfind hc2
+      simp only [evalProgFunc, hbind, hbody]
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep1,
+        evalProgStmt_seq_err _ _ _ _ _ _ hstep2]
+      simp [addCallerFwd, h1, h2, i32_map_error]
+    | ok r =>
+      have hc2 : evalFuncFuel F addFunc [.i32 t, .i32 z] =
+          .ok (.i32 r) := by
+        rw [evalFuncFuel_add]
+        unfold addFwd
+        rw [h2]
+        exact i32_map_ok r
+      have hargs2 : lookupArgs (envExtend [("x", .i32 x), ("y", .i32 y),
+          ("z", .i32 z)] "t" (.i32 t)) ["t", "z"] =
+          some [.i32 t, .i32 z] := by
+        simp [lookupArgs, htz, htz2]
+      have hstep2 := evalProgStmt_callRet_ok [addFunc] F "r" "add"
+        ["t", "z"] (envExtend [("x", .i32 x), ("y", .i32 y),
+          ("z", .i32 z)] "t" (.i32 t))
+        [.i32 t, .i32 z] addFunc (.i32 r) hargs2 hfind hc2
+      have hret : evalProgStmt [addFunc] F (.return_ (.var "r"))
+          (envExtend (envExtend [("x", .i32 x), ("y", .i32 y),
+            ("z", .i32 z)] "t" (.i32 t)) "r" (.i32 r)) =
+          .ok (envExtend (envExtend [("x", .i32 x), ("y", .i32 y),
+            ("z", .i32 z)] "t" (.i32 t)) "r" (.i32 r),
+            .returned (.i32 r)) :=
+        evalProgStmt_return [addFunc] F (.var "r") _
+          (.i32 r) (evalExpr_var_hit _ _ _ (envExtend_hit _ _ _))
+      simp only [evalProgFunc, hbind, hbody]
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep1,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep2, hret]
+      simp [addCallerFwd, h1, h2, i32_map_ok]
+
+/-- `emit_correct` for `sum_caller`: program evaluation over `[sumFunc]`
+    agrees with the delegating forward (fuel must cover `n`). -/
+theorem evalProgFunc_sumCaller (F : Nat) (l : List (BitVec 32))
+    (nv : BitVec 32)
+    (hle : nv.toNat ≤ l.length) (h32 : nv.toNat < 2 ^ 32)
+    (hF : nv.toNat ≤ F) :
+    evalProgFunc [sumFunc] F sumCallerFunc [.arr32 l, .u32 nv] =
+      sumCallerFwd l nv := by
+  have hbind : bindArgs sumCallerFunc.args [.arr32 l, .u32 nv] =
+      some [("a", .arr32 l), ("n", .u32 nv)] := rfl
+  have hbody : sumCallerFunc.body =
+      .seq (.callRet "s" "sum_array" ["a", "n"])
+           (.return_ (.var "s")) := rfl
+  have ha := envLookup_sumCaller_a l nv
+  have hn := envLookup_sumCaller_n l nv
+  have hfind : findFunc [sumFunc] "sum_array" = some sumFunc :=
+    findFunc_hit sumFunc []
+  have hargs : lookupArgs [("a", .arr32 l), ("n", .u32 nv)] ["a", "n"] =
+      some [.arr32 l, .u32 nv] := by
+    simp [lookupArgs, ha, hn]
+  have hcall := evalFuncFuel_sum F l nv hle h32 hF
+  cases hsum : sumFwd l nv with
+  | error e =>
+    have hcall' : evalFuncFuel F sumFunc [.arr32 l, .u32 nv] = .error e := by
+      rw [hcall, hsum]
+    have hstep := evalProgStmt_callRet_err [sumFunc] F "s" "sum_array"
+      ["a", "n"] [("a", .arr32 l), ("n", .u32 nv)]
+      [.arr32 l, .u32 nv] sumFunc e hargs hfind hcall'
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstep]
+    simp [sumCallerFwd, hsum]
+  | ok v =>
+    have hcall' : evalFuncFuel F sumFunc [.arr32 l, .u32 nv] = .ok v := by
+      rw [hcall, hsum]
+    have hstep := evalProgStmt_callRet_ok [sumFunc] F "s" "sum_array"
+      ["a", "n"] [("a", .arr32 l), ("n", .u32 nv)]
+      [.arr32 l, .u32 nv] sumFunc v hargs hfind hcall'
+    have hret : evalProgStmt [sumFunc] F (.return_ (.var "s"))
+        (envExtend [("a", .arr32 l), ("n", .u32 nv)] "s" v) =
+        .ok (envExtend [("a", .arr32 l), ("n", .u32 nv)] "s" v,
+          .returned v) :=
+      evalProgStmt_return [sumFunc] F (.var "s") _
+        v (evalExpr_var_hit _ _ _ (envExtend_hit _ _ _))
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep, hret]
+    simp [sumCallerFwd, hsum]
+
 /-! ## Rendering to Lean file text -/
 
 /-- Emission failures: only "not in the admitted fragment" exists
-    (oracle/aliasing rejections live in `validate`, Phase 4). -/
+    (oracle/aliasing rejections live in `validate`). -/
 inductive EmitError : Type
   | notFragment : String → EmitError
   deriving DecidableEq, Repr
@@ -1207,6 +1463,30 @@ def emitVecText (name : String) : String :=
   ++ "def " ++ name ++ "_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecFillSumU32 n.toNat\n"
 
+/-- Render the `add_caller` forward definition: two sequential DAG calls
+    into `add_fwd`. The file stays self-contained (only `Circe.Base` is
+    imported — cross-file imports need oleans, which plain `out/` sources
+    lack): the leaf body `checkedAddI32` is inlined, and
+    `addCallerFwd_as_calls` certifies this is literally two `add_fwd`
+    calls sequenced. -/
+def emitAddCallerText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (DAG calls into `add_fwd`, twice;\n"
+  ++ "    leaf body `checkedAddI32` inlined, see `addCallerFwd_as_calls`). -/\n"
+  ++ s!"def {name}_fwd (x y z : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  do let t ← checkedAddI32 x y\n"
+  ++ "     checkedAddI32 t z\n"
+
+/-- Render the `sum_caller` forward definition: direct delegation to the
+    `sum_array` body (same `Base` op, see `sumCallerFwd_is_call`). -/
+def emitSumCallerText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to `sum_array_fwd`). -/\n"
+  ++ "def " ++ name ++ "_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
+  ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
+
 /-- The emitter: accepted fragment renders to file text; everything else
     is rejected loudly (never silently modeled). -/
 def emitFunc (f : Func) : Except EmitError EmittedFunc :=
@@ -1217,6 +1497,8 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩
   | some .sum => .ok ⟨emitSumText f.name, none⟩
   | some .vec => .ok ⟨emitVecText f.name, none⟩
+  | some .addCall => .ok ⟨emitAddCallerText f.name, none⟩
+  | some .sumCall => .ok ⟨emitSumCallerText f.name, none⟩
   | none => .error (.notFragment s!"not in the admitted fragment: {f.name}")
 
 /-- Rejection is loud and names the function. -/
@@ -1268,3 +1550,13 @@ example : emitFileText (emitFunc sumFunc) =
     golden. -/
 example : emitFileText (emitFunc vecFunc) =
     include_str "../tests/golden/VecAlloc.lean" := by native_decide
+
+/-- The emitter output for `addCallerFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc addCallerFunc) =
+    include_str "../tests/golden/AddCaller.lean" := by native_decide
+
+/-- The emitter output for `sumCallerFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc sumCallerFunc) =
+    include_str "../tests/golden/SumCaller.lean" := by native_decide

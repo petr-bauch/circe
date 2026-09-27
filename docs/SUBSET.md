@@ -56,14 +56,23 @@ lands in S1 (recursion rejected).
    (missing-`free` / double-`free` rejected), no escape, single live
    allocation per function. The block is a value + affine token
    (`Vec32.freed`), not an address.
+9. DAG calls (S1): callers target admitted call-free leaves only
+   (`add`, `sum_array`); exact caller shapes (`add_caller`:
+   three `i32` + two `@add` sites; `sum_caller`: `(ptr, n)` +
+   one `@sum_array` site). Self-calls (recursion), unknown callees,
+   and misshapen callers are rejected. DAG by construction: leaves
+   exclude calls, callers only target leaves, so no cycle is
+   expressible. Semantics: `callRet dst f args` binds `dst` to the
+   callee return (`evalProgStmt` dispatches to `evalFuncFuel` at the
+   same fuel; errors propagate).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
 `cir.func`, `cir.alloca`/`load`/`store` (functionalizable shape),
 `cir.cast` (int/bool), `cir.binop`/`cmp`/`unary`, `cir.cond_br`
 (`cir.br` from `goto` rejected), `cir.return`, `cir.call`
-(`@malloc`/`@free` in vec shape only; general calls land in S1),
-`cir.const`, `cir.get_member`/`get_element`/`ptr_stride` (bounded),
+(`@malloc`/`@free` in vec shape only; `@add`/`@sum_array` in the exact
+S1 caller shapes only), `cir.const`, `cir.get_member`/`get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
 `cir.get_global @malloc/@free` plumbing allowed in vec shape only.

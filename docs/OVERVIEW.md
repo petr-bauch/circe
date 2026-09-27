@@ -16,6 +16,8 @@ input rejects loudly, never silently models memory.
 | borrow-return | `choose_ptr` | `choose_fwd` + `choose_back` | lens laws |
 | bounded loop | `sum_array` | `prefixSumU32` over `BoundedList` | `emit_correct_sum` (fuel induction) |
 | uniquely-owned heap (`u32`-only) | `vec_alloc` | `vecFillSumU32 n.toNat` | `emit_correct_vec` (two-loop induction) |
+| DAG call (double-`add`) | `add_caller` | two `checkedAddI32` binds (leaf inlined; `addCallerFwd_as_calls`) | `evalProgFunc_addCaller` (program induction-free composition) |
+| DAG call (`sum` delegation) | `sum_caller` | `prefixSumU32` body (`sumCallerFwd_is_call`) | `evalProgFunc_sumCaller` (fuel-generalized callee reuse) |
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), verified gate (`validate` + oracle verdicts), emitter
@@ -32,10 +34,10 @@ tests/c/*.c → tests/cir/*.cir (tools/emit-cir.sh, CIR clang)
   → emitFunc (verified) → out/*.lean (tests/golden/*.lean pins bytes)
 ```
 
-E2E: `tools/check-phase7.sh [trials]` → `PHASE7-OK`
-(superset: build → regenerate → golden diff → typecheck emitted →
-native drivers → `Diff*` fuzz vs native → `GoldenPhase*` pipeline +
-rejection suites → body correspondence → specs typecheck).
+E2E: `tools/check.sh [trials]` (single entry; superset: phase-7 pipeline
+→ caller golden `diff`s → `lake env lean` typecheck → native caller
+drivers → `DiffCalls` fuzz vs native → `GoldenCalls` pipeline +
+rejection suite → emitted-body correspondence → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

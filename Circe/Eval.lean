@@ -3,13 +3,14 @@ Circe.Eval — loan-based, value-only ownership semantics (spec for
 `emit_correct`).
 
 Environments map variables to *values with loan/borrow bookkeeping*;
-there is no heap and no addresses (Aeneas-style, see PLAN.md §6).
+there is no heap and no addresses (Aeneas-style, see docs/PIPELINE.md).
 Phase 4: `evalExpr` covers `lit`/`var`/`add` (signed `nsw`-checked) plus
 `uadd` (wrapping unsigned), `ult` (unsigned comparison), and `idx`
 (bounded indexing, `OOB` on violation); `evalStmt` covers the full
 loop-free fragment (`skip`/`seq`/`let_`/`assign`/`if_`/`return_`) plus
 fuel-bounded `while_` (`EVAL_FUEL`; exhaustion is `AssertFail`, and
-`validate` admits only bounded loops). `call` stays a stub (Phase 5+).
+`validate` admits only bounded loops). `call` stays a legacy stub;
+`callRet` carries S1 program calls (see the program layer below).
 `bindArgs`/`evalFunc` give whole-function semantics; `evalFuncFuel`
 exposes the fuel for induction (loop proofs generalize it).
 -/
@@ -411,9 +412,9 @@ theorem evalExpr_vget_notvec (arr : String) (v : BitVec 32) (i : BitVec 32)
 
 /-! ## Statement evaluator (fuel-bounded `while_`) -/
 
-/-- Default fuel: v0.1 loops must terminate within this many iterations.
+/-- Default fuel: loops must terminate within this many iterations.
     Exhaustion reports `AssertFail` (incompleteness, not unsoundness:
-    `validate` admits only bounded loops; see `docs/OWNERSHIP.md`). -/
+    `validate` admits only bounded loops; see `docs/SUBSET.md`). -/
 def EVAL_FUEL : Nat := 4096
 
 /-- Loop-free statement skeleton parameterized by the `while_` handler.
@@ -473,6 +474,10 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _ => .error .AssertFail
   | .while_ c b, ρ => wh c b ρ
   | .call _ _, ρ => .ok (ρ, .fellThrough)
+  | .callRet _ _ _, _ =>
+    -- Calls need program context (which function `f` resolves to); outside
+    -- `evalProgStmt` they are rejected loudly, never silently modeled.
+    .error .AssertFail
   | .return_ e, ρ =>
     match evalExpr e ρ with
     | .error err => .error err
@@ -626,8 +631,8 @@ theorem evalStmtFuel_zero_while_enter (c : CExpr) (b : CStmt) (ρ : Env)
 
 /-! ## Function entry: argument binding + outcome -/
 
-/-- Bind actuals to formals (names only; types/roles are `validate`'s job
-    in Phase 4). Arity mismatch is `none`, and `evalFunc` rejects it. -/
+/-- Bind actuals to formals (names only; types/roles are `validate`'s job).
+    Arity mismatch is `none`, and `evalFunc` rejects it. -/
 def bindArgs : List Param → List Value → Option Env
   | [], [] => some []
   | p :: ps, v :: vs =>
@@ -666,3 +671,141 @@ theorem evalFuncFuel_arity (fuel : Nat) (f : Func) (args : List Value)
     (h : bindArgs f.args args = none) :
     evalFuncFuel fuel f args = .error .AssertFail := by
   simp [evalFuncFuel, h]
+
+/-! ## Program evaluation: DAG calls (S1) -/
+
+/-- S1: a program is a list of validated `Func`s. DAG by validator
+    construction: leaves (`add`/`sum_array`/…) are call-free (leaf shapes
+    exclude `cir.call`), callers only target admitted leaves, and
+    self-calls are rejected — so no cycle is expressible. -/
+abbrev Prog := List Func
+
+/-- Resolve a callee by name (first match wins). -/
+def findFunc (p : Prog) (name : String) : Option Func :=
+  p.find? (fun f => f.name == name)
+
+theorem findFunc_hit (f : Func) (p : Prog) :
+    findFunc (f :: p) f.name = some f := by
+  unfold findFunc
+  simp
+
+theorem findFunc_miss (f : Func) (p : Prog) (name : String)
+    (h : (f.name == name) = false) :
+    findFunc (f :: p) name = findFunc p name := by
+  simp [findFunc, h]
+
+/-- Look up actuals in the environment (all-or-nothing; missing is loud). -/
+def lookupArgs : Env → List String → Option (List Value)
+  | _, [] => some []
+  | ρ, x :: xs =>
+    match envLookup ρ x, lookupArgs ρ xs with
+    | some v, some vs => some (v :: vs)
+    | _, _ => none
+
+theorem lookupArgs_nil (ρ : Env) : lookupArgs ρ [] = some [] := rfl
+
+theorem lookupArgs_cons_hit (ρ : Env) (x : String) (v : Value)
+    (xs : List String) (vs : List Value)
+    (h : envLookup ρ x = some v) (t : lookupArgs ρ xs = some vs) :
+    lookupArgs ρ (x :: xs) = some (v :: vs) := by
+  simp [lookupArgs, h, t]
+
+/-- Depth-1 program statement evaluation. `callRet dst f xs` looks up the
+    actuals, dispatches to the call-free callee via the old `evalFuncFuel`
+    at the same fuel, and extends the environment with the result;
+    `seq` recurses; everything else delegates to the old `evalStmtFuel`.
+    Callee errors propagate; unknown callees / unbound actuals are loud. -/
+def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × Outcome)
+  | .callRet dst f xs, ρ =>
+    match lookupArgs ρ xs with
+    | none => .error .Uninit
+    | some vs =>
+      match findFunc prog f with
+      | none => .error .AssertFail
+      | some callee =>
+        match evalFuncFuel fuel callee vs with
+        | .error e => .error e
+        | .ok ret => .ok (envExtend ρ dst ret, .fellThrough)
+  | .seq a b, ρ =>
+    match evalProgStmt prog fuel a ρ with
+    | .error e => .error e
+    | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+    | .ok (ρ', .fellThrough) => evalProgStmt prog fuel b ρ'
+  | s, ρ => evalStmtFuel fuel s ρ
+
+/-- `callRet` with resolved actuals + callee runs the callee. -/
+theorem evalProgStmt_callRet_ok (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (vs : List Value) (callee : Func) (ret : Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : evalFuncFuel fuel callee vs = .ok ret) :
+    evalProgStmt prog fuel (.callRet dst f xs) ρ =
+      .ok (envExtend ρ dst ret, .fellThrough) := by
+  simp [evalProgStmt, hargs, hfind, hcall]
+
+/-- `callRet` propagates callee errors. -/
+theorem evalProgStmt_callRet_err (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (vs : List Value) (callee : Func) (e : Panic)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : evalFuncFuel fuel callee vs = .error e) :
+    evalProgStmt prog fuel (.callRet dst f xs) ρ = .error e := by
+  simp [evalProgStmt, hargs, hfind, hcall]
+
+/-- `callRet` to an unknown callee is rejected, never silently modeled. -/
+theorem evalProgStmt_callRet_unknown (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (vs : List Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = none) :
+    evalProgStmt prog fuel (.callRet dst f xs) ρ =
+      .error .AssertFail := by
+  simp [evalProgStmt, hargs, hfind]
+
+/-- `callRet` with unbound actuals is `Uninit`. -/
+theorem evalProgStmt_callRet_unbound (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (hargs : lookupArgs ρ xs = none) :
+    evalProgStmt prog fuel (.callRet dst f xs) ρ = .error .Uninit := by
+  simp [evalProgStmt, hargs]
+
+/-- Whole-program function semantics: bind, run the body under the program,
+    demand a `return` (falling off the end is `AssertFail`, as before). -/
+def evalProgFunc (prog : Prog) (fuel : Nat) (f : Func)
+    (args : List Value) : Result Value :=
+  match bindArgs f.args args with
+  | none => .error .AssertFail
+  | some ρ =>
+    match evalProgStmt prog fuel f.body ρ with
+    | .error e => .error e
+    | .ok (_, .returned v) => .ok v
+    | .ok (_, .fellThrough) => .error .AssertFail
+
+theorem evalProgFunc_arity (prog : Prog) (fuel : Nat) (f : Func)
+    (args : List Value) (h : bindArgs f.args args = none) :
+    evalProgFunc prog fuel f args = .error .AssertFail := by
+  simp [evalProgFunc, h]
+
+/-- `seq` short-circuits on error in the first component. -/
+theorem evalProgStmt_seq_err (prog : Prog) (fuel : Nat) (a b : CStmt)
+    (ρ : Env) (e : Panic)
+    (h : evalProgStmt prog fuel a ρ = .error e) :
+    evalProgStmt prog fuel (.seq a b) ρ = .error e := by
+  simp only [evalProgStmt, h]
+
+/-- `seq` threads the environment on fall-through. -/
+theorem evalProgStmt_seq_fallthrough (prog : Prog) (fuel : Nat) (a b : CStmt)
+    (ρ ρ' : Env)
+    (h : evalProgStmt prog fuel a ρ = .ok (ρ', .fellThrough)) :
+    evalProgStmt prog fuel (.seq a b) ρ =
+      evalProgStmt prog fuel b ρ' := by
+  simp only [evalProgStmt, h]
+
+/-- `return_` under a program delegates to the old evaluator. -/
+theorem evalProgStmt_return (prog : Prog) (fuel : Nat) (e : CExpr)
+    (ρ : Env) (v : Value)
+    (h : evalExpr e ρ = .ok v) :
+    evalProgStmt prog fuel (.return_ e) ρ = .ok (ρ, .returned v) := by
+  have hfuel := evalStmtFuel_return fuel e ρ v h
+  simp only [evalProgStmt, hfuel]

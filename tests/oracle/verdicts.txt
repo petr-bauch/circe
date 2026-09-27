@@ -14,3 +14,5 @@ choose noalias
 sum_array noalias
 translate unknown
 vec_alloc unknown
+add_caller unknown
+sum_caller noalias

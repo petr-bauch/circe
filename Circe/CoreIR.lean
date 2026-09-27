@@ -1,13 +1,13 @@
-/-
-Circe.CoreIR — verified core IR for the Ownable-C subset (v0.1).
+/-!
+Circe.CoreIR — verified core IR for the Ownable-C subset.
 
 `CoreIR` is the trust boundary output: unverified parser text can never
 reach `Emit` without passing `validate : RawIR → Option Func`.
 Pointers do not appear as values; they become ownership roles
-(`BorrowRole`), per docs/OWNERSHIP.md and PLAN.md §6.
+(`BorrowRole`), per docs/SUBSET.md and docs/PIPELINE.md.
 -/
 
-/-- C types admitted in v0.1 (see docs/CIR_SUBSET.md). Widths are in bits. -/
+/-- C types admitted (see docs/SUBSET.md). Widths are in bits. -/
 inductive CType : Type
   | void
   | bool
@@ -46,7 +46,7 @@ inductive CLit : Type
     `cir.add`); `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
     `idx a i` is bounded indexing (`cir.ptr_stride` + `cir.load`).
     Each constructor requires per-op `Eval`/`Emit` lemmas before admission
-    (PLAN.md §6); Phase 4 admits all of the above. -/
+    (see docs/PIPELINE.md). -/
 inductive CExpr : Type
   | lit : CLit → CExpr
   | var : String → CExpr
@@ -60,11 +60,13 @@ inductive CExpr : Type
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and
     `return_` returns one; `if_` branches on a `Value.b` condition; `while_`
-    is fuel-bounded (see `EVAL_FUEL`: v0.1 loops must terminate within
+    is fuel-bounded (see `EVAL_FUEL`: loops must terminate within
     `EVAL_FUEL` iterations; exhaustion reports `AssertFail`).
-    Phase 3 gave `Eval` semantics to `skip`/`seq`/`let_`/`return_`;
-    Phase 4 adds `assign`/`if_`/`while_` with per-op lemmas; `call` stays a
-    `fellThrough` stub until function calls land (Phase 5+). -/
+    `callRet dst f args` binds `dst` to the return value of the program
+    function `f` applied to the values of `args` (S1: DAG calls into
+    call-free leaves, evaluated by `evalProgStmt` in `Circe.Eval`;
+    `call` stays a legacy `fellThrough` stub, never produced by
+    `validate`). -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
@@ -75,6 +77,7 @@ inductive CStmt : Type
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)
   | call (func : String) (args : List String)
+  | callRet (dst func : String) (args : List String)
   | return_ (val : CExpr)
 
 /-- A validated function: name, params, return type, and body. -/

@@ -3,11 +3,12 @@ Circe.Validator — the verified gate `validate : RawIR → Option Func`.
 
 Rejects aliasing/out-of-subset inputs loudly with actionable codes
 (`alias-reject`, `escape-reject`, `oob-possible`, `out-of-subset`).
-Phase 4: enforces docs/CIR_SUBSET.md + docs/OWNERSHIP.md §4 rules and the
-oracle `noalias` requirement, mapping the four admitted corpus shapes to
+Enforces docs/SUBSET.md rules and the
+oracle `noalias` requirement, mapping the admitted corpus shapes to
 their canonical `Func`s (the only `Func`s `Emit` handles). Anything else
 is rejected with a precise code + message (golden-tested in
-`tests/lean/GoldenPhase4.lean`).
+`tests/lean/GoldenPhase4.lean`, `GoldenPhase6.lean`, `GoldenPhase7.lean`,
+`GoldenCalls.lean`).
 
 Check order (first hit wins — rejection codes are priority-ordered):
 1. oracle wiring (fact must name this function);
@@ -31,7 +32,7 @@ import Circe.Parser
 import Circe.Oracle
 import Circe.Emit
 
-/-- Machine-readable rejection codes (see docs/CIR_SUBSET.md). -/
+/-- Machine-readable rejection codes (see docs/SUBSET.md). -/
 inductive RejectCode : Type
   | aliasReject
   | escapeReject
@@ -56,16 +57,34 @@ def reject (func : String) (code : RejectCode) (message : String) :
 
 /-! ## Shape predicates over extracted features -/
 
+/-- The text calls function `fname` (`cir.call @fname(` with paren, so a
+    callee merely named `@add_vec` does not match `@add`). -/
+def callsFunc (text fname : String) : Bool :=
+  containsSubstr text ("cir.call @" ++ fname ++ "(")
+
+/-- A line performing a non-heap call (`malloc`/`free` plumbing excluded —
+    those are gated by the vec shape instead). -/
+def lineHasNonHeapCall (line : String) : Bool :=
+  containsSubstr line "cir.call @" &&
+  !containsSubstr line "cir.call @malloc(" &&
+  !containsSubstr line "cir.call @free("
+
+/-- Whole-text wrapper (cf. `hasWrappingSignedArith`). -/
+def hasNonHeapCall (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasNonHeapCall
+
 /-- Pointer params (discipline applies). -/
 def ptrParams (raw : RawFunc) : List RawParam :=
   raw.params.filter (fun p => isPtrType p.ctype)
 
-/-- `add`: two by-value `i32`s, `i32` return, `nsw` add, no control flow. -/
+/-- `add`: two by-value `i32`s, `i32` return, `nsw` add, no control flow,
+    no calls (leaf: S1 callers target it, recursion is rejected below). -/
 def isAddShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [a, b] =>
     isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
     containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.for" &&
     !containsSubstr raw.text "cir.if" &&
@@ -83,6 +102,7 @@ def isIncrShape (raw : RawFunc) : Bool :=
     (match ptrInner p.ctype with | some inner => isI32 inner | none => false) &&
     raw.ret == "" &&
     containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.for" &&
     !containsSubstr raw.text "cir.if" &&
@@ -97,6 +117,7 @@ def isChooseShape (raw : RawFunc) : Bool :=
     isPtrType x.ctype && isPtrType y.ctype &&
     (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
     containsSubstr raw.text "cir.ternary" &&
+    !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.for" &&
     !containsSubstr raw.text "cir.while" &&
     !containsSubstr raw.text "cir.ptr_stride" &&
@@ -111,6 +132,7 @@ def isSumShape (raw : RawFunc) : Bool :=
     isU32 raw.ret &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
+    !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.get_member"
   | _ => false
@@ -153,6 +175,46 @@ def freeCallCount (text : String) : Nat :=
   ((text.splitOn "\n").filter (fun line =>
     containsSubstr line "cir.call @free(")).length
 
+/-! ## S1: caller shapes (DAG calls into admitted leaves) -/
+
+/-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
+    (exactly the admitted leaf; arithmetic lives in the callee, so no
+    local `nsw`), no self-call (recursion rejected), no other callees. -/
+def isAddCallerShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x, y, z] =>
+    isI32 x.ctype && isI32 y.ctype && isI32 z.ctype && isI32 raw.ret &&
+    callsFunc raw.text "add" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text "sum_array" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `sum_caller`: `noalias` pointer + length, `u32` return, single call to
+    `@sum_array` (the loop lives in the callee, so no local `cir.for`). -/
+def isSumCallerShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, n] =>
+    isPtrType a.ctype && isLengthType n.ctype && !isPtrType n.ctype &&
+    isU32 raw.ret &&
+    callsFunc raw.text "sum_array" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text "add" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
 /-- `vec_alloc`: length param, `u32` return, `malloc` + bounded `cir.for`
     loops over `cir.ptr_stride` + exactly one `free` call. -/
 def isVecShape (raw : RawFunc) : Bool :=
@@ -165,6 +227,7 @@ def isVecShape (raw : RawFunc) : Bool :=
     !(1 < freeCallCount raw.text) &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
+    !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.get_member" &&
     !containsSubstr raw.text "cir.switch"
@@ -188,7 +251,7 @@ def lineHasWrappingSignedArith (line : String) : Bool :=
 def hasWrappingSignedArith (text : String) : Bool :=
   (text.splitOn "\n").any lineHasWrappingSignedArith
 
-/-- First forbidden construct found (all `outOfSubset` in v0.1), if any. -/
+/-- First forbidden construct found (all `outOfSubset`), if any. -/
 def forbiddenOp (text : String) : Option String :=
   if containsSubstr text "cir.try" then some "exception handling (`cir.try`/cleanup/EH)"
   else if containsSubstr text "landingpad" then some "exception handling (landingpad)"
@@ -253,26 +316,33 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { sumFunc with name := raw.name }
       else if isVecShape raw then
         .ok { vecFunc with name := raw.name }
+      else if isAddCallerShape raw then
+        .ok { addCallerFunc with name := raw.name }
+      else if isSumCallerShape raw then
+        .ok { sumCallerFunc with name := raw.name }
+      else if callsFunc raw.text raw.name then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls itself (recursive call): S1 admits DAG calls into call-free leaves only (see docs/ROADMAP.md S1)"
+      else if hasNonHeapCall raw.text then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only), outside the Ownable-C subset (see docs/SUBSET.md)"
       else if containsSubstr raw.text "malloc" &&
           !containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls `malloc` without a matching `free`: heap blocks must be freed exactly once on every path (strict linear discipline, see docs/OWNERSHIP.md rule 8 and docs/ROADMAP.md)"
+          s!"out-of-subset: function '{raw.name}' calls `malloc` without a matching `free`: heap blocks must be freed exactly once on every path (strict linear discipline, see docs/SUBSET.md rule 8 and docs/ROADMAP.md)"
       else if 1 < freeCallCount raw.text then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls `free` twice: double-`free` is rejected (heap blocks are freed exactly once, see docs/OWNERSHIP.md rule 8)"
+          s!"out-of-subset: function '{raw.name}' calls `free` twice: double-`free` is rejected (heap blocks are freed exactly once, see docs/SUBSET.md rule 8)"
       else if containsSubstr raw.text "malloc" ||
           containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` shape (see docs/ROADMAP.md)"
-      else if containsSubstr raw.text "cir.call" then
-        reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses function call (calls land in Phase 5+), outside the v0.1 Ownable-C subset (see docs/CIR_SUBSET.md)"
       else if isPtrType raw.ret then
         reject raw.name .escapeReject
-          s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/OWNERSHIP.md rule 6)"
+          s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/SUBSET.md rule 6)"
       else if containsSubstr raw.text "cir.ptr_stride" then
         reject raw.name .oobPossible
-          s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/OWNERSHIP.md rule 4)"
+          s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/SUBSET.md rule 4)"
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`): admitted in `Circe.Base` but pending `Eval`/`Emit` (after v0.1)"
@@ -330,6 +400,18 @@ example : runPipelineOpt (include_str "../tests/cir/sum_array.cir")
 example : runPipelineOpt (include_str "../tests/cir/vec_alloc.cir")
     ⟨"vec_alloc", .unknown⟩
     = some (include_str "../tests/golden/VecAlloc.lean") := by native_decide
+
+/-- The checked-in `add_caller` CIR (two DAG calls into `add`) validates
+    and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/add_caller.cir")
+    ⟨"add_caller", .unknown⟩
+    = some (include_str "../tests/golden/AddCaller.lean") := by native_decide
+
+/-- The checked-in `sum_caller` CIR (single DAG call into `sum_array`)
+    validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/sum_caller.cir")
+    ⟨"sum_caller", .noalias⟩
+    = some (include_str "../tests/golden/SumCaller.lean") := by native_decide
 
 /-- The checked-in struct corpus is rejected (struct ops pending). -/
 example : runPipelineOpt (include_str "../tests/cir/struct_by_value.cir")

@@ -22,10 +22,10 @@ echo "== extended reject suite (Phase 6) =="
 lake env lean --run tests/lean/GoldenPhase6.lean
 
 echo "== roadmap + docs linkage =="
-grep -q "uniquely-owned heap" docs/ROADMAP.md
-grep -q "Stacked Borrows" docs/ROADMAP.md
+grep -q "vec_alloc" docs/SUBSET.md
+grep -q "Stacked-Borrows" docs/ROADMAP.md
 grep -q "C++-lite" docs/ROADMAP.md
-grep -q "cir.br" docs/CIR_SUBSET.md
+grep -q "cir.br" docs/SUBSET.md
 grep -q "GOLDEN6-OK" tools/check-phase6.sh
 echo "roadmap + docs in sync"
 

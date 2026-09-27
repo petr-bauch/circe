@@ -40,6 +40,11 @@ chains, `cir.for` regions + `cir.inc`, `cir.ptr_stride`,
 `cir.add` (wrapping), `cir.scope`, heap idioms (`cir.call @malloc`
 + `n*sizeof`, `get_global` plumbing, two `cir.for` loops, one
 `cir.call @free` counted by call site).
+Caller idioms (S1, from `tests/cir/{add_caller,sum_caller}.cir`):
+two `cir.call @add` sites (caller-local `t`, then final), single
+`cir.call @sum_array` delegation, `cir.func private @add/@sum_array`
+declarations (not call sites), no local arithmetic/loop ops (those
+live in the callee).
 
 ## Trust boundary
 
@@ -53,10 +58,10 @@ mismatch = P0.
 
 ## E2E harness
 
-`tools/check-phase7.sh [trials]` (current superset; renamed per
-ROADMAP.md S0): build → regenerate `out/` (`tools/GenOut.lean`,
-single source of truth) → golden `diff` (`tests/golden/*.lean`) →
+`tools/check.sh [trials]` (single entry; `check-phase*.sh` kept for
+compat): build → regenerate `out/` (`tools/GenOut.lean`,
+single source of truth) → golden `diff`s (`tests/golden/*.lean`) →
 `lake env lean` typecheck → native drivers → `Diff*` fuzz vs native →
-`GoldenPhase*` pipeline + rejection suites → emitted-body `grep`
-correspondence → specs typecheck → `PHASE7-OK`.
+`GoldenPhase*`/`GoldenCalls` pipeline + rejection suites →
+emitted-body `grep` correspondence → specs typecheck → `CHECK-OK`.
 `lake` does not track `include_str` deps, so `diff` enforces drift.

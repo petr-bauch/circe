@@ -8,31 +8,34 @@ Short-term scope (locked 2026-09-27): C + struct-by-value only,
 calls first, `cir_simp` now + DSL next, spec skeletons in
 `out/*_Spec.lean`.
 
-## S0. Docs slim + harness rename (this change)
+## S0. Docs slim + harness rename — DONE (2026-09-27)
 
-Replace phase-history docs with `OVERVIEW / SUBSET / PIPELINE /
-VERIFYING / ROADMAP` (+ `PINS.md` kept). Archive `PLAN.md`,
+Replaced phase-history docs with `OVERVIEW / SUBSET / PIPELINE /
+VERIFYING / ROADMAP` (+ `PINS.md` kept); archived `PLAN.md`,
 `CIR_SUBSET.md`, `OWNERSHIP.md`, `SEMANTICS.md` to `docs/archive/`.
-Rename `tools/check-phase7.sh` to `tools/check.sh` as the single
-superset entry (thin wrappers kept for compat if needed).
-Acceptance: `lake build` green, `tools/check.sh 100` green,
-no references to removed docs from Lean comments required for build
-(follow-up cleans comments).
+`tools/check.sh` is the single superset entry (old `check-phase*.sh`
+kept for compat); CI runs `check.sh 100`.
 
-## S1. Multi-function + `cir.call` (first syntax priority)
+## S1. Multi-function + `cir.call` — DONE (2026-09-27)
 
-DAG-only calls, `Result`-bind translation. Callee `fwd` becomes a
-Lean call; caller threads `←` binds; `emit_correct` composes per
-callee lemmas. Recursion / mutual recursion / function pointers
-rejected with dedicated messages.
-CoreIR: `CStmt.call` gains real semantics (today a stub);
-`Eval` threads env + fuel across the call; `matchFrag` admits
-call-graph shapes with pinned callee names; `validate` checks
-acyclicity + callee admitted + signature match.
-Acceptance: two-function corpus (e.g. `add` caller + `sum` caller)
-translates, `emit_correct_call` proved, golden pair diffs,
-`Diff` fuzz vs native covers cross-function values, rejection
-goldens for recursion + unknown callee.
+DAG-only calls, `Result`-bind translation. Design deltas from the
+sketch: new `CStmt.callRet dst f args` (legacy `call` stays a stub,
+never produced by `validate`); `Eval` gains a non-breaking program
+layer (`Prog`, `findFunc`, `lookupArgs`, `evalProgStmt`,
+`evalProgFunc`, + `seq`/`return` composition helpers) — depth-1
+dispatch to call-free callees via the old `evalFuncFuel`, so no
+existing lemma changed signature. `matchFrag` admits the two caller
+shapes (bodies matched in a nested `match`: list patterns nested
+inside `⟨⟩` Func patterns hit a Lean parser quirk). Leaves exclude
+non-heap calls, so DAG holds by construction (no cycle expressible).
+Rendered callers stay self-contained (`out/` sources lack oleans for
+cross-file imports): leaf `Base` bodies inlined, call structure
+certified by `addCallerFwd_as_calls` / `sumCallerFwd_is_call`.
+Acceptance met: `add_caller` + `sum_caller` corpus (real CIRGen output,
+`cir-opt` VERIFY-OK) translates, `evalProgFunc_addCaller` /
+`evalProgFunc_sumCaller` proved, golden diffs, `DiffCalls` fuzz vs
+native (tamper-checked), `GoldenCalls` 7/7 (recursion, unknown callee,
+misshapen caller, call-in-leaf, call-escape), `CHECK-OK`.
 
 ## S2. Struct-by-value
 

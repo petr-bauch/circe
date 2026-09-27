@@ -52,6 +52,11 @@ tools/check-phase6.sh [trials]
 # golden + heap rejection suite, vec emitted-body correspondence,
 # vec specs typecheck)
 tools/check-phase7.sh [trials]
+
+# End-to-end (single entry point): phase-7 pipeline plus the S1 DAG-call
+# fragment (caller goldens, DiffCalls fuzz vs native, 7-check golden +
+# call rejection suite, caller emitted-body correspondence)
+tools/check.sh [trials]
 ```
 
 Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`
