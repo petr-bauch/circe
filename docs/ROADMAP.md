@@ -107,15 +107,29 @@ Remaining widths work (deferred): small-width casts, 64-bit
 loops/arrays/heap/structs, `checkedNeg`/`Div` at 64 bits, unifying the
 32/64 checked-op lemmas behind one width parameter.
 
-## S4. Tactics stage 1 + spec skeletons (parallelizable after S1)
+## S4. Tactics stage 1 + spec skeletons — DONE (2026-09-27)
 
-Grow `cir_simp` (call-unfold, struct-field, wider-width, vec rules;
-`Result`-bind automation) and land `out/*_Spec.lean` stubs:
-signature + body reference + edge list + prop-test entry.
-Acceptance: each golden has a `_Spec.lean` stub that typechecks;
-`VERIFYING.md` example uses a generated stub; at least one existing
-spec (`sum` or `vec`) refactored onto the new `cir_simp` set with a
-shorter proof.
+Grew `cir_simp` (S4): call-unfold (`addCallerFwd_as_calls`,
+`sumCallerFwd_is_call`; `Tactics` now imports `Circe.Emit` for the
+bridge lemmas), struct-field (`pointTranslate_ok`, `pointTranslate_err_x/y`,
+`translateFwd_*` bridges), wider-width (`inInt32Range`/`inInt64Range` +
+iffs, `checkedAddI32/I64` ok/err), vec rules (`vecFillSumU32_correct`,
+`vecNew`/`vecSet`/`vecGet`/`vecFree`, `prefixSumU32_full` + nil/zero/cons),
+S3a flow folds (`nestedSumU32`, `rowU32`, `skipSumU32`, `findEqOut`,
+`findIdxU32`), `Result`-bind automation (`result_bind_assoc`,
+`result_pure_bind` beside the bind/map computation rules). One
+deliberate omission: the bare `vecFillSumU32` unfold is *not* in the
+set — it beats the `vecFillSumU32_correct` bridge in `simp` and stalls
+`vec_correct`; the bridge alone fires.
+Landed `out/*_Spec.lean` stubs (14, via `Circe.Emit.emitSpec` +
+`GenOut`, dispatched on `matchFrag` like `emitFunc`): signature +
+body reference + edge list + prop-test entry (`_check : Bool`, compared
+with the `repr`-pretty-`==` the `Diff*` fuzzers use since `Except`
+has no `DecidableEq` for `decide`).
+Acceptance met: all 14 stubs typecheck, all 14 `_check` entries evaluate
+to `true` (asserted in `check.sh`); `VERIFYING.md` example uses the
+generated `SumArray` stub; `vec_correct` refactored onto the new set
+(manual bridge listing → `cir_simp` + take fact, 11 lines → 8).
 
 ## S5. Tactics stage 2: loop + fuel + forward/backward helpers
 

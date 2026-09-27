@@ -24,6 +24,10 @@
 #    64-bit golden pipeline + rejection suite.
 # 8. Asserts the emitted bodies the S3b proofs reason about are exactly
 #    the golden-pinned text.
+# 9. (S4) Regenerates the 14 `out/*_Spec.lean` stubs, asserts all exist
+#    and typecheck, asserts `cir_simp` covers call-unfold / struct-field
+#    / wider-width / vec rules, and evaluates every stub prop entry
+#    (`_check`) to `true`.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -160,5 +164,38 @@ echo "== emitted-body correspondence (S3b emit_correct transfer) =="
 grep -qF "checkedAddI64 a b" out/Add64.lean
 grep -qF ".ok (a + b)" out/Addu64.lean
 echo "emitted 64-bit bodies match Emit assumptions"
+
+echo "== regenerate out/ (S4 spec stubs) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== spec stub existence + typecheck (14 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 14 ] || { echo "expected 14 spec stubs"; exit 1; }
+for f in out/*_Spec.lean; do lake env lean "$f"; done
+echo "all 14 spec stubs typecheck"
+
+echo "== cir_simp coverage (S4 growth) =="
+grep -qF "addCallerFwd_as_calls, sumCallerFwd_is_call" Circe/Tactics.lean
+grep -qF "pointTranslate_ok, pointTranslate_err_x" Circe/Tactics.lean
+grep -qF "checkedAddI64_ok, checkedAddI64_err" Circe/Tactics.lean
+grep -qF "vecFillSumU32_correct" Circe/Tactics.lean
+grep -qF "result_bind_assoc, result_pure_bind" Circe/Tactics.lean
+echo "cir_simp covers call-unfold, struct-field, wider-width, vec rules"
+
+echo "== spec stub contents (signature + body ref + edges + prop entry) =="
+grep -qF "_spec_fwd" out/SumArray_Spec.lean
+grep -qF "_spec_edges" out/SumArray_Spec.lean
+grep -qF "_spec_check" out/SumArray_Spec.lean
+grep -qF "prefixSumU32" out/SumArray_Spec.lean
+echo "spec stubs carry the required sections"
+
+echo "== spec stub prop entries evaluate true =="
+for f in out/*_Spec.lean; do
+  check=$(grep -oE '[a-z_0-9]+_spec_check' "$f" | head -1)
+  tmp="$WORKDIR/spec_eval_tmp.lean"
+  cp "$f" "$tmp"
+  echo "#eval $check" >> "$tmp"
+  lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
+done
+echo "all 14 spec prop entries true"
 
 echo "CHECK-OK"

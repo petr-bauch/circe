@@ -121,18 +121,18 @@ theorem sum_correct_oob (l : List (BitVec 32)) (n : BitVec 32)
     heap program delivers the `List.sum` of indices `[0, n)` (wrapping
     `u32` arithmetic is exactly `BitVec` addition). Applies verbatim to
     `out/VecAlloc.lean:vec_alloc_fwd` (body-identical:
-    `vecFillSumU32 n.toNat`). -/
+    `vecFillSumU32 n.toNat`). S4: stated via the grown `cir_simp` set
+    (`vecFillSumU32_correct` + `prefixSumU32_take_sum` fire
+    automatically; only the take-length fact is manual). -/
 theorem vec_correct (n : Nat) :
     vecFillSumU32 n = .ok (((List.range n).map (BitVec.ofNat 32)).sum) := by
   have hlen : ((List.range n).map (BitVec.ofNat 32)).length = n := by simp
   have htake : ((List.range n).map (BitVec.ofNat 32)).take n =
       (List.range n).map (BitVec.ofNat 32) := by
-    have h2 : ((List.range n).map (BitVec.ofNat 32)).take
-        (((List.range n).map (BitVec.ofNat 32)).length) =
-        (List.range n).map (BitVec.ofNat 32) :=
-      List.take_length
+    have h2 := List.take_length (l := (List.range n).map (BitVec.ofNat 32))
     rwa [hlen] at h2
-  rw [vecFillSumU32_correct, prefixSumU32_take_sum, htake]
+  cir_simp
+  rw [htake]
 
 /-- The empty heap program sums to zero. -/
 theorem vec_empty : vecFillSumU32 0 = .ok 0 := by

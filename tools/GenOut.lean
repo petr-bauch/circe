@@ -1,14 +1,20 @@
 -- Generator for the emitted files (Phases 4+7, S1 callers, S2 structs,
--- S3a control flow, S3b 64-bit widths).
+-- S3a control flow, S3b 64-bit widths, S4 spec stubs).
 -- Run from the repo root: `lake env lean --run tools/GenOut.lean`
 -- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}.lean`
--- from `Circe.Emit.emitFunc` (single source of truth;
--- `tests/golden/*.lean` pins the bytes).
+-- plus `out/{Add,Incr,Choose,SumArray,VecAlloc,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}_Spec.lean`
+-- from `Circe.Emit.emitFunc` / `Circe.Emit.emitSpec` (single source of truth;
+-- `tests/golden/*.lean` pins the forward bytes).
 import Circe.Emit
 
 def emitOrDie (f : Func) : IO EmittedFunc := do
   match emitFunc f with
   | .ok e => pure e
+  | .error (.notFragment msg) => throw (IO.userError s!"rejected: {msg}")
+
+def specOrDie (f : Func) : IO String := do
+  match emitSpec f with
+  | .ok s => pure s
   | .error (.notFragment msg) => throw (IO.userError s!"rejected: {msg}")
 
 def main : IO Unit := do
@@ -40,6 +46,34 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Cls.lean" (emitFileText (.ok cls))
   IO.FS.writeFile "out/Add64.lean" (emitFileText (.ok add64))
   IO.FS.writeFile "out/Addu64.lean" (emitFileText (.ok addu64))
+  let addSpec ← specOrDie addFunc
+  let incrSpec ← specOrDie incrFunc
+  let chooseSpec ← specOrDie chooseFunc
+  let sumSpec ← specOrDie sumFunc
+  let vecSpec ← specOrDie vecFunc
+  let addCallerSpec ← specOrDie addCallerFunc
+  let sumCallerSpec ← specOrDie sumCallerFunc
+  let translateSpec ← specOrDie translateFunc
+  let nestedSpec ← specOrDie nestedFunc
+  let skipSpec ← specOrDie skipFunc
+  let findEqSpec ← specOrDie findEqFunc
+  let clsSpec ← specOrDie clsFunc
+  let add64Spec ← specOrDie add64Func
+  let addu64Spec ← specOrDie addu64Func
+  IO.FS.writeFile "out/Add_Spec.lean" addSpec
+  IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
+  IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
+  IO.FS.writeFile "out/SumArray_Spec.lean" sumSpec
+  IO.FS.writeFile "out/VecAlloc_Spec.lean" vecSpec
+  IO.FS.writeFile "out/AddCaller_Spec.lean" addCallerSpec
+  IO.FS.writeFile "out/SumCaller_Spec.lean" sumCallerSpec
+  IO.FS.writeFile "out/StructByValue_Spec.lean" translateSpec
+  IO.FS.writeFile "out/NestedSum_Spec.lean" nestedSpec
+  IO.FS.writeFile "out/SkipSum_Spec.lean" skipSpec
+  IO.FS.writeFile "out/FindEq_Spec.lean" findEqSpec
+  IO.FS.writeFile "out/Cls_Spec.lean" clsSpec
+  IO.FS.writeFile "out/Add64_Spec.lean" add64Spec
+  IO.FS.writeFile "out/Addu64_Spec.lean" addu64Spec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -65,4 +99,4 @@ def main : IO Unit := do
     throw (IO.userError "add64 must not have a backward definition")
   if addu64.backward.isSome then
     throw (IO.userError "addu64 must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean + 14 *_Spec.lean stubs"

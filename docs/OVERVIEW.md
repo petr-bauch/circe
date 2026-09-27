@@ -28,8 +28,11 @@ input rejects loudly, never silently models memory.
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), verified gate (`validate` + oracle verdicts), emitter
-(`Emit`), `cir_simp` tactic, specs (`incr_correct`,
-`choose_lens_laws`, `sum_correct`, `vec_correct`).
+(`Emit`), grown `cir_simp` tactic (call-unfold, struct-field,
+wider-width, vec rules, bind automation), specs (`incr_correct`,
+`choose_lens_laws`, `sum_correct`, `vec_correct` — the last refactored
+onto the grown set) plus 14 generated `out/*_Spec.lean` stubs
+(signature + body reference + edge list + prop-test entry).
 
 ## Pipeline
 
@@ -51,7 +54,9 @@ native control-flow drivers → `DiffFlow` fuzz vs native →
 `GoldenFlow` pipeline + rejection suite → emitted-body correspondence
 → 64-bit golden `diff`s → native 64-bit drivers → `DiffWidth` fuzz
 vs native (boundary values per width) → `GoldenWidth` pipeline +
-rejection suite → emitted-body correspondence → `CHECK-OK`).
+rejection suite → emitted-body correspondence → S4 spec-stub
+regeneration (14/14 typecheck, `cir_simp` coverage greps, 14/14
+`_check` entries `true`) → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

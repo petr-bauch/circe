@@ -16,6 +16,9 @@ struct-by-value, S3a control flow).
 - `emitFunc` renders an accepted `Func` to `EmittedFunc` file text
   (`out/*.lean` via `tools/GenOut.lean`); anything else is rejected with
   `EmitError.notFragment` (loudly — never silently modeled).
+- `emitSpec` renders the S4 spec stub (`out/*_Spec.lean`: signature +
+  body reference + edge list + prop-test entry), dispatched on
+  `matchFrag` exactly like `emitFunc`.
 
 Trust note: the *rendering* (Value-tag erasure to `BitVec` text) is
 trusted, like the parser; what is verified is that the rendered
@@ -3207,6 +3210,335 @@ def emitClsText (name : String) : String :=
   ++ "  if x == 0 then .ok 10\n"
   ++ "  else if x == 1 then .ok 20\n"
   ++ "  else .ok 30\n"
+
+/-! ## S4 spec stubs (`out/*_Spec.lean`)
+
+Unverified scaffolding, not trusted code: each stub re-states the
+function signature, names the `Base`-op body reference (the same body
+the emitted forward uses — body identity is the transfer argument in
+`docs/VERIFYING.md`), lists edge cases, and provides a `Diff`-style
+prop-test entry (`_check : Bool`). The user copies the stub into
+`Circe.Specs` (or a per-project spec file) and fills the equation;
+the `_check` placeholder states whatever equation is already known
+(self-agreement where the spec is still TODO, the real equation for
+`sum`/`vec`). Out-of-subset input never reaches here: `emitSpec`
+dispatches on `matchFrag`, exactly like `emitFunc`. -/
+
+/-- File header shared by all rendered spec stubs. -/
+def emitSpecHeader : String :=
+  "-- Generated spec stub by the Circe emitter (S4) from validated CoreIR.\n"
+  ++ "-- Unverified scaffolding: copy into `Circe.Specs` (or a per-project spec\n"
+  ++ "-- file) and fill the equation. The `_fwd` mirror below is body-identical\n"
+  ++ "-- to the emitted forward (same `Base` op); specs proved against it\n"
+  ++ "-- transfer verbatim by body identity (see docs/VERIFYING.md).\n"
+
+/-- Spec stub for the `add` shape. -/
+def emitAddSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `int32_t {name}(int32_t a, int32_t b)`.\n"
+  ++ s!"    Base body reference: `checkedAddI32` (cf. emitted `{name}_fwd`, `emit_correct_add`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 a b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, `INT32_MAX`/`INT32_MIN` boundaries, wrap. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 0), (0x7FFFFFFF, 1),\n"
+  ++ "   (0x80000000, 0), (0x80000000, 0xFFFFFFFF), (0xFFFFFFFF, 0xFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the equation, e.g. ok implies `r = a + b`\n"
+  ++ "    with the `nsw` certificate (see `incr_correct`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedAddI32 p.1 p.2)).pretty\n"
+
+/-- Spec stub for the `incr` shape. -/
+def emitIncrSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `void {name}(int32_t *p)` (`*p = *p + 1`, functionalized).\n"
+  ++ s!"    Base body reference: `checkedIncrI32` (cf. emitted `{name}_fwd`, `emit_correct_incr`). -/\n"
+  ++ s!"def {name}_spec_fwd (p : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedIncrI32 p\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, `INT32_MAX` (overflow), `INT32_MIN`, `-1`. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to `incr_correct` (successor + certificate). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p => (repr ({name}_spec_fwd p)).pretty == (repr (checkedIncrI32 p)).pretty\n"
+
+/-- Spec stub for the 64-bit `add64` shape (S3b). -/
+def emitAdd64SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `int64_t {name}(int64_t a, int64_t b)`.\n"
+  ++ s!"    Base body reference: `checkedAddI64` (cf. emitted `{name}_fwd`, `emit_correct_add64`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  checkedAddI64 a b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, `INT64_MAX`/`INT64_MIN` boundaries, wrap. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64 × BitVec 64) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFFFFFFFFFF, 0), (0x7FFFFFFFFFFFFFFF, 1),\n"
+  ++ "   (0x8000000000000000, 0), (0x8000000000000000, 0xFFFFFFFFFFFFFFFF),\n"
+  ++ "   (0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err equation (see `emit_correct_add64_ok`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedAddI64 p.1 p.2)).pretty\n"
+
+/-- Spec stub for the 64-bit `addu64` shape (S3b, wrapping). -/
+def emitAddu64SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint64_t {name}(uint64_t a, uint64_t b)` (wrapping, never fails).\n"
+  ++ s!"    Base body reference: `a + b` (cf. emitted `{name}_fwd`, `emit_correct_addu64`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  .ok (a + b)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, `UINT64_MAX` wrap edges. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64 × BitVec 64) :=\n"
+  ++ "  [(0, 0), (1, 2), (0xFFFFFFFFFFFFFFFF, 0), (0xFFFFFFFFFFFFFFFF, 1),\n"
+  ++ "   (0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: wrapping equation holds on every edge (this one is\n"
+  ++ "    already the spec — unsigned addition never fails). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr ((Except.ok (p.1 + p.2) : Result (BitVec 64)))).pretty\n"
+
+/-- Spec stub for the `choose` shape (forward + backward). -/
+def emitChooseSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: borrow-return `{name}(bool b, int32_t *x, int32_t *y)`.\n"
+  ++ s!"    Base body references: `if b then x else y` / back-propagation pair\n"
+  ++ s!"    (cf. emitted `{name}_fwd` / `{name}_back`, `choose_lens_laws`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Bool) (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (if b then x else y)\n"
+  ++ s!"def {name}_spec_back (b : Bool) (x y ret : BitVec 32) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  .ok (if b then (ret, y) else (x, ret))\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: both selectors, zero / distinct / max inputs. -/\n"
+  ++ s!"def {name}_spec_edges : List (Bool × BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(true, 0, 0), (true, 1, 2), (false, 1, 2), (false, 0xFFFFFFFF, 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: get-put holds on every edge (see `choose_lens_laws`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_back t.1 t.2.1 t.2.2 (if t.1 then t.2.1 else t.2.2))).pretty\n"
+  ++ s!"      == (repr ((Except.ok (t.2.1, t.2.2) : Result (BitVec 32 × BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `sum_array` shape. -/
+def emitSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t *a, uint32_t n)` (length-paired, wrapping).\n"
+  ++ s!"    Base body reference: `prefixSumU32` (cf. emitted `{name}_fwd`, `emit_correct_sum`). -/\n"
+  ++ s!"def {name}_spec_fwd " ++ "{n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
+  ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton / max-fuel (length = bound). -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32)) :=\n"
+  ++ "  [[], [0], [1], [1, 2, 3], [0xFFFFFFFF, 1]]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the `List.sum` equation holds on every edge\n"
+  ++ "    (this one is already the spec — see `sum_correct`; copy into\n"
+  ++ "    `Circe.Specs` to build on it). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun l =>\n"
+  ++ "    (repr (prefixSumU32 l l.length)).pretty == (repr ((l.take l.length).sum)).pretty\n"
+
+/-- Spec stub for the `vec_alloc` shape. -/
+def emitVecSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (allocate, fill with indices, sum, free).\n"
+  ++ s!"    Base body reference: `vecFillSumU32` (cf. emitted `{name}_fwd`, `emit_correct_vec`). -/\n"
+  ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  vecFillSumU32 n.toNat\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton / small / page-ish. -/\n"
+  ++ s!"def {name}_spec_edges : List Nat :=\n"
+  ++ "  [0, 1, 2, 10, 256]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the index-sum equation holds on every edge\n"
+  ++ "    (this one is already the spec — see `vec_correct`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun n =>\n"
+  ++ "    (repr (vecFillSumU32 n)).pretty\n"
+  ++ "      == (repr ((Except.ok (((List.range n).map (BitVec.ofNat 32)).sum) : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `add_caller` shape (S1 DAG calls). -/
+def emitAddCallerSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `{name}(x, y, z)` = two DAG calls into `add_fwd`.\n"
+  ++ s!"    Base body reference: two sequenced `checkedAddI32` binds, leaf bodies\n"
+  ++ s!"    inlined (cf. emitted `{name}_fwd`, `addCallerFwd_as_calls`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y z : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  do let t ← checkedAddI32 x y\n"
+  ++ "     checkedAddI32 t z\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, first-add overflow, second-add overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0, 0), (1, 2, 3), (0x7FFFFFFF, 1, 0), (0x7FFFFFFF, 0, 1), (1, 0x7FFFFFFF, 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the two-call bind structure holds on every edge\n"
+  ++ "    (cf. `addCallerFwd_as_calls`). TODO (user): fill the ok/err equation. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2)).pretty\n"
+  ++ s!"      == (repr ((checkedAddI32 t.1 t.2.1).bind fun u => checkedAddI32 u t.2.2)).pretty\n"
+
+/-- Spec stub for the `sum_caller` shape (S1 delegation). -/
+def emitSumCallerSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `{name}(a, n)` delegates to `sum_array_fwd`.\n"
+  ++ s!"    Base body reference: `prefixSumU32` (cf. emitted `{name}_fwd`, `sumCallerFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd " ++ "{n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
+  ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton / max-fuel (length = bound). -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32)) :=\n"
+  ++ "  [[], [0], [1], [1, 2, 3], [0xFFFFFFFF, 1]]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the `List.sum` equation holds on every edge\n"
+  ++ "    (cf. `sumCallerFwd_is_call`, `sum_correct`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun l =>\n"
+  ++ "    (repr (prefixSumU32 l l.length)).pretty == (repr ((l.take l.length).sum)).pretty\n"
+
+/-- Spec stub for the `translate` shape (S2 struct-by-value). -/
+def emitTranslateSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `struct Point {name}(struct Point p, int32_t dx, int32_t dy)`.\n"
+  ++ s!"    Base body reference: `pointTranslate` (cf. emitted `{name}_fwd`, `evalFuncFuel_translate`). -/\n"
+  ++ s!"def {name}_spec_fwd (p : Point) (dx dy : BitVec 32) : Result Point :=\n"
+  ++ "  pointTranslate p dx dy\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, x-overflow, y-overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (Point × BitVec 32 × BitVec 32) :=\n"
+  ++ "  [((⟨0, 0⟩ : Point), 0, 0), ((⟨1, 2⟩ : Point), 3, 4),\n"
+  ++ "   ((⟨0x7FFFFFFF, 0⟩ : Point), 1, 0), ((⟨0, 0x7FFFFFFF⟩ : Point), 0, 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `pointTranslate` on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err bridges (`translateFwd_ok_bridge`,\n"
+  ++ "    `translateFwd_err_x/y` — all three fire in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2)).pretty\n"
+  ++ s!"      == (repr (pointTranslate t.1 t.2.1 t.2.2)).pretty\n"
+
+/-- Spec stub for the `nested_sum` shape (S3a). -/
+def emitNestedSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t n, uint32_t m)` (nested bounded loops, wrapping).\n"
+  ++ s!"    Base body reference: `nestedSumU32` (cf. emitted `{name}_fwd`, `emit_correct_nested`). -/\n"
+  ++ s!"def {name}_spec_fwd (n m : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (nestedSumU32 n.toNat m.toNat)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty outer / empty inner / unit / small square. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (0, 5), (5, 0), (1, 1), (3, 4), (10, 10)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `nestedSumU32` on every edge.\n"
+  ++ "    TODO (user): strengthen to the double-fold equation. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty\n"
+  ++ s!"      == (repr ((Except.ok (nestedSumU32 p.1.toNat p.2.toNat) : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `skip_sum` shape (S3a break/continue). -/
+def emitSkipSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (`continue` at 2, `break` at 8).\n"
+  ++ s!"    Base body reference: `skipSumU32` (cf. emitted `{name}_fwd`, `emit_correct_skip`). -/\n"
+  ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (skipSumU32 n.toNat)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton / the skipped 2 / the break cap 8–9 / above cap. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 2, 3, 8, 9, 100]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `skipSumU32` on every edge.\n"
+  ++ "    TODO (user): strengthen to the capped-range equation. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun n =>\n"
+  ++ s!"    (repr ({name}_spec_fwd n)).pretty\n"
+  ++ s!"      == (repr ((Except.ok (skipSumU32 n.toNat) : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `find_eq` shape (S3a early return). -/
+def emitFindEqSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t *a, uint32_t n, uint32_t k)`\n"
+  ++ "    (first match, else length, else `OOB`).\n"
+  ++ s!"    Base body reference: `findEqOut` (cf. emitted `{name}_fwd`, `emit_correct_find`). -/\n"
+  ++ s!"def {name}_spec_fwd (a : List (BitVec 32)) (n k : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  findEqOut a n.toNat k\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton hit / hit / miss / over-long length. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 32 × BitVec 32) :=\n"
+  ++ "  [([], 0, 0), ([1], 1, 1), ([1, 2, 3], 3, 2), ([1, 2, 3], 3, 9), ([1, 2, 3], 9, 2)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `findEqOut` on every edge.\n"
+  ++ "    TODO (user): strengthen to the hit/miss/`OOB` equation. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2)).pretty\n"
+  ++ s!"      == (repr (findEqOut t.1 t.2.1.toNat t.2.2)).pretty\n"
+
+/-- Spec stub for the `cls` shape (S3a switch-as-if-chain). -/
+def emitClsSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t x)` (`switch` on 0/1 + default).\n"
+  ++ s!"    Base body reference: the if-chain (cf. emitted `{name}_fwd`, `emit_correct_cls`). -/\n"
+  ++ s!"def {name}_spec_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  if x == 0 then .ok 10\n"
+  ++ "  else if x == 1 then .ok 20\n"
+  ++ "  else .ok 30\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: both cases, default, max. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 2, 0xFFFFFFFF]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the class equation holds on every edge (this one is\n"
+  ++ "    already the spec — the if-chain is the whole body). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun x =>\n"
+  ++ s!"    (repr ({name}_spec_fwd x)).pretty\n"
+  ++ "      == (repr (((if x == (0 : BitVec 32) then (Except.ok (10 : BitVec 32)) else if x == (1 : BitVec 32) then (Except.ok (20 : BitVec 32)) else (Except.ok (30 : BitVec 32))) : Result (BitVec 32)))).pretty\n"
+
+/-- The spec emitter: accepted fragment renders to stub text; everything
+    else is rejected loudly (never silently modeled). -/
+def emitSpec (f : Func) : Except EmitError String :=
+  match matchFrag f with
+  | some .add => .ok (emitAddSpecText f.name)
+  | some .add64 => .ok (emitAdd64SpecText f.name)
+  | some .addu64 => .ok (emitAddu64SpecText f.name)
+  | some .incr => .ok (emitIncrSpecText f.name)
+  | some .choose => .ok (emitChooseSpecText f.name)
+  | some .sum => .ok (emitSumSpecText f.name)
+  | some .vec => .ok (emitVecSpecText f.name)
+  | some .addCall => .ok (emitAddCallerSpecText f.name)
+  | some .sumCall => .ok (emitSumCallerSpecText f.name)
+  | some .translate => .ok (emitTranslateSpecText f.name)
+  | some .nested => .ok (emitNestedSpecText f.name)
+  | some .skip => .ok (emitSkipSpecText f.name)
+  | some .findEq => .ok (emitFindEqSpecText f.name)
+  | some .cls => .ok (emitClsSpecText f.name)
+  | none => .error (.notFragment s!"not in the admitted fragment: {f.name}")
 
 /-- The emitter: accepted fragment renders to file text; everything else
     is rejected loudly (never silently modeled). -/

@@ -3,12 +3,17 @@ Circe.Tactics — proof tactics for the Phase 5 functional-verification
 workflow (see docs/VERIFYING.md).
 
 `cir_simp` bundles the equation lemmas a user reaches for when reasoning
-about emitted code: checked-op unfoldings, `prefixSumU32` computation +
-its `List.sum` bridge, `bget`/`pointTranslate` shapes, and the `Except`
-(`Result`) bind/map computation rules. Plain `simp`/`omega`/`bv_decide`
-suffice in the common case; `cir_simp` just saves re-listing the set.
+about emitted code: checked-op unfoldings (+ ok/err + range bridges,
+32- and 64-bit), `prefixSumU32` computation + its `List.sum` bridges,
+`bget` / `pointTranslate` shapes (+ struct-field ok/err bridges),
+call-unfold (`addCallerFwd_as_calls`, `sumCallerFwd_is_call`), vector
+ops (+ whole-program bridge), S3a flow folds, and the `Except`
+(`Result`) bind/map computation rules (caller-side `←` chains compute
+by `rfl`, with assoc/pure for nested binds). Plain `simp`/`omega` /
+`bv_decide` suffice in the common case; `cir_simp` just saves
+re-listing the set.
 -/
-import Circe.Base
+import Circe.Emit
 
 /-- `Result` bind on success computes (for caller-side `←` chains). -/
 theorem result_bind_ok {α β : Type} (a : α) (f : α → Result β) :
@@ -26,12 +31,34 @@ theorem result_map_ok {α β : Type} (a : α) (f : α → β) :
 theorem result_map_err {α β : Type} (e : Panic) (f : α → β) :
     (Except.error e : Result α).map f = .error e := rfl
 
+/-- `Result` bind associates (for nested caller-side `←` chains). -/
+theorem result_bind_assoc {α β γ : Type} (a : Result α)
+    (f : α → Result β) (g : β → Result γ) :
+    (a.bind f).bind g = a.bind (fun x => (f x).bind g) := by
+  cases a <;> rfl
+
+/-- `pure` on the left of a bind computes (for `do`-desugared code). -/
+theorem result_pure_bind {α β : Type} (a : α) (f : α → Result β) :
+    (pure a : Result α).bind f = f a := rfl
+
 /-- Base `cir_simp` set, as a single simp call. Compose with plain `simp`
     for goal-specific lemmas: `cir_simp; simp [my_lemma]`. (A parameterized
     `cir_simp [...]` form is deliberately absent: `simp` argument splicing
     does not accept raw `term` lists, so composition is the interface.) -/
 macro "cir_simp" : tactic =>
-  `(tactic| simp [checkedAddI32, checkedAddI64, checkedIncrI32, checkedAddU32,
+  `(tactic| simp [checkedAddI32, checkedAddI32_ok, checkedAddI32_err,
+    inInt32Range, inInt32Range_iff,
+    checkedAddI64, checkedAddI64_ok, checkedAddI64_err,
+    inInt64Range, inInt64Range_iff,
+    checkedIncrI32, checkedAddU32,
     checkedAddU32Strict, checkedNegI32, checkedDivI32,
-    prefixSumU32, prefixSumU32_take_sum, bget, pointTranslate,
-    result_bind_ok, result_bind_err, result_map_ok, result_map_err])
+    prefixSumU32, prefixSumU32_take_sum, prefixSumU32_full,
+    prefixSumU32_nil, prefixSumU32_zero, prefixSumU32_cons, bget,
+    pointTranslate, pointTranslate_ok, pointTranslate_err_x,
+    pointTranslate_err_y, translateFwd_ok_bridge, translateFwd_err_x,
+    translateFwd_err_y,
+    addCallerFwd_as_calls, sumCallerFwd_is_call,
+    vecFillSumU32_correct, vecNew, vecSet, vecGet, vecFree,
+    nestedSumU32, rowU32, skipSumU32, findEqOut, findIdxU32,
+    result_bind_ok, result_bind_err, result_map_ok, result_map_err,
+    result_bind_assoc, result_pure_bind])

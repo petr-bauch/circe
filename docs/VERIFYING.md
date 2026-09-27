@@ -20,10 +20,15 @@ assertions in the check script.
 ## Tactics
 
 `Circe.Tactics` provides `cir_simp`: one `simp` set bundling
-checked-op unfoldings, `prefixSumU32` + sum bridge, `bget` /
-`pointTranslate`, vector ops, and `Result` bind/map computation rules
-(caller-side `←` chains compute by `rfl`). Compose with plain `simp`
-for goal-specific lemmas (`cir_simp` takes no extra args by design).
+checked-op unfoldings (+ ok/err + range bridges, 32- and 64-bit),
+`prefixSumU32` + sum bridges, `bget` / `pointTranslate` shapes (+
+struct-field ok/err bridges), call-unfold
+(`addCallerFwd_as_calls`, `sumCallerFwd_is_call`), vector ops (+ the
+whole-program bridge `vecFillSumU32_correct`), S3a flow folds, and
+`Result` bind/map computation rules (caller-side `←` chains compute
+by `rfl`, with assoc/pure for nested binds). Compose with plain
+`simp` for goal-specific lemmas (`cir_simp` takes no extra args by
+design).
 
 ```lean
 theorem sum_correct_full {n : Nat} (a : BoundedList (BitVec 32) n) :
@@ -31,18 +36,56 @@ theorem sum_correct_full {n : Nat} (a : BoundedList (BitVec 32) n) :
   cir_simp
 ```
 
+S4 shortened an existing spec onto the grown set (`vec_correct`,
+before → after):
+
+```lean
+-- before: manual bridge listing (11-line proof)
+  rw [vecFillSumU32_correct, prefixSumU32_take_sum, htake]
+-- after: bridges fire in `cir_simp`; only the take-length fact is manual
+  cir_simp
+  rw [htake]
+```
+
 Plain `simp`/`omega`/`bv_decide` suffice in the common case.
 Stage 2 (ROADMAP.md S5) adds: loop-invariant helper, fuel
 automation, forward/backward reasoning — staged after `cir_simp`
-growth (S4).
+growth (S4, done).
 
-## Spec scaffolding (ROADMAP.md S4)
+## Spec scaffolding (ROADMAP.md S4 — done)
 
-Emitter writes `out/<name>_Spec.lean` next to each forward file:
-unverified stub with the function signature, the `Base`-op body
-reference, an edge-case list (empty / singleton / max-fuel), and a
-`Diff*`-style prop-test entry. The user copies the stub into
-`Circe.Specs` (or a per-project spec file) and fills the equation.
-The check script asserts the stub exists and typechecks; the filled
-spec transfers by the same body-identity argument above.
-See ROADMAP.md S4 for acceptance.
+The emitter writes `out/<name>_Spec.lean` next to each forward file
+(14 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
+dispatched on `matchFrag` exactly like `emitFunc`): unverified stub
+with the function signature, the `Base`-op body reference, an
+edge-case list (empty / singleton / max-fuel), and a `Diff*`-style
+prop-test entry. The user copies the stub into `Circe.Specs` (or a
+per-project spec file) and fills the equation. The check script
+asserts every stub exists and typechecks and every `_check` evaluates
+to `true`; the filled spec transfers by the same body-identity
+argument above. Example (generated `out/SumArray_Spec.lean`, abridged):
+
+```lean
+import Circe.Base
+
+/-- C signature: `uint32_t sum_array(uint32_t *a, uint32_t n)` ... .
+    Base body reference: `prefixSumU32` (cf. emitted `sum_array_fwd`,
+    `emit_correct_sum`). -/
+def sum_array_spec_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=
+  .ok (prefixSumU32 a.val a.val.length)
+
+/-- Edge cases: empty / singleton / max-fuel (length = bound). -/
+def sum_array_spec_edges : List (List (BitVec 32)) :=
+  [[], [0], [1], [1, 2, 3], [0xFFFFFFFF, 1]]
+
+/-- Prop-test entry: the `List.sum` equation holds on every edge ... -/
+def sum_array_spec_check : Bool :=
+  sum_array_spec_edges.all fun l =>
+    (repr (prefixSumU32 l l.length)).pretty == (repr ((l.take l.length).sum)).pretty
+```
+
+(`repr`-pretty-`==` is the same comparison the `Diff*` fuzzers use:
+`Except` has no `DecidableEq` instance to feed `decide`, so both
+sides render before comparing.) Acceptance met: 14/14 stubs
+typecheck, 14/14 `_check` entries evaluate to `true`; `vec_correct`
+refactored shorter onto the grown set (see Tactics above).
