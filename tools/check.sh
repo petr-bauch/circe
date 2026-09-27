@@ -12,6 +12,12 @@
 #    fuzzer, and runs the struct golden pipeline + rejection suite.
 # 4. Asserts the emitted bodies the S1/S2 proofs reason about are exactly
 #    the golden-pinned text.
+# 5. Regenerates + diffs the S3a control-flow goldens, typechecks the
+#    emitted files, builds the native control-flow drivers, runs the
+#    control-flow differential fuzzer, and runs the control-flow golden
+#    pipeline + rejection suite.
+# 6. Asserts the emitted bodies the S3a proofs reason about are exactly
+#    the golden-pinned text.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -23,6 +29,10 @@ mkdir -p "$WORKDIR"
 ADD_CALLER_BIN="$WORKDIR/circe_add_caller_native"
 SUM_CALLER_BIN="$WORKDIR/circe_sum_caller_native"
 STRUCT_BIN="$WORKDIR/circe_struct_native"
+NESTED_BIN="$WORKDIR/circe_nested_native"
+SKIP_BIN="$WORKDIR/circe_skip_native"
+FIND_BIN="$WORKDIR/circe_find_native"
+CLS_BIN="$WORKDIR/circe_cls_native"
 
 tools/check-phase7.sh "$TRIALS"
 
@@ -78,5 +88,41 @@ lake env lean --run tests/lean/GoldenStruct.lean
 echo "== emitted-body correspondence (S2 emit_correct transfer) =="
 grep -qF "pointTranslate p dx dy" out/StructByValue.lean
 echo "emitted struct body matches Emit assumptions"
+
+echo "== regenerate out/ (S3a control flow) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (S3a control flow) =="
+diff -u tests/golden/NestedSum.lean out/NestedSum.lean
+diff -u tests/golden/SkipSum.lean out/SkipSum.lean
+diff -u tests/golden/FindEq.lean out/FindEq.lean
+diff -u tests/golden/Cls.lean out/Cls.lean
+echo "control-flow goldens in sync"
+
+echo "== typecheck emitted control-flow files =="
+lake env lean out/NestedSum.lean
+lake env lean out/SkipSum.lean
+lake env lean out/FindEq.lean
+lake env lean out/Cls.lean
+echo "emitted control-flow files typecheck"
+
+echo "== native control-flow drivers =="
+cc -O0 -Wall tests/c/nested_sum.c tests/diff/driver_nested.c -o "$NESTED_BIN"
+cc -O0 -Wall tests/c/skip_sum.c tests/diff/driver_skip.c -o "$SKIP_BIN"
+cc -O0 -Wall tests/c/find_eq.c tests/diff/driver_find.c -o "$FIND_BIN"
+cc -O0 -Wall tests/c/cls.c tests/diff/driver_cls.c -o "$CLS_BIN"
+
+echo "== differential test control flow (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffFlow.lean "$NESTED_BIN" "$SKIP_BIN" "$FIND_BIN" "$CLS_BIN" "$TRIALS"
+
+echo "== golden pipeline + control-flow rejection suite =="
+lake env lean --run tests/lean/GoldenFlow.lean
+
+echo "== emitted-body correspondence (S3a emit_correct transfer) =="
+grep -qF "nestedSumU32 n.toNat m.toNat" out/NestedSum.lean
+grep -qF "skipSumU32 n.toNat" out/SkipSum.lean
+grep -qF "findEqOut a n.toNat k" out/FindEq.lean
+grep -qF "if x == 0 then .ok 10" out/Cls.lean
+echo "emitted control-flow bodies match Emit assumptions"
 
 echo "CHECK-OK"

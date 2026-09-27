@@ -60,12 +60,36 @@ acceptance; `CHECK-OK`.
 
 ## S3. C integer + control-flow hardening
 
+### S3a. Control flow — DONE (2026-09-27)
+
+New `CExpr.umul` (wrapping unsigned `cir.mul`) + `CExpr.ueq`
+(unsigned `cir.cmp eq`) with per-op lemmas; new `CStmt.break_` /
+`CStmt.continue_` with loop-scoped `Outcome.broke` / `.continued`
+(`seq` propagates, `while_` catches `broke`→exit /
+`continued`→next-iteration, top-level escape is `AssertFail`) plus
+fuel-level composition lemmas. Four canonical funcs with
+`emit_correct`: `nested_sum` (nested fuel induction, cost
+`(n-k)*(m+1)`), `skip_sum` (`break` caps iterations at 9, so
+default-fuel correctness is unconditional), `find_eq` (early return;
+hit/miss loop theorems, over-long lengths `OOB` unless an early hit
+fires), `cls` (`cir.switch` lowered to an if-chain, loop-free).
+`matchFrag` arms use `body`-level matching throughout (deep `.seq`
+patterns inside `⟨⟩` hit the S1 equation-compiler quirk).
+Validator: `isNestedShape` / `isSkipShape` / `isFindEqShape` /
+`isClsShape` (exact const pins) + `noBreakContinueSwitch` exclusions
+in all older shapes + line-aware `cir.br` check (it is a substring of
+`cir.break`) + shape-aware `cir.switch` exemption.
+Acceptance met: four corpus entries (real CIRGen output, `cir-opt`
+VERIFY-OK) translate, verify, fuzz clean (`DiffFlow`,
+tamper-checked); `GoldenFlow.lean` 10/10; `CHECK-OK`.
+
+### S3b. Width generalization (remaining)
+
 Generalize `i32`-only / `u32`-only proofs to the `i8–i64`/`u8–u64`
 family (checked-op table + width-parameterized lemmas; `Vec<T,w>`
-design sketched but not required), and harden `break`/`continue`,
-early return, nested loops, `switch`-as-if-chain lowering check.
-Acceptance: width-parameterized corpus entries + loop-nesting
-goldens, no `sorry`, fuzz covers boundary values per width.
+design sketched but not required).
+Acceptance: width-parameterized corpus entries, no `sorry`, fuzz
+covers boundary values per width.
 
 ## S4. Tactics stage 1 + spec skeletons (parallelizable after S1)
 

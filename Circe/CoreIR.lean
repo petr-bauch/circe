@@ -43,7 +43,10 @@ inductive CLit : Type
 
 /-- C expressions for the admitted fragment. `add` is signed `nsw`-checked
     addition (`cir.add nsw`); `uadd` is wrapping unsigned addition (plain
-    `cir.add`); `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
+    `cir.add`); `umul` is wrapping unsigned multiplication (plain
+    `cir.mul` on unsigned: C unsigned arithmetic wraps, never fails);
+    `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
+    `ueq` is unsigned equality (`cir.cmp eq` on unsigned);
     `idx a i` is bounded indexing (`cir.ptr_stride` + `cir.load`).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
@@ -56,7 +59,9 @@ inductive CExpr : Type
   | var : String → CExpr
   | add : CExpr → CExpr → CExpr
   | uadd : CExpr → CExpr → CExpr
+  | umul : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
+  | ueq : CExpr → CExpr → CExpr
   | idx : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
@@ -68,6 +73,10 @@ inductive CExpr : Type
     `return_` returns one; `if_` branches on a `Value.b` condition; `while_`
     is fuel-bounded (see `EVAL_FUEL`: loops must terminate within
     `EVAL_FUEL` iterations; exhaustion reports `AssertFail`).
+    `break_`/`continue_` (S3a) are loop-scoped: `break_` exits the
+    innermost `while_`, `continue_` starts its next iteration; outside a
+    loop they are `AssertFail` (and `validate` admits them only in the
+    exact `skip_sum` shape, so this is incompleteness, never unsoundness).
     `callRet dst f args` binds `dst` to the return value of the program
     function `f` applied to the values of `args` (S1: DAG calls into
     call-free leaves, evaluated by `evalProgStmt` in `Circe.Eval`;
@@ -82,6 +91,8 @@ inductive CStmt : Type
   | vfree (vec : String)
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)
+  | break_
+  | continue_
   | call (func : String) (args : List String)
   | callRet (dst func : String) (args : List String)
   | return_ (val : CExpr)

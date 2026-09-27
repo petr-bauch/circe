@@ -14,8 +14,10 @@ Check order (first hit wins — rejection codes are priority-ordered):
 1. oracle wiring (fact must name this function);
 2. forbidden constructs (EH, int↔ptr casts, `void*`, volatile/atomics,
    float, `setjmp`/`longjmp`, globals,
-   function pointers, VLAs, variadics, `switch`, `goto` (`cir.br`),
-   bitfields, signed wrapping arithmetic without `nsw` — all `outOfSubset`);
+   function pointers, VLAs, variadics, `goto` (`cir.br`),
+   bitfields, signed wrapping arithmetic without `nsw` — all `outOfSubset`;
+   `switch` is shape-aware (the admitted `cls` lowering passes, all other
+   `switch` uses are `outOfSubset`);
    heap (`malloc`/`free`) and calls are shape-aware (see step 5):
    the admitted `vec_alloc` shape passes, all other heap/call uses are
    `outOfSubset` with dedicated messages (missing-`free`, double-`free`,
@@ -77,6 +79,15 @@ def hasNonHeapCall (text : String) : Bool :=
 def ptrParams (raw : RawFunc) : List RawParam :=
   raw.params.filter (fun p => isPtrType p.ctype)
 
+/-- No loop-exit or switch ops (S3a admits them only in the exact
+    `skip_sum` / `cls` shapes; every older shape excludes them so a
+    `break` can never validate as a plain loop). -/
+def noBreakContinueSwitch (text : String) : Bool :=
+  !containsSubstr text "cir.break" &&
+  !containsSubstr text "cir.continue" &&
+  !containsSubstr text "cir.switch" &&
+  !containsSubstr text "cir.case"
+
 /-- `add`: two by-value `i32`s, `i32` return, `nsw` add, no control flow,
     no calls (leaf: S1 callers target it, recursion is rejected below). -/
 def isAddShape (raw : RawFunc) : Bool :=
@@ -84,6 +95,7 @@ def isAddShape (raw : RawFunc) : Bool :=
   | [a, b] =>
     isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
     containsSubstr raw.text "cir.add nsw" &&
+    noBreakContinueSwitch raw.text &&
     !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.for" &&
@@ -98,6 +110,7 @@ def isAddShape (raw : RawFunc) : Bool :=
 def isIncrShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [p] =>
+    noBreakContinueSwitch raw.text &&
     isPtrType p.ctype &&
     (match ptrInner p.ctype with | some inner => isI32 inner | none => false) &&
     raw.ret == "" &&
@@ -113,6 +126,7 @@ def isIncrShape (raw : RawFunc) : Bool :=
 def isChooseShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [b, x, y] =>
+    noBreakContinueSwitch raw.text &&
     isBoolType b.ctype && !isPtrType b.ctype &&
     isPtrType x.ctype && isPtrType y.ctype &&
     (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
@@ -128,6 +142,7 @@ def isChooseShape (raw : RawFunc) : Bool :=
 def isSumShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [a, n] =>
+    noBreakContinueSwitch raw.text &&
     isPtrType a.ctype && isLengthType n.ctype && !isPtrType n.ctype &&
     isU32 raw.ret &&
     containsSubstr raw.text "cir.for" &&
@@ -189,6 +204,7 @@ def isPointType (t : String) : Bool :=
 def isTranslateShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [p, dx, dy] =>
+    noBreakContinueSwitch raw.text &&
     isPointType p.ctype && !isPtrType p.ctype &&
     isI32 dx.ctype && isI32 dy.ctype &&
     isPointType raw.ret &&
@@ -213,6 +229,7 @@ def isTranslateShape (raw : RawFunc) : Bool :=
 def isAddCallerShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [x, y, z] =>
+    noBreakContinueSwitch raw.text &&
     isI32 x.ctype && isI32 y.ctype && isI32 z.ctype && isI32 raw.ret &&
     callsFunc raw.text "add" &&
     !callsFunc raw.text raw.name &&
@@ -234,6 +251,7 @@ def isAddCallerShape (raw : RawFunc) : Bool :=
 def isSumCallerShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [a, n] =>
+    noBreakContinueSwitch raw.text &&
     isPtrType a.ctype && isLengthType n.ctype && !isPtrType n.ctype &&
     isU32 raw.ret &&
     callsFunc raw.text "sum_array" &&
@@ -250,6 +268,7 @@ def isSumCallerShape (raw : RawFunc) : Bool :=
 def isVecShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [n] =>
+    noBreakContinueSwitch raw.text &&
     isLengthType n.ctype && !isPtrType n.ctype &&
     isU32 raw.ret &&
     containsSubstr raw.text "malloc" &&
@@ -277,9 +296,155 @@ def lineHasWrappingSignedArith (line : String) : Bool :=
     containsSubstr line "<s,32>") &&
   !containsSubstr line "nsw"
 
-/-- Whole-text wrapper (split on newlines; `String.splitOn` is core Lean). -/
+/-- Whole-text wrapper (cf. `hasWrappingSignedArith`). -/
 def hasWrappingSignedArith (text : String) : Bool :=
   (text.splitOn "\n").any lineHasWrappingSignedArith
+
+/-! ## S3a: control-flow shapes (nested loops, break/continue,
+early return, switch-as-if-chain) -/
+
+/-- Count whole-text occurrences of a needle (for exact-shape pins:
+    two `cir.for`, one `cir.return`, three `cir.case(`, …). -/
+def opCount (text needle : String) : Nat :=
+  ((text.splitOn needle).length - 1)
+
+/-- `nested_sum`: two `u32` bounds, `u32` return, exactly two `cir.for`
+    (nested), plain unsigned `cir.add` + `cir.mul` (wrapping; no `nsw`),
+    single return, no calls/heap/control beyond the loops, no
+    break/continue/switch. -/
+def isNestedShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [n, m] =>
+    isU32 n.ctype && isU32 m.ctype && isU32 raw.ret &&
+    opCount raw.text "cir.for" == 2 &&
+    opCount raw.text "cir.return" == 1 &&
+    containsSubstr raw.text "cir.mul " &&
+    containsSubstr raw.text "cir.add " &&
+    !containsSubstr raw.text "nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.break" &&
+    !containsSubstr raw.text "cir.continue" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.case"
+  | _ => false
+
+/-- `skip_sum`: one `u32` bound, `u32` return, one `cir.for` with
+    `cir.break` + `cir.continue` guarded by `cir.cmp eq` against the
+    pinned consts `2`/`8` (the canonical `Func` hard-codes them, so the
+    shape must too), plain unsigned `cir.add`, single return. -/
+def isSkipShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [n] =>
+    isU32 n.ctype && isU32 raw.ret &&
+    containsSubstr raw.text "cir.for" &&
+    containsSubstr raw.text "cir.break" &&
+    containsSubstr raw.text "cir.continue" &&
+    containsSubstr raw.text "cir.if" &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    containsSubstr raw.text "#cir.int<2>" &&
+    containsSubstr raw.text "#cir.int<8>" &&
+    containsSubstr raw.text "cir.add " &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.case"
+  | _ => false
+
+/-- `find_eq`: `noalias` `u32` pointer + length + `u32` needle, `u32`
+    return, bounded `cir.for` over `cir.ptr_stride` with a `cir.cmp eq`
+    guard and two `cir.return` (early return in the loop, fall-through
+    after). The `u64` (`size_t`) length spelling is admitted
+    (`isLengthType`); the canonical `Func` narrows it to `u32`, exactly
+    as in `sum` (runtime excess is `OOB`). -/
+def isFindEqShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, n, k] =>
+    isPtrType a.ctype && isLengthType n.ctype && !isPtrType n.ctype &&
+    isU32 k.ctype && !isPtrType k.ctype &&
+    isU32 raw.ret &&
+    containsSubstr raw.text "cir.for" &&
+    containsSubstr raw.text "cir.ptr_stride" &&
+    containsSubstr raw.text "cir.if" &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    opCount raw.text "cir.return" == 2 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.break" &&
+    !containsSubstr raw.text "cir.continue" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.case"
+  | _ => false
+
+/-- Text-level lowering check for `cir.switch`: equality cases on the
+    pinned consts `0`/`1` plus `default`, every case returning a pinned
+    const (`10`/`20`/`30`). This is the `forbiddenOp` exemption gate;
+    full admission additionally pins the signature (`isClsShape`). -/
+def isClsLowerableText (text : String) : Bool :=
+  containsSubstr text "cir.switch" &&
+  opCount text "cir.case(" == 3 &&
+  containsSubstr text "cir.case(equal, [#cir.int<0>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<1>" &&
+  containsSubstr text "cir.case(default, [])" &&
+  containsSubstr text "#cir.int<10>" &&
+  containsSubstr text "#cir.int<20>" &&
+  containsSubstr text "#cir.int<30>"
+
+/-- `cls`: one `u32` scrutinee, `u32` return, lowerable `cir.switch`
+    (see `isClsLowerableText`), no loops/calls/heap/indexing. -/
+def isClsShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x] =>
+    isU32 x.ctype && isU32 raw.ret &&
+    isClsLowerableText raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.break" &&
+    !containsSubstr raw.text "cir.continue" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "nsw"
+  | _ => false
+
+/-- A line with a bare unstructured branch (`cir.br` from `goto`),
+    excluding `cir.break` (which merely *contains* the substring
+    `cir.br`: S3a admits `break` in the exact `skip_sum` shape). -/
+def lineHasBareBr (line : String) : Bool :=
+  containsSubstr line "cir.br" && !containsSubstr line "cir.break"
+
+/-- Whole-text wrapper. -/
+def hasBareBr (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasBareBr
 
 /-- First forbidden construct found (all `outOfSubset`), if any. -/
 def forbiddenOp (text : String) : Option String :=
@@ -303,8 +468,8 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
-  else if containsSubstr text "cir.switch" then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
-  else if containsSubstr text "cir.br" then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
+  else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
+  else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
   else if hasWrappingSignedArith text then some "signed wrapping arithmetic without `nsw` (signed overflow is UB in C: mark the op `nsw` or use unsigned arithmetic)"
   else none
@@ -353,6 +518,14 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { sumCallerFunc with name := raw.name }
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
+      else if isNestedShape raw then
+        .ok { nestedFunc with name := raw.name }
+      else if isSkipShape raw then
+        .ok { skipFunc with name := raw.name }
+      else if isFindEqShape raw then
+        .ok { findEqFunc with name := raw.name }
+      else if isClsShape raw then
+        .ok { clsFunc with name := raw.name }
       else if callsFunc raw.text raw.name then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls itself (recursive call): S1 admits DAG calls into call-free leaves only (see docs/ROADMAP.md S1)"
@@ -379,6 +552,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only; see docs/SUBSET.md)"
+      else if containsSubstr raw.text "cir.switch" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape (S3a: equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30`; see docs/SUBSET.md)"
+      else if containsSubstr raw.text "cir.break" ||
+          containsSubstr raw.text "cir.continue" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses `break`/`continue` outside the admitted `skip_sum` shape (S3a: single bounded `u32` loop, `continue` at `i == 2`, `break` at `i == 8`, wrapping `s += i` only; see docs/SUBSET.md)"
       else
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' is not in the admitted Phase-4 fragment (see `matchFrag` contract in `Circe.Emit`)"
@@ -451,3 +631,27 @@ example : runPipelineOpt (include_str "../tests/cir/sum_caller.cir")
 example : runPipelineOpt (include_str "../tests/cir/struct_by_value.cir")
     ⟨"translate", .unknown⟩
     = some (include_str "../tests/golden/StructByValue.lean") := by native_decide
+
+/-- The checked-in `nested_sum` CIR (real CIRGen output, nested
+    `cir.for`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/nested_sum.cir")
+    ⟨"nested_sum", .unknown⟩
+    = some (include_str "../tests/golden/NestedSum.lean") := by native_decide
+
+/-- The checked-in `skip_sum` CIR (real CIRGen output with
+    `cir.break`/`cir.continue`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/skip_sum.cir")
+    ⟨"skip_sum", .unknown⟩
+    = some (include_str "../tests/golden/SkipSum.lean") := by native_decide
+
+/-- The checked-in `find_eq` CIR (real CIRGen output, early return in a
+    bounded loop) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/find_eq.cir")
+    ⟨"find_eq", .noalias⟩
+    = some (include_str "../tests/golden/FindEq.lean") := by native_decide
+
+/-- The checked-in `cls` CIR (real CIRGen output, `cir.switch` lowered
+    to an if-chain) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/cls.cir")
+    ⟨"cls", .unknown⟩
+    = some (include_str "../tests/golden/Cls.lean") := by native_decide

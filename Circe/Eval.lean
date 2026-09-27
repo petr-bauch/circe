@@ -5,11 +5,14 @@ Circe.Eval — loan-based, value-only ownership semantics (spec for
 Environments map variables to *values with loan/borrow bookkeeping*;
 there is no heap and no addresses (Aeneas-style, see docs/PIPELINE.md).
 Phase 4: `evalExpr` covers `lit`/`var`/`add` (signed `nsw`-checked) plus
-`uadd` (wrapping unsigned), `ult` (unsigned comparison), and `idx`
+`uadd`/`umul` (wrapping unsigned), `ult`/`ueq` (unsigned
+comparison/equality), and `idx`
 (bounded indexing, `OOB` on violation); `evalStmt` covers the full
 loop-free fragment (`skip`/`seq`/`let_`/`assign`/`if_`/`return_`) plus
 fuel-bounded `while_` (`EVAL_FUEL`; exhaustion is `AssertFail`, and
-`validate` admits only bounded loops). `call` stays a legacy stub;
+`validate` admits only bounded loops) plus S3a loop-scoped
+`break_`/`continue_` (`broke`/`continued` outcomes: `while_` catches
+them, escape from a body is `AssertFail`). `call` stays a legacy stub;
 `callRet` carries S1 program calls (see the program layer below).
 `bindArgs`/`evalFunc` give whole-function semantics; `evalFuncFuel`
 exposes the fuel for induction (loop proofs generalize it).
@@ -35,9 +38,14 @@ inductive Value : Type
     lives in the companion `LoanState` (Aeneas §4 regions, value-only). -/
 abbrev Env : Type := List (String × Value)
 
-/-- Function outcome: a returned value or fall-through. -/
+/-- Function outcome: a returned value, loop-scoped `break_`/`continue_`
+    signals, or fall-through. `broke`/`continued` escaping a function body
+    is `AssertFail` (`evalFuncFuel`); `validate` admits them only inside
+    loops, so this is incompleteness, never unsoundness. -/
 inductive Outcome : Type
   | returned : Value → Outcome
+  | broke : Outcome
+  | continued : Outcome
   | fellThrough : Outcome
   deriving DecidableEq, Repr
 
@@ -255,8 +263,8 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
 
 /-- Pure evaluator:
     - `add` on `i32` goes through `checkedAddI32` (overflow → `Overflow`);
-    - `uadd` on `u32` wraps (plain `cir.add`; never fails);
-    - `ult` on `u32` is unsigned comparison;
+    - `uadd`/`umul` on `u32` wrap (plain `cir.add`/`cir.mul`; never fail);
+    - `ult`/`ueq` on `u32` are unsigned comparison/equality;
     - `idx a i` looks up `arr32` array `a` at `u32` index `i`
       (`OOB` off the end, mirroring `bget`);
     - `fget o f` projects field `f` from `structVal` `o` (missing
@@ -281,9 +289,21 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .umul a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x * y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .ult a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .ueq a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x == y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -376,6 +396,18 @@ theorem evalExpr_uadd_mismatch (ρ : Env) :
       .error .AssertFail := by
   simp [evalExpr, litVal]
 
+/-- `umul` on two `u32` literals wraps. -/
+theorem evalExpr_umul_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.umul (.lit (.u32 x)) (.lit (.u32 y))) ρ =
+      .ok (.u32 (x * y)) := by
+  simp [evalExpr, litVal]
+
+/-- `umul` type mismatches are rejected. -/
+theorem evalExpr_umul_mismatch (ρ : Env) :
+    evalExpr (.umul (.lit (.u32 0)) (.lit (.b true))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
 /-- `ult` on two `u32` literals is unsigned comparison. -/
 theorem evalExpr_ult_lit (x y : BitVec 32) (ρ : Env) :
     evalExpr (.ult (.lit (.u32 x)) (.lit (.u32 y))) ρ =
@@ -385,6 +417,18 @@ theorem evalExpr_ult_lit (x y : BitVec 32) (ρ : Env) :
 /-- `ult` type mismatches are rejected. -/
 theorem evalExpr_ult_mismatch (ρ : Env) :
     evalExpr (.ult (.lit (.i32 0)) (.lit (.i32 1))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `ueq` on two `u32` literals is unsigned equality. -/
+theorem evalExpr_ueq_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.ueq (.lit (.u32 x)) (.lit (.u32 y))) ρ =
+      .ok (.b (x == y)) := by
+  simp [evalExpr, litVal]
+
+/-- `ueq` type mismatches are rejected. -/
+theorem evalExpr_ueq_mismatch (ρ : Env) :
+    evalExpr (.ueq (.lit (.i32 0)) (.lit (.i32 1))) ρ =
       .error .AssertFail := by
   simp [evalExpr, litVal]
 
@@ -525,6 +569,8 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     match evalStmtWith wh a ρ with
     | .error e => .error e
     | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+    | .ok (ρ', .broke) => .ok (ρ', .broke)
+    | .ok (ρ', .continued) => .ok (ρ', .continued)
     | .ok (ρ', .fellThrough) => evalStmtWith wh b ρ'
   | .let_ x _ e, ρ =>
     match evalExpr e ρ with
@@ -571,6 +617,8 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok (.b false) => evalStmtWith wh e ρ
     | .ok _ => .error .AssertFail
   | .while_ c b, ρ => wh c b ρ
+  | .break_, ρ => .ok (ρ, .broke)
+  | .continue_, ρ => .ok (ρ, .continued)
   | .call _ _, ρ => .ok (ρ, .fellThrough)
   | .callRet _ _ _, _ =>
     -- Calls need program context (which function `f` resolves to); outside
@@ -611,6 +659,8 @@ def evalStmtSuccHandler (rec : CStmt → Env → Result (Env × Outcome)) :
       match rec b ρ with
       | .error e => .error e
       | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+      | .ok (ρ', .broke) => .ok (ρ', .fellThrough)
+      | .ok (ρ', .continued) => rec (.while_ c b) ρ'
       | .ok (ρ', .fellThrough) => rec (.while_ c b) ρ'
     | .ok _ => .error .AssertFail
 
@@ -747,6 +797,8 @@ def evalFuncFuel (fuel : Nat) (f : Func) (args : List Value) : Result Value :=
     match evalStmtFuel fuel f.body ρ with
     | .error e => .error e
     | .ok (_, .returned v) => .ok v
+    | .ok (_, .broke) => .error .AssertFail
+    | .ok (_, .continued) => .error .AssertFail
     | .ok (_, .fellThrough) => .error .AssertFail
 
 /-- Whole-function semantics: bind, run the body, demand a `return`.
@@ -828,6 +880,8 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
     match evalProgStmt prog fuel a ρ with
     | .error e => .error e
     | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+    | .ok (ρ', .broke) => .ok (ρ', .broke)
+    | .ok (ρ', .continued) => .ok (ρ', .continued)
     | .ok (ρ', .fellThrough) => evalProgStmt prog fuel b ρ'
   | s, ρ => evalStmtFuel fuel s ρ
 
@@ -878,6 +932,8 @@ def evalProgFunc (prog : Prog) (fuel : Nat) (f : Func)
     match evalProgStmt prog fuel f.body ρ with
     | .error e => .error e
     | .ok (_, .returned v) => .ok v
+    | .ok (_, .broke) => .error .AssertFail
+    | .ok (_, .continued) => .error .AssertFail
     | .ok (_, .fellThrough) => .error .AssertFail
 
 theorem evalProgFunc_arity (prog : Prog) (fuel : Nat) (f : Func)
@@ -910,6 +966,58 @@ theorem evalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt)
   | succ g =>
     simp only [evalStmtFuel] at h ⊢
     simp only [evalStmtWith, h]
+
+/-! ## `break_` / `continue_` composition (S3a) -/
+
+/-- `break_` signals at any fuel. -/
+theorem evalStmtFuel_break (f : Nat) (ρ : Env) :
+    evalStmtFuel f .break_ ρ = .ok (ρ, .broke) := by
+  cases f <;> rfl
+
+/-- `continue_` signals at any fuel. -/
+theorem evalStmtFuel_continue (f : Nat) (ρ : Env) :
+    evalStmtFuel f .continue_ ρ = .ok (ρ, .continued) := by
+  cases f <;> rfl
+
+/-- `seq` propagates `broke` (the second component never runs). -/
+theorem evalStmtFuel_seq_broke (f : Nat) (a b : CStmt)
+    (ρ ρ' : Env)
+    (h : evalStmtFuel f a ρ = .ok (ρ', .broke)) :
+    evalStmtFuel f (.seq a b) ρ = .ok (ρ', .broke) := by
+  cases f with
+  | zero =>
+    simp only [evalStmtFuel, evalStmtZero] at h ⊢
+    simp only [evalStmtWith, h]
+  | succ g =>
+    simp only [evalStmtFuel] at h ⊢
+    simp only [evalStmtWith, h]
+
+/-- `seq` propagates `continued` (the second component never runs). -/
+theorem evalStmtFuel_seq_continued (f : Nat) (a b : CStmt)
+    (ρ ρ' : Env)
+    (h : evalStmtFuel f a ρ = .ok (ρ', .continued)) :
+    evalStmtFuel f (.seq a b) ρ = .ok (ρ', .continued) := by
+  cases f with
+  | zero =>
+    simp only [evalStmtFuel, evalStmtZero] at h ⊢
+    simp only [evalStmtWith, h]
+  | succ g =>
+    simp only [evalStmtFuel] at h ⊢
+    simp only [evalStmtWith, h]
+
+/-- A `break_` escaping the function body is `AssertFail`. -/
+theorem evalFuncFuel_broke (fuel : Nat) (f : Func) (ρ : Env)
+    (hbind : bindArgs f.args [] = some ρ)
+    (hbody : evalStmtFuel fuel f.body ρ = .ok (ρ, .broke)) :
+    evalFuncFuel fuel f [] = .error .AssertFail := by
+  simp [evalFuncFuel, hbind, hbody]
+
+/-- A `continue_` escaping the function body is `AssertFail`. -/
+theorem evalFuncFuel_continued (fuel : Nat) (f : Func) (ρ : Env)
+    (hbind : bindArgs f.args [] = some ρ)
+    (hbody : evalStmtFuel fuel f.body ρ = .ok (ρ, .continued)) :
+    evalFuncFuel fuel f [] = .error .AssertFail := by
+  simp [evalFuncFuel, hbind, hbody]
 
 /-- `seq` short-circuits on error in the first component. -/
 theorem evalProgStmt_seq_err (prog : Prog) (fuel : Nat) (a b : CStmt)

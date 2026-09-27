@@ -50,6 +50,15 @@ Struct idiom (S2, from `tests/cir/struct_by_value.cir`): by-value
 field reads (`x`/`y`) + `cir.load`, two `cir.add nsw` sites,
 field stores into `__retval`, whole-struct `cir.load` + return —
 fused into `fget`/`pmk` CoreIR (no local calls/loops/heap).
+Control-flow idioms (S3a): nested `cir.for` (cond/body/step +
+`cir.inc`, inner re-initialized per outer iteration — modeled by a
+trailing `j`-reset so the outer-head invariant holds); `cir.if` +
+`cir.break`/`cir.continue` inside `cir.for` (the step region runs on
+`continue`, modeled by an explicit increment before the signal);
+early `cir.return` inside a loop body (propagates through the
+`while_` handler); `cir.switch` with `cir.case(equal, [const])` +
+`default` where every case is a bare const `return` (lowered to a
+nested-`if_` canonical `Func`; anything else stays rejected).
 
 ## Trust boundary
 

@@ -19,6 +19,10 @@ input rejects loudly, never silently models memory.
 | DAG call (double-`add`) | `add_caller` | two `checkedAddI32` binds (leaf inlined; `addCallerFwd_as_calls`) | `evalProgFunc_addCaller` (program induction-free composition) |
 | DAG call (`sum` delegation) | `sum_caller` | `prefixSumU32` body (`sumCallerFwd_is_call`) | `evalProgFunc_sumCaller` (fuel-generalized callee reuse) |
 | struct-by-value | `translate` (`struct_by_value`) | `pointTranslate` delegation (`translateFwd_*` bridges) | `evalFuncFuel_translate` (ok + both error paths) |
+| nested loops | `nested_sum` | `nestedSumU32` double fold | `emit_correct_nested` (nested fuel induction) |
+| break/continue | `skip_sum` | `skipSumU32` capped range | `emit_correct_skip` (unconditional: ≤9 iterations) |
+| early return | `find_eq` | `findEqOut` first-match | `emit_correct_find` (hit/miss + OOB) |
+| switch-as-if-chain | `cls` | if-chain on `ueq` | `emit_correct_cls` (loop-free) |
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), verified gate (`validate` + oracle verdicts), emitter
@@ -40,7 +44,10 @@ E2E: `tools/check.sh [trials]` (single entry; superset: phase-7 pipeline
 drivers → `DiffCalls` fuzz vs native → `GoldenCalls` pipeline +
 rejection suite → struct golden `diff` → native struct driver →
 `DiffStruct` fuzz vs native → `GoldenStruct` pipeline + rejection
-suite → emitted-body correspondence → `CHECK-OK`).
+suite → emitted-body correspondence → control-flow golden `diff`s →
+native control-flow drivers → `DiffFlow` fuzz vs native →
+`GoldenFlow` pipeline + rejection suite → emitted-body correspondence
+→ `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

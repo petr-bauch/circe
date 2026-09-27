@@ -17,15 +17,20 @@ no unions/variadics/VLAs.
 ## Statements / expressions
 
 Functions, locals, `if`/`while`/`for`/`do`, `return`,
-`break`/`continue` (simple forms; nested/early-exit hardening in S3),
+`break`/`continue` (S3a: `skip_sum` shape only — single bounded `u32`
+loop, `continue` at `i == 2`, `break` at `i == 8`), nested loops
+(S3a: `nested_sum` shape only), early return in loops (S3a: `find_eq`
+shape only), `switch` (S3a: `cls` shape only — equality cases on
+`0`/`1` + `default`, every case a bare const `return`).
 int arithmetic/logic/comparison, int↔int and bool casts,
 disciplined `&`/`*`, array indexing `a[i]` with length param,
 struct field access (S2: `translate` shape — by-value `Point`
 reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return).
 Uniquely-owned heap, `u32`-only: `malloc(n * sizeof(uint32_t))`
 with same-function length `n`, bounded `v[i]`, exactly one `free(v)`.
-No `goto`, `setjmp`, `switch` (lower first or reject),
-no function pointers, no other heap shapes, read-only `const`
+No `goto` (`cir.br` is matched line-aware so `cir.break` never trips
+it), `setjmp`, non-lowerable `switch`, no function pointers, no other
+heap shapes, read-only `const`
 globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 
 ## Ownership roles
@@ -72,6 +77,25 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     builds the `Point` value (field-wise update functionalized).
     Misshapen struct uses (wrong arity, struct + call, passthrough,
     `get_member` on non-structs) are rejected.
+11. Control flow (S3a): exact shapes only —
+    `nested_sum` (two `u32` bounds, nested `cir.for`, wrapping
+    `s += i * j`),
+    `skip_sum` (one `u32` bound, `cir.break`/`cir.continue` at
+    `i == 8`/`i == 2`, wrapping `s += i`; `continue` runs the
+    `cir.for` step region, modeled by an explicit increment before
+    the signal),
+    `find_eq` (`noalias` pointer + length + needle, early `return` in
+    a bounded loop; over-long lengths are `OOB` unless an early hit
+    fires first),
+    `cls` (`cir.switch` with equality cases on `0`/`1` + `default`,
+    every case a bare const `return`, lowered to an `if_` chain).
+    Semantics: `break_`/`continue_` are loop-scoped `Outcome` signals
+    (`broke`/`continued` escaping a body is `AssertFail`); older
+    shapes exclude `cir.break`/`cir.continue`/`cir.switch`/`cir.case`
+    via `noBreakContinueSwitch`, so a loop-exit can never validate as
+    a plain loop. Misshapen uses (break outside loops, non-lowerable
+    switches, wrong-signature lowerings, single-return searches) are
+    rejected with dedicated messages.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -81,7 +105,11 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 (`@malloc`/`@free` in vec shape only; `@add`/`@sum_array` in the exact
 S1 caller shapes only), `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; all other struct
-uses rejected), `get_element`/`ptr_stride` (bounded),
+uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
+only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
+on pinned consts + `default`, all other switches rejected),
+`cir.mul` (plain unsigned, S3a `nested_sum` shape only),
+`get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
 `cir.get_global @malloc/@free` plumbing allowed in vec shape only.
@@ -91,7 +119,10 @@ uses rejected), `get_element`/`ptr_stride` (bounded),
 `cir.try`/cleanup/EH, vtables, atomics, `volatile`, float,
 inline asm, `void*`/int-ptr casts, escaping address-of, unbounded
 pointer arithmetic, non-`vec_alloc` heap uses, `setjmp`/`longjmp`,
-globals, function pointers, VLAs, variadics, `cir.switch`, `goto`,
-bitfields, signed wrapping arithmetic without `nsw` (per-line check).
+globals, function pointers, VLAs, variadics, non-lowerable
+`cir.switch`, `goto` (`cir.br`, matched line-aware so `cir.break`
+never trips it), bitfields, signed wrapping arithmetic without `nsw`
+(per-line check).
 Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
-+ `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5).
++ `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
++ `GoldenFlow.lean` (10).

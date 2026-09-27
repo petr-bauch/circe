@@ -16,3 +16,7 @@ translate unknown
 vec_alloc unknown
 add_caller unknown
 sum_caller noalias
+nested_sum unknown
+skip_sum unknown
+find_eq noalias
+cls unknown
