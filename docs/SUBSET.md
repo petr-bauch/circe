@@ -9,8 +9,8 @@ In-subset divergence is P0; out-of-subset must reject loudly.
 `void`, `_Bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64` (current proofs
 concentrate on `i32`/`u32`; other widths parse, generalize per
 `ROADMAP.md` S3), `T*` (disciplined only, see below), arrays via
-length-paired params, structs (subset pending — `Base` ready,
-`Eval`/`Emit` land in `ROADMAP.md` S2; no bitfields).
+length-paired params, structs by value (S2: `Point { i32 x, y }`
+only; no bitfields).
 No `void*`, no int↔ptr casts, no `volatile`/`_Atomic`,
 no unions/variadics/VLAs.
 
@@ -20,13 +20,13 @@ Functions, locals, `if`/`while`/`for`/`do`, `return`,
 `break`/`continue` (simple forms; nested/early-exit hardening in S3),
 int arithmetic/logic/comparison, int↔int and bool casts,
 disciplined `&`/`*`, array indexing `a[i]` with length param,
-struct field access (pending S2).
+struct field access (S2: `translate` shape — by-value `Point`
+reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return).
 Uniquely-owned heap, `u32`-only: `malloc(n * sizeof(uint32_t))`
 with same-function length `n`, bounded `v[i]`, exactly one `free(v)`.
 No `goto`, `setjmp`, `switch` (lower first or reject),
 no function pointers, no other heap shapes, read-only `const`
-globals only. Calls: single-function only today; multi-function DAG
-lands in S1 (recursion rejected).
+globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 
 ## Ownership roles
 
@@ -65,6 +65,13 @@ lands in S1 (recursion rejected).
    expressible. Semantics: `callRet dst f args` binds `dst` to the
    callee return (`evalProgStmt` dispatches to `evalFuncFuel` at the
    same fuel; errors propagate).
+10. Struct-by-value (S2): `translate` shape only — by-value `Point`
+    + two `i32` deltas, `Point` return; `cir.get_member` reads of
+    `x`/`y`, `nsw` field adds, no calls/control-flow/heap/indexing.
+    Semantics: `fget o f` projects a `structVal` field, `pmk x y`
+    builds the `Point` value (field-wise update functionalized).
+    Misshapen struct uses (wrong arity, struct + call, passthrough,
+    `get_member` on non-structs) are rejected.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -72,7 +79,9 @@ lands in S1 (recursion rejected).
 `cir.cast` (int/bool), `cir.binop`/`cmp`/`unary`, `cir.cond_br`
 (`cir.br` from `goto` rejected), `cir.return`, `cir.call`
 (`@malloc`/`@free` in vec shape only; `@add`/`@sum_array` in the exact
-S1 caller shapes only), `cir.const`, `cir.get_member`/`get_element`/`ptr_stride` (bounded),
+S1 caller shapes only), `cir.const`, `cir.get_member` (S2 `translate`
+shape only: `Point` field reads with `nsw` adds; all other struct
+uses rejected), `get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
 `cir.get_global @malloc/@free` plumbing allowed in vec shape only.
@@ -84,4 +93,5 @@ inline asm, `void*`/int-ptr casts, escaping address-of, unbounded
 pointer arithmetic, non-`vec_alloc` heap uses, `setjmp`/`longjmp`,
 globals, function pointers, VLAs, variadics, `cir.switch`, `goto`,
 bitfields, signed wrapping arithmetic without `nsw` (per-line check).
-Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6).
+Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
++ `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5).

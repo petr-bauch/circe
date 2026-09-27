@@ -37,14 +37,26 @@ Acceptance met: `add_caller` + `sum_caller` corpus (real CIRGen output,
 native (tamper-checked), `GoldenCalls` 7/7 (recursion, unknown callee,
 misshapen caller, call-in-leaf, call-escape), `CHECK-OK`.
 
-## S2. Struct-by-value
+## S2. Struct-by-value — DONE (2026-09-27)
 
-Finish staged `Base` (`Point`/`pointTranslate`) through
-`Eval`/`Emit`: `cir.get_member` semantics, field-wise updates as
-values, `matchFrag` struct arm, golden `StructByValue.lean`.
-Acceptance: `tests/c/struct_by_value.c` translates instead of
-rejecting, verifies, fuzzes clean; struct rejection golden removed
-/ replaced by misshapen-struct rejection.
+Finished staged `Base` (`Point`/`pointTranslate`) through
+`Eval`/`Emit`: new `CExpr.fget` (field projection; `cir.get_member` +
+`cir.load` fused) + `CExpr.pmk` (`Point` construction; stores + return
+fused), `fieldLookup` + per-op lemmas (`evalExpr_fget_*`,
+`evalExpr_pmk_*`, `evalExpr_add_fget_var` bridge), `Base`
+`pointTranslate_err_y`, canonical `translateFunc` + `translateFwd`
+with ok/err bridges, `evalFuncFuel_translate` (all paths, any fuel),
+`FragKind.translate`, `matchFrag` struct arm (direct `⟨⟩` pattern —
+no S1 list-literal quirk: `fget`/`pmk` take strings/exprs, not
+lists), `isTranslateShape` gate before the `get_member` misshapen
+branch, rendered `translate_fwd` delegating to `pointTranslate`,
+golden `StructByValue.lean`.
+Acceptance met: `tests/c/struct_by_value.c` (real CIRGen output)
+translates, verifies, fuzzes clean (`DiffStruct`, tamper-checked);
+old struct rejection golden replaced by `GoldenStruct.lean` 5/5
+(wrong arity, struct + call, passthrough, `get_member` on
+non-structs); `GoldenPhase4` struct check is now a pipeline
+acceptance; `CHECK-OK`.
 
 ## S3. C integer + control-flow hardening
 

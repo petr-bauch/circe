@@ -213,6 +213,14 @@ theorem pointTranslate_err_x (p : Point) (dx dy : BitVec 32) (e : Panic)
     pointTranslate p dx dy = .error e := by
   simp [pointTranslate, hx]
 
+/-- A failing `y` add propagates once `x` succeeds. -/
+theorem pointTranslate_err_y (p : Point) (dx dy : BitVec 32)
+    (x' : BitVec 32) (e : Panic)
+    (hx : checkedAddI32 p.x dx = .ok x')
+    (hy : checkedAddI32 p.y dy = .error e) :
+    pointTranslate p dx dy = .error e := by
+  simp [pointTranslate, hx, hy]
+
 /-! ## Uniquely-owned heap: `Vec32` (Phase 7, u32-only) -/
 
 /-- A uniquely-owned `u32` heap block (`malloc`/`free` functionalized).

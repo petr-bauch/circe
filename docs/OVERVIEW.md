@@ -18,6 +18,7 @@ input rejects loudly, never silently models memory.
 | uniquely-owned heap (`u32`-only) | `vec_alloc` | `vecFillSumU32 n.toNat` | `emit_correct_vec` (two-loop induction) |
 | DAG call (double-`add`) | `add_caller` | two `checkedAddI32` binds (leaf inlined; `addCallerFwd_as_calls`) | `evalProgFunc_addCaller` (program induction-free composition) |
 | DAG call (`sum` delegation) | `sum_caller` | `prefixSumU32` body (`sumCallerFwd_is_call`) | `evalProgFunc_sumCaller` (fuel-generalized callee reuse) |
+| struct-by-value | `translate` (`struct_by_value`) | `pointTranslate` delegation (`translateFwd_*` bridges) | `evalFuncFuel_translate` (ok + both error paths) |
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), verified gate (`validate` + oracle verdicts), emitter
@@ -37,7 +38,9 @@ tests/c/*.c → tests/cir/*.cir (tools/emit-cir.sh, CIR clang)
 E2E: `tools/check.sh [trials]` (single entry; superset: phase-7 pipeline
 → caller golden `diff`s → `lake env lean` typecheck → native caller
 drivers → `DiffCalls` fuzz vs native → `GoldenCalls` pipeline +
-rejection suite → emitted-body correspondence → `CHECK-OK`).
+rejection suite → struct golden `diff` → native struct driver →
+`DiffStruct` fuzz vs native → `GoldenStruct` pipeline + rejection
+suite → emitted-body correspondence → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

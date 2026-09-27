@@ -4,8 +4,9 @@
 -- Run from the repo root: `lake env lean --run tests/lean/GoldenPhase4.lean`
 -- 1. Corpus pipeline: each `tests/cir/*.cir` parses, validates under its
 --    `tests/oracle/verdicts.txt` verdict, and emits byte-identical text to
---    `tests/golden/*.lean` (`struct_by_value` must reject with
---    `outOfSubset` mentioning struct fields).
+--    `tests/golden/*.lean` (S2: `struct_by_value` translates via the
+--    `translate` shape; misshapen structs reject — see
+--    `tests/lean/GoldenStruct.lean`).
 -- 2. Rejection suite: adversarial inline CIR snippets hit exact codes +
 --    message substrings (alias/escape/oob/out-of-subset), so every
 --    `validate` branch is exercised.
@@ -27,20 +28,20 @@ def checkPipeline (verdicts : List OracleFact) (cir golden func : String) :
   | .error msg =>
     throw (IO.userError s!"pipeline unexpectedly rejected {func}: {msg}")
 
-def checkStructReject (verdicts : List OracleFact) : IO Nat := do
+def checkStructPipeline (verdicts : List OracleFact) : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/struct_by_value.cir"
+  let want ← IO.FS.readFile "tests/golden/StructByValue.lean"
   let oracle ← match lookupOracle verdicts "translate" with
     | none => throw (IO.userError "no oracle fact for translate")
     | some o => pure o
   match runPipeline text oracle with
-  | .ok _ => throw (IO.userError "struct corpus unexpectedly accepted")
-  | .error msg =>
-    if !containsSubstr msg "out-of-subset" then
-      throw (IO.userError s!"struct: expected out-of-subset, got: {msg}")
-    if !containsSubstr msg "get_member" then
-      throw (IO.userError s!"struct: expected struct-field message, got: {msg}")
-    IO.println "PASS reject struct_by_value [out-of-subset]"
+  | .ok got =>
+    if got != want then
+      throw (IO.userError "golden mismatch for translate")
+    IO.println "PASS pipeline translate"
     pure 1
+  | .error msg =>
+    throw (IO.userError s!"pipeline unexpectedly rejected translate: {msg}")
 
 /-- Adversarial case: inline CIR must reject with `code` in the message
     plus `substr` (`code == ""` skips the code check, for parse failures). -/
@@ -107,7 +108,7 @@ def main : IO Unit := do
   let c4 ← checkPipeline verdicts
     "tests/cir/sum_array.cir" "tests/golden/SumArray.lean" "sum_array"
   passed := passed + c4
-  let c5 ← checkStructReject verdicts
+  let c5 ← checkStructPipeline verdicts
   passed := passed + c5
   let c6 ← checkReject "bad" advNoRestrict .noalias
     "alias-reject" "__restrict__"

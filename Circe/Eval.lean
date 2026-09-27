@@ -236,12 +236,32 @@ def litVal : CLit → Value
   | .u32 v => .u32 v
   | .b v => .b v
 
+/-- Field lookup in a flat struct value (fields are `BitVec 32`;
+    S2 `Point` is `i32`-only). Missing field is `none` (loud
+    `AssertFail` at the expression level, never silent). -/
+def fieldLookup : List (String × BitVec 32) → String → Option (BitVec 32)
+  | [], _ => none
+  | (k, v) :: rest, f => if f = k then some v else fieldLookup rest f
+
+theorem fieldLookup_hit (k : String) (v : BitVec 32)
+    (rest : List (String × BitVec 32)) :
+    fieldLookup ((k, v) :: rest) k = some v := by
+  simp [fieldLookup]
+
+theorem fieldLookup_miss (k f : String) (v : BitVec 32)
+    (rest : List (String × BitVec 32)) (h : f ≠ k) :
+    fieldLookup ((k, v) :: rest) f = fieldLookup rest f := by
+  simp [fieldLookup, h]
+
 /-- Pure evaluator:
     - `add` on `i32` goes through `checkedAddI32` (overflow → `Overflow`);
     - `uadd` on `u32` wraps (plain `cir.add`; never fails);
     - `ult` on `u32` is unsigned comparison;
     - `idx a i` looks up `arr32` array `a` at `u32` index `i`
       (`OOB` off the end, mirroring `bget`);
+    - `fget o f` projects field `f` from `structVal` `o` (missing
+      field / non-struct is `AssertFail`);
+    - `pmk x y` builds the S2 `Point` `structVal` from two `i32`s;
     mismatched types are `AssertFail`; unbound variables are `Uninit`. -/
 def evalExpr : CExpr → Env → Result Value
   | .lit l, _ => .ok (litVal l)
@@ -299,6 +319,21 @@ def evalExpr : CExpr → Env → Result Value
         | .ok x => .ok (.u32 x)
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
+  | .fget obj field, ρ =>
+    match envLookup ρ obj with
+    | none => .error .Uninit
+    | some (.structVal _ fields) =>
+      match fieldLookup fields field with
+      | some x => .ok (.i32 x)
+      | none => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .pmk x y, ρ =>
+    match evalExpr x ρ, evalExpr y ρ with
+    | .ok (.i32 xv), .ok (.i32 yv) =>
+      .ok (.structVal "Point" [("x", xv), ("y", yv)])
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
 
 theorem evalExpr_lit (l : CLit) (ρ : Env) :
     evalExpr (.lit l) ρ = .ok (litVal l) := rfl
@@ -403,12 +438,75 @@ theorem evalExpr_vget_err (arr : String) (v : Vec32) (i : BitVec 32)
     evalExpr (.vget arr (.lit (.u32 i))) ρ = .error e := by
   simp [evalExpr, litVal, harr, hget]
 
+/-- `add` of a projected field and a variable forwards to `checkedAddI32`. -/
+theorem evalExpr_add_fget_var (ρ : Env) (obj f xv : String)
+    (tag : String) (fields : List (String × BitVec 32))
+    (px dx : BitVec 32)
+    (hobj : envLookup ρ obj = some (.structVal tag fields))
+    (hfield : fieldLookup fields f = some px)
+    (hvar : envLookup ρ xv = some (.i32 dx)) :
+    evalExpr (.add (.fget obj f) (.var xv)) ρ =
+      (checkedAddI32 px dx).map .i32 := by
+  simp [evalExpr, hobj, hfield, hvar]
+
 /-- Reading a non-block is rejected, never silently modeled. -/
 theorem evalExpr_vget_notvec (arr : String) (v : BitVec 32) (i : BitVec 32)
     (ρ : Env)
     (harr : envLookup ρ arr = some (.i32 v)) :
     evalExpr (.vget arr (.lit (.u32 i))) ρ = .error .AssertFail := by
   simp [evalExpr, harr]
+
+/-- Field projection hits. -/
+theorem evalExpr_fget_hit (obj : String) (tag : String)
+    (fields : List (String × BitVec 32)) (f : String) (x : BitVec 32)
+    (ρ : Env)
+    (harr : envLookup ρ obj = some (.structVal tag fields))
+    (hget : fieldLookup fields f = some x) :
+    evalExpr (.fget obj f) ρ = .ok (.i32 x) := by
+  simp [evalExpr, harr, hget]
+
+/-- Missing field is rejected, never silently modeled. -/
+theorem evalExpr_fget_miss (obj : String) (tag : String)
+    (fields : List (String × BitVec 32)) (f : String)
+    (ρ : Env)
+    (harr : envLookup ρ obj = some (.structVal tag fields))
+    (hget : fieldLookup fields f = none) :
+    evalExpr (.fget obj f) ρ = .error .AssertFail := by
+  simp [evalExpr, harr, hget]
+
+/-- Projecting from a non-struct is rejected. -/
+theorem evalExpr_fget_notstruct (obj : String) (v : BitVec 32) (f : String)
+    (ρ : Env)
+    (harr : envLookup ρ obj = some (.i32 v)) :
+    evalExpr (.fget obj f) ρ = .error .AssertFail := by
+  simp [evalExpr, harr]
+
+/-- Projecting from an unbound variable is `Uninit`. -/
+theorem evalExpr_fget_unbound (obj f : String) (ρ : Env)
+    (harr : envLookup ρ obj = none) :
+    evalExpr (.fget obj f) ρ = .error .Uninit := by
+  simp [evalExpr, harr]
+
+/-- `pmk` on two `i32`s builds the `Point` struct value. -/
+theorem evalExpr_pmk_ok (x y : CExpr) (ρ : Env)
+    (xv yv : BitVec 32)
+    (hx : evalExpr x ρ = .ok (.i32 xv))
+    (hy : evalExpr y ρ = .ok (.i32 yv)) :
+    evalExpr (.pmk x y) ρ =
+      .ok (.structVal "Point" [("x", xv), ("y", yv)]) := by
+  simp [evalExpr, hx, hy]
+
+/-- `pmk` type mismatches are rejected. -/
+theorem evalExpr_pmk_mismatch (ρ : Env) :
+    evalExpr (.pmk (.lit (.i32 0)) (.lit (.b true))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `pmk` propagates left errors. -/
+theorem evalExpr_pmk_err_l (x y : CExpr) (ρ : Env) (e : Panic)
+    (hx : evalExpr x ρ = .error e) :
+    evalExpr (.pmk x y) ρ = .error e := by
+  simp [evalExpr, hx]
 
 /-! ## Statement evaluator (fuel-bounded `while_`) -/
 
@@ -786,6 +884,32 @@ theorem evalProgFunc_arity (prog : Prog) (fuel : Nat) (f : Func)
     (args : List Value) (h : bindArgs f.args args = none) :
     evalProgFunc prog fuel f args = .error .AssertFail := by
   simp [evalProgFunc, h]
+
+/-- `seq` short-circuits on error in the first component (any fuel). -/
+theorem evalStmtFuel_seq_err (f : Nat) (a b : CStmt)
+    (ρ : Env) (e : Panic)
+    (h : evalStmtFuel f a ρ = .error e) :
+    evalStmtFuel f (.seq a b) ρ = .error e := by
+  cases f with
+  | zero =>
+    simp only [evalStmtFuel, evalStmtZero] at h ⊢
+    simp only [evalStmtWith, h]
+  | succ g =>
+    simp only [evalStmtFuel] at h ⊢
+    simp only [evalStmtWith, h]
+
+/-- `seq` threads the environment on fall-through (any fuel). -/
+theorem evalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt)
+    (ρ ρ' : Env)
+    (h : evalStmtFuel f a ρ = .ok (ρ', .fellThrough)) :
+    evalStmtFuel f (.seq a b) ρ = evalStmtFuel f b ρ' := by
+  cases f with
+  | zero =>
+    simp only [evalStmtFuel, evalStmtZero] at h ⊢
+    simp only [evalStmtWith, h]
+  | succ g =>
+    simp only [evalStmtFuel] at h ⊢
+    simp only [evalStmtWith, h]
 
 /-- `seq` short-circuits on error in the first component. -/
 theorem evalProgStmt_seq_err (prog : Prog) (fuel : Nat) (a b : CStmt)

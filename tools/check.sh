@@ -7,7 +7,10 @@
 # 2. Regenerates + diffs the S1 caller goldens, typechecks the emitted
 #    files, builds the native caller drivers, runs the call differential
 #    fuzzer, and runs the call golden pipeline + rejection suite.
-# 3. Asserts the emitted bodies the S1 proofs reason about are exactly
+# 3. Regenerates + diffs the S2 struct golden, typechecks the emitted
+#    file, builds the native struct driver, runs the struct differential
+#    fuzzer, and runs the struct golden pipeline + rejection suite.
+# 4. Asserts the emitted bodies the S1/S2 proofs reason about are exactly
 #    the golden-pinned text.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
@@ -19,6 +22,7 @@ WORKDIR="/tmp/opencode"
 mkdir -p "$WORKDIR"
 ADD_CALLER_BIN="$WORKDIR/circe_add_caller_native"
 SUM_CALLER_BIN="$WORKDIR/circe_sum_caller_native"
+STRUCT_BIN="$WORKDIR/circe_struct_native"
 
 tools/check-phase7.sh "$TRIALS"
 
@@ -50,5 +54,29 @@ grep -qF "checkedAddI32 x y" out/AddCaller.lean
 grep -qF "checkedAddI32 t z" out/AddCaller.lean
 grep -qF "prefixSumU32 a.val a.val.length" out/SumCaller.lean
 echo "emitted caller bodies match Emit assumptions"
+
+echo "== regenerate out/ (S2 struct) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (S2 struct) =="
+diff -u tests/golden/StructByValue.lean out/StructByValue.lean
+echo "struct golden in sync"
+
+echo "== typecheck emitted struct file =="
+lake env lean out/StructByValue.lean
+echo "emitted struct file typechecks"
+
+echo "== native struct driver =="
+cc -O0 -Wall tests/c/struct_by_value.c tests/diff/driver_struct.c -o "$STRUCT_BIN"
+
+echo "== differential test struct (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffStruct.lean "$STRUCT_BIN" "$TRIALS"
+
+echo "== golden pipeline + struct rejection suite =="
+lake env lean --run tests/lean/GoldenStruct.lean
+
+echo "== emitted-body correspondence (S2 emit_correct transfer) =="
+grep -qF "pointTranslate p dx dy" out/StructByValue.lean
+echo "emitted struct body matches Emit assumptions"
 
 echo "CHECK-OK"

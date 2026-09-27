@@ -24,8 +24,8 @@ Check order (first hit wins — rejection codes are priority-ordered):
    or oracle verdict other than `noalias` with live pointer params);
 5. shape admission (canonical `Func` or a precise code: `escapeReject`
    for non-`choose` pointer returns, `oobPossible` for unbounded
-   `ptr_stride`, `outOfSubset` otherwise, including struct ops which live
-   in `Base` but are pending `Eval`/`Emit`).
+   `ptr_stride`, `outOfSubset` otherwise, including misshapen struct
+   uses outside the S2 `translate` shape).
 -/
 import Circe.CoreIR
 import Circe.Parser
@@ -175,6 +175,36 @@ def freeCallCount (text : String) : Nat :=
   ((text.splitOn "\n").filter (fun line =>
     containsSubstr line "cir.call @free(")).length
 
+/-! ## S2: struct-by-value shape (`translate`) -/
+
+/-- The S2 `Point` struct type: CIRGen's `!rec_Point` alias (long-form
+    `!cir.struct<"Point" …>` also matches via the `"Point"` substring;
+    applied to short type tokens only, never whole text). -/
+def isPointType (t : String) : Bool :=
+  t == "!rec_Point" || containsSubstr t "Point"
+
+/-- `translate`: by-value `Point` + two `i32` deltas, `Point` return,
+    `cir.get_member` field reads (`x`/`y`) + `nsw` adds, no calls,
+    no control flow, no heap, no indexing. -/
+def isTranslateShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [p, dx, dy] =>
+    isPointType p.ctype && !isPtrType p.ctype &&
+    isI32 dx.ctype && isI32 dy.ctype &&
+    isPointType raw.ret &&
+    containsSubstr raw.text "cir.get_member" &&
+    containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -282,9 +312,10 @@ def forbiddenOp (text : String) : Option String :=
 /-! ## The gate -/
 
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
-    Only the five canonical shapes pass (`add`/`incr`/`choose`/`sum` from
-    Phases 3–4 plus `vec_alloc` from Phase 7); everything else is rejected
-    with a precise code (see the module docstring for check order). -/
+    Only the canonical shapes pass (`add`/`incr`/`choose`/`sum`,
+    `vec_alloc`, S1 DAG callers, S2 `translate`); everything else is
+    rejected with a precise code (see the module docstring for check
+    order). -/
 def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
   if raw.name != oracle.funcName then
     reject raw.name .outOfSubset
@@ -320,6 +351,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { addCallerFunc with name := raw.name }
       else if isSumCallerShape raw then
         .ok { sumCallerFunc with name := raw.name }
+      else if isTranslateShape raw then
+        .ok { translateFunc with name := raw.name }
       else if callsFunc raw.text raw.name then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls itself (recursive call): S1 admits DAG calls into call-free leaves only (see docs/ROADMAP.md S1)"
@@ -345,7 +378,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/SUBSET.md rule 4)"
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`): admitted in `Circe.Base` but pending `Eval`/`Emit` (after v0.1)"
+          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only; see docs/SUBSET.md)"
       else
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' is not in the admitted Phase-4 fragment (see `matchFrag` contract in `Circe.Emit`)"
@@ -413,6 +446,8 @@ example : runPipelineOpt (include_str "../tests/cir/sum_caller.cir")
     ⟨"sum_caller", .noalias⟩
     = some (include_str "../tests/golden/SumCaller.lean") := by native_decide
 
-/-- The checked-in struct corpus is rejected (struct ops pending). -/
+/-- The checked-in `translate` CIR (real CIRGen output with
+    `cir.get_member` field reads) validates and emits exactly the golden. -/
 example : runPipelineOpt (include_str "../tests/cir/struct_by_value.cir")
-    ⟨"translate", .unknown⟩ = none := by native_decide
+    ⟨"translate", .unknown⟩
+    = some (include_str "../tests/golden/StructByValue.lean") := by native_decide

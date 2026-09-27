@@ -45,6 +45,10 @@ inductive CLit : Type
     addition (`cir.add nsw`); `uadd` is wrapping unsigned addition (plain
     `cir.add`); `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
     `idx a i` is bounded indexing (`cir.ptr_stride` + `cir.load`).
+    `fget o f` is struct field projection (`cir.get_member` + `cir.load`
+    fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
+    builds the S2 `Point` value from two `i32` field exprs (field-wise
+    update functionalized: `q.x = …; q.y = …; return q`).
     Each constructor requires per-op `Eval`/`Emit` lemmas before admission
     (see docs/PIPELINE.md). -/
 inductive CExpr : Type
@@ -56,6 +60,8 @@ inductive CExpr : Type
   | idx : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
+  | fget : String → String → CExpr
+  | pmk : CExpr → CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and

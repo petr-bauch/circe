@@ -45,6 +45,11 @@ two `cir.call @add` sites (caller-local `t`, then final), single
 `cir.call @sum_array` delegation, `cir.func private @add/@sum_array`
 declarations (not call sites), no local arithmetic/loop ops (those
 live in the callee).
+Struct idiom (S2, from `tests/cir/struct_by_value.cir`): by-value
+`!rec_Point` param + two `i32` deltas, `cir.get_member %p[N]`
+field reads (`x`/`y`) + `cir.load`, two `cir.add nsw` sites,
+field stores into `__retval`, whole-struct `cir.load` + return —
+fused into `fget`/`pmk` CoreIR (no local calls/loops/heap).
 
 ## Trust boundary
 
