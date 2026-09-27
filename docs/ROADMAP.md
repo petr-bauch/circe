@@ -1,63 +1,86 @@
-# Roadmap (post-v0.1, Phase 6 follow-ups)
+# Circe — Roadmap: short-term plan + mid-term notes
 
-v0.1 rejects loudly everything it cannot functionalize. This note records
-the three accepted follow-ups from `docs/PLAN.md` §7 Phase 6, in priority
-order, each with an acceptance sketch. Nothing here is implemented; the
-`validate` gate stays closed-by-default until each lands with proofs.
+Mid-term goal: non-aliasing C/C++ code, more syntax, tactics that
+simplify working with the Lean versions, scaffolding for simple
+verification of the input programs on the Lean side.
 
-## 1. Uniquely-owned heap (`malloc` as `Vec`) — DONE (Phase 7, `u32`-only)
+Short-term scope (locked 2026-09-27): C + struct-by-value only,
+calls first, `cir_simp` now + DSL next, spec skeletons in
+`out/*_Spec.lean`.
 
-Landed as `vec_alloc` (see `docs/PLAN.md` Next Actions): `Circe.Base`
-`Vec32` + `vecFillSumU32`, `CoreIR`/`Eval` heap constructs, `vecFunc` +
-`emit_correct_vec`, `validate` `isVecShape` with strict
-missing-`free`/double-`free` rejections, real-CIR corpus + `DiffVec` fuzz
-+ `GoldenPhase7` + `vec_correct` spec, `tools/check-phase7.sh` →
-`PHASE7-OK`. Remaining (still open): other element types, multiple live
-allocations, `realloc`, looser `free` discipline — each needs its own
-shape + `emit_correct` + golden before admission. The original sketch
-(targeted pre-Phase-7 wording) is kept below for reference.
+## S0. Docs slim + harness rename (this change)
 
-Today `malloc`/`free` are `out-of-subset` (see `forbiddenOp` in
-`Circe/Validator.lean`). The plan: model a uniquely-owned heap block as a
-`Vec`-like value (`BoundedList` with capacity), following the same
-value-not-address discipline as arrays:
+Replace phase-history docs with `OVERVIEW / SUBSET / PIPELINE /
+VERIFYING / ROADMAP` (+ `PINS.md` kept). Archive `PLAN.md`,
+`CIR_SUBSET.md`, `OWNERSHIP.md`, `SEMANTICS.md` to `docs/archive/`.
+Rename `tools/check-phase7.sh` to `tools/check.sh` as the single
+superset entry (thin wrappers kept for compat if needed).
+Acceptance: `lake build` green, `tools/check.sh 100` green,
+no references to removed docs from Lean comments required for build
+(follow-up cleans comments).
 
-- `malloc(n)` becomes a pure constructor `vecNew n : Result (Vec T)`;
-- `free` becomes a linear consumption (affine use-once, enforced by
-  `validate`: the block must not be live after `free`);
-- writes through the unique handle become `vecSet` (value in, value out),
-  like `incr_fwd` today.
+## S1. Multi-function + `cir.call` (first syntax priority)
 
-Acceptance: `validate` admits a `vecParam` shape only with an oracle
-`noalias` verdict on the handle; `emit_correct` for the new ops; golden
-`VecAlloc.lean`; differential fuzz vs native; `free`-after-use and
-double-`free` both rejected with actionable codes.
+DAG-only calls, `Result`-bind translation. Callee `fwd` becomes a
+Lean call; caller threads `←` binds; `emit_correct` composes per
+callee lemmas. Recursion / mutual recursion / function pointers
+rejected with dedicated messages.
+CoreIR: `CStmt.call` gains real semantics (today a stub);
+`Eval` threads env + fuel across the call; `matchFrag` admits
+call-graph shapes with pinned callee names; `validate` checks
+acyclicity + callee admitted + signature match.
+Acceptance: two-function corpus (e.g. `add` caller + `sum` caller)
+translates, `emit_correct_call` proved, golden pair diffs,
+`Diff` fuzz vs native covers cross-function values, rejection
+goldens for recursion + unknown callee.
 
-## 2. C++-lite constructors (still no EH)
+## S2. Struct-by-value
 
-`cir.try`/cleanup/`landingpad` stay rejected. In-subset C++-lite means:
+Finish staged `Base` (`Point`/`pointTranslate`) through
+`Eval`/`Emit`: `cir.get_member` semantics, field-wise updates as
+values, `matchFrag` struct arm, golden `StructByValue.lean`.
+Acceptance: `tests/c/struct_by_value.c` translates instead of
+rejecting, verifies, fuzzes clean; struct rejection golden removed
+/ replaced by misshapen-struct rejection.
 
-- value constructors for aggregates already in `Base` (`Point`-style
-  structs) admitted through `Eval`/`Emit` (struct field ops are `Base`-ready
-  but pending `Eval`/`Emit` — see the `get_member` rejection);
-- no vtables, no inheritance, no templates, no exceptions;
-- each admitted op needs its per-op correctness lemma before `matchFrag`
-  accepts it (same bar as Phases 2–4).
+## S3. C integer + control-flow hardening
 
-Acceptance: struct-by-value corpus (`tests/c/struct_by_value.c`)
-translates, verifies, and fuzzes clean instead of rejecting.
+Generalize `i32`-only / `u32`-only proofs to the `i8–i64`/`u8–u64`
+family (checked-op table + width-parameterized lemmas; `Vec<T,w>`
+design sketched but not required), and harden `break`/`continue`,
+early return, nested loops, `switch`-as-if-chain lowering check.
+Acceptance: width-parameterized corpus entries + loop-nesting
+goldens, no `sorry`, fuzz covers boundary values per width.
 
-## 3. Shrinking oracle trust (Stacked Borrows justification)
+## S4. Tactics stage 1 + spec skeletons (parallelizable after S1)
 
-Explicit soundness gap (documented, not hidden): the oracle's `noalias`
-verdict and `CIRGen` are trusted in v0.1. The follow-up is a
-Stacked-Borrows-style justification: formalize the ownership semantics
-against a CompCert-style memory with a borrow stack, and prove that an
-oracle `noalias` verdict implies the loan-based `Eval` agrees with the
-memory semantics on the admitted fragment.
+Grow `cir_simp` (call-unfold, struct-field, wider-width, vec rules;
+`Result`-bind automation) and land `out/*_Spec.lean` stubs:
+signature + body reference + edge list + prop-test entry.
+Acceptance: each golden has a `_Spec.lean` stub that typechecks;
+`VERIFYING.md` example uses a generated stub; at least one existing
+spec (`sum` or `vec`) refactored onto the new `cir_simp` set with a
+shorter proof.
 
-Acceptance: a machine-checked theorem of the form
-`oracle_noalias f → memEval f = Eval f` for the §4 subset, shrinking the
-trust base to Clang/CIRGen text + Lean/Mathlib. Until then: oracle verdicts
-stay checked in (`tests/oracle/verdicts.txt`), differential testing stays
-P0 on mismatch, and the validator stays conservative (inconclusive = reject).
+## S5. Tactics stage 2: loop + fuel + forward/backward helpers
+
+Loop-invariant helper (reuses fuel-induction pattern from
+`emit_correct_sum`/`_vec`), fuel automation (`n ≤ EVAL_FUEL`
+discharge), forward/backward `choose` reasoning. No new subset.
+Acceptance: `sum`/`vec` emit-correctness proofs shorten or gain a
+shared induction helper; documented in `VERIFYING.md` with before /
+after.
+
+## Mid-term (after short-term solid)
+
+- **M1 — Heap generics**: `Vec<T,w>`, multiple live allocations,
+  `realloc`, looser `free` discipline. Each needs shape +
+  `emit_correct` + golden before admission.
+- **M2 — STL-free C++-lite**: value constructors/destructors,
+  methods on POD, `new`/`delete` as ownership ops. Still no
+  inheritance/templates/EH/vtables. Structs (S2) are the prerequisite.
+- **M3 — Shrinking oracle trust**: Stacked-Borrows-style
+  justification (`oracle_noalias f → memEval f = Eval f` on the
+  admitted fragment), trust base down to CIRGen text + Lean/Mathlib.
+  Until then: verdicts checked in, differential testing P0, validator
+  conservative.

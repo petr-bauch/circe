@@ -1,39 +1,29 @@
 # Verifying Functional Correctness
 
-Workflow (Phase 5, landed): pure equational specs over emitted code, à la
-Aeneas — no memory model, no separation logic, no framing lemmas.
-`Circe.Specs` proves the three required specs (§8 DoD item 2); each is
-stated against `Circe.Base` operations that are literally the bodies of
-the emitted definitions in `out/*.lean`, so they transfer verbatim:
+Workflow: pure equational specs over emitted code, à la Aeneas — no
+memory model, no separation logic, no framing lemmas. `Circe.Specs`
+proves specs against `Circe.Base` operations that are literally the
+bodies of the emitted definitions in `out/*.lean`, so they transfer
+verbatim.
 
-| Spec (`Circe.Specs`) | Statement | Emitted body (`tests/golden/`-pinned) |
+| Spec | Statement | Emitted body (golden-pinned) |
 |---|---|---|
-| `incr_correct` | ok → `r = p + 1` + `nsw` range certificate; overflow → genuinely out of range | `out/Incr.lean`: `incr_fwd p := checkedIncrI32 p` |
-| `choose_lens_laws` | get-put + put-get over plain `BitVec` (`chooseBackBV`/`chooseFwdBV` mirrors, tag-free) | `out/Choose.lean`: `.ok (if b then x else y)` / `.ok (if b then (ret, y) else (x, ret))` |
-| `sum_correct` | in-range `sumFwd l n = .ok (.u32 ((l.take n.toNat).sum))` via `prefixSumU32_take_sum`; `sum_correct_full` is the emitted `BoundedList` body | `out/SumArray.lean`: `.ok (prefixSumU32 a.val a.val.length)` |
-| `vec_correct` (Phase 7) | heap program `= .ok` of `List.sum` of indices `[0, n)` via `vecFillSumU32_correct` + `prefixSumU32_take_sum`; `vec_empty` is the `n = 0` case | `out/VecAlloc.lean`: `vecFillSumU32 n.toNat` |
+| `incr_correct` | ok → `r = p + 1` + `nsw` certificate; overflow genuinely out of range | `incr_fwd p := checkedIncrI32 p` |
+| `choose_lens_laws` | get-put + put-get over tag-free `BitVec` mirrors | `choose_fwd` / `choose_back` |
+| `sum_correct` | in-range = `List.sum` of taken prefix (`prefixSumU32_take_sum`); `sum_correct_full` is the `BoundedList` body | `.ok (prefixSumU32 a.val a.val.length)` |
+| `vec_correct` | heap program = `List.sum` of `[0,n)` (`vecFillSumU32_correct` + take bridge); `vec_empty` is `n = 0` | `vecFillSumU32 n.toNat` |
 
-Supporting lemmas: `incr_spec_ok/err`, `chooseFwdBV_agrees`/`chooseBackBV_agrees`
-(Value-level bridge to `chooseFwd`/`chooseBack` and their Emit lens laws),
-`sum_correct_oob`, `sum_empty`. The bridge `prefixSumU32_take_sum`
-(a prefix sum is the `List.sum` of the taken prefix) lives in `Circe.Base`
-next to `prefixSumU32`.
-
-Body identity is enforced two ways: `native_decide` golden linkage in
-`Circe.Emit` (+ `diff` in the check scripts, since `lake` does not track
-`include_str` deps) and the emitted-body `grep` assertions in
-`tools/check-phase5.sh`.
+Body identity enforced two ways: `native_decide` golden linkage in
+`Circe.Emit` (+ `diff` in check scripts) and emitted-body `grep`
+assertions in the check script.
 
 ## Tactics
 
-`Circe.Tactics` provides `cir_simp`: one `simp` call bundling checked-op
-unfoldings (`checkedAddI32`, `checkedIncrI32`, `checkedAddU32`, strict
-variant, `checkedNegI32`, `checkedDivI32`), `prefixSumU32` computation +
-its `List.sum` bridge, `bget`/`pointTranslate` shapes, and the `Result`
-bind/map computation rules (`result_bind_ok/err`, `result_map_ok/err`
-— caller-side `←` chains compute by `rfl`). Compose with plain `simp`
-for goal-specific lemmas (`cir_simp` takes no extra args by design:
-`simp`-argument splicing does not accept raw `term` lists):
+`Circe.Tactics` provides `cir_simp`: one `simp` set bundling
+checked-op unfoldings, `prefixSumU32` + sum bridge, `bget` /
+`pointTranslate`, vector ops, and `Result` bind/map computation rules
+(caller-side `←` chains compute by `rfl`). Compose with plain `simp`
+for goal-specific lemmas (`cir_simp` takes no extra args by design).
 
 ```lean
 theorem sum_correct_full {n : Nat} (a : BoundedList (BitVec 32) n) :
@@ -41,19 +31,18 @@ theorem sum_correct_full {n : Nat} (a : BoundedList (BitVec 32) n) :
   cir_simp
 ```
 
-Plain `simp`/`omega`/`bv_decide` suffice in the common case; `cir_simp`
-just saves re-listing the set. Used throughout `Circe.Specs`.
+Plain `simp`/`omega`/`bv_decide` suffice in the common case.
+Stage 2 (ROADMAP.md S5) adds: loop-invariant helper, fuel
+automation, forward/backward reasoning — staged after `cir_simp`
+growth (S4).
 
-## Current status (Phase 7)
+## Spec scaffolding (ROADMAP.md S4)
 
-Three pure functional-correctness theorems proved (`Circe.Specs`:
-`incr_correct`, `choose_lens_laws`, `sum_correct`, all `lake build`
-green) plus the Phase 7 heap spec (`vec_correct`, `vec_empty`).
-`tools/check-phase7.sh` runs the whole E2E: everything in
-`tools/check-phase5.sh` (both differential fuzzers, 18-case
-golden/rejection suite) plus the vec golden `diff`, emitted-file
-typecheck, native vec driver, `DiffVec` fuzz, `GoldenPhase7` pipeline +
-heap rejection suite (6 checks), emitted-body correspondence, and specs
-typecheck.
-Next: C++-lite constructors, then shrinking oracle trust (see
-`docs/ROADMAP.md`).
+Emitter writes `out/<name>_Spec.lean` next to each forward file:
+unverified stub with the function signature, the `Base`-op body
+reference, an edge-case list (empty / singleton / max-fuel), and a
+`Diff*`-style prop-test entry. The user copies the stub into
+`Circe.Specs` (or a per-project spec file) and fills the equation.
+The check script asserts the stub exists and typechecks; the filled
+spec transfers by the same body-identity argument above.
+See ROADMAP.md S4 for acceptance.
