@@ -50,7 +50,7 @@ No new subset: these discharge proof obligations the existing
 fuel-generalized loop proofs already carry. Placement follows
 dependencies (`Tactics` imports `Emit`, so `Emit` cannot import
 `Tactics`): fuel automation lives in `Circe.Eval` next to `EVAL_FUEL`,
-`cir_choose` lives in `Circe.Emit` next to the `choose` forward /
+`cir_choose` lives in `Circe.Emit.Choose` next to the `choose` forward /
 backward functions (its simp set names them, so they must be in scope
 where the macro is defined). All three are in scope for
 `import Circe.Tactics` users via the import chain. -/

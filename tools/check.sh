@@ -208,13 +208,13 @@ echo "all 14 spec prop entries true"
 echo "== S5 helpers present (Tactics stage 2) =="
 grep -qF 'macro "cir_fuel"' Circe/Eval.lean
 grep -qF "word32_lt_two32_of_fuel" Circe/Eval.lean
-grep -qF 'macro "cir_choose"' Circe/Emit.lean
-echo "cir_fuel + fuel bound (Eval) and cir_choose (Emit) present"
+grep -qF 'macro "cir_choose"' Circe/Emit/Choose.lean
+echo "cir_fuel + fuel bound (Eval) and cir_choose (Emit.Choose) present"
 
 echo "== S5 adoption (sum/vec/choose proofs use the shared helpers) =="
-grep -qF "word32_lt_two32_of_fuel _ hfuel" Circe/Emit.lean
-grep -qF "cir_choose b" Circe/Emit.lean
-grep -q "by cir_fuel" Circe/Emit.lean
+grep -qF "word32_lt_two32_of_fuel _ hfuel" Circe/Emit/Sum.lean
+grep -qF "cir_choose b" Circe/Emit/Choose.lean
+grep -qr "by cir_fuel" Circe/Emit/
 echo "sum/vec emit-correctness + choose lens proofs use S5 helpers"
 
 echo "== regenerate out/ (M1a two-block heap) =="
