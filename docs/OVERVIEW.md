@@ -70,4 +70,5 @@ Non-aliasing C/C++ code: more syntax, tactics that simplify working
 with the Lean versions, and scaffolding for simple verification of the
 input programs on the Lean side. Short-term scope (per planning):
 C + struct-by-value only, calls first, `cir_simp` now + DSL next,
-spec skeletons in `out/*_Spec.lean`. Details in `ROADMAP.md`.
+spec skeletons in `out/*_Spec.lean`. Short-term S0–S5 complete;
+M1 (heap generics) locked and next. Details in `ROADMAP.md`.

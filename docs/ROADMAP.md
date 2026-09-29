@@ -153,9 +153,24 @@ asserts presence + adoption; `CHECK-OK`.
 
 ## Mid-term (after short-term solid)
 
-- **M1 — Heap generics**: `Vec<T,w>`, multiple live allocations,
-  `realloc`, looser `free` discipline. Each needs shape +
-  `emit_correct` + golden before admission.
+## M1. Heap generics — LOCKED (2026-09-29)
+
+Order: M1a → M1b → M1c → M1d. Each slice gated by shape +
+`emit_correct` + golden before admission.
+
+| Slice | Core change | Design pin |
+|---|---|---|
+| M1a two live `u32` blocks | `Emit`-only: two-block env + `evalFuncFuel_*` mirroring `evalFuncFuel_vec`; `isVec2Shape` (2×`malloc`, `freeCallCount = 2`, pointer-distinctness pins) | No `Eval`/`Base` change (heap ops already name-keyed); disjointness = value separation |
+| M1b `u64` blocks | `VecU64` monomorphized mirror of `Vec32`; new `Value.vecVal64`, mixed-width access → `AssertFail` (S3b policy) | No `Vec α` polymorphism; width unification stays deferred |
+| M1c `realloc` | New name-keyed `.vrealloc` stmt; `vecRealloc` preserves `min(old,new)` prefix, zero-fills growth, never fails (unbounded convention); `realloc(p,0)` / `realloc(NULL,n)` spellings rejected loudly | No OOM error path |
+| M1d free discipline | Validator only: must-free → `freeCallCount ≤ expected` (leak = forgetting a value, sound); double-free / use-after-free stay loud via token, pinned by new rejection goldens | Relaxation is validator-side only |
+
+Per-slice acceptance (standing convention): corpus C (real CIRGen,
+`cir-opt` VERIFY-OK) → shape gate → proof → golden diff →
+tamper-checked `Diff*` fuzz → rejection suite → `check.sh` stage →
+`*_Spec` stub → `CHECK-OK`.
+Non-goals: pointer arithmetic beyond stride loops, true aliasing (M3),
+OOM, polymorphism, threads.
 - **M2 — STL-free C++-lite**: value constructors/destructors,
   methods on POD, `new`/`delete` as ownership ops. Still no
   inheritance/templates/EH/vtables. Structs (S2) are the prerequisite.
