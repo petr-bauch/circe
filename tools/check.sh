@@ -28,6 +28,9 @@
 #    and typecheck, asserts `cir_simp` covers call-unfold / struct-field
 #    / wider-width / vec rules, and evaluates every stub prop entry
 #    (`_check`) to `true`.
+# 10. (S5) Asserts the stage-2 tactics exist (`cir_fuel` + fuel bound
+#    in `Circe.Eval`, `cir_choose` in `Circe.Emit`) and the `sum`/`vec`
+#    emit-correctness + `choose` lens proofs use them.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -197,5 +200,17 @@ for f in out/*_Spec.lean; do
   lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
 done
 echo "all 14 spec prop entries true"
+
+echo "== S5 helpers present (Tactics stage 2) =="
+grep -qF 'macro "cir_fuel"' Circe/Eval.lean
+grep -qF "word32_lt_two32_of_fuel" Circe/Eval.lean
+grep -qF 'macro "cir_choose"' Circe/Emit.lean
+echo "cir_fuel + fuel bound (Eval) and cir_choose (Emit) present"
+
+echo "== S5 adoption (sum/vec/choose proofs use the shared helpers) =="
+grep -qF "word32_lt_two32_of_fuel _ hfuel" Circe/Emit.lean
+grep -qF "cir_choose b" Circe/Emit.lean
+grep -q "by cir_fuel" Circe/Emit.lean
+echo "sum/vec emit-correctness + choose lens proofs use S5 helpers"
 
 echo "CHECK-OK"

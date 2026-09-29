@@ -9,7 +9,10 @@ about emitted code: checked-op unfoldings (+ ok/err + range bridges,
 call-unfold (`addCallerFwd_as_calls`, `sumCallerFwd_is_call`), vector
 ops (+ whole-program bridge), S3a flow folds, and the `Except`
 (`Result`) bind/map computation rules (caller-side `←` chains compute
-by `rfl`, with assoc/pure for nested binds). Plain `simp`/`omega` /
+by `rfl`, with assoc/pure for nested binds). Stage 2 (S5) adds two
+tactics beside it: `cir_fuel` (fuel automation) and `cir_choose`
+(selector split + forward/backward equations), plus the
+`word32_lt_two32_of_fuel` bound lemma. Plain `simp`/`omega` /
 `bv_decide` suffice in the common case; `cir_simp` just saves
 re-listing the set.
 -/
@@ -40,6 +43,17 @@ theorem result_bind_assoc {α β γ : Type} (a : Result α)
 /-- `pure` on the left of a bind computes (for `do`-desugared code). -/
 theorem result_pure_bind {α β : Type} (a : α) (f : α → Result β) :
     (pure a : Result α).bind f = f a := rfl
+
+/-! ## S5 helpers: fuel automation + forward/backward `choose` reasoning.
+
+No new subset: these discharge proof obligations the existing
+fuel-generalized loop proofs already carry. Placement follows
+dependencies (`Tactics` imports `Emit`, so `Emit` cannot import
+`Tactics`): fuel automation lives in `Circe.Eval` next to `EVAL_FUEL`,
+`cir_choose` lives in `Circe.Emit` next to the `choose` forward /
+backward functions (its simp set names them, so they must be in scope
+where the macro is defined). All three are in scope for
+`import Circe.Tactics` users via the import chain. -/
 
 /-- Base `cir_simp` set, as a single simp call. Compose with plain `simp`
     for goal-specific lemmas: `cir_simp; simp [my_lemma]`. (A parameterized

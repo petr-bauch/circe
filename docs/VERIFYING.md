@@ -48,9 +48,42 @@ before → after):
 ```
 
 Plain `simp`/`omega`/`bv_decide` suffice in the common case.
-Stage 2 (ROADMAP.md S5) adds: loop-invariant helper, fuel
-automation, forward/backward reasoning — staged after `cir_simp`
-growth (S4, done).
+Stage 2 (ROADMAP.md S5 — done) adds two tactics beside `cir_simp`
+plus one bound lemma. Placement follows dependencies (`Tactics`
+imports `Emit`, so the helpers live where their names resolve, all in
+scope via `import Circe.Tactics`):
+
+- `cir_fuel` (`Circe.Eval`, next to `EVAL_FUEL`): fuel automation —
+  normalizes `EVAL_FUEL` and discharges fuel arithmetic
+  (`≤ EVAL_FUEL` bounds, `remaining ≤ F` side conditions of
+  fuel-generalized loop facts). Replaces the scattered `(by omega)`
+  arguments and the `hle4096` conversion lines.
+- `word32_lt_two32_of_fuel` (`Circe.Eval`): fuel fits in a word
+  (`n.toNat ≤ EVAL_FUEL → n.toNat < 2 ^ 32`). One `have` per
+  `emit_correct_*` wrapper.
+- `cir_choose b` (`Circe.Emit`, next to `chooseFwd`/`chooseBack`):
+  split on the selector, simplify with the verified forward/backward
+  equations. Closes get-put / put-get goals.
+
+S5 shortened the `sum`/`vec` wrappers onto the helpers (before →
+after):
+
+```lean
+-- before: 5-line fuel-to-word block in every emit_correct_* wrapper
+  have h32eq : (2 : Nat) ^ 32 = 4294967296 := rfl
+  have h32 : nv.toNat < 2 ^ 32 := by
+    rw [h32eq]
+    have hle4096 : nv.toNat ≤ 4096 := by simpa [EVAL_FUEL] using hfuel
+    omega
+-- after: one have where a word is at hand, cir_fuel where none is
+  have h32 : nv.toNat < 2 ^ 32 := word32_lt_two32_of_fuel _ hfuel
+  have hlen32 : l.length < 2 ^ 32 := by cir_fuel
+```
+
+Loop-fact side conditions discharge uniformly (`sumWhile_correct ...
+(by cir_fuel)`), and both `choose` lens laws are one line each
+(`by cir_choose b`). No new subset: nested/skip/find keep their
+hand-rolled fuel steps and can migrate as needed.
 
 ## Spec scaffolding (ROADMAP.md S4 — done)
 

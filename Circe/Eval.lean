@@ -618,6 +618,29 @@ theorem evalExpr_pmk_err_l (x y : CExpr) (ρ : Env) (e : Panic)
     `validate` admits only bounded loops; see `docs/SUBSET.md`). -/
 def EVAL_FUEL : Nat := 4096
 
+/-! ## S5 fuel automation (Tactics stage 2; documented in `Circe.Tactics`).
+
+No new subset: these discharge proof obligations the existing
+fuel-generalized loop proofs already carry. -/
+
+/-- Fuel fits in a word: anything within `EVAL_FUEL` is below `2 ^ 32`.
+    Collapses the `h32eq` / `hle4096` / `omega` block repeated in every
+    `emit_correct_*` wrapper into one `have`. -/
+theorem word32_lt_two32_of_fuel (n : BitVec 32)
+    (h : n.toNat ≤ EVAL_FUEL) : n.toNat < 2 ^ 32 := by
+  have h4096 : n.toNat ≤ 4096 := by simpa [EVAL_FUEL] using h
+  omega
+
+/-- Fuel automation: normalize `EVAL_FUEL` wherever it appears, then
+    discharge fuel arithmetic — `≤ EVAL_FUEL` / `≤ 4096` bounds and the
+    `remaining ≤ F` side conditions of fuel-generalized loop facts
+    (the `(by omega)` arguments to `sumWhile_correct`,
+    `vecFillWhile_correct`, and friends). Written with explicit
+    `first`-branching (not `try ... ; omega`: `try` would swallow the
+    whole sequence when `simp` makes no progress). -/
+macro "cir_fuel" : tactic =>
+  `(tactic| (first | (simp only [EVAL_FUEL] at *; omega) | omega))
+
 /-- Loop-free statement skeleton parameterized by the `while_` handler.
     Structural on `s`, so all equation lemmas and kernel reduction work;
     fuel lives only in `evalStmtFuel` below. -/

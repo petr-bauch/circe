@@ -131,14 +131,25 @@ to `true` (asserted in `check.sh`); `VERIFYING.md` example uses the
 generated `SumArray` stub; `vec_correct` refactored onto the new set
 (manual bridge listing → `cir_simp` + take fact, 11 lines → 8).
 
-## S5. Tactics stage 2: loop + fuel + forward/backward helpers
+## S5. Tactics stage 2: loop + fuel + forward/backward helpers — DONE (2026-09-29)
 
-Loop-invariant helper (reuses fuel-induction pattern from
-`emit_correct_sum`/`_vec`), fuel automation (`n ≤ EVAL_FUEL`
-discharge), forward/backward `choose` reasoning. No new subset.
-Acceptance: `sum`/`vec` emit-correctness proofs shorten or gain a
-shared induction helper; documented in `VERIFYING.md` with before /
-after.
+Fuel automation + `choose` reasoning, no new subset. `cir_fuel`
+(`Circe.Eval`, next to `EVAL_FUEL`: `EVAL_FUEL` normalization + `omega`
+via explicit `first`-branching — a bare `try ... ; omega` misparses,
+`try` swallowing the whole sequence when `simp` makes no progress)
+discharges `≤ EVAL_FUEL` bounds and `remaining ≤ F` loop-fact side
+conditions; `word32_lt_two32_of_fuel` collapses each wrapper's 5-line
+fuel-to-word block to one `have`; `cir_choose b` (`Circe.Emit`, next to
+`chooseFwd`/`chooseBack`: `cases` on an `elimTarget` + simp with the
+forward/backward equations) closes get-put / put-get. Placement is
+dependency-forced (`Tactics` imports `Emit`, so the macros live where
+their names resolve); all three are in scope via
+`import Circe.Tactics`.
+Acceptance met: `emit_correct_sum` / `emit_correct_sum_oob` /
+`emit_correct_vec` shortened onto the helpers, every `sum`/`vec`
+loop-fact fuel side goal uses `cir_fuel`, both `choose` lens laws are
+`by cir_choose b`; `VERIFYING.md` documents before / after; `check.sh`
+asserts presence + adoption; `CHECK-OK`.
 
 ## Mid-term (after short-term solid)
 

@@ -466,18 +466,27 @@ theorem emit_correct_choose (b : Bool) (x y : BitVec 32) :
     simp [evalFunc, evalFuncFuel, chooseFunc, bindArgs, evalStmtFuel,
       evalStmtWith, EVAL_FUEL, evalExpr, chooseFwd, hb, hx, hy]
 
+/-- Forward/backward `choose` reasoning (S5; documented in
+    `Circe.Tactics`): split on the selector and simplify with the
+    verified forward/backward equations. Closes get-put / put-get
+    shaped goals. Lives here (not `Tactics`: the simp set names
+    `chooseFwd` / `chooseBack`, so they must be in scope where the
+    macro is defined). -/
+macro "cir_choose" b:Lean.Parser.Tactic.elimTarget : tactic =>
+  `(tactic| (cases $b <;> simp [chooseFwd, chooseBack]))
+
 /-- Lens law (get-put): propagating the selected value back unchanged is the
     identity on the inputs. -/
 theorem choose_back_get_put (b : Bool) (x y : BitVec 32) :
     chooseBack b x y (if b then x else y) = .ok (.i32 x, .i32 y) := by
-  cases b <;> rfl
+  cir_choose b
 
 /-- Lens law (put-get): selecting after a backward update yields the update. -/
 theorem choose_back_put_get (b : Bool) (x y r : BitVec 32) :
     (match chooseBack b x y r with
     | .ok (.i32 x', .i32 y') => chooseFwd b x' y'
     | _ => .error .AssertFail) = .ok (.i32 r) := by
-  cases b <;> rfl
+  cir_choose b
 
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 
@@ -766,7 +775,7 @@ theorem evalFuncFuel_sum (F : Nat) (l : List (BitVec 32)) (nv : BitVec 32)
             (BitVec.ofNat 32 0 + prefixSumU32 (l.drop 0) (nv.toNat - 0)),
             .fellThrough) :=
       sumWhile_correct l nv 0 0 (BitVec.ofNat 32 0) (Nat.zero_le _) hle h32
-        (by omega)
+        (by cir_fuel)
     simp [evalFuncFuel, sumFunc, bindArgs, evalStmtFuel, evalStmtZero,
       evalStmtWith, evalExpr, litVal, envExtend, sumFwd, henv, hloopH0, hret,
       hle]
@@ -777,7 +786,7 @@ theorem evalFuncFuel_sum (F : Nat) (l : List (BitVec 32)) (nv : BitVec 32)
             (BitVec.ofNat 32 0 + prefixSumU32 (l.drop 0) (nv.toNat - 0)),
             .fellThrough) :=
       sumWhile_correct l nv (F + 1) 0 (BitVec.ofNat 32 0) (Nat.zero_le _) hle
-        h32 (by omega)
+        h32 (by cir_fuel)
     simp [evalFuncFuel, sumFunc, bindArgs, evalStmtFuel, evalStmtWith,
       evalExpr, litVal, envExtend, sumFwd, henv, hloopS, hret, hle]
 
@@ -785,11 +794,7 @@ theorem evalFuncFuel_sum (F : Nat) (l : List (BitVec 32)) (nv : BitVec 32)
 theorem emit_correct_sum (l : List (BitVec 32)) (nv : BitVec 32)
     (hle : nv.toNat ≤ l.length) (hfuel : nv.toNat ≤ EVAL_FUEL) :
     evalFunc sumFunc [.arr32 l, .u32 nv] = sumFwd l nv := by
-  have h32eq : (2 : Nat) ^ 32 = 4294967296 := rfl
-  have h32 : nv.toNat < 2 ^ 32 := by
-    rw [h32eq]
-    have hle4096 : nv.toNat ≤ 4096 := by simpa [EVAL_FUEL] using hfuel
-    omega
+  have h32 : nv.toNat < 2 ^ 32 := word32_lt_two32_of_fuel _ hfuel
   exact evalFuncFuel_sum EVAL_FUEL l nv hle h32 hfuel
 
 /-- OOB corollary: over-long lengths fail loudly on both sides. -/
@@ -808,14 +813,14 @@ theorem evalFuncFuel_sum_oob (F : Nat) (l : List (BitVec 32))
     have hloopH0 : evalStmtWith evalStmtZeroHandler
           sumWhile (mkSumEnv l nv 0 (BitVec.ofNat 32 0)) = .error .OOB :=
       sumWhile_oob l nv 0 0 (BitVec.ofNat 32 0) (Nat.zero_le _) hlt hlen32
-        (by omega)
+        (by cir_fuel)
     simp [evalFuncFuel, sumFunc, bindArgs, evalStmtFuel, evalStmtZero,
       evalStmtWith, evalExpr, litVal, envExtend, henv, hloopH0]
   | succ F =>
     have hloopS : evalStmtWith (evalStmtSuccHandler (evalStmtFuel F))
           sumWhile (mkSumEnv l nv 0 (BitVec.ofNat 32 0)) = .error .OOB :=
       sumWhile_oob l nv (F + 1) 0 (BitVec.ofNat 32 0) (Nat.zero_le _) hlt
-        hlen32 (by omega)
+        hlen32 (by cir_fuel)
     simp [evalFuncFuel, sumFunc, bindArgs, evalStmtFuel, evalStmtWith,
       evalExpr, litVal, envExtend, henv, hloopS]
 
@@ -823,11 +828,7 @@ theorem evalFuncFuel_sum_oob (F : Nat) (l : List (BitVec 32))
 theorem emit_correct_sum_oob (l : List (BitVec 32)) (nv : BitVec 32)
     (hlt : l.length < nv.toNat) (hfuel : l.length + 1 ≤ EVAL_FUEL) :
     evalFunc sumFunc [.arr32 l, .u32 nv] = .error .OOB := by
-  have h32eq : (2 : Nat) ^ 32 = 4294967296 := rfl
-  have hlen32 : l.length < 2 ^ 32 := by
-    rw [h32eq]
-    have hle4096 : l.length + 1 ≤ 4096 := by simpa [EVAL_FUEL] using hfuel
-    omega
+  have hlen32 : l.length < 2 ^ 32 := by cir_fuel
   exact evalFuncFuel_sum_oob EVAL_FUEL l nv hlt hlen32 hfuel
 
 /-! ## `vec_alloc`: uniquely-owned heap block (Phase 7, u32-only) -/
@@ -1241,7 +1242,7 @@ theorem evalFuncFuel_vec (F : Nat) (nv : BitVec 32)
   -- Loop haves match simp's unfolded handler forms (cf. `evalFuncFuel_sum`).
   cases F with
   | zero =>
-    have hF0 : nv.toNat - 0 ≤ 0 := by omega
+    have hF0 : nv.toNat - 0 ≤ 0 := by cir_fuel
     have hloopF0 : evalStmtWith evalStmtZeroHandler
           vecFillWhile
           (mkVecEnv ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv
@@ -1274,7 +1275,7 @@ theorem evalFuncFuel_vec (F : Nat) (nv : BitVec 32)
       evalStmtWith, evalExpr, litVal, envExtend, hn0, vecNew, henv,
       hloopF0, hloopS0, hfree0, huv, harv, hars]
   | succ F =>
-    have hFS : nv.toNat - 0 ≤ F + 1 := by omega
+    have hFS : nv.toNat - 0 ≤ F + 1 := by cir_fuel
     have hloopFS : evalStmtWith (evalStmtSuccHandler (evalStmtFuel F))
           vecFillWhile
           (mkVecEnv ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv
@@ -1311,11 +1312,7 @@ theorem evalFuncFuel_vec (F : Nat) (nv : BitVec 32)
 theorem emit_correct_vec (nv : BitVec 32)
     (hfuel : nv.toNat ≤ EVAL_FUEL) :
     evalFunc vecFunc [.u32 nv] = vecFwd nv := by
-  have h32eq : (2 : Nat) ^ 32 = 4294967296 := rfl
-  have h32 : nv.toNat < 2 ^ 32 := by
-    rw [h32eq]
-    have hle4096 : nv.toNat ≤ 4096 := by simpa [EVAL_FUEL] using hfuel
-    omega
+  have h32 : nv.toNat < 2 ^ 32 := word32_lt_two32_of_fuel _ hfuel
   have h := evalFuncFuel_vec EVAL_FUEL nv hfuel h32
   have hc := vecFillSumU32_correct nv.toNat
   simp only [evalFunc, vecFwd, h, hc, u32_map_ok]
