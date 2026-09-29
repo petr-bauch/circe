@@ -664,6 +664,172 @@ theorem vecFillLoopAux_get (v : Vec32) (k r : Nat) (w : Vec32)
         omega
       exact ih _ _ _ (by rfl) hlen' h j (by omega) (by omega)
 
+/-! ### M1a: block copy (`vec_copy_sum`, two live blocks) -/
+
+/-- Copy loop: write `src[k .. k+r)` into `dst` (M1a). Reads through
+    `vecGet`, writes through `vecSet`: either side's token/bounds
+    failure is loud. Both spec and unfolding witness for
+    `vecCopyWhile_correct` (cf. `vecFillLoopAux`). -/
+def vecCopyLoopAux (src dst : Vec32) (k r : Nat) : Result Vec32 :=
+  match r with
+  | 0 => .ok dst
+  | r + 1 =>
+    match vecGet src k with
+    | .error e => .error e
+    | .ok x =>
+      match vecSet dst k x with
+      | .error e => .error e
+      | .ok dst' => vecCopyLoopAux src dst' (k + 1) r
+
+/-- Copy preserves the capacity. -/
+theorem vecCopyLoopAux_length (src dst : Vec32) (k r : Nat) (w : Vec32)
+    (h : vecCopyLoopAux src dst k r = .ok w) :
+    w.val.length = dst.val.length := by
+  -- NOTE: `induction ... generalizing` orders the `ih` binders by
+  -- theorem declaration order (`dst k w` here), *not* by listed order
+  -- (probed). The `vecFill*` proofs never noticed: `(v k w)` is
+  -- type-palindromic. Calls below use declaration order.
+  induction r generalizing k dst w with
+  | zero =>
+    simp [vecCopyLoopAux] at h; cases h; rfl
+  | succ r ih =>
+    unfold vecCopyLoopAux at h
+    match hg : vecGet src k with
+    | .error e => simp [hg] at h
+    | .ok x =>
+      match hs : vecSet dst k x with
+      | .error e => simp [hg, hs] at h
+      | .ok dst' =>
+        simp [hg, hs] at h
+        have hlen := vecSet_length dst k x dst' hs
+        have ihr := ih dst' (k + 1) w h
+        omega
+
+/-- Copy keeps the destination live (every step succeeds on a live
+    destination, so the token can only come from the input). -/
+theorem vecCopyLoopAux_live (src dst : Vec32) (k r : Nat) (w : Vec32)
+    (hlive : dst.freed = false)
+    (h : vecCopyLoopAux src dst k r = .ok w) :
+    w.freed = false := by
+  induction r generalizing k dst w with
+  | zero =>
+    simp [vecCopyLoopAux] at h; cases h; exact hlive
+  | succ r ih =>
+    unfold vecCopyLoopAux at h
+    match hg : vecGet src k with
+    | .error e => simp [hg] at h
+    | .ok x =>
+      match hs : vecSet dst k x with
+      | .error e => simp [hg, hs] at h
+      | .ok dst' =>
+        simp [hg, hs] at h
+        exact ih dst' (k + 1) w (vecSet_live dst k x dst' hs) h
+
+/-- Copying `[k, k+r)` preserves reads below `k`
+    (cf. `vecFillLoopAux_preserve`). -/
+theorem vecCopyLoopAux_preserve (src dst : Vec32) (k r j : Nat)
+    (y : BitVec 32) (w : Vec32) (hlt : j < k)
+    (hget : vecGet dst j = .ok y)
+    (h : vecCopyLoopAux src dst k r = .ok w) :
+    vecGet w j = .ok y := by
+  induction r generalizing k dst w with
+  | zero =>
+    simp [vecCopyLoopAux] at h; cases h; exact hget
+  | succ r ih =>
+    unfold vecCopyLoopAux at h
+    match hg : vecGet src k with
+    | .error e => simp [hg] at h
+    | .ok x =>
+      match hs : vecSet dst k x with
+      | .error e => simp [hg, hs] at h
+      | .ok dst' =>
+        simp [hg, hs] at h
+        have hne : j ≠ k := by omega
+        exact ih dst' (k + 1) w (by omega)
+          (vecSet_get_other dst k j x y dst' hne hs hget) h
+
+/-- A copied range reads back `src`'s values: positions below `k` are
+    preserved, positions in `[k, k+r)` take what `src` holds there.
+    With `src` holding indices, the copy holds indices. -/
+theorem vecCopyLoopAux_all (src dst : Vec32) (k r : Nat) (w : Vec32)
+    (hliveD : dst.freed = false) (hlenD : dst.val.length = src.val.length)
+    (hbound : k + r ≤ src.val.length)
+    (hpre : ∀ t, t < k → vecGet dst t = .ok (BitVec.ofNat 32 t))
+    (hsrc : ∀ t, t < k + r → vecGet src t = .ok (BitVec.ofNat 32 t))
+    (h : vecCopyLoopAux src dst k r = .ok w) (j : Nat)
+    (hjhi : j < k + r) :
+    vecGet w j = .ok (BitVec.ofNat 32 j) := by
+  induction r generalizing k dst w with
+  | zero =>
+    simp [vecCopyLoopAux] at h; cases h
+    exact hpre j (by omega)
+  | succ r ih =>
+    unfold vecCopyLoopAux at h
+    have hgetk : vecGet src k = .ok (BitVec.ofNat 32 k) :=
+      hsrc k (by omega)
+    simp only [hgetk] at h
+    have hklen : k < dst.val.length := by omega
+    have hs : vecSet dst k (BitVec.ofNat 32 k) =
+        .ok ⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ :=
+      vecSet_ok dst k _ hliveD hklen
+    rw [hs] at h
+    simp only at h
+    by_cases hjk : j = k
+    · subst j
+      have hhere : vecGet ⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ k =
+          .ok (BitVec.ofNat 32 k) := by
+        rw [vecGet_ok _ _ _ rfl]
+        exact getElem?_set_self dst.val k _ hklen
+      have := vecCopyLoopAux_preserve src
+        ⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ (k + 1) r k _ w
+        (by omega) hhere h
+      simpa using this
+    · have hlen' : (⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
+        = src.val.length := by
+        show (dst.val.set k (BitVec.ofNat 32 k)).length = src.val.length
+        rw [List.length_set]
+        omega
+      have hlive' : (⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).freed
+          = false := rfl
+      have hpre' : ∀ t, t < k + 1 →
+          vecGet ⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ t =
+            .ok (BitVec.ofNat 32 t) := by
+        intro t ht
+        by_cases htk : t = k
+        · subst t
+          rw [vecGet_ok _ _ _ rfl]
+          exact getElem?_set_self dst.val k _ hklen
+        · exact vecSet_get_other dst k t _ _ _ (by omega) hs
+            (hpre t (by omega))
+      exact ih _ (k + 1) w hlive' hlen' (by omega) hpre'
+        (fun t ht => hsrc t (by omega)) h (by omega)
+
+/-- Copy on live equal-length blocks with indexed `src` always succeeds. -/
+theorem vecCopyLoopAux_fresh_ok (src dst : Vec32) (k r : Nat)
+    (_hliveS : src.freed = false) (hliveD : dst.freed = false)
+    (hlen : dst.val.length = src.val.length)
+    (hbound : k + r ≤ src.val.length)
+    (hsrc : ∀ t, t < k + r → vecGet src t = .ok (BitVec.ofNat 32 t)) :
+    ∃ w, vecCopyLoopAux src dst k r = .ok w := by
+  induction r generalizing k dst with
+  | zero => exact ⟨dst, rfl⟩
+  | succ r ih =>
+    have hgetk : vecGet src k = .ok (BitVec.ofNat 32 k) :=
+      hsrc k (by omega)
+    have hklen : k < dst.val.length := by omega
+    have hs : vecSet dst k (BitVec.ofNat 32 k) =
+        .ok ⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ :=
+      vecSet_ok dst k _ hliveD hklen
+    unfold vecCopyLoopAux
+    simp only [hgetk, hs]
+    have hlen' : (dst.val.set k (BitVec.ofNat 32 k)).length
+        = src.val.length := by
+      rw [List.length_set]
+      omega
+    exact ih ⟨dst.val.set k (BitVec.ofNat 32 k), false⟩ (k + 1)
+      (vecSet_live dst k _ _ hs) hlen' (by omega)
+      (fun t ht => hsrc t (by omega))
+
 /-- Fill on a live capacity-`(k+r)` block always succeeds. -/
 theorem vecFillLoopAux_fresh_ok (l : List (BitVec 32)) (k r : Nat)
     (h : l.length = k + r) :

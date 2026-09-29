@@ -16,6 +16,7 @@ input rejects loudly, never silently models memory.
 | borrow-return | `choose_ptr` | `choose_fwd` + `choose_back` | lens laws |
 | bounded loop | `sum_array` | `prefixSumU32` over `BoundedList` | `emit_correct_sum` (fuel induction) |
 | uniquely-owned heap (`u32`-only) | `vec_alloc` | `vecFillSumU32 n.toNat` | `emit_correct_vec` (two-loop induction) |
+| two live blocks (`u32`-only) | `vec_copy_sum` (M1a) | `vecFillSumU32 n.toNat` (copy value-invisible) | `emit_correct_vec2` (fill/copy/sum induction) |
 | DAG call (double-`add`) | `add_caller` | two `checkedAddI32` binds (leaf inlined; `addCallerFwd_as_calls`) | `evalProgFunc_addCaller` (program induction-free composition) |
 | DAG call (`sum` delegation) | `sum_caller` | `prefixSumU32` body (`sumCallerFwd_is_call`) | `evalProgFunc_sumCaller` (fuel-generalized callee reuse) |
 | struct-by-value | `translate` (`struct_by_value`) | `pointTranslate` delegation (`translateFwd_*` bridges) | `evalFuncFuel_translate` (ok + both error paths) |
@@ -56,9 +57,12 @@ native control-flow drivers → `DiffFlow` fuzz vs native →
 → 64-bit golden `diff`s → native 64-bit drivers → `DiffWidth` fuzz
 vs native (boundary values per width) → `GoldenWidth` pipeline +
 rejection suite → emitted-body correspondence → S4 spec-stub
-regeneration (14/14 typecheck, `cir_simp` coverage greps, 14/14
+rejection suite → emitted-body correspondence → S4 spec-stub
+regeneration (15/15 typecheck, `cir_simp` coverage greps, 15/15
 `_check` entries `true`) → S5 helper presence + adoption greps →
-`CHECK-OK`).
+M1a two-block golden `diff` → native two-block driver → `DiffVec2`
+fuzz vs native → `GoldenVec2` pipeline + rejection suite →
+emitted-body correspondence → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

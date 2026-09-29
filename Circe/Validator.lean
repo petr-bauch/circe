@@ -190,6 +190,13 @@ def freeCallCount (text : String) : Nat :=
   ((text.splitOn "\n").filter (fun line =>
     containsSubstr line "cir.call @free(")).length
 
+/-- `malloc` *call* sites (`cir.call @malloc(`/n): same line-aware
+    rationale as `freeCallCount` — the `cir.func private @malloc`
+    declaration also contains `@malloc(`. -/
+def mallocCallCount (text : String) : Nat :=
+  ((text.splitOn "\n").filter (fun line =>
+    containsSubstr line "cir.call @malloc(")).length
+
 /-! ## S2: struct-by-value shape (`translate`) -/
 
 /-- The S2 `Point` struct type: CIRGen's `!rec_Point` alias (long-form
@@ -274,6 +281,28 @@ def isVecShape (raw : RawFunc) : Bool :=
     containsSubstr raw.text "malloc" &&
     containsSubstr raw.text "cir.call @free(" &&
     !(1 < freeCallCount raw.text) &&
+    containsSubstr raw.text "cir.for" &&
+    containsSubstr raw.text "cir.ptr_stride" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.switch"
+  | _ => false
+
+/-- `vec_copy_sum` (M1a): length param, `u32` return, two `malloc`s +
+    bounded `cir.for` loops over `cir.ptr_stride` + exactly two `free`
+    calls. The two `malloc` sites yield two `malloc` results, so the
+    blocks are disjoint by construction (no aliasing expressible);
+    exactly-two-`free` keeps the strict linear discipline (M1d loosens
+    this later). -/
+def isVec2Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [n] =>
+    noBreakContinueSwitch raw.text &&
+    isLengthType n.ctype && !isPtrType n.ctype &&
+    isU32 raw.ret &&
+    mallocCallCount raw.text == 2 &&
+    freeCallCount raw.text == 2 &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
     !hasNonHeapCall raw.text &&
@@ -565,6 +594,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { sumFunc with name := raw.name }
       else if isVecShape raw then
         .ok { vecFunc with name := raw.name }
+      else if isVec2Shape raw then
+        .ok { vec2Func with name := raw.name }
       else if isAddCallerShape raw then
         .ok { addCallerFunc with name := raw.name }
       else if isSumCallerShape raw then
@@ -593,13 +624,14 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           !containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls `malloc` without a matching `free`: heap blocks must be freed exactly once on every path (strict linear discipline, see docs/SUBSET.md rule 8 and docs/ROADMAP.md)"
-      else if 1 < freeCallCount raw.text then
+      else if 1 < freeCallCount raw.text &&
+          mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls `free` twice: double-`free` is rejected (heap blocks are freed exactly once, see docs/SUBSET.md rule 8)"
+          s!"out-of-subset: function '{raw.name}' calls `free` more times than `malloc`: double-`free` is rejected (heap blocks are freed exactly once, see docs/SUBSET.md rule 8)"
       else if containsSubstr raw.text "malloc" ||
           containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` shape (see docs/ROADMAP.md)"
+          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` / `vec_copy_sum` shapes (see docs/ROADMAP.md)"
       else if isPtrType raw.ret then
         reject raw.name .escapeReject
           s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/SUBSET.md rule 6)"
@@ -673,6 +705,12 @@ example : runPipelineOpt (include_str "../tests/cir/sum_array.cir")
 example : runPipelineOpt (include_str "../tests/cir/vec_alloc.cir")
     ⟨"vec_alloc", .unknown⟩
     = some (include_str "../tests/golden/VecAlloc.lean") := by native_decide
+
+/-- The checked-in `vec_copy_sum` CIR (M1a: real CIRGen output, two
+    `malloc`s + two `free`s) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/vec_copy_sum.cir")
+    ⟨"vec_copy_sum", .unknown⟩
+    = some (include_str "../tests/golden/VecCopySum.lean") := by native_decide
 
 /-- The checked-in `add_caller` CIR (two DAG calls into `add`) validates
     and emits exactly the golden. -/

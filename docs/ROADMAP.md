@@ -160,7 +160,7 @@ Order: M1a → M1b → M1c → M1d. Each slice gated by shape +
 
 | Slice | Core change | Design pin |
 |---|---|---|
-| M1a two live `u32` blocks | `Emit`-only: two-block env + `evalFuncFuel_*` mirroring `evalFuncFuel_vec`; `isVec2Shape` (2×`malloc`, `freeCallCount = 2`, pointer-distinctness pins) | No `Eval`/`Base` change (heap ops already name-keyed); disjointness = value separation |
+| M1a two live `u32` blocks — DONE | `vec_copy_sum`: fill `a` / copy `a`→`b` / sum `b`, `vec2Fwd = vecFwd` (copy value-invisible); `isVec2Shape` (2×`malloc`, `freeCallCount = 2`); `DiffVec2` + `GoldenVec2` 6/6 | `Base` gained `vecCopyLoopAux` + contents lemmas (copy needs a spec/witness too); double-free gate refined to `free > malloc` (balanced-but-misshapen → heap-shape message) |
 | M1b `u64` blocks | `VecU64` monomorphized mirror of `Vec32`; new `Value.vecVal64`, mixed-width access → `AssertFail` (S3b policy) | No `Vec α` polymorphism; width unification stays deferred |
 | M1c `realloc` | New name-keyed `.vrealloc` stmt; `vecRealloc` preserves `min(old,new)` prefix, zero-fills growth, never fails (unbounded convention); `realloc(p,0)` / `realloc(NULL,n)` spellings rejected loudly | No OOM error path |
 | M1d free discipline | Validator only: must-free → `freeCallCount ≤ expected` (leak = forgetting a value, sound); double-free / use-after-free stay loud via token, pinned by new rejection goldens | Relaxation is validator-side only |

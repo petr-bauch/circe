@@ -66,7 +66,7 @@ def main : IO Unit := do
     "out-of-subset" "matching `free`"
   passed := passed + c2
   let c3 ← checkReject7 "df" advDoubleFree .unknown
-    "out-of-subset" "twice"
+    "out-of-subset" "double-`free`"
   passed := passed + c3
   let c4 ← checkReject7 "hs" advHeapShape .unknown
     "out-of-subset" "outside the admitted"

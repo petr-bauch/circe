@@ -29,7 +29,10 @@ disciplined `&`/`*`, array indexing `a[i]` with length param,
 struct field access (S2: `translate` shape — by-value `Point`
 reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return).
 Uniquely-owned heap, `u32`-only: `malloc(n * sizeof(uint32_t))`
-with same-function length `n`, bounded `v[i]`, exactly one `free(v)`.
+with same-function length `n`, bounded `v[i]`, exactly one `free(v)`
+(`vec_alloc` shape) or two `malloc`s + two `free`s with a fill/copy/sum
+discipline (M1a `vec_copy_sum` shape: both blocks live at once, disjoint
+by construction).
 No `goto` (`cir.br` is matched line-aware so `cir.break` never trips
 it), `setjmp`, non-lowerable `switch`, no function pointers, no other
 heap shapes, read-only `const`
@@ -58,11 +61,14 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 7. Loops must be length-paired (`sum_array` shape) and terminate within
    `EVAL_FUEL` (4096); exhaustion is `AssertFail` (incompleteness, never
    unsoundness); over-long lengths are `OOB`.
-8. Heap (`vec_alloc` shape): `malloc(n * sizeof(uint32_t))`,
-   only `v[i]` for `0 <= i < n`, `free(v)` exactly once on every path
-   (missing-`free` / double-`free` rejected), no escape, single live
-   allocation per function. The block is a value + affine token
-   (`Vec32.freed`), not an address.
+8. Heap (`vec_alloc` / `vec_copy_sum` shapes): `malloc(n *
+   sizeof(uint32_t))`, only `v[i]` for `0 <= i < n`, every block freed
+   exactly once on every path (missing-`free` / double-`free`
+   rejected; more `free`s than `malloc`s is double-`free`), no escape.
+   `vec_alloc`: single live allocation; `vec_copy_sum` (M1a): two live
+   allocations, fill `a` / copy `a` into `b` / sum `b`, `free(a)` then
+   `free(b)` — disjoint by construction (two `malloc` results). Blocks
+   are values + affine tokens (`Vec32.freed`), not addresses.
 9. DAG calls (S1): callers target admitted call-free leaves only
    (`add`, `sum_array`); exact caller shapes (`add_caller`:
    three `i32` + two `@add` sites; `sum_caller`: `(ptr, n)` +
@@ -111,7 +117,7 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 `cir.func`, `cir.alloca`/`load`/`store` (functionalizable shape),
 `cir.cast` (int/bool), `cir.binop`/`cmp`/`unary`, `cir.cond_br`
 (`cir.br` from `goto` rejected), `cir.return`, `cir.call`
-(`@malloc`/`@free` in vec shape only; `@add`/`@sum_array` in the exact
+(`@malloc`/`@free` in the vec/vec2 shapes only; `@add`/`@sum_array` in the exact
 S1 caller shapes only), `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
@@ -121,7 +127,7 @@ on pinned consts + `default`, all other switches rejected),
 `get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
-`cir.get_global @malloc/@free` plumbing allowed in vec shape only.
+`cir.get_global @malloc/@free` plumbing allowed in vec/vec2 shapes only.
 64-bit spellings (`!s64i`/`!u64i` + long forms) in the S3b `add64` /
 `addu64` shapes only; 8/16-bit spellings always rejected (promotion).
 

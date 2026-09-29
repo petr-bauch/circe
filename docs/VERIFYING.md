@@ -88,7 +88,7 @@ hand-rolled fuel steps and can migrate as needed.
 ## Spec scaffolding (ROADMAP.md S4 — done)
 
 The emitter writes `out/<name>_Spec.lean` next to each forward file
-(14 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
+(15 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
 dispatched on `matchFrag` exactly like `emitFunc`): unverified stub
 with the function signature, the `Base`-op body reference, an
 edge-case list (empty / singleton / max-fuel), and a `Diff*`-style
@@ -119,6 +119,7 @@ def sum_array_spec_check : Bool :=
 
 (`repr`-pretty-`==` is the same comparison the `Diff*` fuzzers use:
 `Except` has no `DecidableEq` instance to feed `decide`, so both
-sides render before comparing.) Acceptance met: 14/14 stubs
-typecheck, 14/14 `_check` entries evaluate to `true`; `vec_correct`
+sides render before comparing.) Acceptance met: 15/15 stubs
+typecheck, 15/15 `_check` entries evaluate to `true` (14/14 at S4
+landing, plus M1a's `VecCopySum` stub); `vec_correct`
 refactored shorter onto the grown set (see Tactics above).

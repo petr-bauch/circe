@@ -31,6 +31,10 @@
 # 10. (S5) Asserts the stage-2 tactics exist (`cir_fuel` + fuel bound
 #    in `Circe.Eval`, `cir_choose` in `Circe.Emit`) and the `sum`/`vec`
 #    emit-correctness + `choose` lens proofs use them.
+# 11. (M1a) Regenerates + diffs the two-block golden, typechecks the
+#    emitted files, builds the native two-block driver, runs the
+#    two-block differential fuzzer, and runs the two-block golden
+#    pipeline + rejection suite.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -171,8 +175,8 @@ echo "emitted 64-bit bodies match Emit assumptions"
 echo "== regenerate out/ (S4 spec stubs) =="
 lake env lean --run tools/GenOut.lean
 
-echo "== spec stub existence + typecheck (14 stubs) =="
-[ "$(ls out/*_Spec.lean | wc -l)" = 14 ] || { echo "expected 14 spec stubs"; exit 1; }
+echo "== spec stub existence + typecheck (15 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 15 ] || { echo "expected 15 spec stubs"; exit 1; }
 for f in out/*_Spec.lean; do lake env lean "$f"; done
 echo "all 14 spec stubs typecheck"
 
@@ -212,5 +216,32 @@ grep -qF "word32_lt_two32_of_fuel _ hfuel" Circe/Emit.lean
 grep -qF "cir_choose b" Circe/Emit.lean
 grep -q "by cir_fuel" Circe/Emit.lean
 echo "sum/vec emit-correctness + choose lens proofs use S5 helpers"
+
+echo "== regenerate out/ (M1a two-block heap) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (M1a two-block heap) =="
+diff -u tests/golden/VecCopySum.lean out/VecCopySum.lean
+echo "two-block golden in sync"
+
+echo "== typecheck emitted two-block file =="
+lake env lean out/VecCopySum.lean
+lake env lean out/VecCopySum_Spec.lean
+echo "emitted two-block files typecheck"
+
+echo "== native two-block driver =="
+VEC2_BIN="$WORKDIR/circe_vec2_native"
+cc -O0 -Wall tests/c/vec_copy_sum.c tests/diff/driver_veccopy.c -o "$VEC2_BIN"
+
+echo "== differential test two-block heap (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffVec2.lean "$VEC2_BIN" "$TRIALS"
+
+echo "== golden pipeline + two-block rejection suite =="
+lake env lean --run tests/lean/GoldenVec2.lean
+
+echo "== emitted-body correspondence (M1a emit_correct transfer) =="
+grep -qF "vecFillSumU32 n.toNat" out/VecCopySum.lean
+grep -qF "vec_copy_sum_fwd" out/VecCopySum.lean
+echo "emitted two-block body matches Emit assumptions"
 
 echo "CHECK-OK"

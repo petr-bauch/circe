@@ -1,8 +1,8 @@
 -- Generator for the emitted files (Phases 4+7, S1 callers, S2 structs,
--- S3a control flow, S3b 64-bit widths, S4 spec stubs).
+-- S3a control flow, S3b 64-bit widths, S4 spec stubs, M1a two-block heap).
 -- Run from the repo root: `lake env lean --run tools/GenOut.lean`
--- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}.lean`
--- plus `out/{Add,Incr,Choose,SumArray,VecAlloc,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}_Spec.lean`
+-- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc,VecCopySum,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}.lean`
+-- plus `out/{Add,Incr,Choose,SumArray,VecAlloc,VecCopySum,AddCaller,SumCaller,StructByValue,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}_Spec.lean`
 -- from `Circe.Emit.emitFunc` / `Circe.Emit.emitSpec` (single source of truth;
 -- `tests/golden/*.lean` pins the forward bytes).
 import Circe.Emit
@@ -23,6 +23,7 @@ def main : IO Unit := do
   let choose ← emitOrDie chooseFunc
   let sum ← emitOrDie sumFunc
   let vec ← emitOrDie vecFunc
+  let vec2 ← emitOrDie vec2Func
   let addCaller ← emitOrDie addCallerFunc
   let sumCaller ← emitOrDie sumCallerFunc
   let translate ← emitOrDie translateFunc
@@ -37,6 +38,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
   IO.FS.writeFile "out/SumArray.lean" (emitFileText (.ok sum))
   IO.FS.writeFile "out/VecAlloc.lean" (emitFileText (.ok vec))
+  IO.FS.writeFile "out/VecCopySum.lean" (emitFileText (.ok vec2))
   IO.FS.writeFile "out/AddCaller.lean" (emitFileText (.ok addCaller))
   IO.FS.writeFile "out/SumCaller.lean" (emitFileText (.ok sumCaller))
   IO.FS.writeFile "out/StructByValue.lean" (emitFileText (.ok translate))
@@ -51,6 +53,7 @@ def main : IO Unit := do
   let chooseSpec ← specOrDie chooseFunc
   let sumSpec ← specOrDie sumFunc
   let vecSpec ← specOrDie vecFunc
+  let vec2Spec ← specOrDie vec2Func
   let addCallerSpec ← specOrDie addCallerFunc
   let sumCallerSpec ← specOrDie sumCallerFunc
   let translateSpec ← specOrDie translateFunc
@@ -65,6 +68,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
   IO.FS.writeFile "out/SumArray_Spec.lean" sumSpec
   IO.FS.writeFile "out/VecAlloc_Spec.lean" vecSpec
+  IO.FS.writeFile "out/VecCopySum_Spec.lean" vec2Spec
   IO.FS.writeFile "out/AddCaller_Spec.lean" addCallerSpec
   IO.FS.writeFile "out/SumCaller_Spec.lean" sumCallerSpec
   IO.FS.writeFile "out/StructByValue_Spec.lean" translateSpec
@@ -81,6 +85,8 @@ def main : IO Unit := do
     throw (IO.userError "sum must not have a backward definition")
   if vec.backward.isSome then
     throw (IO.userError "vec must not have a backward definition")
+  if vec2.backward.isSome then
+    throw (IO.userError "vec2 must not have a backward definition")
   if addCaller.backward.isSome then
     throw (IO.userError "addCaller must not have a backward definition")
   if sumCaller.backward.isSome then
@@ -99,4 +105,4 @@ def main : IO Unit := do
     throw (IO.userError "add64 must not have a backward definition")
   if addu64.backward.isSome then
     throw (IO.userError "addu64 must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean + 14 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/VecCopySum.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean + 15 *_Spec.lean stubs"
