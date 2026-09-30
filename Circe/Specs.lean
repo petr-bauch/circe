@@ -138,3 +138,25 @@ theorem vec_correct (n : Nat) :
 theorem vec_empty : vecFillSumU32 0 = .ok 0 := by
   rw [vec_correct]
   simp
+
+/-! ## `vec_alloc_u64`: index-sum is `List.sum` of the filled range (M1b) -/
+
+/-- Functional correctness for `vec_alloc_u64` (M1b heap spec): the pure
+    `u64` heap program delivers the `List.sum` of indices `[0, n)`
+    (wrapping `u64` arithmetic is exactly `BitVec` addition). Applies
+    verbatim to `out/VecAllocU64.lean:vec_alloc_u64_fwd` (body-identical:
+    `vecFillSumU64 n.toNat`). -/
+theorem vec64_correct (n : Nat) :
+    vecFillSumU64 n = .ok (((List.range n).map (BitVec.ofNat 64)).sum) := by
+  have hlen : ((List.range n).map (BitVec.ofNat 64)).length = n := by simp
+  have htake : ((List.range n).map (BitVec.ofNat 64)).take n =
+      (List.range n).map (BitVec.ofNat 64) := by
+    have h2 := List.take_length (l := (List.range n).map (BitVec.ofNat 64))
+    rwa [hlen] at h2
+  cir_simp
+  rw [htake]
+
+/-- The empty `u64` heap program sums to zero. -/
+theorem vec64_empty : vecFillSumU64 0 = .ok 0 := by
+  rw [vec64_correct]
+  simp

@@ -111,6 +111,16 @@ def emitVec2Text (name : String) : String :=
   ++ "def " ++ name ++ "_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecFillSumU32 n.toNat\n"
 
+/-- Render the `vec_alloc_u64` forward definition (M1b): the
+    monomorphized `u64` mirror of `vec_alloc` — the verified
+    `vecFillSumU64` fold over `n.toNat`. -/
+def emitVec64Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ "/-- Pure translation of `" ++ name ++ "` (uniquely-owned `u64` heap block: allocate, fill with indices, sum, free). -/\n"
+  ++ "def " ++ name ++ "_fwd (n : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  vecFillSumU64 n.toNat\n"
+
 /-- Render the `add_caller` forward definition: two sequential DAG calls
     into `add_fwd`. The file stays self-contained (only `Circe.Base` is
     imported — cross-file imports need oleans, which plain `out/` sources

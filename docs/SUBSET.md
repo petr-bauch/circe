@@ -8,11 +8,12 @@ In-subset divergence is P0; out-of-subset must reject loudly.
 
 `void`, `_Bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64` (proved:
 loop-free `i32`/`u32` throughout plus 64-bit `add64`/`addu64` per
-`ROADMAP.md` S3b; 8/16-bit promote to `i32` in CIRGen and are rejected
-with the promotion message; 64-bit loops/arrays/heap/structs are future
-work), `T*` (disciplined only, see below), arrays via
-length-paired params, structs by value (S2: `Point { i32 x, y }`
-only; no bitfields).
+`ROADMAP.md` S3b and the single-block `u64` heap shape
+(`vec_alloc_u64`, M1b); 8/16-bit promote to `i32` in CIRGen and are
+rejected with the promotion message; 64-bit loops/arrays/structs and
+multi-block `u64` heaps are future work), `T*` (disciplined only, see
+below), arrays via length-paired params, structs by value (S2: `Point
+{ i32 x, y }` only; no bitfields).
 No `void*`, no int↔ptr casts, no `volatile`/`_Atomic`,
 no unions/variadics/VLAs.
 
@@ -28,11 +29,13 @@ int arithmetic/logic/comparison, int↔int and bool casts,
 disciplined `&`/`*`, array indexing `a[i]` with length param,
 struct field access (S2: `translate` shape — by-value `Point`
 reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return).
-Uniquely-owned heap, `u32`-only: `malloc(n * sizeof(uint32_t))`
+Uniquely-owned heap, `u32`-only (`vec_alloc` shape) or `u64`-only
+(`vec_alloc_u64` shape, M1b monomorphized mirror): `malloc(n *
+sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`
 with same-function length `n`, bounded `v[i]`, exactly one `free(v)`
-(`vec_alloc` shape) or two `malloc`s + two `free`s with a fill/copy/sum
-discipline (M1a `vec_copy_sum` shape: both blocks live at once, disjoint
-by construction).
+(`vec_alloc` / `vec_alloc_u64` shapes) or two `malloc`s + two `free`s
+with a fill/copy/sum discipline (M1a `vec_copy_sum` shape, `u32`-only:
+both blocks live at once, disjoint by construction).
 No `goto` (`cir.br` is matched line-aware so `cir.break` never trips
 it), `setjmp`, non-lowerable `switch`, no function pointers, no other
 heap shapes, read-only `const`
@@ -61,14 +64,18 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 7. Loops must be length-paired (`sum_array` shape) and terminate within
    `EVAL_FUEL` (4096); exhaustion is `AssertFail` (incompleteness, never
    unsoundness); over-long lengths are `OOB`.
-8. Heap (`vec_alloc` / `vec_copy_sum` shapes): `malloc(n *
-   sizeof(uint32_t))`, only `v[i]` for `0 <= i < n`, every block freed
+8. Heap (`vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` shapes):
+   `malloc(n * sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`,
+   only `v[i]` for `0 <= i < n`, every block freed
    exactly once on every path (missing-`free` / double-`free`
    rejected; more `free`s than `malloc`s is double-`free`), no escape.
-   `vec_alloc`: single live allocation; `vec_copy_sum` (M1a): two live
+   `vec_alloc`: single live `u32` allocation; `vec_alloc_u64` (M1b):
+   single live `u64` allocation (monomorphized mirror, no `Vec α`
+   polymorphism; mixed-width access is `AssertFail` per S3b policy);
+   `vec_copy_sum` (M1a): two live `u32`
    allocations, fill `a` / copy `a` into `b` / sum `b`, `free(a)` then
    `free(b)` — disjoint by construction (two `malloc` results). Blocks
-   are values + affine tokens (`Vec32.freed`), not addresses.
+   are values + affine tokens (`Vec32.freed` / `Vec64.freed`), not addresses.
 9. DAG calls (S1): callers target admitted call-free leaves only
    (`add`, `sum_array`); exact caller shapes (`add_caller`:
    three `i32` + two `@add` sites; `sum_caller`: `(ptr, n)` +
@@ -117,7 +124,7 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 `cir.func`, `cir.alloca`/`load`/`store` (functionalizable shape),
 `cir.cast` (int/bool), `cir.binop`/`cmp`/`unary`, `cir.cond_br`
 (`cir.br` from `goto` rejected), `cir.return`, `cir.call`
-(`@malloc`/`@free` in the vec/vec2 shapes only; `@add`/`@sum_array` in the exact
+(`@malloc`/`@free` in the vec/vec2/vec64 shapes only; `@add`/`@sum_array` in the exact
 S1 caller shapes only), `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
@@ -127,7 +134,7 @@ on pinned consts + `default`, all other switches rejected),
 `get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
-`cir.get_global @malloc/@free` plumbing allowed in vec/vec2 shapes only.
+`cir.get_global @malloc/@free` plumbing allowed in vec/vec2/vec64 shapes only.
 64-bit spellings (`!s64i`/`!u64i` + long forms) in the S3b `add64` /
 `addu64` shapes only; 8/16-bit spellings always rejected (promotion).
 
@@ -135,11 +142,12 @@ on pinned consts + `default`, all other switches rejected),
 
 `cir.try`/cleanup/EH, vtables, atomics, `volatile`, float,
 inline asm, `void*`/int-ptr casts, escaping address-of, unbounded
-pointer arithmetic, non-`vec_alloc` heap uses, `setjmp`/`longjmp`,
+pointer arithmetic, non-admitted heap uses, `setjmp`/`longjmp`,
 globals, function pointers, VLAs, variadics, non-lowerable
 `cir.switch`, `goto` (`cir.br`, matched line-aware so `cir.break`
 never trips it), bitfields, signed wrapping arithmetic without `nsw`
 (per-line check, `i32` + `i64`).
 Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
-+ `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5).
++ `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
++ `GoldenVec64.lean` (6).

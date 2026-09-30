@@ -938,3 +938,447 @@ theorem vecFillSumU32_correct (n : Nat) :
   congr 1
   rw [hrange]
   simp [BitVec.zero_add]
+
+/-! ## M1b: uniquely-owned heap mirror `Vec64` (u64-only) -/
+
+/-- A uniquely-owned `u64` heap block (`malloc`/`free` functionalized).
+    Monomorphized mirror of `Vec32` (M1b): no `Vec α` polymorphism
+    (width unification stays deferred, see docs/ROADMAP.md).
+    Capacity is `val.length` (fixed at creation, zero-initialized);
+    `freed` is the affine token: `vecFree64` sets it, and every use checks
+    it (`AssertFail` on use-after-free / double-free — incompleteness,
+    never unsoundness). Allocation is unbounded (`vecNew64` never fails);
+    bounds are enforced per-access (`OOB`). -/
+structure Vec64 where
+  val : List (BitVec 64)
+  freed : Bool
+  deriving DecidableEq, Repr
+
+/-- `malloc(n * sizeof(uint64_t))`: fresh zeroed block, live token.
+    Never fails (unbounded allocation; see the module note). -/
+def vecNew64 (n : Nat) : Result Vec64 :=
+  .ok ⟨List.replicate n 0, false⟩
+
+/-- `v[i] = x`: token then bounds, else the updated block. -/
+def vecSet64 (v : Vec64) (i : Nat) (x : BitVec 64) : Result Vec64 :=
+  if v.freed then .error .AssertFail
+  else if _ : i < v.val.length then .ok ⟨v.val.set i x, false⟩
+  else .error .OOB
+
+/-- `v[i]`: token then bounds, else the element. -/
+def vecGet64 (v : Vec64) (i : Nat) : Result (BitVec 64) :=
+  if v.freed then .error .AssertFail
+  else
+    match v.val[i]? with
+    | some x => .ok x
+    | none => .error .OOB
+
+/-- `free(v)`: consumes the token (double-free is `AssertFail`). -/
+def vecFree64 (v : Vec64) : Result Vec64 :=
+  if v.freed then .error .AssertFail
+  else .ok ⟨v.val, true⟩
+
+/-- Allocation delivers a zeroed live block of the requested length. -/
+theorem vecNew64_ok (n : Nat) :
+    vecNew64 n = .ok ⟨List.replicate n 0, false⟩ := rfl
+
+theorem vecNew64_length (n : Nat) (v : Vec64)
+    (h : vecNew64 n = .ok v) : v.val.length = n := by
+  rw [vecNew64_ok] at h
+  cases h
+  simp
+
+theorem vecNew64_live (n : Nat) (v : Vec64)
+    (h : vecNew64 n = .ok v) : v.freed = false := by
+  rw [vecNew64_ok] at h
+  cases h
+  rfl
+
+/-- In-bounds set on a live block succeeds. -/
+theorem vecSet64_ok (v : Vec64) (i : Nat) (x : BitVec 64)
+    (hlive : v.freed = false) (hb : i < v.val.length) :
+    vecSet64 v i x = .ok ⟨v.val.set i x, false⟩ := by
+  simp [vecSet64, hlive, hb]
+
+/-- Set on a freed block is rejected, never silently modeled. -/
+theorem vecSet64_freed (v : Vec64) (i : Nat) (x : BitVec 64)
+    (h : v.freed = true) : vecSet64 v i x = .error .AssertFail := by
+  simp [vecSet64, h]
+
+/-- Out-of-bounds set on a live block reports `OOB`. -/
+theorem vecSet64_oob (v : Vec64) (i : Nat) (x : BitVec 64)
+    (hlive : v.freed = false) (hb : ¬ i < v.val.length) :
+    vecSet64 v i x = .error .OOB := by
+  simp [vecSet64, hlive, hb]
+
+/-- Set preserves the capacity. -/
+theorem vecSet64_length (v : Vec64) (i : Nat) (x : BitVec 64) (w : Vec64)
+    (h : vecSet64 v i x = .ok w) : w.val.length = v.val.length := by
+  unfold vecSet64 at h
+  split at h
+  · next => simp at h
+  · next =>
+    split at h
+    · next => cases h; simp
+    · next => simp at h
+
+/-- Set keeps the block live. -/
+theorem vecSet64_live (v : Vec64) (i : Nat) (x : BitVec 64) (w : Vec64)
+    (h : vecSet64 v i x = .ok w) : w.freed = false := by
+  unfold vecSet64 at h
+  split at h
+  · next => simp at h
+  · next =>
+    split at h
+    · next => cases h; rfl
+    · next => simp at h
+
+/-- In-bounds get on a live block succeeds. -/
+theorem vecGet64_ok (v : Vec64) (i : Nat) (x : BitVec 64)
+    (hlive : v.freed = false) (hget : v.val[i]? = some x) :
+    vecGet64 v i = .ok x := by
+  simp [vecGet64, hlive, hget]
+
+/-- Get on a freed block is rejected. -/
+theorem vecGet64_freed (v : Vec64) (i : Nat)
+    (h : v.freed = true) : vecGet64 v i = .error .AssertFail := by
+  simp [vecGet64, h]
+
+/-- Out-of-bounds get on a live block reports `OOB`. -/
+theorem vecGet64_oob (v : Vec64) (i : Nat)
+    (hlive : v.freed = false) (hget : v.val[i]? = none) :
+    vecGet64 v i = .error .OOB := by
+  simp [vecGet64, hlive, hget]
+
+/-- Freeing a live block sets the token, keeping the contents. -/
+theorem vecFree64_ok (v : Vec64)
+    (hlive : v.freed = false) :
+    vecFree64 v = .ok ⟨v.val, true⟩ := by
+  simp [vecFree64, hlive]
+
+/-- Double-free is rejected. -/
+theorem vecFree64_double (v : Vec64)
+    (h : v.freed = true) : vecFree64 v = .error .AssertFail := by
+  simp [vecFree64, h]
+
+/-- `List.set` then `get?` at the same in-bounds index reads back. -/
+theorem getElem?_set_self64 (l : List (BitVec 64)) (i : Nat)
+    (x : BitVec 64) (h : i < l.length) :
+    (l.set i x)[i]? = some x := by
+  induction l generalizing i with
+  | nil => simp at h
+  | cons y ys ih =>
+    cases i with
+    | zero => simp [List.set]
+    | succ i => simp [List.set]; exact ih i (by simpa using h)
+
+/-- Get-after-set on a live block reads the written value. -/
+theorem vecGet64_set_same (v : Vec64) (i : Nat) (x : BitVec 64) (w : Vec64)
+    (hlive : v.freed = false) (hb : i < v.val.length)
+    (hset : vecSet64 v i x = .ok w) :
+    vecGet64 w i = .ok x := by
+  have hlen : w.val.length = v.val.length := vecSet64_length v i x w hset
+  have hset' : w.val = v.val.set i x := by
+    rw [vecSet64_ok v i x hlive hb] at hset
+    cases hset
+    rfl
+  rw [vecGet64_ok w i x (vecSet64_live v i x w hset)]
+  rw [hset']
+  exact getElem?_set_self64 v.val i x hb
+
+/-- Fill loop: write indices `[k, n)` into a live capacity-`n` block. -/
+def vecFillLoopAux64 (v : Vec64) (k r : Nat) : Result Vec64 :=
+  match r with
+  | 0 => .ok v
+  | r + 1 =>
+    match vecSet64 v k (BitVec.ofNat 64 k) with
+    | .error e => .error e
+    | .ok v' => vecFillLoopAux64 v' (k + 1) r
+
+/-- Fill from `0` to `n`. -/
+def vecFillLoop64 (v : Vec64) (n : Nat) : Result Vec64 :=
+  vecFillLoopAux64 v 0 n
+
+/-- Sum loop: accumulate `v[k .. k+r)` into `acc` (wrapping `u64`). -/
+def vecSumLoopAux64 (v : Vec64) (k r : Nat) (acc : BitVec 64) :
+    Result (BitVec 64) :=
+  match r with
+  | 0 => .ok acc
+  | r + 1 =>
+    match vecGet64 v k with
+    | .error e => .error e
+    | .ok x => vecSumLoopAux64 v (k + 1) r (acc + x)
+
+/-- Sum the whole `n`-prefix from `0`. -/
+def vecSumLoop64 (v : Vec64) (n : Nat) : Result (BitVec 64) :=
+  vecSumLoopAux64 v 0 n 0
+
+/-- Whole heap program, purely: allocate, fill with indices, sum, free.
+    `free` is value-invisible (contents kept, token set); missing-`free`
+    strictness lives in `validate`, not here. -/
+def vecFillSumU64 (n : Nat) : Result (BitVec 64) :=
+  match vecNew64 n with
+  | .error e => .error e
+  | .ok v0 =>
+    match vecFillLoop64 v0 n with
+    | .error e => .error e
+    | .ok v1 =>
+      match vecSumLoop64 v1 n with
+      | .error e => .error e
+      | .ok s =>
+        match vecFree64 v1 with
+        | .error e => .error e
+        | .ok _ => .ok s
+
+/-- Fill preserves capacity. -/
+theorem vecFillLoopAux64_length (v : Vec64) (k r : Nat) (w : Vec64)
+    (h : vecFillLoopAux64 v k r = .ok w) :
+    w.val.length = v.val.length := by
+  induction r generalizing v k w with
+  | zero => simp [vecFillLoopAux64] at h; cases h; rfl
+  | succ r ih =>
+    unfold vecFillLoopAux64 at h
+    match hs : vecSet64 v k (BitVec.ofNat 64 k) with
+    | .error e => simp [hs] at h
+    | .ok v' =>
+      simp [hs] at h
+      have hlen := vecSet64_length v k (BitVec.ofNat 64 k) v' hs
+      have ihr := ih v' (k + 1) w h
+      omega
+
+/-- Fill keeps the block live (every step succeeds on a live block, so the
+    token can only come from the input). -/
+theorem vecFillLoopAux64_live (v : Vec64) (k r : Nat) (w : Vec64)
+    (hlive : v.freed = false)
+    (h : vecFillLoopAux64 v k r = .ok w) :
+    w.freed = false := by
+  induction r generalizing v k w with
+  | zero => simp [vecFillLoopAux64] at h; cases h; exact hlive
+  | succ r ih =>
+    unfold vecFillLoopAux64 at h
+    match hs : vecSet64 v k (BitVec.ofNat 64 k) with
+    | .error e => simp [hs] at h
+    | .ok v' =>
+      simp [hs] at h
+      exact ih v' (k + 1) w (vecSet64_live v k (BitVec.ofNat 64 k) v' hs) h
+
+/-- `List.set` at `i` leaves every other position's `get?` alone. -/
+theorem getElem?_set_ne64 (l : List (BitVec 64)) (i j : Nat)
+    (x : BitVec 64) (h : j ≠ i) :
+    (l.set i x)[j]? = l[j]? := by
+  induction l generalizing i j with
+  | nil => rfl
+  | cons y ys ih =>
+    cases i with
+    | zero =>
+      cases j with
+      | zero => exact absurd rfl h
+      | succ j => rfl
+    | succ i =>
+      cases j with
+      | zero => rfl
+      | succ j => simp [List.set]; exact ih i j (by omega)
+
+/-- Get-after-set at a different position reads the old value. -/
+theorem vecSet64_get_other (v : Vec64) (i j : Nat) (x y : BitVec 64)
+    (w : Vec64) (hne : j ≠ i)
+    (hset : vecSet64 v i x = .ok w) (hget : vecGet64 v j = .ok y) :
+    vecGet64 w j = .ok y := by
+  have hlive : v.freed = false := by
+    unfold vecSet64 at hset
+    split at hset
+    · next h => simp at hset
+    · next h =>
+      cases hv : v.freed
+      · rfl
+      · simp_all
+  have hb : i < v.val.length := by
+    rcases Nat.lt_or_ge i v.val.length with hb | hge
+    · exact hb
+    · have herr := vecSet64_oob v i x hlive (by omega)
+      rw [herr] at hset
+      simp at hset
+  have hsetw : w = ⟨v.val.set i x, false⟩ := by
+    rw [vecSet64_ok v i x hlive hb] at hset
+    cases hset
+    rfl
+  have hget' : v.val[j]? = some y := by
+    match hm : v.val[j]? with
+    | some z =>
+      have h2 : vecGet64 v j = .ok z := vecGet64_ok v j z hlive hm
+      have hzy : z = y := by
+        rw [h2] at hget
+        simpa using hget
+      exact congrArg some hzy
+    | none =>
+      have h2 : vecGet64 v j = .error .OOB := vecGet64_oob v j hlive hm
+      rw [h2] at hget
+      simp at hget
+  subst hsetw
+  show vecGet64 ⟨v.val.set i x, false⟩ j = .ok y
+  rw [vecGet64_ok _ _ _ rfl (by
+    show (v.val.set i x)[j]? = some y
+    rw [getElem?_set_ne64 _ _ _ _ hne]
+    exact hget')]
+
+/-- Filling `[k, k+r)` preserves reads below `k`. -/
+theorem vecFillLoopAux64_preserve (v : Vec64) (k r j : Nat) (y : BitVec 64)
+    (w : Vec64) (hlt : j < k) (hget : vecGet64 v j = .ok y)
+    (h : vecFillLoopAux64 v k r = .ok w) :
+    vecGet64 w j = .ok y := by
+  induction r generalizing v k w with
+  | zero => simp [vecFillLoopAux64] at h; cases h; exact hget
+  | succ r ih =>
+    unfold vecFillLoopAux64 at h
+    match hs : vecSet64 v k (BitVec.ofNat 64 k) with
+    | .error e => simp [hs] at h
+    | .ok v' =>
+      simp [hs] at h
+      have hne : j ≠ k := by omega
+      exact ih v' (k + 1) w (by omega)
+        (vecSet64_get_other v k j _ y v' hne hs hget) h
+
+/-- A filled block reads back the index at every filled position. -/
+theorem vecFillLoopAux64_get (v : Vec64) (k r : Nat) (w : Vec64)
+    (hlive : v.freed = false) (hlen : v.val.length = k + r)
+    (h : vecFillLoopAux64 v k r = .ok w) (j : Nat)
+    (hjlo : k ≤ j) (hjhi : j < k + r) :
+    vecGet64 w j = .ok (BitVec.ofNat 64 j) := by
+  induction r generalizing v k w j with
+  | zero => omega
+  | succ r ih =>
+    unfold vecFillLoopAux64 at h
+    have hk : k < v.val.length := by omega
+    have hs : vecSet64 v k (BitVec.ofNat 64 k) =
+        .ok ⟨v.val.set k (BitVec.ofNat 64 k), false⟩ :=
+      vecSet64_ok v k _ hlive hk
+    rw [hs] at h
+    simp only at h
+    by_cases hjk : j = k
+    · subst j
+      have hhere : vecGet64 ⟨v.val.set k (BitVec.ofNat 64 k), false⟩ k =
+          .ok (BitVec.ofNat 64 k) := by
+        rw [vecGet64_ok _ _ _ rfl]
+        exact getElem?_set_self64 v.val k _ hk
+      have hlen' : (⟨v.val.set k (BitVec.ofNat 64 k), false⟩ : Vec64).val.length
+          = (k + 1) + r := by
+        show (v.val.set k (BitVec.ofNat 64 k)).length = (k + 1) + r
+        rw [List.length_set]
+        omega
+      have := vecFillLoopAux64_preserve _ (k + 1) r k _ w (by omega) hhere h
+      simpa using this
+    · have hlen' : (⟨v.val.set k (BitVec.ofNat 64 k), false⟩ : Vec64).val.length
+          = (k + 1) + r := by
+        show (v.val.set k (BitVec.ofNat 64 k)).length = (k + 1) + r
+        rw [List.length_set]
+        omega
+      exact ih _ _ _ (by rfl) hlen' h j (by omega) (by omega)
+
+/-- Fill on a live capacity-`(k+r)` block always succeeds. -/
+theorem vecFillLoopAux64_fresh_ok (l : List (BitVec 64)) (k r : Nat)
+    (h : l.length = k + r) :
+    ∃ w, vecFillLoopAux64 ⟨l, false⟩ k r = .ok w := by
+  induction r generalizing l k with
+  | zero => exact ⟨⟨l, false⟩, rfl⟩
+  | succ r ih =>
+    have hk : k < (⟨l, false⟩ : Vec64).val.length := by
+      show k < l.length
+      omega
+    have hs : vecSet64 ⟨l, false⟩ k (BitVec.ofNat 64 k) =
+        .ok ⟨l.set k (BitVec.ofNat 64 k), false⟩ :=
+      vecSet64_ok _ _ _ rfl hk
+    unfold vecFillLoopAux64
+    rw [hs]
+    simp only
+    have hlen : (l.set k (BitVec.ofNat 64 k)).length = (k + 1) + r := by
+      rw [List.length_set]
+      omega
+    exact ih _ _ hlen
+
+/-- Wrapping prefix sum of the first `k` elements (wrapping `u64`,
+    so addition wraps mod 2^64 and never fails). -/
+def prefixSumU64 : List (BitVec 64) → Nat → BitVec 64
+  | [], _ => 0
+  | _, 0 => 0
+  | x :: xs, k + 1 => x + prefixSumU64 xs k
+
+theorem prefixSumU64_nil (k : Nat) : prefixSumU64 [] k = 0 := by
+  cases k <;> rfl
+
+theorem prefixSumU64_zero (l : List (BitVec 64)) : prefixSumU64 l 0 = 0 := by
+  cases l <;> rfl
+
+theorem prefixSumU64_cons (x : BitVec 64) (xs : List (BitVec 64)) (k : Nat) :
+    prefixSumU64 (x :: xs) (k + 1) = x + prefixSumU64 xs k := rfl
+
+/-- Bridge to the spec world: a prefix sum is the `List.sum` of the taken
+    prefix (Phase 5 functional specs build on this). -/
+theorem prefixSumU64_take_sum (l : List (BitVec 64)) (k : Nat) :
+    prefixSumU64 l k = (l.take k).sum := by
+  induction l generalizing k with
+  | nil => cases k <;> rfl
+  | cons x xs ih =>
+    cases k with
+    | zero => rfl
+    | succ k => simp [prefixSumU64, List.sum_cons, ih]
+
+/-- Full-length prefix sum is the whole-list sum. -/
+theorem prefixSumU64_full (l : List (BitVec 64)) :
+    prefixSumU64 l l.length = l.sum := by
+  have h := prefixSumU64_take_sum l l.length
+  rwa [List.take_length] at h
+
+/-! ## Heap program bridges (need `prefixSumU64`, so they live last) -/
+
+/-- Sum loop over filled positions folds the `range'` prefix. -/
+theorem vecSumLoopAux64_correct (v : Vec64) (k r : Nat) (acc : BitVec 64)
+    (hget : ∀ j, k ≤ j → j < k + r → vecGet64 v j = .ok (BitVec.ofNat 64 j)) :
+    vecSumLoopAux64 v k r acc =
+      .ok (acc + prefixSumU64 ((List.range' k r).map (BitVec.ofNat 64)) r) := by
+  induction r generalizing k acc with
+  | zero =>
+    simp [vecSumLoopAux64, prefixSumU64_zero, BitVec.add_zero]
+  | succ r ih =>
+    have hk : k < k + (r + 1) := by omega
+    have hgetk : vecGet64 v k = .ok (BitVec.ofNat 64 k) :=
+      hget k (Nat.le_refl _) hk
+    unfold vecSumLoopAux64
+    rw [hgetk]
+    simp only
+    rw [ih (k + 1) (acc + BitVec.ofNat 64 k) (by
+      intro j hjlo hjhi
+      exact hget j (by omega) (by omega))]
+    congr 1
+    rw [List.range'_succ, List.map_cons, prefixSumU64_cons]
+    exact BitVec.add_assoc acc _ _
+
+/-- Whole-program bridge: allocate/fill/sum/free equals the `range` prefix
+    sum (the spec world; `free` is value-invisible). -/
+theorem vecFillSumU64_correct (n : Nat) :
+    vecFillSumU64 n =
+      .ok (prefixSumU64 ((List.range n).map (BitVec.ofNat 64)) n) := by
+  have hfill := vecFillLoopAux64_fresh_ok (List.replicate n 0) 0 n (by simp)
+  obtain ⟨w, hw⟩ := hfill
+  have hlive : w.freed = false :=
+    vecFillLoopAux64_live _ _ _ _ rfl hw
+  have hlenFresh : (⟨List.replicate n 0, false⟩ : Vec64).val.length = 0 + n := by
+    simp
+  have hget : ∀ j, 0 ≤ j → j < 0 + n →
+      vecGet64 w j = .ok (BitVec.ofNat 64 j) :=
+    fun j hjlo hjhi => vecFillLoopAux64_get _ 0 n _ rfl hlenFresh
+      hw j hjlo hjhi
+  have hsum := vecSumLoopAux64_correct w 0 n 0 (by
+    intro j hjlo hjhi
+    exact hget j hjlo hjhi)
+  have hfree : vecFree64 w = .ok ⟨w.val, true⟩ := vecFree64_ok w hlive
+  have hrange : List.range' 0 n = List.range n := by
+    simp [List.range_eq_range']
+  simp only [vecFillSumU64, vecNew64_ok, vecFillLoop64, hw] at *
+  simp only [vecSumLoop64] at hsum ⊢
+  rw [hsum]
+  simp only
+  rw [hfree]
+  simp only
+  congr 1
+  rw [hrange]
+  simp [BitVec.zero_add]

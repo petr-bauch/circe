@@ -190,6 +190,26 @@ def emitVec2SpecText (name : String) : String :=
   ++ "    (repr (vecFillSumU32 n)).pretty\n"
   ++ "      == (repr ((Except.ok (((List.range n).map (BitVec.ofNat 32)).sum) : Result (BitVec 32)))).pretty\n"
 
+/-- Spec stub for the `vec_alloc_u64` shape (M1b: `u64` mirror). -/
+def emitVec64SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint64_t {name}(uint64_t n)` (allocate, fill with indices, sum, free).\n"
+  ++ s!"    Base body reference: `vecFillSumU64` (cf. emitted `{name}_fwd`, `emit_correct_vec64`). -/\n"
+  ++ s!"def {name}_spec_fwd (n : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  vecFillSumU64 n.toNat\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton / small / page-ish. -/\n"
+  ++ s!"def {name}_spec_edges : List Nat :=\n"
+  ++ "  [0, 1, 2, 10, 256]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the index-sum equation holds on every edge\n"
+  ++ "    (this one is already the spec — see `vec64_correct`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun n =>\n"
+  ++ "    (repr (vecFillSumU64 n)).pretty\n"
+  ++ "      == (repr ((Except.ok (((List.range n).map (BitVec.ofNat 64)).sum) : Result (BitVec 64)))).pretty\n"
+
 /-- Spec stub for the `add_caller` shape (S1 DAG calls). -/
 def emitAddCallerSpecText (name : String) : String :=
   emitSpecHeader

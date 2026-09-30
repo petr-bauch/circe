@@ -16,6 +16,7 @@ input rejects loudly, never silently models memory.
 | borrow-return | `choose_ptr` | `choose_fwd` + `choose_back` | lens laws |
 | bounded loop | `sum_array` | `prefixSumU32` over `BoundedList` | `emit_correct_sum` (fuel induction) |
 | uniquely-owned heap (`u32`-only) | `vec_alloc` | `vecFillSumU32 n.toNat` | `emit_correct_vec` (two-loop induction) |
+| uniquely-owned heap (`u64`-only, M1b mirror) | `vec_alloc_u64` | `vecFillSumU64 n.toNat` | `emit_correct_vec64` (two-loop induction) |
 | two live blocks (`u32`-only) | `vec_copy_sum` (M1a) | `vecFillSumU32 n.toNat` (copy value-invisible) | `emit_correct_vec2` (fill/copy/sum induction) |
 | DAG call (double-`add`) | `add_caller` | two `checkedAddI32` binds (leaf inlined; `addCallerFwd_as_calls`) | `evalProgFunc_addCaller` (program induction-free composition) |
 | DAG call (`sum` delegation) | `sum_caller` | `prefixSumU32` body (`sumCallerFwd_is_call`) | `evalProgFunc_sumCaller` (fuel-generalized callee reuse) |

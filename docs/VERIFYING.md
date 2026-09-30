@@ -12,6 +12,7 @@ verbatim.
 | `choose_lens_laws` | get-put + put-get over tag-free `BitVec` mirrors | `choose_fwd` / `choose_back` |
 | `sum_correct` | in-range = `List.sum` of taken prefix (`prefixSumU32_take_sum`); `sum_correct_full` is the `BoundedList` body | `.ok (prefixSumU32 a.val a.val.length)` |
 | `vec_correct` | heap program = `List.sum` of `[0,n)` (`vecFillSumU32_correct` + take bridge); `vec_empty` is `n = 0` | `vecFillSumU32 n.toNat` |
+| `vec64_correct` (M1b) | `u64` heap program = `List.sum` of `[0,n)` (`vecFillSumU64_correct` + take bridge); `vec64_empty` is `n = 0` | `vecFillSumU64 n.toNat` |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in check scripts) and emitted-body `grep`
@@ -21,10 +22,11 @@ assertions in the check script.
 
 `Circe.Tactics` provides `cir_simp`: one `simp` set bundling
 checked-op unfoldings (+ ok/err + range bridges, 32- and 64-bit),
-`prefixSumU32` + sum bridges, `bget` / `pointTranslate` shapes (+
-struct-field ok/err bridges), call-unfold
+`prefixSumU32`/`prefixSumU64` + sum bridges, `bget` / `pointTranslate`
+shapes (+ struct-field ok/err bridges), call-unfold
 (`addCallerFwd_as_calls`, `sumCallerFwd_is_call`), vector ops (+ the
-whole-program bridge `vecFillSumU32_correct`), S3a flow folds, and
+whole-program bridges `vecFillSumU32_correct` / `vecFillSumU64_correct`),
+S3a flow folds, and
 `Result` bind/map computation rules (caller-side `←` chains compute
 by `rfl`, with assoc/pure for nested binds). Compose with plain
 `simp` for goal-specific lemmas (`cir_simp` takes no extra args by

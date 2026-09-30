@@ -4,10 +4,11 @@ workflow (see docs/VERIFYING.md).
 
 `cir_simp` bundles the equation lemmas a user reaches for when reasoning
 about emitted code: checked-op unfoldings (+ ok/err + range bridges,
-32- and 64-bit), `prefixSumU32` computation + its `List.sum` bridges,
-`bget` / `pointTranslate` shapes (+ struct-field ok/err bridges),
-call-unfold (`addCallerFwd_as_calls`, `sumCallerFwd_is_call`), vector
-ops (+ whole-program bridge), S3a flow folds, and the `Except`
+32- and 64-bit), `prefixSumU32`/`prefixSumU64` computation + their
+`List.sum` bridges, `bget` / `pointTranslate` shapes (+ struct-field
+ok/err bridges), call-unfold (`addCallerFwd_as_calls`,
+`sumCallerFwd_is_call`), vector ops (`vecFillSumU32`/`vecFillSumU64` +
+whole-program bridges), S3a flow folds, and the `Except`
 (`Result`) bind/map computation rules (caller-side `←` chains compute
 by `rfl`, with assoc/pure for nested binds). Stage 2 (S5) adds two
 tactics beside it: `cir_fuel` (fuel automation) and `cir_choose`
@@ -73,6 +74,9 @@ macro "cir_simp" : tactic =>
     translateFwd_err_y,
     addCallerFwd_as_calls, sumCallerFwd_is_call,
     vecFillSumU32_correct, vecNew, vecSet, vecGet, vecFree,
+    vecFillSumU64_correct, vecNew64, vecSet64, vecGet64, vecFree64,
+    prefixSumU64, prefixSumU64_take_sum, prefixSumU64_full,
+    prefixSumU64_nil, prefixSumU64_zero, prefixSumU64_cons,
     nestedSumU32, rowU32, skipSumU32, findEqOut, findIdxU32,
     result_bind_ok, result_bind_err, result_map_ok, result_map_err,
     result_bind_assoc, result_pure_bind])

@@ -2,7 +2,7 @@
 Circe.Emit — verified emitter `CoreIR → Lean` (facade).
 
 Fragment definitions and proofs live in `Circe.Emit.*` (`Fragment`, `Add`,
-`Choose`, `Sum`, `Vec`, `Vec2`, `Calls`, `Struct`, `Flow`); shape
+`Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `Calls`, `Struct`, `Flow`); shape
 recognition in `Circe.Emit.Match`; file-text and spec-stub rendering in
 `Circe.Emit.Render` / `Circe.Emit.SpecStubs`. This module wires them
 together (`emitSpec`, `emitFunc`, `emitFunc_rejects`) and holds the golden
@@ -33,6 +33,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .choose => .ok (emitChooseSpecText f.name)
   | some .sum => .ok (emitSumSpecText f.name)
   | some .vec => .ok (emitVecSpecText f.name)
+  | some .vec64 => .ok (emitVec64SpecText f.name)
   | some .vec2 => .ok (emitVec2SpecText f.name)
   | some .addCall => .ok (emitAddCallerSpecText f.name)
   | some .sumCall => .ok (emitSumCallerSpecText f.name)
@@ -55,6 +56,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩
   | some .sum => .ok ⟨emitSumText f.name, none⟩
   | some .vec => .ok ⟨emitVecText f.name, none⟩
+  | some .vec64 => .ok ⟨emitVec64Text f.name, none⟩
   | some .vec2 => .ok ⟨emitVec2Text f.name, none⟩
   | some .addCall => .ok ⟨emitAddCallerText f.name, none⟩
   | some .sumCall => .ok ⟨emitSumCallerText f.name, none⟩
@@ -103,6 +105,11 @@ example : emitFileText (emitFunc vecFunc) =
     two-block golden. -/
 example : emitFileText (emitFunc vec2Func) =
     include_str "../tests/golden/VecCopySum.lean" := by native_decide
+
+/-- The emitter output for `vec64Func` is byte-identical to the checked-in
+    `u64` golden. -/
+example : emitFileText (emitFunc vec64Func) =
+    include_str "../tests/golden/VecAllocU64.lean" := by native_decide
 
 /-- The emitter output for `addCallerFunc` is byte-identical to the
     checked-in golden. -/

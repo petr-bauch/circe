@@ -21,7 +21,7 @@ they become `BorrowRole` (`owned` / `mutBorrow` / `sharedBorrow`).
 
 `Eval` is Aeneas-style: environments map variables to values with
 loan/borrow bookkeeping (`Env` + `LoanState`); no heap, no addresses
-(heap blocks are `vecVal` values + affine token). It is the spec for
+(heap blocks are `vecVal` / `vecVal64` values + affine token). It is the spec for
 `emit_correct`:
 
 ```lean

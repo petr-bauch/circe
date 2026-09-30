@@ -161,7 +161,7 @@ Order: M1a → M1b → M1c → M1d. Each slice gated by shape +
 | Slice | Core change | Design pin |
 |---|---|---|
 | M1a two live `u32` blocks — DONE | `vec_copy_sum`: fill `a` / copy `a`→`b` / sum `b`, `vec2Fwd = vecFwd` (copy value-invisible); `isVec2Shape` (2×`malloc`, `freeCallCount = 2`); `DiffVec2` + `GoldenVec2` 6/6 | `Base` gained `vecCopyLoopAux` + contents lemmas (copy needs a spec/witness too); double-free gate refined to `free > malloc` (balanced-but-misshapen → heap-shape message) |
-| M1b `u64` blocks | `VecU64` monomorphized mirror of `Vec32`; new `Value.vecVal64`, mixed-width access → `AssertFail` (S3b policy) | No `Vec α` polymorphism; width unification stays deferred |
+| M1b `u64` blocks — DONE | `vec_alloc_u64`: `Vec64` monomorphized mirror of `Vec32` (fill/sum loops, `vecFillSumU64` + `prefixSumU64` bridges); new `Value.vecVal64`, mixed-width access → `AssertFail` (S3b policy, pinned by `evalExpr_vget_mix/mix64` + golden runtime checks); `FragKind.vec64`, `isVec64Shape` (`u64` ret, disjoint from `isVecShape`), `DiffVec64` + `GoldenVec64` 6/6 | No `Vec α` polymorphism; single-block only (two-block `u64` would be a further slice) |
 | M1c `realloc` | New name-keyed `.vrealloc` stmt; `vecRealloc` preserves `min(old,new)` prefix, zero-fills growth, never fails (unbounded convention); `realloc(p,0)` / `realloc(NULL,n)` spellings rejected loudly | No OOM error path |
 | M1d free discipline | Validator only: must-free → `freeCallCount ≤ expected` (leak = forgetting a value, sound); double-free / use-after-free stay loud via token, pinned by new rejection goldens | Relaxation is validator-side only |
 

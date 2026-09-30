@@ -37,6 +37,7 @@ inductive Value : Type
   | unit : Value
   | arr32 : List (BitVec 32) → Value
   | vecVal : Vec32 → Value
+  | vecVal64 : Vec64 → Value
   | structVal : String → List (String × BitVec 32) → Value
   deriving DecidableEq, Repr
 
@@ -343,6 +344,10 @@ def evalExpr : CExpr → Env → Result Value
       match vecNew n.toNat with
       | .error e => .error e
       | .ok v => .ok (.vecVal v)
+    | .ok (.u64 n) =>
+      match vecNew64 n.toNat with
+      | .error e => .error e
+      | .ok v => .ok (.vecVal64 v)
     | .ok _ => .error .AssertFail
   | .vget arr ie, ρ =>
     match envLookup ρ arr with
@@ -354,6 +359,14 @@ def evalExpr : CExpr → Env → Result Value
         match vecGet v i.toNat with
         | .error e => .error e
         | .ok x => .ok (.u32 x)
+      | .ok _ => .error .AssertFail
+    | some (.vecVal64 v) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        match vecGet64 v i.toNat with
+        | .error e => .error e
+        | .ok x => .ok (.u64 x)
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
   | .fget obj field, ρ =>
@@ -559,6 +572,44 @@ theorem evalExpr_vget_notvec (arr : String) (v : BitVec 32) (i : BitVec 32)
     evalExpr (.vget arr (.lit (.u32 i))) ρ = .error .AssertFail := by
   simp [evalExpr, harr]
 
+/-- `vnew` on a `u64` size allocates a zeroed live `u64` block (M1b). -/
+theorem evalExpr_vnew_lit64 (n : BitVec 64) (ρ : Env) :
+    evalExpr (.vnew (.lit (.u64 n))) ρ =
+      .ok (.vecVal64 ⟨List.replicate n.toNat 0, false⟩) := by
+  simp [evalExpr, litVal, vecNew64]
+
+/-- In-bounds `u64` heap read succeeds (M1b). -/
+theorem evalExpr_vget_hit64 (arr : String) (v : Vec64) (i : BitVec 64)
+    (ρ : Env) (x : BitVec 64)
+    (harr : envLookup ρ arr = some (.vecVal64 v))
+    (hget : vecGet64 v i.toNat = .ok x) :
+    evalExpr (.vget arr (.lit (.u64 i))) ρ = .ok (.u64 x) := by
+  simp [evalExpr, litVal, harr, hget]
+
+/-- `u64` heap read errors (OOB/use-after-free) propagate (M1b). -/
+theorem evalExpr_vget_err64 (arr : String) (v : Vec64) (i : BitVec 64)
+    (ρ : Env) (e : Panic)
+    (harr : envLookup ρ arr = some (.vecVal64 v))
+    (hget : vecGet64 v i.toNat = .error e) :
+    evalExpr (.vget arr (.lit (.u64 i))) ρ = .error e := by
+  simp [evalExpr, litVal, harr, hget]
+
+/-- Mixed-width heap read is rejected (M1b S3b policy): a `u32` block
+    read with a `u64` index is `AssertFail`, never silently modeled. -/
+theorem evalExpr_vget_mix (arr : String) (v : Vec32) (i : BitVec 64)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.vecVal v)) :
+    evalExpr (.vget arr (.lit (.u64 i))) ρ = .error .AssertFail := by
+  simp [evalExpr, litVal, harr]
+
+/-- Mixed-width heap read is rejected (M1b S3b policy): a `u64` block
+    read with a `u32` index is `AssertFail`, never silently modeled. -/
+theorem evalExpr_vget_mix64 (arr : String) (v : Vec64) (i : BitVec 32)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.vecVal64 v)) :
+    evalExpr (.vget arr (.lit (.u32 i))) ρ = .error .AssertFail := by
+  simp [evalExpr, litVal, harr]
+
 /-- Field projection hits. -/
 theorem evalExpr_fget_hit (obj : String) (tag : String)
     (fields : List (String × BitVec 32)) (f : String) (x : BitVec 32)
@@ -631,6 +682,13 @@ theorem word32_lt_two32_of_fuel (n : BitVec 32)
   have h4096 : n.toNat ≤ 4096 := by simpa [EVAL_FUEL] using h
   omega
 
+/-- Fuel fits in a `u64` word (M1b): anything within `EVAL_FUEL` is below
+    `2 ^ 64` (mirror of `word32_lt_two32_of_fuel` for `vec_alloc_u64`). -/
+theorem word64_lt_two64_of_fuel (n : BitVec 64)
+    (h : n.toNat ≤ EVAL_FUEL) : n.toNat < 2 ^ 64 := by
+  have h4096 : n.toNat ≤ 4096 := by simpa [EVAL_FUEL] using h
+  omega
+
 /-- Fuel automation: normalize `EVAL_FUEL` wherever it appears, then
     discharge fuel arithmetic — `≤ EVAL_FUEL` / `≤ 4096` bounds and the
     `remaining ≤ F` side conditions of fuel-generalized loop facts
@@ -678,6 +736,17 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
           | none => .error .Uninit
           | some ρ' => .ok (ρ', .fellThrough)
       | some _ => .error .AssertFail
+    | .ok (.u64 i), .ok (.u64 xv) =>
+      match envLookup ρ x with
+      | none => .error .Uninit
+      | some (.vecVal64 b) =>
+        match vecSet64 b i.toNat xv with
+        | .error e => .error e
+        | .ok b' =>
+          match envUpdate ρ x (.vecVal64 b') with
+          | none => .error .Uninit
+          | some ρ' => .ok (ρ', .fellThrough)
+      | some _ => .error .AssertFail
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -689,6 +758,13 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
       | .error e => .error e
       | .ok b' =>
         match envUpdate ρ x (.vecVal b') with
+        | none => .error .Uninit
+        | some ρ' => .ok (ρ', .fellThrough)
+    | some (.vecVal64 b) =>
+      match vecFree64 b with
+      | .error e => .error e
+      | .ok b' =>
+        match envUpdate ρ x (.vecVal64 b') with
         | none => .error .Uninit
         | some ρ' => .ok (ρ', .fellThrough)
     | some _ => .error .AssertFail
@@ -844,6 +920,36 @@ theorem evalStmtFuel_vfree (f : Nat) (x : String) (ρ : Env)
     (harr : envLookup ρ x = some (.vecVal b))
     (hfree : vecFree b = .ok b')
     (hu : envUpdate ρ x (.vecVal b') = some ρ') :
+    evalStmtFuel f (.vfree x) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
+
+/-- `vset` stores through a live `u64` block (M1b mirror, any fuel). -/
+theorem evalStmtFuel_vset64 (f : Nat) (x : String) (ie ve : CExpr) (ρ : Env)
+    (i xv : BitVec 64) (b b' : Vec64) (ρ' : Env)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.u64 xv))
+    (harr : envLookup ρ x = some (.vecVal64 b))
+    (hset : vecSet64 b i.toNat xv = .ok b')
+    (hu : envUpdate ρ x (.vecVal64 b') = some ρ') :
+    evalStmtFuel f (.vset x ie ve) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset, hu]
+
+/-- `u64` `vset` errors propagate (M1b mirror, any fuel). -/
+theorem evalStmtFuel_vset_err64 (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i xv : BitVec 64) (b : Vec64) (e : Panic)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.u64 xv))
+    (harr : envLookup ρ x = some (.vecVal64 b))
+    (hset : vecSet64 b i.toNat xv = .error e) :
+    evalStmtFuel f (.vset x ie ve) ρ = .error e := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset]
+
+/-- `u64` `vfree` consumes the token (M1b mirror, any fuel). -/
+theorem evalStmtFuel_vfree64 (f : Nat) (x : String) (ρ : Env)
+    (b b' : Vec64) (ρ' : Env)
+    (harr : envLookup ρ x = some (.vecVal64 b))
+    (hfree : vecFree64 b = .ok b')
+    (hu : envUpdate ρ x (.vecVal64 b') = some ρ') :
     evalStmtFuel f (.vfree x) ρ = .ok (ρ', .fellThrough) := by
   cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
 

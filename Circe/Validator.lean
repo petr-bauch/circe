@@ -19,7 +19,8 @@ Check order (first hit wins — rejection codes are priority-ordered):
    `switch` is shape-aware (the admitted `cls` lowering passes, all other
    `switch` uses are `outOfSubset`);
    heap (`malloc`/`free`) and calls are shape-aware (see step 5):
-   the admitted `vec_alloc` shape passes, all other heap/call uses are
+   the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` shapes pass,
+    all other heap/call uses are
    `outOfSubset` with dedicated messages (missing-`free`, double-`free`,
    heap-shape, calls);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`,
@@ -311,6 +312,27 @@ def isVec2Shape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.switch"
   | _ => false
 
+/-- `vec_alloc_u64` (M1b): length param, `u64` return, `malloc` + bounded
+    `cir.for` loops over `cir.ptr_stride` + exactly one `free` call.
+    Monomorphized mirror of `isVecShape` at width 64; disjoint from it by
+    the return type (`isU32` vs `isU64`). -/
+def isVec64Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [n] =>
+    noBreakContinueSwitch raw.text &&
+    isLengthType n.ctype && !isPtrType n.ctype &&
+    isU64 raw.ret &&
+    containsSubstr raw.text "malloc" &&
+    containsSubstr raw.text "cir.call @free(" &&
+    !(1 < freeCallCount raw.text) &&
+    containsSubstr raw.text "cir.for" &&
+    containsSubstr raw.text "cir.ptr_stride" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.switch"
+  | _ => false
+
 /-! ## S3b: 64-bit loop-free widths (`add64`, `addu64`) -/
 
 /-- `add64`: two by-value `i64`s, `i64` return, `nsw` add, no control
@@ -559,10 +581,10 @@ def forbiddenOp (text : String) : Option String :=
 
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
     Only the canonical shapes pass (`add`/`incr`/`choose`/`sum`,
-    `vec_alloc`, S1 DAG callers, S2 `translate`, S3a control flow,
-    S3b 64-bit loop-free `add64`/`addu64`); everything else is
-    rejected with a precise code (see the module docstring for check
-    order). -/
+    `vec_alloc`, `vec_alloc_u64` (M1b), S1 DAG callers, S2 `translate`,
+    S3a control flow, S3b 64-bit loop-free `add64`/`addu64`); everything
+    else is rejected with a precise code (see the module docstring for
+    check order). -/
 def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
   if raw.name != oracle.funcName then
     reject raw.name .outOfSubset
@@ -596,6 +618,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecFunc with name := raw.name }
       else if isVec2Shape raw then
         .ok { vec2Func with name := raw.name }
+      else if isVec64Shape raw then
+        .ok { vec64Func with name := raw.name }
       else if isAddCallerShape raw then
         .ok { addCallerFunc with name := raw.name }
       else if isSumCallerShape raw then
@@ -631,7 +655,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if containsSubstr raw.text "malloc" ||
           containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` / `vec_copy_sum` shapes (see docs/ROADMAP.md)"
+          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` shapes (see docs/ROADMAP.md)"
       else if isPtrType raw.ret then
         reject raw.name .escapeReject
           s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/SUBSET.md rule 6)"
@@ -711,6 +735,12 @@ example : runPipelineOpt (include_str "../tests/cir/vec_alloc.cir")
 example : runPipelineOpt (include_str "../tests/cir/vec_copy_sum.cir")
     ⟨"vec_copy_sum", .unknown⟩
     = some (include_str "../tests/golden/VecCopySum.lean") := by native_decide
+
+/-- The checked-in `vec_alloc_u64` CIR (M1b: real CIRGen output, `u64`
+    elements) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/vec_alloc_u64.cir")
+    ⟨"vec_alloc_u64", .unknown⟩
+    = some (include_str "../tests/golden/VecAllocU64.lean") := by native_decide
 
 /-- The checked-in `add_caller` CIR (two DAG calls into `add`) validates
     and emits exactly the golden. -/

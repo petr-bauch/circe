@@ -19,7 +19,8 @@ import Circe.Eval
     nested bounded loops, `skip` = break/continue loop, `findEq` =
     early-return search, `cls` = switch-as-if-chain), and in S3b with
     64-bit loop-free widths (`add64` = signed-`nsw` `i64` add,
-    `addu64` = wrapping `u64` add). -/
+    `addu64` = wrapping `u64` add), and in M1b with a `u64` heap block
+    (`vec64` = `vec_alloc` at width 64). -/
 inductive FragKind : Type
   | add
   | add64
@@ -28,6 +29,7 @@ inductive FragKind : Type
   | choose
   | sum
   | vec
+  | vec64
   | vec2
   | addCall
   | sumCall
@@ -59,6 +61,25 @@ theorem ofNat32_ult (k : Nat) (n : BitVec 32) (h : k < 2 ^ 32) :
     (BitVec.ofNat 32 k).ult n = decide (k < n.toNat) := by
   rw [BitVec.ult_eq_decide, ofNat32_toNat k h]
 
+/-! ### Small-number 64-bit word lemmas (M1b: `u64` loop indices) -/
+
+theorem ofNat64_zero : BitVec.ofNat 64 0 = 0 := rfl
+
+theorem ofNat64_toNat (k : Nat) (h : k < 2 ^ 64) :
+    (BitVec.ofNat 64 k).toNat = k := by
+  rw [BitVec.toNat_ofNat]
+  exact Nat.mod_eq_of_lt h
+
+/-- Incrementing a small 64-bit word stays in `ofNat` form (no wrap). -/
+theorem ofNat64_add_one (k : Nat) :
+    BitVec.ofNat 64 k + BitVec.ofNat 64 1 = BitVec.ofNat 64 (k + 1) :=
+  (BitVec.ofNat_add (n := 64) k 1).symm
+
+/-- Unsigned comparison of a small 64-bit word against any word. -/
+theorem ofNat64_ult (k : Nat) (n : BitVec 64) (h : k < 2 ^ 64) :
+    (BitVec.ofNat 64 k).ult n = decide (k < n.toNat) := by
+  rw [BitVec.ult_eq_decide, ofNat64_toNat k h]
+
 /-- `(<$>)` on `Result` computes on both constructors (for the corollaries).
     Proved by `rfl` (needs default transparency to see through the
     `Functor` instance, so later proofs use `exact`, not `simp`). -/
@@ -83,3 +104,11 @@ theorem u32_map_error (e : Panic) :
 
 theorem u32_map_ok (r : BitVec 32) :
     Value.u32 <$> (Except.ok r : Result (BitVec 32)) = .ok (.u32 r) := rfl
+
+/-- `(<$>)` on `Result` computes on both constructors (for the M1b `u64`
+    corollaries; cf. `u32_map_error`/`u32_map_ok`). -/
+theorem u64_map_error (e : Panic) :
+    Value.u64 <$> (Except.error e : Result (BitVec 64)) = .error e := rfl
+
+theorem u64_map_ok (r : BitVec 64) :
+    Value.u64 <$> (Except.ok r : Result (BitVec 64)) = .ok (.u64 r) := rfl

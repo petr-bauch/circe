@@ -11,6 +11,7 @@ import Circe.Emit.Add
 import Circe.Emit.Choose
 import Circe.Emit.Sum
 import Circe.Emit.Vec
+import Circe.Emit.Vec64
 import Circe.Emit.Vec2
 import Circe.Emit.Calls
 import Circe.Emit.Struct
@@ -65,6 +66,22 @@ def matchFrag : Func → Option FragKind
             (.return_ (.var "s"))))))))⟩ =>
     if i0 == 0 && s0 == 0 && j0 == 0 && one1 == 1 && one2 == 1 then
       some .vec
+    else none
+  | ⟨_, [⟨"n", .u 64, .owned⟩], _,
+      .seq (.let_ "v" _ (.vnew (.var "n")))
+      (.seq (.let_ "i" _ (.lit (.u64 i0)))
+      (.seq (.let_ "s" _ (.lit (.u64 s0)))
+      (.seq (.let_ "j" _ (.lit (.u64 j0)))
+      (.seq (.while_ (.ult (.var "i") (.var "n"))
+              (.seq (.vset "v" (.var "i") (.var "i"))
+                    (.assign "i" (.uadd (.var "i") (.lit (.u64 one1))))))
+      (.seq (.while_ (.ult (.var "j") (.var "n"))
+              (.seq (.assign "s" (.uadd (.var "s") (.vget "v" (.var "j"))))
+                    (.assign "j" (.uadd (.var "j") (.lit (.u64 one2))))))
+      (.seq (.vfree "v")
+            (.return_ (.var "s"))))))))⟩ =>
+    if i0 == 0 && s0 == 0 && j0 == 0 && one1 == 1 && one2 == 1 then
+      some .vec64
     else none
   | ⟨_, [⟨"n", .u 32, .owned⟩], _,
       .seq (.let_ "a" _ (.vnew (.var "n")))
@@ -184,6 +201,7 @@ theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl
+theorem matchFrag_vec64 : matchFrag vec64Func = some .vec64 := rfl
 theorem matchFrag_vec2 : matchFrag vec2Func = some .vec2 := rfl
 theorem matchFrag_addCaller : matchFrag addCallerFunc = some .addCall := rfl
 theorem matchFrag_sumCaller : matchFrag sumCallerFunc = some .sumCall := rfl
