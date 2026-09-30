@@ -50,6 +50,11 @@
 #    corpus, stripped-free acceptance for all four heap shapes, text
 #    double-`free` rejection, token-level double-free/use-after-free
 #    `AssertFail` checks).
+# 15. (M2 setup) Asserts no checked-in C `.cir` contains the newly-gated
+#    `cir.cleanup` / `cir.trap` ops and runs the module-validation golden
+#    suite (`GoldenM2Setup`: trap/cleanup rejection, per-definition
+#    `validateModule` on caller/heap modules with declarations skipped,
+#    missing-fact wiring error). No new shapes admitted.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -324,5 +329,13 @@ lake env lean --run tests/lean/DiffVecLeak.lean "$VECLEAK_BIN" "$TRIALS"
 
 echo "== golden pipeline + free-discipline suite =="
 lake env lean --run tests/lean/GoldenFreeDiscipline.lean
+
+echo "== M2 setup gates (trap/cleanup + module validation) =="
+if grep -rl "cir.cleanup\|cir.trap" tests/cir/; then
+  echo "newly-gated ops present in C corpus (breaks M2 setup gate)"
+  exit 1
+fi
+echo "C corpus free of cir.cleanup / cir.trap"
+lake env lean --run tests/lean/GoldenM2Setup.lean
 
 echo "CHECK-OK"

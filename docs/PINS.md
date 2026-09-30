@@ -91,3 +91,39 @@ around `cir.ternary` conditions and `cir.for` `cir.condition`;
 `!rec_Point` record types + `cir.get_member %p[N]`; `cir.add nsw` (signed)
 vs plain `cir.add` (unsigned); `cir.scope` nesting; module attrs
 (`cir.triple`, `dlti.dl_spec`) to ignore.
+
+## C++ (M2) pins (probed 2026-09-30, same CIR clang pin above)
+
+Capture (`tools/emit-cir.sh` `.cpp` loop; extension selects C++):
+
+```
+clang -fclangir -Xclang -emit-cir -fno-exceptions \
+  tests/cpp/<f>.cpp -S -o tests/cir/<f>.cir
+```
+
+- Module carries `cir.lang = #cir.lang<cxx>` (vs `#cir.lang<c>`) plus
+  `cir.record_layouts` (e.g. `Point = #cir.record_layout<arg_passing_kind
+  = can_pass_in_regs, has_trivial_dtor = true, record_align = 4>`).
+- `-fno-exceptions` is pinned: without it, dtor defs carry `cir.try` +
+  `personality` and new/delete carries `cleanup eh` regions (probe:
+  `ctor_dtor.cir` 3 hits, `new_delete.cir` 1 hit); with it, 0 hits —
+  only `cir.cleanup.scope` / `cleanup normal` + a trailing `cir.trap`
+  remain. No-EH stays absolute (`cir.try` / `personality` /
+  `cleanup eh` always rejected).
+- Itanium mangled names: entry `@_Z13point_sum_refRK5Point`, method
+  `@_ZNK5Point3sumEv` (`this: !cir.ptr<!rec_Point>` first param), ctor
+  `@_ZN3AccC2Ev`, dtor `@_ZN3AccD2Ev`, new `@_Znwm`, sized delete
+  `@_ZdlPvm`.
+- Ctor/dtor defs carry markers: `func_info<#cir.cxx_ctor<!rec_Acc,
+  default>>` / `func_info<#cir.cxx_dtor<!rec_Acc>>`; methods are
+  `linkonce_odr` (same as inline C functions — no special casing).
+- `this` / `const&` params carry `{llvm.align, llvm.dereferenceable,
+  llvm.nonnull, llvm.noundef}` — never `restrict` / `noalias` (SUBSET
+  rule 1 amendment).
+- `new` is `cir.call @_Znwm(size) {allocsize, builtin}` returning
+  `{llvm.nonnull, llvm.noundef}` (never fails, like M1 malloc); `delete`
+  is a null guard (`cir.cmp ne` vs `#cir.ptr<null>` + `cir.if`) with a
+  `cleanup`-scoped sized `cir.call @_ZdlPvm(ptr, size)`.
+- By-value struct params lower through a `coerce` alloca + `cir.cast
+  bitcast` (`can_pass_in_regs`); M2a uses `const&` / `this` pointers
+  instead, the coerce pattern rejects loudly.

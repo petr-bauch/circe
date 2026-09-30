@@ -14,7 +14,8 @@ Check order (first hit wins — rejection codes are priority-ordered):
 1. oracle wiring (fact must name this function);
 2. forbidden constructs (EH, int↔ptr casts, `void*`, volatile/atomics,
    float, `setjmp`/`longjmp`, globals,
-   function pointers, VLAs, variadics, `goto` (`cir.br`),
+   function pointers, VLAs, variadics, cleanup regions (`cir.cleanup`),
+   trap (`cir.trap`), `goto` (`cir.br`),
    bitfields, signed wrapping arithmetic without `nsw` — all `outOfSubset`;
    `switch` is shape-aware (the admitted `cls` lowering passes, all other
    `switch` uses are `outOfSubset`);
@@ -596,7 +597,10 @@ def lineHasBareBr (line : String) : Bool :=
 def hasBareBr (text : String) : Bool :=
   (text.splitOn "\n").any lineHasBareBr
 
-/-- First forbidden construct found (all `outOfSubset`), if any. -/
+/-- First forbidden construct found (all `outOfSubset`), if any.
+    `cir.cleanup` / `cir.trap` reject generally (C++ destructor /
+    unreachable lowering); the exact M2b shape will earn a shape-aware
+    exemption here, everything else stays loud. -/
 def forbiddenOp (text : String) : Option String :=
   if containsSubstr text "cir.try" then some "exception handling (`cir.try`/cleanup/EH)"
   else if containsSubstr text "landingpad" then some "exception handling (landingpad)"
@@ -618,6 +622,8 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
+  else if containsSubstr text "cir.cleanup" then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.trap" then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
@@ -728,6 +734,27 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' is not in the admitted Phase-4 fragment (see `matchFrag` contract in `Circe.Emit`)"
+
+/-! ## Module validation (M2: multi-definition C++ files) -/
+
+/-- Validate every *defined* function in one `.cir` file text.
+    Declarations (`cir.func private @callee...` without a body) are
+    skipped (S1 precedent: caller files carry callee declarations).
+    A defined function without an oracle fact is a loud error (M2a will
+    exempt method/ctor/dtor defs, whose uniqueness comes from the
+    `nonnull + dereferenceable + noundef` attr triple instead). -/
+def validateModule (text : String) (facts : List OracleFact) :
+    List (String × Validation) :=
+  match parseModule text with
+  | none =>
+    [("module", reject "module" .outOfSubset
+      "out-of-subset: parse failed: no `cir.func` signature found")]
+  | some ir => (ir.funcs.filter isFuncDef).map (fun raw =>
+      match lookupOracle facts raw.name with
+      | none =>
+        (raw.name, reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' is defined but has no oracle fact (wiring error; refusing to translate)")
+      | some fact => (raw.name, validate raw fact))
 
 /-! ## Text-level pipeline + machine-checked corpus linkage -/
 

@@ -58,6 +58,9 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 ## Rules
 
 1. `T*` params must be `__restrict__` or oracle-proven `noalias`.
+   (C++ M2: `this` / `const&` params carry `nonnull + dereferenceable
+   + noundef` instead — `this` cannot carry `restrict` / `noalias`;
+   see `ROADMAP.md` M2 and `PINS.md`.)
 2. No two live params may alias (oracle verdict required).
 3. No escaping, except the borrow-return pattern below.
 4. Indexing only as `p[i]` / `*(p+i)` with `0 <= i < n`, `n` a
@@ -165,4 +168,4 @@ Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
-+ `GoldenFreeDiscipline.lean` (13).
++ `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5).

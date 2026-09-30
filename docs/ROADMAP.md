@@ -171,9 +171,63 @@ tamper-checked `Diff*` fuzz → rejection suite → `check.sh` stage →
 `*_Spec` stub → `CHECK-OK`.
 Non-goals: pointer arithmetic beyond stride loops, true aliasing (M3),
 OOM, polymorphism, threads.
-- **M2 — STL-free C++-lite**: value constructors/destructors,
-  methods on POD, `new`/`delete` as ownership ops. Still no
-  inheritance/templates/EH/vtables. Structs (S2) are the prerequisite.
+
+## M2. STL-free C++-lite — LOCKED (2026-09-30)
+
+Value constructors/destructors, methods on POD, `new`/`delete` as
+ownership ops. Still no inheritance/templates/EH/vtables. Structs (S2)
+are the prerequisite; S1 `callRet` + depth-1 `evalProgFunc` dispatch
+carries method/ctor calls (callees are call-free leaves, so DAG holds
+by construction).
+
+Probed CIR facts (pinned clang, `cir.lang<cxx>`): methods lower to
+`cir.call @mangled(this, …)` with `this: !cir.ptr<!rec>`; ctor/dtor
+defs carry `func_info<#cir.cxx_ctor / #cir.cxx_dtor>` markers; a local
+with a dtor wraps the body in `cir.cleanup.scope { … } cleanup normal
+{ dtor-call }` + trailing `cir.trap`; `new T{…}` is
+`cir.call @_Znwm(size)` (nonnull, `allocsize`, `builtin`) + bitcast +
+field stores; `delete` is a null-compare (`cir.cmp ne` vs
+`#cir.ptr<null>`) + `cir.if` + `cleanup`-scoped sized
+`cir.call @_ZdlPvm(ptr, size)`.
+
+Locked decisions: `-fno-exceptions` pinned for all C++ corpus
+(without it, dtor defs carry `cir.try` + `personality` and new/delete
+carries `cleanup eh` regions; with it only `cleanup.scope` /
+`cleanup normal` + `trap` remain — no-EH stays absolute); by-value
+struct params deferred (`coerce` alloca + `bitcast` via
+`can_pass_in_regs`; M2a corpus uses `const&` / `this` pointers, the
+coerce pattern rejects loudly); single-`this` / single-ref uniqueness
+via `nonnull + dereferenceable + noundef` attrs (SUBSET rule 1
+amendment — `this` cannot carry `restrict` / `noalias`); `_Znwm` never
+fails (unbounded convention, like M1 malloc/realloc).
+
+Cross-cutting (once, before M2a): `emit-cir.sh` gains a `.cpp` loop
+with `-fno-exceptions` (+ PINS: flags, `cir.lang<cxx>`, mangled-name
+pins, `func_info` markers); `Validator.validateModule` validates every
+defined func (`parseFuncs`; declarations skipped per S1 precedent);
+`forbiddenOp` gains general `cir.trap` + `cir.cleanup` rejection with
+shape-aware exemptions (both pass silently today); method/ctor/dtor
+defs need no oracle facts (single-`this` + attr triple).
+
+Order: M2a → M2b → M2c. Each slice gated by shape +
+`emit_correct` + golden before admission.
+
+| Slice | Core change | Design pin |
+|---|---|---|
+| M2a POD const-methods | `point_sum_ref(const Point&)`: method leaf (`this` + `get_member` x/y + `nsw` add — S2 body with pointer param) + ref-param caller via S1 `callRet`; no new CIR constructs | Exact mangled `callsFunc` pin (PINS); `this` binds a struct value (copy semantics); by-value coerce-pattern rejection pins the deferral |
+| M2b value ctors + trivial dtors | `acc_two(a, b)` (ints only: the struct never crosses the boundary): new `CStmt.cleanup` (scope sequenced, `cleanup normal` at exit); ctor call → field-init, trivial-dtor call → no-op at validation | `cxx_ctor` / `cxx_dtor` markers + exact call multiset (1 ctor + 2 methods + 1 dtor) + `trap` terminator; `cleanup` / `trap` admitted only here |
+| M2c `new` / `delete` as ownership ops | `box_through(x)`: `BoxVal` value + affine `freed` token (Vec32 precedent: `boxNew` never fails, `boxRead`, `boxFree`; double-free / use-after-delete → `AssertFail`); sized `_ZdlPvm` with matching size const; M1d leak relaxation applies to the delete gate | `_Znwm` / `_ZdlPvm` join the heap-shape gate; null-guarded `cir.if` (ptr-`cmp ne` + `#cir.ptr<null>`); delete inside `cleanup normal` |
+
+Per-slice acceptance (standing convention, C++ adapted): corpus `.cpp`
+(real CIRGen with `-fno-exceptions`, `cir-opt` VERIFY-OK) → shape gate
+→ proof → golden diff → tamper-checked `Diff*` fuzz (C++ drivers) →
+rejection suite → `check.sh` stage → `*_Spec` stub → `CHECK-OK`.
+Non-goals: inheritance, templates, vtables, EH (`cir.try` /
+`personality` / `cleanup eh` always rejected), non-const / static /
+overloaded methods, operators, implicit copy/move ctors (avoided by
+corpus construction; exact call-multiset pins make surprises reject
+loudly), `std::nothrow` lowering (covered by never-fails),
+polymorphism, threads.
 - **M3 — Shrinking oracle trust**: Stacked-Borrows-style
   justification (`oracle_noalias f → memEval f = Eval f` on the
   admitted fragment), trust base down to CIRGen text + Lean/Mathlib.

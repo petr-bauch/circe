@@ -168,28 +168,71 @@ def parseSigAt (text : String) (off : Nat) :
     | _ => ""
   some (name, params, ret)
 
-/-- Parse the single function starting at/after `off`. -/
+/-- End of the function starting at `k`: the next `cir.func ` or EOF
+    (character indices, matching `findSubstr?`). -/
+def funcSliceEnd (text : String) (k : Nat) : Nat :=
+  match findSubstr? text "cir.func " (k + 9) with
+  | some nxt => nxt
+  | none => text.toList.length
+
+/-- Text slice of the single function starting at `k`. -/
+def funcSlice (text : String) (k : Nat) : String :=
+  String.ofList ((text.toList.drop k).take (funcSliceEnd text k - k))
+
+/-- First line of a slice (CIRGen emits single-line `cir.func`
+    signatures, so the signature is the first line). -/
+def firstLine (s : String) : String :=
+  String.ofList (s.toList.takeWhile (fun c => c != '\n'))
+
+/-- A sliced function is a *definition* iff its signature line ends with
+    `{` (declarations end with `)` after `loc(...)`; both carry
+    attribute braces inline, so only the trailing character decides). -/
+def isFuncDefSlice (slice : String) : Bool :=
+  match (trimList (firstLine slice).toList).reverse with
+  | '{' :: _ => true
+  | _ => false
+
+/-- Parse the single function starting at/after `off`. The attached text
+    is the function's own slice (up to the next `cir.func ` or EOF), so
+    op-presence checks in `validate` never bleed across functions in a
+    multi-definition (C++) module. -/
 def parseFuncAt (text : String) (off : Nat) : Option RawFunc := do
+  let k ← findSubstr? text "cir.func " off
   let (name, params, ret) ← parseSigAt text off
-  some { name, params, ret, text }
+  some { name, params, ret, text := funcSlice text k }
+
+/-- A parsed function is a *definition* (has a body) as opposed to a
+    mere declaration (`cir.func private @callee...` without a body;
+    caller files carry callee declarations, C++ modules carry
+    `linkonce_odr` method definitions beside the entry). -/
+def isFuncDef (raw : RawFunc) : Bool :=
+  isFuncDefSlice raw.text
 
 /-- Parse the first function in the text. -/
 def parseFunc (text : String) : Option RawFunc :=
   parseFuncAt text 0
 
 /-- Parse a whole module (all `cir.func`s). Fuel-bounded; exhaustion is a
-    loud `none` (corpus files are small; fuel always suffices). -/
+    loud `none` (corpus files are small; fuel always suffices).
+    Declarations (no body) are skipped structurally via `isFuncDefSlice`
+    — their bare-type params (`@add(!s32i, …)`) carry no `%arg` names for
+    `parseSigAt`, so they are never `RawFunc`s. -/
 def parseModuleAux : Nat → String → Nat → List RawFunc → Option (List RawFunc)
   | 0, _, _, _ => none
   | fuel + 1, text, off, acc =>
     match findSubstr? text "cir.func " off with
     | none => some acc.reverse
     | some k =>
-      match parseFuncAt text k with
-      | none => none
-      | some f => parseModuleAux fuel text (k + 9) (f :: acc)
+      let next := funcSliceEnd text k
+      if isFuncDefSlice (funcSlice text k) then
+        match parseFuncAt text k with
+        | none => none
+        | some f => parseModuleAux fuel text next (f :: acc)
+      else
+        parseModuleAux fuel text next acc
 
-/-- Parse a whole `.cir` file into `RawIR`. -/
+/-- Parse a whole `.cir` file into `RawIR`. Each function carries its
+    own slice (see `parseFuncAt`); use `isFuncDef` to skip declarations. -/
 def parseModule (text : String) : Option RawIR := do
   let funcs ← parseModuleAux (text.toList.length + 1) text 0 []
   some ⟨funcs⟩
