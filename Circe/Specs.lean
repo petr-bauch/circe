@@ -139,6 +139,33 @@ theorem vec_empty : vecFillSumU32 0 = .ok 0 := by
   rw [vec_correct]
   simp
 
+/-! ## `vec_realloc`: grown index-sum is `List.sum` of the doubled range (M1c) -/
+
+/-- Functional correctness for `vec_realloc` (M1c heap spec): the pure
+    grown-heap program delivers the `List.sum` of indices `[0, n + n)`
+    (wrapping `u32` arithmetic is exactly `BitVec` addition). Applies
+    verbatim to `out/VecRealloc.lean:vec_realloc_fwd` (body-identical:
+    `vecReallocFillSumU32 n.toNat`). S4: stated via the grown `cir_simp`
+    set (`vecReallocFillSumU32_correct` + `prefixSumU32_take_sum` fire
+    automatically; only the take-length fact is manual). -/
+theorem vecRealloc_correct (n : Nat) :
+    vecReallocFillSumU32 n =
+      .ok (((List.range (n + n)).map (BitVec.ofNat 32)).sum) := by
+  have hlen : ((List.range (n + n)).map (BitVec.ofNat 32)).length = n + n := by
+    simp
+  have htake : ((List.range (n + n)).map (BitVec.ofNat 32)).take (n + n) =
+      (List.range (n + n)).map (BitVec.ofNat 32) := by
+    have h2 := List.take_length
+      (l := (List.range (n + n)).map (BitVec.ofNat 32))
+    rwa [hlen] at h2
+  cir_simp
+  rw [htake]
+
+/-- The empty grown-heap program sums to zero. -/
+theorem vecRealloc_empty : vecReallocFillSumU32 0 = .ok 0 := by
+  rw [vecRealloc_correct]
+  simp
+
 /-! ## `vec_alloc_u64`: index-sum is `List.sum` of the filled range (M1b) -/
 
 /-- Functional correctness for `vec_alloc_u64` (M1b heap spec): the pure

@@ -210,6 +210,26 @@ def emitVec64SpecText (name : String) : String :=
   ++ "    (repr (vecFillSumU64 n)).pretty\n"
   ++ "      == (repr ((Except.ok (((List.range n).map (BitVec.ofNat 64)).sum) : Result (BitVec 64)))).pretty\n"
 
+/-- Spec stub for the `vec_realloc` shape (M1c: grown block). -/
+def emitVecReallocSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (allocate, fill `[0,n)`, `realloc` to `2*n`, fill `[n,2*n)`, sum, free).\n"
+  ++ s!"    Base body reference: `vecReallocFillSumU32` (cf. emitted `{name}_fwd`, `emit_correct_vecRealloc`). -/\n"
+  ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  vecReallocFillSumU32 n.toNat\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty / singleton / small / page-ish (sums run over `2*n`). -/\n"
+  ++ s!"def {name}_spec_edges : List Nat :=\n"
+  ++ "  [0, 1, 2, 10, 256]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the grown index-sum equation holds on every edge\n"
+  ++ "    (this one is already the spec — see `vecRealloc_correct`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun n =>\n"
+  ++ "    (repr (vecReallocFillSumU32 n)).pretty\n"
+  ++ "      == (repr ((Except.ok (((List.range (n + n)).map (BitVec.ofNat 32)).sum) : Result (BitVec 32)))).pretty\n"
+
 /-- Spec stub for the `add_caller` shape (S1 DAG calls). -/
 def emitAddCallerSpecText (name : String) : String :=
   emitSpecHeader

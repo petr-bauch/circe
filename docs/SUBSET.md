@@ -35,7 +35,11 @@ sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`
 with same-function length `n`, bounded `v[i]`, exactly one `free(v)`
 (`vec_alloc` / `vec_alloc_u64` shapes) or two `malloc`s + two `free`s
 with a fill/copy/sum discipline (M1a `vec_copy_sum` shape, `u32`-only:
-both blocks live at once, disjoint by construction).
+both blocks live at once, disjoint by construction) or one `malloc` +
+one `realloc` (to `2*n`) + one `free` with a fill / fill-extension /
+sum discipline (M1c `vec_realloc` shape, `u32`-only: growth preserves
+the `min(old, new)` prefix, zero-fills growth, never fails; the
+`realloc(p, 0)` / `realloc(NULL, n)` spellings are rejected loudly).
 No `goto` (`cir.br` is matched line-aware so `cir.break` never trips
 it), `setjmp`, non-lowerable `switch`, no function pointers, no other
 heap shapes, read-only `const`
@@ -64,7 +68,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 7. Loops must be length-paired (`sum_array` shape) and terminate within
    `EVAL_FUEL` (4096); exhaustion is `AssertFail` (incompleteness, never
    unsoundness); over-long lengths are `OOB`.
-8. Heap (`vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` shapes):
+8. Heap (`vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` / `vec_realloc`
+    shapes):
    `malloc(n * sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`,
    only `v[i]` for `0 <= i < n`, every block freed
    exactly once on every path (missing-`free` / double-`free`
@@ -74,7 +79,12 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
    polymorphism; mixed-width access is `AssertFail` per S3b policy);
    `vec_copy_sum` (M1a): two live `u32`
    allocations, fill `a` / copy `a` into `b` / sum `b`, `free(a)` then
-   `free(b)` — disjoint by construction (two `malloc` results). Blocks
+   `free(b)` — disjoint by construction (two `malloc` results).
+   `vec_realloc` (M1c): one live `u32` allocation grown by a single
+   `realloc` to `m = n + n`, fill `[0,n)` / fill extension `[n,m)` /
+   sum `[0,m)`, one `free` — prefix preserved, growth zero-filled,
+   never fails (no OOM path); `realloc(p, 0)` / `realloc(NULL, n)`
+   spellings rejected (use `free` / `malloc` directly). Blocks
    are values + affine tokens (`Vec32.freed` / `Vec64.freed`), not addresses.
 9. DAG calls (S1): callers target admitted call-free leaves only
    (`add`, `sum_array`); exact caller shapes (`add_caller`:
@@ -124,7 +134,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 `cir.func`, `cir.alloca`/`load`/`store` (functionalizable shape),
 `cir.cast` (int/bool), `cir.binop`/`cmp`/`unary`, `cir.cond_br`
 (`cir.br` from `goto` rejected), `cir.return`, `cir.call`
-(`@malloc`/`@free` in the vec/vec2/vec64 shapes only; `@add`/`@sum_array` in the exact
+(`@malloc`/`@free` in the vec/vec2/vec64/vecRealloc shapes only,
+`@realloc` in the vecRealloc shape only; `@add`/`@sum_array` in the exact
 S1 caller shapes only), `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
@@ -134,7 +145,8 @@ on pinned consts + `default`, all other switches rejected),
 `get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
-`cir.get_global @malloc/@free` plumbing allowed in vec/vec2/vec64 shapes only.
+`cir.get_global @malloc/@free` plumbing allowed in vec/vec2/vec64/vecRealloc
+shapes only (`@realloc` in vecRealloc only).
 64-bit spellings (`!s64i`/`!u64i` + long forms) in the S3b `add64` /
 `addu64` shapes only; 8/16-bit spellings always rejected (promotion).
 

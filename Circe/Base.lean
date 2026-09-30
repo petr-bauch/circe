@@ -1382,3 +1382,244 @@ theorem vecFillSumU64_correct (n : Nat) :
   congr 1
   rw [hrange]
   simp [BitVec.zero_add]
+
+/-! ## M1c: `realloc` (`vec_realloc`, grow a uniquely-owned `u32` block) -/
+
+/-- `realloc(v, m * sizeof(uint32_t))`: resize to `m` words, preserving the
+    `min(old, new)` prefix and zero-filling growth (the extension is
+    explicitly initialized before any read in the admitted shape, so the
+    zero-fill is unobservable there — like `malloc` zero-init in
+    `vec_alloc`). Never fails (unbounded allocation, like `vecNew`);
+    use-after-`free` is `AssertFail`. The `realloc(p, 0)` (= `free`) and
+    `realloc(NULL, n)` (= `malloc`) spellings are rejected by `validate`
+    (dedicated heap-shape message), never modeled here. -/
+def vecRealloc (v : Vec32) (m : Nat) : Result Vec32 :=
+  if v.freed then .error .AssertFail
+  else .ok ⟨v.val.take m ++ List.replicate (m - v.val.length) 0, false⟩
+
+/-- Realloc on a freed block is rejected, never silently modeled. -/
+theorem vecRealloc_freed (v : Vec32) (m : Nat)
+    (h : v.freed = true) : vecRealloc v m = .error .AssertFail := by
+  simp [vecRealloc, h]
+
+/-- Realloc on a live block succeeds with the resized contents. -/
+theorem vecRealloc_ok (v : Vec32) (m : Nat)
+    (hlive : v.freed = false) :
+    vecRealloc v m =
+      .ok ⟨v.val.take m ++ List.replicate (m - v.val.length) 0, false⟩ := by
+  simp [vecRealloc, hlive]
+
+/-- Resizing delivers exactly the requested capacity. -/
+theorem vecRealloc_length (v : Vec32) (m : Nat) (w : Vec32)
+    (h : vecRealloc v m = .ok w) : w.val.length = m := by
+  unfold vecRealloc at h
+  split at h
+  · next => simp at h
+  · next =>
+    cases h
+    simp only [List.length_take, List.length_append, List.length_replicate]
+    omega
+
+/-- Resizing keeps the block live. -/
+theorem vecRealloc_live (v : Vec32) (m : Nat) (w : Vec32)
+    (h : vecRealloc v m = .ok w) : w.freed = false := by
+  unfold vecRealloc at h
+  split at h
+  · next => simp at h
+  · next => cases h; rfl
+
+/-- List-level: resizing preserves reads below both lengths. -/
+theorem take_append_replicate_get_preserve (l : List (BitVec 32))
+    (m j : Nat) (hjlen : j < l.length) (hjm : j < m) :
+    (l.take m ++ List.replicate (m - l.length) 0)[j]? = l[j]? := by
+  induction l generalizing m j with
+  | nil => simp at hjlen
+  | cons y ys ih =>
+    cases m with
+    | zero => simp at hjm
+    | succ m =>
+      cases j with
+      | zero => simp [List.take]
+      | succ j =>
+        simp only [List.take_succ_cons, List.length_cons, List.cons_append,
+          List.getElem?_cons_succ, Nat.succ_sub_succ]
+        exact ih m j (by simpa using hjlen) (by omega)
+
+/-- List-level: growth reads back zero past the old length. -/
+theorem take_append_replicate_get_zero (l : List (BitVec 32))
+    (m j : Nat) (hjge : l.length ≤ j) (hjm : j < m) :
+    (l.take m ++ List.replicate (m - l.length) 0)[j]? = some 0 := by
+  induction l generalizing m j with
+  | nil =>
+    rw [List.take_nil]
+    simp only [List.length, Nat.sub_zero, List.nil_append]
+    rw [List.getElem?_replicate]
+    simp [hjm]
+  | cons y ys ih =>
+    cases m with
+    | zero => simp at hjm
+    | succ m =>
+      cases j with
+      | zero => simp at hjge
+      | succ j =>
+        simp only [List.take_succ_cons, List.length_cons, List.cons_append,
+          List.getElem?_cons_succ, Nat.succ_sub_succ]
+        exact ih m j (by simpa using hjge) (by omega)
+
+/-- Resizing preserves every element below both lengths. -/
+theorem vecRealloc_preserve (v : Vec32) (m j : Nat) (y : BitVec 32)
+    (w : Vec32) (hlt : j < m) (hget : vecGet v j = .ok y)
+    (h : vecRealloc v m = .ok w) : vecGet w j = .ok y := by
+  have hlive : v.freed = false := by
+    cases hv : v.freed
+    · rfl
+    · unfold vecRealloc at h
+      simp [hv] at h
+  have hjlen : j < v.val.length := by
+    rcases Nat.lt_or_ge j v.val.length with hj | hge
+    · exact hj
+    · have hnone : v.val[j]? = none := List.getElem?_eq_none hge
+      have h2 : vecGet v j = .error .OOB := vecGet_oob v j hlive hnone
+      rw [h2] at hget
+      simp at hget
+  have hget' : v.val[j]? = some y := by
+    match hm : v.val[j]? with
+    | some z =>
+      have h2 : vecGet v j = .ok z := vecGet_ok v j z hlive hm
+      have hzy : z = y := by
+        rw [h2] at hget
+        simpa using hget
+      exact congrArg some hzy
+    | none =>
+      have h2 : vecGet v j = .error .OOB := vecGet_oob v j hlive hm
+      rw [h2] at hget
+      simp at hget
+  have hw : w = ⟨v.val.take m ++ List.replicate (m - v.val.length) 0, false⟩ := by
+    rw [vecRealloc_ok v m hlive] at h
+    cases h
+    rfl
+  subst hw
+  rw [vecGet_ok _ _ _ rfl (by
+    show (v.val.take m ++ List.replicate (m - v.val.length) 0)[j]? = some y
+    rw [take_append_replicate_get_preserve _ _ _ hjlen hlt]
+    exact hget')]
+
+/-- Growth reads back zero past the old length. -/
+theorem vecRealloc_get_zero (v : Vec32) (m j : Nat) (w : Vec32)
+    (hle : v.val.length ≤ j) (hlt : j < m)
+    (h : vecRealloc v m = .ok w) : vecGet w j = .ok 0 := by
+  have hlive : v.freed = false := by
+    cases hv : v.freed
+    · rfl
+    · unfold vecRealloc at h
+      simp [hv] at h
+  have hw : w = ⟨v.val.take m ++ List.replicate (m - v.val.length) 0, false⟩ := by
+    rw [vecRealloc_ok v m hlive] at h
+    cases h
+    rfl
+  subst hw
+  rw [vecGet_ok _ _ _ rfl (by
+    show (v.val.take m ++ List.replicate (m - v.val.length) 0)[j]? = some 0
+    exact take_append_replicate_get_zero _ _ _ hle hlt)]
+
+/-- Fill on a live capacity-`(k+r)` block always succeeds (generalizes
+    `vecFillLoopAux_fresh_ok` beyond fresh blocks; M1c extension fills run
+    on `realloc` outputs). -/
+theorem vecFillLoopAux_live_ok (v : Vec32) (k r : Nat)
+    (hlive : v.freed = false) (hlen : v.val.length = k + r) :
+    ∃ w, vecFillLoopAux v k r = .ok w := by
+  induction r generalizing v k with
+  | zero => exact ⟨v, rfl⟩
+  | succ r ih =>
+    have hk : k < v.val.length := by omega
+    have hs : vecSet v k (BitVec.ofNat 32 k) =
+        .ok ⟨v.val.set k (BitVec.ofNat 32 k), false⟩ :=
+      vecSet_ok v k _ hlive hk
+    unfold vecFillLoopAux
+    rw [hs]
+    simp only
+    have hlen' : (v.val.set k (BitVec.ofNat 32 k)).length = (k + 1) + r := by
+      rw [List.length_set]
+      omega
+    exact ih _ _ (vecSet_live v k _ _ hs) hlen'
+
+/-- Whole heap program, purely: allocate `n`, fill `[0, n)` with indices,
+    `realloc` to `n + n` (prefix preserved), fill the extension `[n, n+n)`
+    with indices, sum `[0, n+n)`, free. `free` is value-invisible
+    (contents kept, token set); missing-`free` strictness lives in
+    `validate`, not here. -/
+def vecReallocFillSumU32 (n : Nat) : Result (BitVec 32) :=
+  match vecNew n with
+  | .error e => .error e
+  | .ok v0 =>
+    match vecFillLoop v0 n with
+    | .error e => .error e
+    | .ok v1 =>
+      match vecRealloc v1 (n + n) with
+      | .error e => .error e
+      | .ok v2 =>
+        match vecFillLoopAux v2 n n with
+        | .error e => .error e
+        | .ok v3 =>
+          match vecSumLoop v3 (n + n) with
+          | .error e => .error e
+          | .ok s =>
+            match vecFree v3 with
+            | .error e => .error e
+            | .ok _ => .ok s
+
+/-- Whole-program bridge: allocate/fill/realloc/fill-extension/sum/free
+    equals the `range (n + n)` prefix sum (the spec world). -/
+theorem vecReallocFillSumU32_correct (n : Nat) :
+    vecReallocFillSumU32 n =
+      .ok (prefixSumU32 ((List.range (n + n)).map (BitVec.ofNat 32)) (n + n)) := by
+  have hfill := vecFillLoopAux_fresh_ok (List.replicate n 0) 0 n (by simp)
+  obtain ⟨w1, hw1⟩ := hfill
+  have hlive1 : w1.freed = false :=
+    vecFillLoopAux_live _ _ _ _ rfl hw1
+  have hlenFresh : (⟨List.replicate n 0, false⟩ : Vec32).val.length = 0 + n := by
+    simp
+  have hget1 : ∀ j, 0 ≤ j → j < 0 + n →
+      vecGet w1 j = .ok (BitVec.ofNat 32 j) :=
+    fun j hjlo hjhi => vecFillLoopAux_get _ 0 n _ rfl hlenFresh
+      hw1 j hjlo hjhi
+  have hlen1 : w1.val.length = n := by
+    have h := vecFillLoopAux_length _ _ _ _ hw1
+    simp at h
+    exact h
+  obtain ⟨w2, hw2⟩ : ∃ w, vecRealloc w1 (n + n) = .ok w :=
+    ⟨_, vecRealloc_ok w1 (n + n) hlive1⟩
+  have hlive2 : w2.freed = false := vecRealloc_live w1 (n + n) w2 hw2
+  have hlen2 : w2.val.length = n + n := vecRealloc_length w1 (n + n) w2 hw2
+  have hget2 : ∀ j, j < n → vecGet w2 j = .ok (BitVec.ofNat 32 j) := by
+    intro j hj
+    exact vecRealloc_preserve w1 (n + n) j _ w2 (by omega)
+      (hget1 j (Nat.zero_le _) (by omega)) hw2
+  obtain ⟨w3, hw3⟩ := vecFillLoopAux_live_ok w2 n n hlive2 hlen2
+  have hlive3 : w3.freed = false :=
+    vecFillLoopAux_live _ _ _ _ hlive2 hw3
+  have hget3 : ∀ j, 0 ≤ j → j < n + n →
+      vecGet w3 j = .ok (BitVec.ofNat 32 j) := by
+    intro j hjlo hjhi
+    rcases Nat.lt_or_ge j n with hj | hj
+    · have hhere := hget2 j hj
+      exact vecFillLoopAux_preserve _ n n j _ w3 hj hhere hw3
+    · exact vecFillLoopAux_get _ n n _ hlive2 hlen2
+        hw3 j hj hjhi
+  have hsum := vecSumLoopAux_correct w3 0 (n + n) 0 (by
+    intro j hjlo hjhi
+    exact hget3 j hjlo (by omega))
+  have hrange : List.range' 0 (n + n) = List.range (n + n) := by
+    simp [List.range_eq_range']
+  rw [hrange] at hsum
+  have h0 : (0 : BitVec 32) + prefixSumU32 ((List.range (n + n)).map
+      (BitVec.ofNat 32)) (n + n)
+      = prefixSumU32 ((List.range (n + n)).map (BitVec.ofNat 32)) (n + n) :=
+    BitVec.zero_add _
+  rw [h0] at hsum
+  have hfree : vecFree w3 = .ok ⟨w3.val, true⟩ := vecFree_ok w3 hlive3
+  simp only [vecReallocFillSumU32, vecNew_ok, vecFillLoop, hw1, hw2, hw3] at *
+  simp only [vecSumLoop] at hsum ⊢
+  rw [hsum]
+  simp only
+  rw [hfree]

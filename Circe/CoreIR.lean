@@ -86,13 +86,17 @@ inductive CExpr : Type
     function `f` applied to the values of `args` (S1: DAG calls into
     call-free leaves, evaluated by `evalProgStmt` in `Circe.Eval`;
     `call` stays a legacy `fellThrough` stub, never produced by
-    `validate`). -/
+    `validate`). Heap block statements: `vset`/`vfree` thread `Vec32` /
+    `Vec64` values with an affine token; `vrealloc vec m` (M1c) resizes
+    the named block to `m` words via `vecRealloc` (prefix preserved,
+    growth zero-filled, never fails). -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
   | let_ (name : String) (ty : CType) (val : CExpr)
   | assign (name : String) (val : CExpr)
   | vset (vec : String) (idx val : CExpr)
+  | vrealloc (vec : String) (newSize : CExpr)
   | vfree (vec : String)
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)

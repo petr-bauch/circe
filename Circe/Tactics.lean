@@ -74,6 +74,7 @@ macro "cir_simp" : tactic =>
     translateFwd_err_y,
     addCallerFwd_as_calls, sumCallerFwd_is_call,
     vecFillSumU32_correct, vecNew, vecSet, vecGet, vecFree,
+    vecReallocFillSumU32_correct, vecRealloc,
     vecFillSumU64_correct, vecNew64, vecSet64, vecGet64, vecFree64,
     prefixSumU64, prefixSumU64_take_sum, prefixSumU64_full,
     prefixSumU64_nil, prefixSumU64_zero, prefixSumU64_cons,

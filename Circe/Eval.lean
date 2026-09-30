@@ -750,6 +750,21 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .vrealloc x se, ρ =>
+    match evalExpr se ρ with
+    | .error e => .error e
+    | .ok (.u32 m) =>
+      match envLookup ρ x with
+      | none => .error .Uninit
+      | some (.vecVal b) =>
+        match vecRealloc b m.toNat with
+        | .error e => .error e
+        | .ok b' =>
+          match envUpdate ρ x (.vecVal b') with
+          | none => .error .Uninit
+          | some ρ' => .ok (ρ', .fellThrough)
+      | some _ => .error .AssertFail
+    | .ok _ => .error .AssertFail
   | .vfree x, ρ =>
     match envLookup ρ x with
     | none => .error .Uninit
@@ -952,6 +967,25 @@ theorem evalStmtFuel_vfree64 (f : Nat) (x : String) (ρ : Env)
     (hu : envUpdate ρ x (.vecVal64 b') = some ρ') :
     evalStmtFuel f (.vfree x) ρ = .ok (ρ', .fellThrough) := by
   cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
+
+/-- `vrealloc` resizes a live block and updates the binding (M1c, any fuel). -/
+theorem evalStmtFuel_vrealloc (f : Nat) (x : String) (se : CExpr) (ρ : Env)
+    (m : BitVec 32) (b b' : Vec32) (ρ' : Env)
+    (hsize : evalExpr se ρ = .ok (.u32 m))
+    (harr : envLookup ρ x = some (.vecVal b))
+    (hre : vecRealloc b m.toNat = .ok b')
+    (hu : envUpdate ρ x (.vecVal b') = some ρ') :
+    evalStmtFuel f (.vrealloc x se) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, hsize, harr, hre, hu]
+
+/-- `vrealloc` errors (use-after-free) propagate (M1c, any fuel). -/
+theorem evalStmtFuel_vrealloc_err (f : Nat) (x : String) (se : CExpr)
+    (ρ : Env) (m : BitVec 32) (b : Vec32) (e : Panic)
+    (hsize : evalExpr se ρ = .ok (.u32 m))
+    (harr : envLookup ρ x = some (.vecVal b))
+    (hre : vecRealloc b m.toNat = .error e) :
+    evalStmtFuel f (.vrealloc x se) ρ = .error e := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, hsize, harr, hre]
 
 /-- Zero fuel exits a loop whose condition is already false. -/
 theorem evalStmtFuel_zero_while_exit (c : CExpr) (b : CStmt) (ρ : Env)

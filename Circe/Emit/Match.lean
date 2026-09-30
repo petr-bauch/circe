@@ -13,6 +13,7 @@ import Circe.Emit.Sum
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
+import Circe.Emit.VecRealloc
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -105,6 +106,29 @@ def matchFrag : Func → Option FragKind
     if i0 == 0 && j0 == 0 && k0 == 0 && s0 == 0 &&
         one1 == 1 && one2 == 1 && one3 == 1 then
       some .vec2
+    else none
+  | ⟨_, [⟨"n", .u 32, .owned⟩], _,
+      .seq (.let_ "v" _ (.vnew (.var "n")))
+      (.seq (.let_ "i" _ (.lit (.u32 i0)))
+      (.seq (.let_ "m" _ (.uadd (.var "n") (.var "n")))
+      (.seq (.let_ "s" _ (.lit (.u32 s0)))
+      (.seq (.let_ "j" _ (.var "n"))
+      (.seq (.let_ "k" _ (.lit (.u32 k0)))
+      (.seq (.while_ (.ult (.var "i") (.var "n"))
+              (.seq (.vset "v" (.var "i") (.var "i"))
+                    (.assign "i" (.uadd (.var "i") (.lit (.u32 one1))))))
+      (.seq (.vrealloc "v" (.var "m"))
+      (.seq (.while_ (.ult (.var "j") (.var "m"))
+              (.seq (.vset "v" (.var "j") (.var "j"))
+                    (.assign "j" (.uadd (.var "j") (.lit (.u32 one2))))))
+      (.seq (.while_ (.ult (.var "k") (.var "m"))
+              (.seq (.assign "s" (.uadd (.var "s") (.vget "v" (.var "k"))))
+                    (.assign "k" (.uadd (.var "k") (.lit (.u32 one3))))))
+      (.seq (.vfree "v")
+            (.return_ (.var "s"))))))))))))⟩ =>
+    if i0 == 0 && s0 == 0 && k0 == 0 &&
+        one1 == 1 && one2 == 1 && one3 == 1 then
+      some .vecRealloc
     else none
   | ⟨_, [⟨"x", .i 32, .owned⟩, ⟨"y", .i 32, .owned⟩,
          ⟨"z", .i 32, .owned⟩], _, body⟩ =>
@@ -203,6 +227,7 @@ theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl
 theorem matchFrag_vec64 : matchFrag vec64Func = some .vec64 := rfl
 theorem matchFrag_vec2 : matchFrag vec2Func = some .vec2 := rfl
+theorem matchFrag_vecRealloc : matchFrag vecReallocFunc = some .vecRealloc := rfl
 theorem matchFrag_addCaller : matchFrag addCallerFunc = some .addCall := rfl
 theorem matchFrag_sumCaller : matchFrag sumCallerFunc = some .sumCall := rfl
 theorem matchFrag_translate : matchFrag translateFunc = some .translate := rfl

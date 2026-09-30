@@ -19,8 +19,10 @@ import Circe.Eval
     nested bounded loops, `skip` = break/continue loop, `findEq` =
     early-return search, `cls` = switch-as-if-chain), and in S3b with
     64-bit loop-free widths (`add64` = signed-`nsw` `i64` add,
-    `addu64` = wrapping `u64` add), and in M1b with a `u64` heap block
-    (`vec64` = `vec_alloc` at width 64). -/
+    `addu64` = wrapping `u64` add), in M1b with a `u64` heap block
+    (`vec64` = `vec_alloc` at width 64), and in M1c with a grown `u32`
+    heap block (`vecRealloc` = fill / `realloc` to `2*n` / fill-extension
+    / sum). -/
 inductive FragKind : Type
   | add
   | add64
@@ -31,6 +33,7 @@ inductive FragKind : Type
   | vec
   | vec64
   | vec2
+  | vecRealloc
   | addCall
   | sumCall
   | translate

@@ -18,11 +18,12 @@ Check order (first hit wins — rejection codes are priority-ordered):
    bitfields, signed wrapping arithmetic without `nsw` — all `outOfSubset`;
    `switch` is shape-aware (the admitted `cls` lowering passes, all other
    `switch` uses are `outOfSubset`);
-   heap (`malloc`/`free`) and calls are shape-aware (see step 5):
-   the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` shapes pass,
+   heap (`malloc`/`free`/`realloc`) and calls are shape-aware (see step 5):
+   the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` /
+   `vec_realloc` (M1c) shapes pass,
     all other heap/call uses are
    `outOfSubset` with dedicated messages (missing-`free`, double-`free`,
-   heap-shape, calls);
+   `realloc`-shape, heap-shape, calls);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`,
    or oracle verdict other than `noalias` with live pointer params);
 5. shape admission (canonical `Func` or a precise code: `escapeReject`
@@ -161,12 +162,13 @@ def isSumShape (raw : RawFunc) : Bool :=
 def lineHasGlobalDef (line : String) : Bool :=
   containsSubstr line "cir.global" && !containsSubstr line "cir.get_global"
 
-/-- A `cir.get_global` line unrelated to `malloc`/`free` plumbing
-    (real CIR takes `@malloc`/`@free` addresses via `get_global`; those
-    lines are heap plumbing, gated by the vec shape instead). -/
+/-- A `cir.get_global` line unrelated to `malloc`/`free`/`realloc` plumbing
+    (real CIR takes `@malloc`/`@free`/`@realloc` addresses via `get_global`;
+    those lines are heap plumbing, gated by the vec shapes instead). -/
 def lineHasNonHeapGlobal (line : String) : Bool :=
   containsSubstr line "cir.get_global" &&
-  !containsSubstr line "@malloc" && !containsSubstr line "@free"
+  !containsSubstr line "@malloc" && !containsSubstr line "@free" &&
+  !containsSubstr line "@realloc"
 
 /-- A function-pointer type outside `malloc`/`free` plumbing (whose
     `get_global` ascriptions mention `cir.func<`). Actual indirect calls
@@ -197,6 +199,23 @@ def freeCallCount (text : String) : Nat :=
 def mallocCallCount (text : String) : Nat :=
   ((text.splitOn "\n").filter (fun line =>
     containsSubstr line "cir.call @malloc(")).length
+
+/-- `realloc` *call* sites (`cir.call @realloc(`/n): same line-aware
+    rationale as `freeCallCount` — the `cir.func private @realloc`
+    declaration also contains `@realloc(`. -/
+def reallocCallCount (text : String) : Nat :=
+  ((text.splitOn "\n").filter (fun line =>
+    containsSubstr line "cir.call @realloc(")).length
+
+/-- A line performing a non-heap, non-`realloc` call (`malloc`/`free`
+    plumbing excluded — those are gated by the vec shapes instead;
+    `realloc` is gated by the M1c `vec_realloc` shape instead). -/
+def lineHasNonHeapNonReallocCall (line : String) : Bool :=
+  lineHasNonHeapCall line && !containsSubstr line "cir.call @realloc("
+
+/-- Whole-text wrapper. -/
+def hasNonHeapNonReallocCall (text : String) : Bool :=
+  (text.splitOn "\n").any lineHasNonHeapNonReallocCall
 
 /-! ## S2: struct-by-value shape (`translate`) -/
 
@@ -280,6 +299,7 @@ def isVecShape (raw : RawFunc) : Bool :=
     isLengthType n.ctype && !isPtrType n.ctype &&
     isU32 raw.ret &&
     containsSubstr raw.text "malloc" &&
+    !containsSubstr raw.text "realloc" &&
     containsSubstr raw.text "cir.call @free(" &&
     !(1 < freeCallCount raw.text) &&
     containsSubstr raw.text "cir.for" &&
@@ -304,6 +324,7 @@ def isVec2Shape (raw : RawFunc) : Bool :=
     isU32 raw.ret &&
     mallocCallCount raw.text == 2 &&
     freeCallCount raw.text == 2 &&
+    !containsSubstr raw.text "realloc" &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
     !hasNonHeapCall raw.text &&
@@ -323,11 +344,36 @@ def isVec64Shape (raw : RawFunc) : Bool :=
     isLengthType n.ctype && !isPtrType n.ctype &&
     isU64 raw.ret &&
     containsSubstr raw.text "malloc" &&
+    !containsSubstr raw.text "realloc" &&
     containsSubstr raw.text "cir.call @free(" &&
     !(1 < freeCallCount raw.text) &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
     !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.switch"
+  | _ => false
+
+/-- `vec_realloc` (M1c): length param, `u32` return, one `malloc` + one
+    `realloc` + exactly one `free` call, bounded `cir.for` loops over
+    `cir.ptr_stride`. The single `realloc` grows the single live block
+    (`realloc` never fails per the unbounded convention; the
+    `realloc(p, 0)` = `free` and `realloc(NULL, n)` = `malloc` spellings
+    are rejected by the dedicated branch in `validate`, never admitted
+    here). -/
+def isVecReallocShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [n] =>
+    noBreakContinueSwitch raw.text &&
+    isLengthType n.ctype && !isPtrType n.ctype &&
+    isU32 raw.ret &&
+    mallocCallCount raw.text == 1 &&
+    reallocCallCount raw.text == 1 &&
+    freeCallCount raw.text == 1 &&
+    containsSubstr raw.text "cir.for" &&
+    containsSubstr raw.text "cir.ptr_stride" &&
+    !hasNonHeapNonReallocCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.get_member" &&
     !containsSubstr raw.text "cir.switch"
@@ -581,8 +627,9 @@ def forbiddenOp (text : String) : Option String :=
 
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
     Only the canonical shapes pass (`add`/`incr`/`choose`/`sum`,
-    `vec_alloc`, `vec_alloc_u64` (M1b), S1 DAG callers, S2 `translate`,
-    S3a control flow, S3b 64-bit loop-free `add64`/`addu64`); everything
+    `vec_alloc`, `vec_alloc_u64` (M1b), `vec_realloc` (M1c), S1 DAG
+    callers, S2 `translate`, S3a control flow, S3b 64-bit loop-free
+    `add64`/`addu64`); everything
     else is rejected with a precise code (see the module docstring for
     check order). -/
 def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
@@ -620,6 +667,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vec2Func with name := raw.name }
       else if isVec64Shape raw then
         .ok { vec64Func with name := raw.name }
+      else if isVecReallocShape raw then
+        .ok { vecReallocFunc with name := raw.name }
       else if isAddCallerShape raw then
         .ok { addCallerFunc with name := raw.name }
       else if isSumCallerShape raw then
@@ -641,7 +690,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsFunc raw.text raw.name then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls itself (recursive call): S1 admits DAG calls into call-free leaves only (see docs/ROADMAP.md S1)"
-      else if hasNonHeapCall raw.text then
+      else if hasNonHeapCall raw.text &&
+          !containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only), outside the Ownable-C subset (see docs/SUBSET.md)"
       else if containsSubstr raw.text "malloc" &&
@@ -652,10 +702,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls `free` more times than `malloc`: double-`free` is rejected (heap blocks are freed exactly once, see docs/SUBSET.md rule 8)"
+      else if containsSubstr raw.text "realloc" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses `realloc` outside the admitted `vec_realloc` shape (single `malloc`, one `realloc` to `2*n`, single `free`, fill / fill-extension / sum discipline; `realloc(p, 0)` (= `free`) and `realloc(NULL, n)` (= `malloc`) spellings are rejected: use `free`/`malloc` directly, see docs/ROADMAP.md M1c)"
       else if containsSubstr raw.text "malloc" ||
           containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`) outside the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` shapes (see docs/ROADMAP.md)"
+          s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`/`realloc`) outside the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` / `vec_realloc` shapes (see docs/ROADMAP.md)"
       else if isPtrType raw.ret then
         reject raw.name .escapeReject
           s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/SUBSET.md rule 6)"
@@ -741,6 +794,12 @@ example : runPipelineOpt (include_str "../tests/cir/vec_copy_sum.cir")
 example : runPipelineOpt (include_str "../tests/cir/vec_alloc_u64.cir")
     ⟨"vec_alloc_u64", .unknown⟩
     = some (include_str "../tests/golden/VecAllocU64.lean") := by native_decide
+
+/-- The checked-in `vec_realloc` CIR (M1c: real CIRGen output, `malloc` +
+    `realloc` + `free`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../tests/cir/vec_realloc.cir")
+    ⟨"vec_realloc", .unknown⟩
+    = some (include_str "../tests/golden/VecRealloc.lean") := by native_decide
 
 /-- The checked-in `add_caller` CIR (two DAG calls into `add`) validates
     and emits exactly the golden. -/

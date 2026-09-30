@@ -18,6 +18,7 @@ input rejects loudly, never silently models memory.
 | uniquely-owned heap (`u32`-only) | `vec_alloc` | `vecFillSumU32 n.toNat` | `emit_correct_vec` (two-loop induction) |
 | uniquely-owned heap (`u64`-only, M1b mirror) | `vec_alloc_u64` | `vecFillSumU64 n.toNat` | `emit_correct_vec64` (two-loop induction) |
 | two live blocks (`u32`-only) | `vec_copy_sum` (M1a) | `vecFillSumU32 n.toNat` (copy value-invisible) | `emit_correct_vec2` (fill/copy/sum induction) |
+| grown block via `realloc` (`u32`-only) | `vec_realloc` (M1c) | `vecReallocFillSumU32 n.toNat` (prefix preserved, growth zero-filled) | `emit_correct_vecRealloc` (fill/realloc/fill-extension/sum induction) |
 | DAG call (double-`add`) | `add_caller` | two `checkedAddI32` binds (leaf inlined; `addCallerFwd_as_calls`) | `evalProgFunc_addCaller` (program induction-free composition) |
 | DAG call (`sum` delegation) | `sum_caller` | `prefixSumU32` body (`sumCallerFwd_is_call`) | `evalProgFunc_sumCaller` (fuel-generalized callee reuse) |
 | struct-by-value | `translate` (`struct_by_value`) | `pointTranslate` delegation (`translateFwd_*` bridges) | `evalFuncFuel_translate` (ok + both error paths) |
@@ -34,7 +35,7 @@ Plus: `Result` + checked ops (`Base`), loan-based value semantics
 wider-width, vec rules, bind automation) + stage-2 helpers (`cir_fuel`
 + fuel-bound lemma, `cir_choose`), specs (`incr_correct`,
 `choose_lens_laws`, `sum_correct`, `vec_correct` — the last refactored
-onto the grown set) plus 14 generated `out/*_Spec.lean` stubs
+onto the grown set) plus 17 generated `out/*_Spec.lean` stubs
 (signature + body reference + edge list + prop-test entry).
 
 ## Pipeline
@@ -63,6 +64,11 @@ regeneration (15/15 typecheck, `cir_simp` coverage greps, 15/15
 `_check` entries `true`) → S5 helper presence + adoption greps →
 M1a two-block golden `diff` → native two-block driver → `DiffVec2`
 fuzz vs native → `GoldenVec2` pipeline + rejection suite →
+emitted-body correspondence → M1b `u64` golden `diff` → native `u64`
+driver → `DiffVec64` fuzz vs native → `GoldenVec64` pipeline +
+rejection suite → emitted-body correspondence → M1c grown-block
+golden `diff` → native grown-block driver → `DiffVecRealloc` fuzz vs
+native → `GoldenVecRealloc` pipeline + rejection suite →
 emitted-body correspondence → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
@@ -76,4 +82,4 @@ with the Lean versions, and scaffolding for simple verification of the
 input programs on the Lean side. Short-term scope (per planning):
 C + struct-by-value only, calls first, `cir_simp` now + DSL next,
 spec skeletons in `out/*_Spec.lean`. Short-term S0–S5 complete;
-M1 (heap generics) locked and next. Details in `ROADMAP.md`.
+M1 (heap generics) locked: M1a–M1c done, M1d next. Details in `ROADMAP.md`.

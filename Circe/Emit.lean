@@ -35,6 +35,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .vec => .ok (emitVecSpecText f.name)
   | some .vec64 => .ok (emitVec64SpecText f.name)
   | some .vec2 => .ok (emitVec2SpecText f.name)
+  | some .vecRealloc => .ok (emitVecReallocSpecText f.name)
   | some .addCall => .ok (emitAddCallerSpecText f.name)
   | some .sumCall => .ok (emitSumCallerSpecText f.name)
   | some .translate => .ok (emitTranslateSpecText f.name)
@@ -58,6 +59,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .vec => .ok ⟨emitVecText f.name, none⟩
   | some .vec64 => .ok ⟨emitVec64Text f.name, none⟩
   | some .vec2 => .ok ⟨emitVec2Text f.name, none⟩
+  | some .vecRealloc => .ok ⟨emitVecReallocText f.name, none⟩
   | some .addCall => .ok ⟨emitAddCallerText f.name, none⟩
   | some .sumCall => .ok ⟨emitSumCallerText f.name, none⟩
   | some .translate => .ok ⟨emitTranslateText f.name, none⟩
@@ -110,6 +112,11 @@ example : emitFileText (emitFunc vec2Func) =
     `u64` golden. -/
 example : emitFileText (emitFunc vec64Func) =
     include_str "../tests/golden/VecAllocU64.lean" := by native_decide
+
+/-- The emitter output for `vecReallocFunc` is byte-identical to the
+    checked-in grown-block golden. -/
+example : emitFileText (emitFunc vecReallocFunc) =
+    include_str "../tests/golden/VecRealloc.lean" := by native_decide
 
 /-- The emitter output for `addCallerFunc` is byte-identical to the
     checked-in golden. -/

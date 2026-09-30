@@ -16,6 +16,7 @@ translate unknown
 vec_alloc unknown
 vec_alloc_u64 unknown
 vec_copy_sum unknown
+vec_realloc unknown
 add_caller unknown
 sum_caller noalias
 nested_sum unknown

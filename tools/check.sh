@@ -39,6 +39,11 @@
 #    emitted files, builds the native `u64` driver, runs the `u64`
 #    differential fuzzer, and runs the `u64` golden pipeline +
 #    rejection suite (including mixed-width `AssertFail` checks).
+# 13. (M1c) Regenerates + diffs the grown-block (`realloc`) golden,
+#    typechecks the emitted files, builds the native grown-block driver,
+#    runs the grown-block differential fuzzer, and runs the grown-block
+#    golden pipeline + rejection suite (including the `realloc(p, 0)` /
+#    `realloc(NULL, n)` spelling rejections + width `AssertFail` check).
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -179,16 +184,17 @@ echo "emitted 64-bit bodies match Emit assumptions"
 echo "== regenerate out/ (S4 spec stubs) =="
 lake env lean --run tools/GenOut.lean
 
-echo "== spec stub existence + typecheck (16 stubs) =="
-[ "$(ls out/*_Spec.lean | wc -l)" = 16 ] || { echo "expected 16 spec stubs"; exit 1; }
+echo "== spec stub existence + typecheck (17 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 17 ] || { echo "expected 17 spec stubs"; exit 1; }
 for f in out/*_Spec.lean; do lake env lean "$f"; done
-echo "all 16 spec stubs typecheck"
+echo "all 17 spec stubs typecheck"
 
 echo "== cir_simp coverage (S4 growth) =="
 grep -qF "addCallerFwd_as_calls, sumCallerFwd_is_call" Circe/Tactics.lean
 grep -qF "pointTranslate_ok, pointTranslate_err_x" Circe/Tactics.lean
 grep -qF "checkedAddI64_ok, checkedAddI64_err" Circe/Tactics.lean
 grep -qF "vecFillSumU32_correct" Circe/Tactics.lean
+grep -qF "vecReallocFillSumU32_correct" Circe/Tactics.lean
 grep -qF "vecFillSumU64_correct" Circe/Tactics.lean
 grep -qF "result_bind_assoc, result_pure_bind" Circe/Tactics.lean
 echo "cir_simp covers call-unfold, struct-field, wider-width, vec rules"
@@ -208,7 +214,7 @@ for f in out/*_Spec.lean; do
   echo "#eval $check" >> "$tmp"
   lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
 done
-echo "all 16 spec prop entries true"
+echo "all 17 spec prop entries true"
 
 echo "== S5 helpers present (Tactics stage 2) =="
 grep -qF 'macro "cir_fuel"' Circe/Eval.lean
@@ -275,5 +281,32 @@ echo "== emitted-body correspondence (M1b emit_correct transfer) =="
 grep -qF "vecFillSumU64 n.toNat" out/VecAllocU64.lean
 grep -qF "vec_alloc_u64_fwd" out/VecAllocU64.lean
 echo "emitted u64 body matches Emit assumptions"
+
+echo "== regenerate out/ (M1c grown-block heap) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (M1c grown-block heap) =="
+diff -u tests/golden/VecRealloc.lean out/VecRealloc.lean
+echo "grown-block golden in sync"
+
+echo "== typecheck emitted grown-block files =="
+lake env lean out/VecRealloc.lean
+lake env lean out/VecRealloc_Spec.lean
+echo "emitted grown-block files typecheck"
+
+echo "== native grown-block driver =="
+VECREALLOC_BIN="$WORKDIR/circe_vecrealloc_native"
+cc -O0 -Wall tests/c/vec_realloc.c tests/diff/driver_vecrealloc.c -o "$VECREALLOC_BIN"
+
+echo "== differential test grown-block heap (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffVecRealloc.lean "$VECREALLOC_BIN" "$TRIALS"
+
+echo "== golden pipeline + grown-block rejection suite =="
+lake env lean --run tests/lean/GoldenVecRealloc.lean
+
+echo "== emitted-body correspondence (M1c emit_correct transfer) =="
+grep -qF "vecReallocFillSumU32 n.toNat" out/VecRealloc.lean
+grep -qF "vec_realloc_fwd" out/VecRealloc.lean
+echo "emitted grown-block body matches Emit assumptions"
 
 echo "CHECK-OK"
