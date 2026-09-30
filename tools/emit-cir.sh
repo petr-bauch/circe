@@ -3,7 +3,11 @@
 # Requires the CIR-enabled build at ~/code/llvm-project-cir/build/bin/clang.
 set -euo pipefail
 CLANG="${CLANG:-$HOME/code/llvm-project-cir/build/bin/clang}"
-OUTDIR="$(dirname "$0")/../tests/cir"
+# Run from the repo root so the source paths embedded in `loc(...)`
+# are root-relative (`tests/c/...`, `tests/cpp/...`), matching the
+# checked-in corpus.
+cd "$(dirname "$0")/.."
+OUTDIR="tests/cir"
 mkdir -p "$OUTDIR"
 if [[ ! -x "$CLANG" ]]; then
   echo "CIR clang not found at $CLANG (build blocked, see docs/PINS.md)." >&2
@@ -11,7 +15,7 @@ if [[ ! -x "$CLANG" ]]; then
   exit 2
 fi
 "$CLANG" --version | head -3
-for src in "$(dirname "$0")/../tests/c/"*.c; do
+for src in tests/c/*.c; do
   base="$(basename "$src" .c)"
   echo "== $base =="
   # NOTE: -fclangir-disable-passes only exists on newer SHAs; plain -emit-cir
@@ -25,7 +29,7 @@ done
 # `cleanup normal` + `trap` remain — see docs/ROADMAP.md M2).
 # Empty until M2a lands (nullglob: no match expands to nothing).
 shopt -s nullglob
-for src in "$(dirname "$0")/../tests/cpp/"*.cpp; do
+for src in tests/cpp/*.cpp; do
   base="$(basename "$src" .cpp)"
   echo "== $base =="
   "$CLANG" -fclangir -Xclang -emit-cir -fno-exceptions \

@@ -22,7 +22,8 @@ import Circe.Eval
     `addu64` = wrapping `u64` add), in M1b with a `u64` heap block
     (`vec64` = `vec_alloc` at width 64), and in M1c with a grown `u32`
     heap block (`vecRealloc` = fill / `realloc` to `2*n` / fill-extension
-    / sum). -/
+    / sum), in M2a with POD const-methods (`methodSum` = the
+    `_ZNK5Point3sumEv` leaf, `pointSumRef` = the single-call entry). -/
 inductive FragKind : Type
   | add
   | add64
@@ -37,6 +38,8 @@ inductive FragKind : Type
   | addCall
   | sumCall
   | translate
+  | methodSum
+  | pointSumRef
   | nested
   | skip
   | findEq

@@ -55,6 +55,11 @@
 #    suite (`GoldenM2Setup`: trap/cleanup rejection, per-definition
 #    `validateModule` on caller/heap modules with declarations skipped,
 #    missing-fact wiring error). No new shapes admitted.
+# 16. (M2a) Regenerates + diffs the const-method goldens, typechecks the
+#    emitted files, builds the native C++ method driver, runs the
+#    method differential fuzzer, and runs the method golden pipeline +
+#    rejection suite (real C++ corpus with `-fno-exceptions`, no oracle
+#    facts, coerce-deferral pin + method misshapen cases).
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -195,10 +200,10 @@ echo "emitted 64-bit bodies match Emit assumptions"
 echo "== regenerate out/ (S4 spec stubs) =="
 lake env lean --run tools/GenOut.lean
 
-echo "== spec stub existence + typecheck (17 stubs) =="
-[ "$(ls out/*_Spec.lean | wc -l)" = 17 ] || { echo "expected 17 spec stubs"; exit 1; }
+echo "== spec stub existence + typecheck (19 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 19 ] || { echo "expected 19 spec stubs"; exit 1; }
 for f in out/*_Spec.lean; do lake env lean "$f"; done
-echo "all 17 spec stubs typecheck"
+echo "all 19 spec stubs typecheck"
 
 echo "== cir_simp coverage (S4 growth) =="
 grep -qF "addCallerFwd_as_calls, sumCallerFwd_is_call" Circe/Tactics.lean
@@ -208,7 +213,8 @@ grep -qF "vecFillSumU32_correct" Circe/Tactics.lean
 grep -qF "vecReallocFillSumU32_correct" Circe/Tactics.lean
 grep -qF "vecFillSumU64_correct" Circe/Tactics.lean
 grep -qF "result_bind_assoc, result_pure_bind" Circe/Tactics.lean
-echo "cir_simp covers call-unfold, struct-field, wider-width, vec rules"
+grep -qF "pointSum, pointSum_ok, pointSum_err, methodSumFwd_ok," Circe/Tactics.lean
+echo "cir_simp covers call-unfold, struct-field, method, wider-width, vec rules"
 
 echo "== spec stub contents (signature + body ref + edges + prop entry) =="
 grep -qF "_spec_fwd" out/SumArray_Spec.lean
@@ -219,13 +225,13 @@ echo "spec stubs carry the required sections"
 
 echo "== spec stub prop entries evaluate true =="
 for f in out/*_Spec.lean; do
-  check=$(grep -oE '[a-z_0-9]+_spec_check' "$f" | head -1)
+  check=$(grep -oE '[A-Za-z_0-9]+_spec_check' "$f" | head -1)
   tmp="$WORKDIR/spec_eval_tmp.lean"
   cp "$f" "$tmp"
   echo "#eval $check" >> "$tmp"
   lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
 done
-echo "all 17 spec prop entries true"
+echo "all 19 spec prop entries true"
 
 echo "== S5 helpers present (Tactics stage 2) =="
 grep -qF 'macro "cir_fuel"' Circe/Eval.lean
@@ -337,5 +343,35 @@ if grep -rl "cir.cleanup\|cir.trap" tests/cir/; then
 fi
 echo "C corpus free of cir.cleanup / cir.trap"
 lake env lean --run tests/lean/GoldenM2Setup.lean
+
+echo "== regenerate out/ (M2a const-methods) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (M2a const-methods) =="
+diff -u tests/golden/MethodSum.lean out/MethodSum.lean
+diff -u tests/golden/PointSumRef.lean out/PointSumRef.lean
+echo "method goldens in sync"
+
+echo "== typecheck emitted method files =="
+lake env lean out/MethodSum.lean
+lake env lean out/PointSumRef.lean
+lake env lean out/MethodSum_Spec.lean
+lake env lean out/PointSumRef_Spec.lean
+echo "emitted method files typecheck"
+
+echo "== native method driver =="
+METHOD_BIN="$WORKDIR/circe_method_native"
+c++ -O0 -Wall tests/cpp/point_sum_ref.cpp tests/diff/driver_method.cpp -o "$METHOD_BIN"
+
+echo "== differential test methods (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffMethod.lean "$METHOD_BIN" "$TRIALS"
+
+echo "== golden pipeline + method rejection suite =="
+lake env lean --run tests/lean/GoldenMethod.lean
+
+echo "== emitted-body correspondence (M2a emit_correct transfer) =="
+grep -qF "pointSum p" out/MethodSum.lean
+grep -qF "pointSum p" out/PointSumRef.lean
+echo "emitted method bodies match Emit assumptions"
 
 echo "CHECK-OK"

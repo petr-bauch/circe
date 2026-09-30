@@ -2,7 +2,8 @@
 Circe.Emit — verified emitter `CoreIR → Lean` (facade).
 
 Fragment definitions and proofs live in `Circe.Emit.*` (`Fragment`, `Add`,
-`Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `Calls`, `Struct`, `Flow`); shape
+`Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `VecRealloc`, `Calls`, `Struct`,
+`Method`, `Flow`); shape
 recognition in `Circe.Emit.Match`; file-text and spec-stub rendering in
 `Circe.Emit.Render` / `Circe.Emit.SpecStubs`. This module wires them
 together (`emitSpec`, `emitFunc`, `emitFunc_rejects`) and holds the golden
@@ -39,6 +40,8 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .addCall => .ok (emitAddCallerSpecText f.name)
   | some .sumCall => .ok (emitSumCallerSpecText f.name)
   | some .translate => .ok (emitTranslateSpecText f.name)
+  | some .methodSum => .ok (emitMethodSumSpecText f.name)
+  | some .pointSumRef => .ok (emitPointSumRefSpecText f.name)
   | some .nested => .ok (emitNestedSpecText f.name)
   | some .skip => .ok (emitSkipSpecText f.name)
   | some .findEq => .ok (emitFindEqSpecText f.name)
@@ -63,6 +66,8 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .addCall => .ok ⟨emitAddCallerText f.name, none⟩
   | some .sumCall => .ok ⟨emitSumCallerText f.name, none⟩
   | some .translate => .ok ⟨emitTranslateText f.name, none⟩
+  | some .methodSum => .ok ⟨emitMethodSumText f.name, none⟩
+  | some .pointSumRef => .ok ⟨emitPointSumRefText f.name, none⟩
   | some .nested => .ok ⟨emitNestedText f.name, none⟩
   | some .skip => .ok ⟨emitSkipText f.name, none⟩
   | some .findEq => .ok ⟨emitFindEqText f.name, none⟩
@@ -132,3 +137,15 @@ example : emitFileText (emitFunc sumCallerFunc) =
     checked-in golden. -/
 example : emitFileText (emitFunc translateFunc) =
     include_str "../tests/golden/StructByValue.lean" := by native_decide
+
+/-- The emitter output for `methodSumFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc methodSumFunc) =
+    include_str "../tests/golden/MethodSum.lean" := by native_decide
+
+/-- The emitter output for `pointSumRefFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc pointSumRefFunc) =
+    include_str "../tests/golden/PointSumRef.lean" := by native_decide
+
+

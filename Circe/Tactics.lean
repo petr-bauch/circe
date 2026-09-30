@@ -72,6 +72,8 @@ macro "cir_simp" : tactic =>
     pointTranslate, pointTranslate_ok, pointTranslate_err_x,
     pointTranslate_err_y, translateFwd_ok_bridge, translateFwd_err_x,
     translateFwd_err_y,
+    pointSum, pointSum_ok, pointSum_err, methodSumFwd_ok,
+    methodSumFwd_err, pointSumRefFwd_is_call,
     addCallerFwd_as_calls, sumCallerFwd_is_call,
     vecFillSumU32_correct, vecNew, vecSet, vecGet, vecFree,
     vecReallocFillSumU32_correct, vecRealloc,

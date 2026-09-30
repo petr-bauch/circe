@@ -28,7 +28,8 @@ shape only), `switch` (S3a: `cls` shape only — equality cases on
 int arithmetic/logic/comparison, int↔int and bool casts,
 disciplined `&`/`*`, array indexing `a[i]` with length param,
 struct field access (S2: `translate` shape — by-value `Point`
-reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return).
+reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return; M2a:
+method-leaf shape — `this` reads `x`/`y`, one `nsw` add, `i32` return).
 Uniquely-owned heap, `u32`-only (`vec_alloc` shape) or `u64`-only
 (`vec_alloc_u64` shape, M1b monomorphized mirror): `malloc(n *
 sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`
@@ -133,6 +134,22 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     tags (`i32`/`i64`, `u32`/`u64`); mixed widths are `AssertFail`.
     Misshapen uses (width-mixed adds, `nsw`-less signed-64 arithmetic,
     8/16-bit promotion shapes) are rejected with dedicated messages.
+13. Methods (M2a): exact shapes only —
+    `_ZNK5Point3sumEv` leaf (single `this` with the single-reference
+    triple, `get_member` reads of `x`/`y`, one `nsw` field add, `i32`
+    return; `this` binds the `Point` value, copy semantics) and
+    `_Z13point_sum_refRK5Point` entry (single `const&` with the triple,
+    exactly one call site to the mangled leaf, `i32` return; S1
+    `callRet` discipline with the leaf matched by (mangled) name).
+    Semantics: the leaf evaluates `checkedAddI32` on the projected
+    fields (`pointSum`); the entry dispatches to the leaf at the same
+    fuel via `evalProgFunc`; errors propagate. Method/ctor/dtor defs
+    need no oracle facts (uniqueness is the attr triple in the CIR
+    text). By-value struct params (the `coerce` alloca + `bitcast`
+    lowering) are deferred and rejected with a dedicated message.
+    Misshapen uses (unknown callees, calls in the leaf, non-`i32`
+    returns, bare pointers without the triple, extra call sites) are
+    rejected with dedicated messages.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -141,8 +158,10 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 (`cir.br` from `goto` rejected), `cir.return`, `cir.call`
 (`@malloc`/`@free` in the vec/vec2/vec64/vecRealloc shapes only,
 `@realloc` in the vecRealloc shape only; `@add`/`@sum_array` in the exact
-S1 caller shapes only), `cir.const`, `cir.get_member` (S2 `translate`
-shape only: `Point` field reads with `nsw` adds; all other struct
+S1 caller shapes only; `@_ZNK5Point3sumEv` in the exact M2a entry shape
+only), `cir.const`, `cir.get_member` (S2 `translate`
+shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
+only: single-`this` field reads with one `nsw` add; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`, all other switches rejected),
@@ -168,4 +187,5 @@ Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
-+ `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5).
++ `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
++ `GoldenMethod.lean` (8).

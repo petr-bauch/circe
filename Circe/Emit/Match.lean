@@ -16,6 +16,7 @@ import Circe.Emit.Vec2
 import Circe.Emit.VecRealloc
 import Circe.Emit.Calls
 import Circe.Emit.Struct
+import Circe.Emit.Method
 import Circe.Emit.Flow
 
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
@@ -152,6 +153,16 @@ def matchFrag : Func → Option FragKind
       (.seq (.let_ "qy" _ (.add (.fget "p" "y") (.var "dy")))
             (.return_ (.pmk (.var "qx") (.var "qy"))))⟩ =>
     some .translate
+  | ⟨_, [⟨"this", .struct "Point" _, .owned⟩], _,
+      .return_ (.add (.fget "this" "x") (.fget "this" "y"))⟩ =>
+    some .methodSum
+  | ⟨_, [⟨"p", .struct "Point" _, .owned⟩], _, body⟩ =>
+    -- Mangled callee + list literal: body matched separately (cf.
+    -- `addCall` note).
+    match body with
+    | .seq (.callRet "s" "_ZNK5Point3sumEv" ["p"])
+        (.return_ (.var "s")) => some .pointSumRef
+    | _ => none
   | ⟨_, [⟨"n", .u 32, .owned⟩, ⟨"m", .u 32, .owned⟩], _, body⟩ =>
     -- Nested loop bodies matched separately: deeply-nested `.seq`
     -- patterns inside `⟨⟩` Func patterns hit the same equation-compiler
@@ -231,6 +242,8 @@ theorem matchFrag_vecRealloc : matchFrag vecReallocFunc = some .vecRealloc := rf
 theorem matchFrag_addCaller : matchFrag addCallerFunc = some .addCall := rfl
 theorem matchFrag_sumCaller : matchFrag sumCallerFunc = some .sumCall := rfl
 theorem matchFrag_translate : matchFrag translateFunc = some .translate := rfl
+theorem matchFrag_methodSum : matchFrag methodSumFunc = some .methodSum := rfl
+theorem matchFrag_pointSumRef : matchFrag pointSumRefFunc = some .pointSumRef := rfl
 theorem matchFrag_nested : matchFrag nestedFunc = some .nested := rfl
 theorem matchFrag_skip : matchFrag skipFunc = some .skip := rfl
 theorem matchFrag_findEq : matchFrag findEqFunc = some .findEq := rfl

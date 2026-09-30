@@ -166,6 +166,26 @@ def emitTranslateText (name : String) : String :=
   ++ s!"def {name}_fwd (p : Point) (dx dy : BitVec 32) : Result Point :=\n"
   ++ "  pointTranslate p dx dy\n"
 
+/-- Render the `_ZNK5Point3sumEv` method-leaf forward definition:
+    direct delegation to the verified `Base` op `pointSum`
+    (`methodSumFwd_*` bridges certify the delegation). -/
+def emitMethodSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (POD const-method `sum`: checked field addition). -/\n"
+  ++ s!"def {name}_fwd (p : Point) : Result (BitVec 32) :=\n"
+  ++ "  pointSum p\n"
+
+/-- Render the `_Z13point_sum_refRK5Point` entry forward definition:
+    direct delegation to `pointSum` (same `Base` op as the leaf, see
+    `pointSumRefFwd_is_call`). -/
+def emitPointSumRefText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `sum` method body). -/\n"
+  ++ s!"def {name}_fwd (p : Point) : Result (BitVec 32) :=\n"
+  ++ "  pointSum p\n"
+
 /-- Render the `nested_sum` forward definition: the double fold over
     `Base.nestedSumU32` (both bounds travel as words; fuel sufficiency
     is the `emit_correct_nested` side condition). -/

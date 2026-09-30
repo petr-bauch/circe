@@ -16,12 +16,17 @@ admitting anything.
 -/
 
 /-- One raw parameter: source name (`arg0`), raw CIR type text
-    (e.g. `!s32i`, `!cir.ptr<!s32i>`), and whether it carries
-    `llvm.noalias` (`__restrict__` evidence in the goldens). -/
+    (e.g. `!s32i`, `!cir.ptr<!s32i>`), whether it carries
+    `llvm.noalias` (`__restrict__` evidence in the goldens), and whether
+    it carries the C++ single-reference triple
+    (`llvm.nonnull + llvm.dereferenceable + llvm.noundef`: `this` /
+    `const&` uniqueness evidence, which cannot be `restrict`/`noalias`;
+    see docs/ROADMAP.md M2). -/
 structure RawParam where
   name : String
   ctype : String
   noalias : Bool
+  singleRef : Bool
   deriving DecidableEq, Repr
 
 /-- Raw parsed CIR for one function: signature features + full text
@@ -140,7 +145,17 @@ def parseParam (p : String) : Option RawParam := do
   let typeChars := takeToken afterColon
   if typeChars.isEmpty then none else
   some { name := String.ofList nameChars, ctype := String.ofList typeChars,
-         noalias := containsSubstr p "llvm.noalias" }
+         noalias := containsSubstr p "llvm.noalias",
+         singleRef := containsSubstr p "llvm.nonnull" &&
+           containsSubstr p "llvm.dereferenceable" &&
+           containsSubstr p "llvm.noundef" }
+
+/-- Strip one layer of outer parens from a return-type token (C++
+    CIRGen parenthesizes returns: `-> (!s32i {llvm.noundef})`; C leaves
+    them bare: `-> !s32i`). Identity on paren-free tokens. -/
+def stripOuterParens (t : String) : String :=
+  let cs := match t.toList with | '(' :: rest => rest | _ => t.toList
+  String.ofList (match cs.reverse with | ')' :: rest => rest.reverse | _ => cs)
 
 /-- Parse the `cir.func` signature at/after `off`.
     Returns name, params, return type (`""` for void), and the index just
@@ -164,7 +179,7 @@ def parseSigAt (text : String) (off : Nat) :
   let after := trimList (text.toList.drop (openRel + closeRel + 1))
   let ret := match after with
     | '-' :: '>' :: rest =>
-      String.ofList (takeToken (trimList rest))
+      stripOuterParens (String.ofList (takeToken (trimList rest)))
     | _ => ""
   some (name, params, ret)
 

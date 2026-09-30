@@ -293,6 +293,50 @@ def emitTranslateSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2)).pretty\n"
   ++ s!"      == (repr (pointTranslate t.1 t.2.1 t.2.2)).pretty\n"
 
+/-- Spec stub for the `methodSum` shape (M2a method leaf). -/
+def emitMethodSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t Point::sum() const` (`{name}`).\n"
+  ++ s!"    Base body reference: `pointSum` (cf. emitted `{name}_fwd`, `evalFuncFuel_methodSum`). -/\n"
+  ++ s!"def {name}_spec_fwd (p : Point) : Result (BitVec 32) :=\n"
+  ++ "  pointSum p\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, x-overflow, y-overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List Point :=\n"
+  ++ "  [(⟨0, 0⟩ : Point), (⟨1, 2⟩ : Point),\n"
+  ++ "   (⟨0x7FFFFFFF, 0⟩ : Point), (⟨0, 0x7FFFFFFF⟩ : Point)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `pointSum` on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err bridges (`methodSumFwd_ok/err`,\n"
+  ++ "    `pointSum_ok/err` — all four fire in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p)).pretty\n"
+  ++ s!"      == (repr (pointSum p)).pretty\n"
+
+/-- Spec stub for the `pointSumRef` shape (M2a entry). -/
+def emitPointSumRefSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t {name}(const Point &p)` (delegates to `Point::sum`).\n"
+  ++ s!"    Base body reference: `pointSum` (cf. emitted `{name}_fwd`, `evalProgFunc_pointSumRef`). -/\n"
+  ++ s!"def {name}_spec_fwd (p : Point) : Result (BitVec 32) :=\n"
+  ++ "  pointSum p\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, x-overflow, y-overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List Point :=\n"
+  ++ "  [(⟨0, 0⟩ : Point), (⟨1, 2⟩ : Point),\n"
+  ++ "   (⟨0x7FFFFFFF, 0⟩ : Point), (⟨0, 0x7FFFFFFF⟩ : Point)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `pointSum` on every edge.\n"
+  ++ "    TODO (user): strengthen to the call-delegation equation\n"
+  ++ "    (`pointSumRefFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p)).pretty\n"
+  ++ s!"      == (repr (pointSum p)).pretty\n"
+
 /-- Spec stub for the `nested_sum` shape (S3a). -/
 def emitNestedSpecText (name : String) : String :=
   emitSpecHeader

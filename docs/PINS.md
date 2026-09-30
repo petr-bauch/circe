@@ -127,3 +127,7 @@ clang -fclangir -Xclang -emit-cir -fno-exceptions \
 - By-value struct params lower through a `coerce` alloca + `cir.cast
   bitcast` (`can_pass_in_regs`); M2a uses `const&` / `this` pointers
   instead, the coerce pattern rejects loudly.
+- Checked-in M2a corpus: `tests/cpp/point_sum_ref.cpp` →
+  `tests/cir/point_sum_ref.cir` (`cir-opt` VERIFY-OK), entry
+  `@_Z13point_sum_refRK5Point` + leaf `@_ZNK5Point3sumEv`, no oracle
+  facts.

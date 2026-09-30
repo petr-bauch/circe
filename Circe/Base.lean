@@ -290,6 +290,23 @@ theorem pointTranslate_err_y (p : Point) (dx dy : BitVec 32)
     pointTranslate p dx dy = .error e := by
   simp [pointTranslate, hx, hy]
 
+/-- M2a `sum() const`: field-wise checked addition folded to one word
+    (pure equation, no memory; `this` binds the `Point` value). -/
+def pointSum (p : Point) : Result (BitVec 32) :=
+  checkedAddI32 p.x p.y
+
+/-- `pointSum` succeeds exactly when the field add succeeds. -/
+theorem pointSum_ok (p : Point) (s : BitVec 32)
+    (h : checkedAddI32 p.x p.y = .ok s) :
+    pointSum p = .ok s := by
+  simp [pointSum, h]
+
+/-- A failing field add propagates. -/
+theorem pointSum_err (p : Point) (e : Panic)
+    (h : checkedAddI32 p.x p.y = .error e) :
+    pointSum p = .error e := by
+  simp [pointSum, h]
+
 /-! ## S3a control-flow folds: `nested_sum` / `skip_sum` value models -/
 
 /-- One row of `nested_sum`: `Σ_{j<m} i*j` as a wrapping `u32` sum of

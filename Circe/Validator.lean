@@ -26,12 +26,14 @@ Check order (first hit wins — rejection codes are priority-ordered):
     all other heap/call uses are
    `outOfSubset` with dedicated messages (double-`free`,
    `realloc`-shape, heap-shape, calls);
-3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`,
-   or oracle verdict other than `noalias` with live pointer params);
+3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`
+   and without the C++ single-reference triple, or oracle verdict other
+   than `noalias` with live oracle-governed pointer params);
 5. shape admission (canonical `Func` or a precise code: `escapeReject`
    for non-`choose` pointer returns, `oobPossible` for unbounded
    `ptr_stride`, `outOfSubset` otherwise, including misshapen struct
-   uses outside the S2 `translate` shape).
+   uses outside the S2 `translate` shape and the M2a method shapes,
+   and by-value struct params stuck in the deferred `coerce` lowering).
 -/
 import Circe.CoreIR
 import Circe.Parser
@@ -79,9 +81,23 @@ def lineHasNonHeapCall (line : String) : Bool :=
 def hasNonHeapCall (text : String) : Bool :=
   (text.splitOn "\n").any lineHasNonHeapCall
 
+/-- Count whole-text occurrences of a needle (for exact-shape pins:
+    two `cir.for`, one `cir.call @`, three `cir.case(`, …). -/
+def opCount (text needle : String) : Nat :=
+  ((text.splitOn needle).length - 1)
+
 /-- Pointer params (discipline applies). -/
 def ptrParams (raw : RawFunc) : List RawParam :=
   raw.params.filter (fun p => isPtrType p.ctype)
+
+/-- Pointer params the oracle must speak about: every raw pointer
+    except C++ single-reference (`this` / `const&`) params, whose
+    uniqueness is established by the `nonnull + dereferenceable +
+    noundef` attrs in the CIR text itself, so no oracle fact is needed
+    (M2). (`__restrict__` / `noalias` params still need an explicit
+    `noalias` verdict: the attr is a claim, the verdict confirms it.) -/
+def oracleParams (raw : RawFunc) : List RawParam :=
+  raw.params.filter (fun p => isPtrType p.ctype && !p.singleRef)
 
 /-- No loop-exit or switch ops (S3a admits them only in the exact
     `skip_sum` / `cls` shapes; every older shape excludes them so a
@@ -248,6 +264,58 @@ def isTranslateShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.while" &&
     !containsSubstr raw.text "cir.cond_br" &&
     !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-! ## M2a: POD const-method shapes (`_ZNK5Point3sumEv` leaf + entry) -/
+
+/-- The M2a method leaf: single `this` parameter (`!cir.ptr<!rec_Point>`
+    with the single-reference triple — never `noalias`), `i32` return,
+    `cir.get_member` field reads (`x`/`y`) + `nsw` add: the S2 body with
+    a pointer param. No calls, control flow, heap, or indexing. -/
+def isMethodSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with | some inner => isPointType inner | none => false) &&
+    isI32 raw.ret &&
+    containsSubstr raw.text "cir.get_member" &&
+    containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The M2a entry: single `const&` parameter (same triple-attr
+    `!cir.ptr<!rec_Point>` as `this`), `i32` return, exactly one call
+    site to the mangled method leaf (S1 `callRet` discipline: the
+    arithmetic lives in the callee, so no local `nsw` / `get_member`). -/
+def isPointSumRefShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [p] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType p.ctype && p.singleRef &&
+    (match ptrInner p.ctype with | some inner => isPointType inner | none => false) &&
+    isI32 raw.ret &&
+    callsFunc raw.text "_ZNK5Point3sumEv" &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
   | _ => false
 
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
@@ -454,11 +522,6 @@ def hasWrappingSignedArith (text : String) : Bool :=
 /-! ## S3a: control-flow shapes (nested loops, break/continue,
 early return, switch-as-if-chain) -/
 
-/-- Count whole-text occurrences of a needle (for exact-shape pins:
-    two `cir.for`, one `cir.return`, three `cir.case(`, …). -/
-def opCount (text needle : String) : Nat :=
-  ((text.splitOn needle).length - 1)
-
 /-- `nested_sum`: two `u32` bounds, `u32` return, exactly two `cir.for`
     (nested), plain unsigned `cir.add` + `cir.mul` (wrapping; no `nsw`),
     single return, no calls/heap/control beyond the loops, no
@@ -648,12 +711,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     reject raw.name .outOfSubset
       s!"out-of-subset: function '{raw.name}' uses {what}, outside the v0.1 Ownable-C subset (see docs/CIR_SUBSET.md)"
   | none =>
-    match raw.params.find? (fun p => isPtrType p.ctype && !p.noalias) with
+    match raw.params.find? (fun p =>
+      isPtrType p.ctype && !p.noalias && !p.singleRef) with
     | some p =>
       reject raw.name .aliasReject
-        s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`): uniqueness cannot be established (see docs/OWNERSHIP.md rule 1)"
+        s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`) or the full C++ single-reference triple (`nonnull + dereferenceable + noundef`): uniqueness cannot be established (see docs/SUBSET.md rule 1)"
     | none =>
-      if !(ptrParams raw).isEmpty && !verdictAdmits oracle.verdict then
+      if !(oracleParams raw).isEmpty && !verdictAdmits oracle.verdict then
         let why := match oracle.verdict with
           | .mayAlias => "reports `mayAlias`"
           | .unknown => "is inconclusive (`unknown`)"
@@ -682,6 +746,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { sumCallerFunc with name := raw.name }
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
+      else if isMethodSumShape raw then
+        .ok { methodSumFunc with name := raw.name }
+      else if isPointSumRefShape raw then
+        .ok { pointSumRefFunc with name := raw.name }
       else if isNestedShape raw then
         .ok { nestedFunc with name := raw.name }
       else if isSkipShape raw then
@@ -694,6 +762,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { add64Func with name := raw.name }
       else if isAddu64Shape raw then
         .ok { addu64Func with name := raw.name }
+      else if containsSubstr raw.text "alloca \"coerce\"" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' passes a struct by value (the `coerce` alloca + `bitcast` lowering): by-value struct params are deferred — pass by `const&` instead (M2a admits `const&` / `this` pointers only; see docs/ROADMAP.md M2)"
       else if callsFunc raw.text raw.name then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls itself (recursive call): S1 admits DAG calls into call-free leaves only (see docs/ROADMAP.md S1)"
@@ -720,7 +791,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/SUBSET.md rule 4)"
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only) and the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.switch" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape (S3a: equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30`; see docs/SUBSET.md)"
@@ -740,9 +811,11 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
 /-- Validate every *defined* function in one `.cir` file text.
     Declarations (`cir.func private @callee...` without a body) are
     skipped (S1 precedent: caller files carry callee declarations).
-    A defined function without an oracle fact is a loud error (M2a will
-    exempt method/ctor/dtor defs, whose uniqueness comes from the
-    `nonnull + dereferenceable + noundef` attr triple instead). -/
+    A defined function without an oracle fact is a loud error — except
+    functions whose every pointer param carries the C++ single-reference
+    triple (M2a method/entry defs): their uniqueness comes from the
+    `nonnull + dereferenceable + noundef` attrs in the CIR text itself,
+    so they validate under a synthetic `unknown` fact. -/
 def validateModule (text : String) (facts : List OracleFact) :
     List (String × Validation) :=
   match parseModule text with
@@ -752,9 +825,30 @@ def validateModule (text : String) (facts : List OracleFact) :
   | some ir => (ir.funcs.filter isFuncDef).map (fun raw =>
       match lookupOracle facts raw.name with
       | none =>
-        (raw.name, reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' is defined but has no oracle fact (wiring error; refusing to translate)")
+        if raw.params.any (fun p => isPtrType p.ctype && p.singleRef) then
+          (raw.name, validate raw ⟨raw.name, .unknown⟩)
+        else
+          (raw.name, reject raw.name .outOfSubset
+            s!"out-of-subset: function '{raw.name}' is defined but has no oracle fact (wiring error; refusing to translate)")
       | some fact => (raw.name, validate raw fact))
+
+/-- End-to-end module pipeline: validate every defined function, emit
+    each to file bytes. Errors are message strings; success pairs each
+    function name with its emitted file text (compare with
+    `tests/golden/`). -/
+def runModulePipeline (text : String) (facts : List OracleFact) :
+    Except String (List (String × String)) :=
+  (validateModule text facts).mapM (fun (name, res) =>
+    match res with
+    | .error rej =>
+      .error s!"{name}: [{(repr rej.code).pretty}] {rej.message}"
+    | .ok f => .ok (name, emitFileText (emitFunc f)))
+
+/-- `Option` projection (same rationale as `runPipelineOpt`: core Lean
+    decides `Option` equality, but not `Except` equality). -/
+def runModulePipelineOpt (text : String) (facts : List OracleFact) :
+    Option (List (String × String)) :=
+  (runModulePipeline text facts).toOption
 
 /-! ## Text-level pipeline + machine-checked corpus linkage -/
 
@@ -878,3 +972,14 @@ example : runPipelineOpt (include_str "../tests/cir/add64.cir")
 example : runPipelineOpt (include_str "../tests/cir/addu64.cir")
     ⟨"addu64", .unknown⟩
     = some (include_str "../tests/golden/Addu64.lean") := by native_decide
+
+/-- The checked-in `point_sum_ref` C++ module (real CIRGen output with
+    `-fno-exceptions`: entry + method leaf, no oracle facts) validates
+    and emits exactly the goldens, in file order. -/
+example : runModulePipelineOpt (include_str "../tests/cir/point_sum_ref.cir") [] =
+    some [("_Z13point_sum_refRK5Point",
+      include_str "../tests/golden/PointSumRef.lean"),
+      ("_ZNK5Point3sumEv",
+      include_str "../tests/golden/MethodSum.lean")] := by native_decide
+
+
