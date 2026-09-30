@@ -5,9 +5,10 @@
 --    `tests/oracle/verdicts.txt` verdict (`unknown`: no pointer params),
 --    and emits byte-identical text to `tests/golden/VecAlloc.lean`.
 -- 2. Rejection suite: heap-specific adversarial snippets hit exact codes +
---    message substrings (missing-`free`, double-`free`, heap-shape), so
---    every new `validate` branch is exercised. Mismatch policy: any
---    in-subset divergence is P0; out-of-subset must reject loudly.
+--    message substrings (double-`free`, heap-shape — M1d: leak is allowed,
+--    so `malloc` without `free` and without loops is heap-shape, not
+--    missing-`free`), so every new `validate` branch is exercised. Mismatch
+--    policy: any in-subset divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
 def checkVecPipeline (verdicts : List OracleFact) : IO Nat := do
@@ -41,7 +42,9 @@ def checkReject7 (name text : String) (verdict : Verdict) (code substr : String)
     IO.println s!"PASS reject7 {name} [{code}]"
     pure 1
 
-def advMissingFree : String :=
+/-- `malloc` without `free` and without loops (M1d: leak allowed, so this
+    is heap-shape — no fill/sum discipline — rather than missing-`free`). -/
+def advLeakNoLoop : String :=
   "module {\n  cir.func @mf(%arg0: !u64i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %p = cir.call @malloc(%arg0) : (!u64i) -> !cir.ptr<!u8i>\n    %c = cir.const #cir.int<0> : !u32i\n    cir.return %c : !u32i\n  }\n}"
 
 def advDoubleFree : String :=
@@ -62,8 +65,8 @@ def main : IO Unit := do
   let mut passed := 0
   let c1 ← checkVecPipeline verdicts
   passed := passed + c1
-  let c2 ← checkReject7 "mf" advMissingFree .unknown
-    "out-of-subset" "matching `free`"
+  let c2 ← checkReject7 "mf" advLeakNoLoop .unknown
+    "out-of-subset" "outside the admitted"
   passed := passed + c2
   let c3 ← checkReject7 "df" advDoubleFree .unknown
     "out-of-subset" "double-`free`"

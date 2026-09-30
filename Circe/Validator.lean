@@ -20,9 +20,10 @@ Check order (first hit wins — rejection codes are priority-ordered):
    `switch` uses are `outOfSubset`);
    heap (`malloc`/`free`/`realloc`) and calls are shape-aware (see step 5):
    the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` /
-   `vec_realloc` (M1c) shapes pass,
+   `vec_realloc` (M1c) shapes pass (M1d: each with `free <= expected`:
+   leak is forgetting a value, sound),
     all other heap/call uses are
-   `outOfSubset` with dedicated messages (missing-`free`, double-`free`,
+   `outOfSubset` with dedicated messages (double-`free`,
    `realloc`-shape, heap-shape, calls);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`,
    or oracle verdict other than `noalias` with live pointer params);
@@ -291,16 +292,16 @@ def isSumCallerShape (raw : RawFunc) : Bool :=
   | _ => false
 
 /-- `vec_alloc`: length param, `u32` return, `malloc` + bounded `cir.for`
-    loops over `cir.ptr_stride` + exactly one `free` call. -/
+    loops over `cir.ptr_stride` + at most one `free` call (M1d: leak =
+    forgetting a value, sound; `free` count is `≤ 1`, never `> malloc`). -/
 def isVecShape (raw : RawFunc) : Bool :=
   match raw.params with
   | [n] =>
     noBreakContinueSwitch raw.text &&
     isLengthType n.ctype && !isPtrType n.ctype &&
     isU32 raw.ret &&
-    containsSubstr raw.text "malloc" &&
+    mallocCallCount raw.text == 1 &&
     !containsSubstr raw.text "realloc" &&
-    containsSubstr raw.text "cir.call @free(" &&
     !(1 < freeCallCount raw.text) &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
@@ -314,8 +315,8 @@ def isVecShape (raw : RawFunc) : Bool :=
     bounded `cir.for` loops over `cir.ptr_stride` + exactly two `free`
     calls. The two `malloc` sites yield two `malloc` results, so the
     blocks are disjoint by construction (no aliasing expressible);
-    exactly-two-`free` keeps the strict linear discipline (M1d loosens
-    this later). -/
+    at most two `free`s (M1d: leak allowed, `free ≤ malloc` still enforced
+    by the double-`free` gate below). -/
 def isVec2Shape (raw : RawFunc) : Bool :=
   match raw.params with
   | [n] =>
@@ -323,7 +324,7 @@ def isVec2Shape (raw : RawFunc) : Bool :=
     isLengthType n.ctype && !isPtrType n.ctype &&
     isU32 raw.ret &&
     mallocCallCount raw.text == 2 &&
-    freeCallCount raw.text == 2 &&
+    !(2 < freeCallCount raw.text) &&
     !containsSubstr raw.text "realloc" &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
@@ -334,7 +335,8 @@ def isVec2Shape (raw : RawFunc) : Bool :=
   | _ => false
 
 /-- `vec_alloc_u64` (M1b): length param, `u64` return, `malloc` + bounded
-    `cir.for` loops over `cir.ptr_stride` + exactly one `free` call.
+    `cir.for` loops over `cir.ptr_stride` + at most one `free` call (M1d:
+    leak allowed, like `isVecShape`).
     Monomorphized mirror of `isVecShape` at width 64; disjoint from it by
     the return type (`isU32` vs `isU64`). -/
 def isVec64Shape (raw : RawFunc) : Bool :=
@@ -343,9 +345,8 @@ def isVec64Shape (raw : RawFunc) : Bool :=
     noBreakContinueSwitch raw.text &&
     isLengthType n.ctype && !isPtrType n.ctype &&
     isU64 raw.ret &&
-    containsSubstr raw.text "malloc" &&
+    mallocCallCount raw.text == 1 &&
     !containsSubstr raw.text "realloc" &&
-    containsSubstr raw.text "cir.call @free(" &&
     !(1 < freeCallCount raw.text) &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
@@ -356,8 +357,8 @@ def isVec64Shape (raw : RawFunc) : Bool :=
   | _ => false
 
 /-- `vec_realloc` (M1c): length param, `u32` return, one `malloc` + one
-    `realloc` + exactly one `free` call, bounded `cir.for` loops over
-    `cir.ptr_stride`. The single `realloc` grows the single live block
+    `realloc` + at most one `free` call (M1d: leak allowed), bounded
+    `cir.for` loops over `cir.ptr_stride`. The single `realloc` grows the single live block
     (`realloc` never fails per the unbounded convention; the
     `realloc(p, 0)` = `free` and `realloc(NULL, n)` = `malloc` spellings
     are rejected by the dedicated branch in `validate`, never admitted
@@ -370,7 +371,7 @@ def isVecReallocShape (raw : RawFunc) : Bool :=
     isU32 raw.ret &&
     mallocCallCount raw.text == 1 &&
     reallocCallCount raw.text == 1 &&
-    freeCallCount raw.text == 1 &&
+    !(1 < freeCallCount raw.text) &&
     containsSubstr raw.text "cir.for" &&
     containsSubstr raw.text "cir.ptr_stride" &&
     !hasNonHeapNonReallocCall raw.text &&
@@ -694,17 +695,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           !containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only), outside the Ownable-C subset (see docs/SUBSET.md)"
-      else if containsSubstr raw.text "malloc" &&
-          !containsSubstr raw.text "cir.call @free(" then
-        reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls `malloc` without a matching `free`: heap blocks must be freed exactly once on every path (strict linear discipline, see docs/SUBSET.md rule 8 and docs/ROADMAP.md)"
       else if 1 < freeCallCount raw.text &&
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls `free` more times than `malloc`: double-`free` is rejected (heap blocks are freed exactly once, see docs/SUBSET.md rule 8)"
+          s!"out-of-subset: function '{raw.name}' calls `free` more times than `malloc`: double-`free` is rejected (heap blocks are freed at most once; leak is allowed, double-`free` is not, see docs/SUBSET.md rule 8)"
       else if containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses `realloc` outside the admitted `vec_realloc` shape (single `malloc`, one `realloc` to `2*n`, single `free`, fill / fill-extension / sum discipline; `realloc(p, 0)` (= `free`) and `realloc(NULL, n)` (= `malloc`) spellings are rejected: use `free`/`malloc` directly, see docs/ROADMAP.md M1c)"
+          s!"out-of-subset: function '{raw.name}' uses `realloc` outside the admitted `vec_realloc` shape (single `malloc`, one `realloc` to `2*n`, at most one `free` (leak allowed, M1d), fill / fill-extension / sum discipline; `realloc(p, 0)` (= `free`) and `realloc(NULL, n)` (= `malloc`) spellings are rejected: use `free`/`malloc` directly, see docs/ROADMAP.md M1c)"
       else if containsSubstr raw.text "malloc" ||
           containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset

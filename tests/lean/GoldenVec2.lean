@@ -5,10 +5,11 @@
 --    `tests/oracle/verdicts.txt` verdict (`unknown`: no pointer params),
 --    and emits byte-identical text to `tests/golden/VecCopySum.lean`.
 -- 2. Rejection suite: two-block adversarial snippets hit exact codes +
---    message substrings (missing-`free`, genuine double-`free`, heap-shape
---    for balanced-but-misshapen counts), so every new `validate` branch is
---    exercised. Mismatch policy: any in-subset divergence is P0;
---    out-of-subset must reject loudly.
+--    message substrings (genuine double-`free`, heap-shape for
+--    balanced-but-misshapen counts — M1d: leak allowed, so unbalanced
+--    counts without loops are heap-shape, not missing-`free`), so every
+--    new `validate` branch is exercised. Mismatch policy: any in-subset
+--    divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
 def checkVec2Pipeline (verdicts : List OracleFact) : IO Nat := do
@@ -64,7 +65,7 @@ def main : IO Unit := do
   let c1 ← checkVec2Pipeline verdicts
   passed := passed + c1
   let c2 ← checkRejectVec2 "m2f0" advTwoMallocNoFree .unknown
-    "out-of-subset" "matching `free`"
+    "out-of-subset" "outside the admitted"
   passed := passed + c2
   let c3 ← checkRejectVec2 "f3m2" advThreeFree .unknown
     "out-of-subset" "double-`free`"

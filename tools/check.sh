@@ -44,6 +44,12 @@
 #    runs the grown-block differential fuzzer, and runs the grown-block
 #    golden pipeline + rejection suite (including the `realloc(p, 0)` /
 #    `realloc(NULL, n)` spelling rejections + width `AssertFail` check).
+# 14. (M1d) Builds the native leak driver, runs the leak differential
+#    fuzzer (leaking C vs verified Lean: return values agree), and runs
+#    the free-discipline golden pipeline + rejection suite (real leak
+#    corpus, stripped-free acceptance for all four heap shapes, text
+#    double-`free` rejection, token-level double-free/use-after-free
+#    `AssertFail` checks).
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -308,5 +314,15 @@ echo "== emitted-body correspondence (M1c emit_correct transfer) =="
 grep -qF "vecReallocFillSumU32 n.toNat" out/VecRealloc.lean
 grep -qF "vec_realloc_fwd" out/VecRealloc.lean
 echo "emitted grown-block body matches Emit assumptions"
+
+echo "== native leak driver (M1d free discipline) =="
+VECLEAK_BIN="$WORKDIR/circe_vecleak_native"
+cc -O0 -Wall tests/c/vec_alloc_leak.c tests/diff/driver_vecleak.c -o "$VECLEAK_BIN"
+
+echo "== differential test leak (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffVecLeak.lean "$VECLEAK_BIN" "$TRIALS"
+
+echo "== golden pipeline + free-discipline suite =="
+lake env lean --run tests/lean/GoldenFreeDiscipline.lean
 
 echo "CHECK-OK"

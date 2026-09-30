@@ -5,9 +5,11 @@
 --    its `tests/oracle/verdicts.txt` verdict (`unknown`: no pointer params),
 --    and emits byte-identical text to `tests/golden/VecAllocU64.lean`.
 -- 2. Rejection suite: `u64`-heap adversarial snippets hit exact codes +
---    message substrings (missing-`free`, genuine double-`free`, heap-shape
---    for balanced-but-misshapen counts), plus Eval-level mixed-width
---    `AssertFail` checks (S3b policy: `u32` block × `u64` index and back).
+--    message substrings (genuine double-`free`, heap-shape for
+--    balanced-but-misshapen counts — M1d: leak allowed, so `malloc`
+--    without `free` and without loops is heap-shape, not missing-`free`),
+--    plus Eval-level mixed-width `AssertFail` checks (S3b policy:
+--    `u32` block × `u64` index and back).
 --    Mismatch policy: any in-subset divergence is P0; out-of-subset must
 --    reject loudly.
 import Circe.Validator
@@ -81,7 +83,7 @@ def main : IO Unit := do
   let c1 ← checkVec64Pipeline verdicts
   passed := passed + c1
   let c2 ← checkRejectVec64 "mf64" advMissingFree64 .unknown
-    "out-of-subset" "matching `free`"
+    "out-of-subset" "outside the admitted"
   passed := passed + c2
   let c3 ← checkRejectVec64 "df64" advDoubleFree64 .unknown
     "out-of-subset" "double-`free`"

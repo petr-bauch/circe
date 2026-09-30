@@ -32,11 +32,12 @@ reads `p.x`/`p.y`, `nsw` field adds, by-value `Point` return).
 Uniquely-owned heap, `u32`-only (`vec_alloc` shape) or `u64`-only
 (`vec_alloc_u64` shape, M1b monomorphized mirror): `malloc(n *
 sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`
-with same-function length `n`, bounded `v[i]`, exactly one `free(v)`
-(`vec_alloc` / `vec_alloc_u64` shapes) or two `malloc`s + two `free`s
+with same-function length `n`, bounded `v[i]`, at most one `free(v)`
+(leak allowed, M1d; double-`free` rejected)
+(`vec_alloc` / `vec_alloc_u64` shapes) or two `malloc`s + at most two `free`s
 with a fill/copy/sum discipline (M1a `vec_copy_sum` shape, `u32`-only:
 both blocks live at once, disjoint by construction) or one `malloc` +
-one `realloc` (to `2*n`) + one `free` with a fill / fill-extension /
+one `realloc` (to `2*n`) + at most one `free` with a fill / fill-extension /
 sum discipline (M1c `vec_realloc` shape, `u32`-only: growth preserves
 the `min(old, new)` prefix, zero-fills growth, never fails; the
 `realloc(p, 0)` / `realloc(NULL, n)` spellings are rejected loudly).
@@ -71,18 +72,19 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 8. Heap (`vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` / `vec_realloc`
     shapes):
    `malloc(n * sizeof(uint32_t))` / `malloc(n * sizeof(uint64_t))`,
-   only `v[i]` for `0 <= i < n`, every block freed
-   exactly once on every path (missing-`free` / double-`free`
+   only `v[i]` for `0 <= i < n`, every block freed at most once on
+   every path (M1d: leak is forgetting a value, sound; double-`free`
    rejected; more `free`s than `malloc`s is double-`free`), no escape.
    `vec_alloc`: single live `u32` allocation; `vec_alloc_u64` (M1b):
    single live `u64` allocation (monomorphized mirror, no `Vec α`
    polymorphism; mixed-width access is `AssertFail` per S3b policy);
    `vec_copy_sum` (M1a): two live `u32`
    allocations, fill `a` / copy `a` into `b` / sum `b`, `free(a)` then
-   `free(b)` — disjoint by construction (two `malloc` results).
+   `free(b)` (each at most once; leak allowed, M1d) — disjoint by
+   construction (two `malloc` results).
    `vec_realloc` (M1c): one live `u32` allocation grown by a single
    `realloc` to `m = n + n`, fill `[0,n)` / fill extension `[n,m)` /
-   sum `[0,m)`, one `free` — prefix preserved, growth zero-filled,
+   sum `[0,m)`, at most one `free` (leak allowed, M1d) — prefix preserved, growth zero-filled,
    never fails (no OOM path); `realloc(p, 0)` / `realloc(NULL, n)`
    spellings rejected (use `free` / `malloc` directly). Blocks
    are values + affine tokens (`Vec32.freed` / `Vec64.freed`), not addresses.
@@ -162,4 +164,5 @@ never trips it), bitfields, signed wrapping arithmetic without `nsw`
 Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
-+ `GoldenVec64.lean` (6).
++ `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
++ `GoldenFreeDiscipline.lean` (13).

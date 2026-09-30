@@ -6,8 +6,9 @@
 --    and emits byte-identical text to `tests/golden/VecRealloc.lean`.
 -- 2. Rejection suite: `realloc` adversarial snippets hit exact codes +
 --    message substrings (`realloc(p, 0)` and `realloc(NULL, n)` spellings,
---    double-`realloc`, missing-`free` with `realloc`, heap-shape for
---    `malloc`+`free` without `realloc`), plus an Eval-level width check
+--    double-`realloc`, `realloc`-shape for `malloc`+`realloc` without loops
+--    (M1d: leak allowed, so the missing-`free` gate is gone), heap-shape
+--    for `malloc`+`free` without `realloc`), plus an Eval-level width check
 --    (`vrealloc` with a non-`u32` size is `AssertFail`: u32 sizes only).
 --    Mismatch policy: any in-subset divergence is P0; out-of-subset must
 --    reject loudly.
@@ -67,7 +68,8 @@ def advReallocNull : String :=
 def advReallocTwice : String :=
   "module {\n  cir.func @rr(%arg0: !u64i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %p = cir.call @malloc(%arg0) : (!u64i) -> !cir.ptr<!u8i>\n    %q = cir.call @realloc(%p, %arg0) : (!cir.ptr<!u8i>, !u64i) -> !cir.ptr<!u8i>\n    %r = cir.call @realloc(%q, %arg0) : (!cir.ptr<!u8i>, !u64i) -> !cir.ptr<!u8i>\n    cir.call @free(%r) : (!cir.ptr<!u8i>) -> ()\n    %c = cir.const #cir.int<0> : !u32i\n    cir.return %c : !u32i\n  }\n}"
 
-/-- `malloc` + `realloc` without `free`: the leak gate fires first. -/
+/-- `malloc` + `realloc` without `free` or loops (M1d: leak allowed, so
+    the `realloc`-shape gate fires, not the old leak gate). -/
 def advReallocNoFree : String :=
   "module {\n  cir.func @rnf(%arg0: !u64i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %p = cir.call @malloc(%arg0) : (!u64i) -> !cir.ptr<!u8i>\n    %q = cir.call @realloc(%p, %arg0) : (!cir.ptr<!u8i>, !u64i) -> !cir.ptr<!u8i>\n    %c = cir.const #cir.int<0> : !u32i\n    cir.return %c : !u32i\n  }\n}"
 
@@ -93,7 +95,7 @@ def main : IO Unit := do
     "out-of-subset" "one `realloc`"
   passed := passed + c4
   let c5 ← checkRejectVecRealloc "rnf" advReallocNoFree .unknown
-    "out-of-subset" "matching `free`"
+    "out-of-subset" "`vec_realloc`"
   passed := passed + c5
   let c6 ← checkRejectVecRealloc "m1f1nr" advMallocFreeNoRealloc .unknown
     "out-of-subset" "`vec_realloc`"

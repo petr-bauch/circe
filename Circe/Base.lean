@@ -504,8 +504,9 @@ def vecSumLoop (v : Vec32) (n : Nat) : Result (BitVec 32) :=
   vecSumLoopAux v 0 n 0
 
 /-- Whole heap program, purely: allocate, fill with indices, sum, free.
-    `free` is value-invisible (contents kept, token set); missing-`free`
-    strictness lives in `validate`, not here. -/
+    `free` is value-invisible (contents kept, token set); leak is forgetting
+    a value, sound here (M1d: `validate` admits `free <= expected`, gating
+    only double-`free`). -/
 def vecFillSumU32 (n : Nat) : Result (BitVec 32) :=
   match vecNew n with
   | .error e => .error e
@@ -1114,8 +1115,9 @@ def vecSumLoop64 (v : Vec64) (n : Nat) : Result (BitVec 64) :=
   vecSumLoopAux64 v 0 n 0
 
 /-- Whole heap program, purely: allocate, fill with indices, sum, free.
-    `free` is value-invisible (contents kept, token set); missing-`free`
-    strictness lives in `validate`, not here. -/
+    `free` is value-invisible (contents kept, token set); leak is forgetting
+    a value, sound here (M1d: `validate` admits `free <= expected`, gating
+    only double-`free`). -/
 def vecFillSumU64 (n : Nat) : Result (BitVec 64) :=
   match vecNew64 n with
   | .error e => .error e
@@ -1546,8 +1548,8 @@ theorem vecFillLoopAux_live_ok (v : Vec32) (k r : Nat)
 /-- Whole heap program, purely: allocate `n`, fill `[0, n)` with indices,
     `realloc` to `n + n` (prefix preserved), fill the extension `[n, n+n)`
     with indices, sum `[0, n+n)`, free. `free` is value-invisible
-    (contents kept, token set); missing-`free` strictness lives in
-    `validate`, not here. -/
+    (contents kept, token set); leak is forgetting a value, sound here
+    (M1d: `validate` admits `free <= expected`, gating only double-`free`). -/
 def vecReallocFillSumU32 (n : Nat) : Result (BitVec 32) :=
   match vecNew n with
   | .error e => .error e
