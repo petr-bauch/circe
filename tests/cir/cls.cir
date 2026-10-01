@@ -1,3 +1,4 @@
+!s32i = !cir.int<s, 32>
 !u32i = !cir.int<u, 32>
 #loc3 = loc("tests/c/cls.c":9:14)
 #loc4 = loc("tests/c/cls.c":9:23)
@@ -11,22 +12,25 @@ module @"/home/hydergine/code/circe/tests/c/cls.c" attributes {cir.default_tls_m
       %3 = cir.load align(4) %0 : !cir.ptr<!u32i>, !u32i loc(#loc8)
       cir.switch(%3 : !u32i) {
         cir.case(equal, [#cir.int<0> : !u32i]) {
-          %4 = cir.const #cir.int<10> : !u32i loc(#loc10)
-          cir.store %4, %1 : !u32i, !cir.ptr<!u32i> loc(#loc21)
-          %5 = cir.load %1 : !cir.ptr<!u32i>, !u32i loc(#loc21)
-          cir.return %5 : !u32i loc(#loc21)
+          %4 = cir.const #cir.int<10> : !s32i loc(#loc10)
+          %5 = cir.const #cir.int<10> : !u32i loc(#loc10)
+          cir.store %5, %1 : !u32i, !cir.ptr<!u32i> loc(#loc21)
+          %6 = cir.load %1 : !cir.ptr<!u32i>, !u32i loc(#loc21)
+          cir.return %6 : !u32i loc(#loc21)
         } loc(#loc9)
         cir.case(equal, [#cir.int<1> : !u32i]) {
-          %4 = cir.const #cir.int<20> : !u32i loc(#loc13)
-          cir.store %4, %1 : !u32i, !cir.ptr<!u32i> loc(#loc22)
-          %5 = cir.load %1 : !cir.ptr<!u32i>, !u32i loc(#loc22)
-          cir.return %5 : !u32i loc(#loc22)
+          %4 = cir.const #cir.int<20> : !s32i loc(#loc13)
+          %5 = cir.const #cir.int<20> : !u32i loc(#loc13)
+          cir.store %5, %1 : !u32i, !cir.ptr<!u32i> loc(#loc22)
+          %6 = cir.load %1 : !cir.ptr<!u32i>, !u32i loc(#loc22)
+          cir.return %6 : !u32i loc(#loc22)
         } loc(#loc12)
         cir.case(default, []) {
-          %4 = cir.const #cir.int<30> : !u32i loc(#loc16)
-          cir.store %4, %1 : !u32i, !cir.ptr<!u32i> loc(#loc23)
-          %5 = cir.load %1 : !cir.ptr<!u32i>, !u32i loc(#loc23)
-          cir.return %5 : !u32i loc(#loc23)
+          %4 = cir.const #cir.int<30> : !s32i loc(#loc16)
+          %5 = cir.const #cir.int<30> : !u32i loc(#loc16)
+          cir.store %5, %1 : !u32i, !cir.ptr<!u32i> loc(#loc23)
+          %6 = cir.load %1 : !cir.ptr<!u32i>, !u32i loc(#loc23)
+          cir.return %6 : !u32i loc(#loc23)
         } loc(#loc15)
         cir.yield loc(#loc6)
       } loc(#loc6)

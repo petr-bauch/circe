@@ -1,3 +1,4 @@
+!s32i = !cir.int<s, 32>
 !u32i = !cir.int<u, 32>
 !u64i = !cir.int<u, 64>
 #loc3 = loc("tests/c/find_eq.c":9:18)
@@ -20,36 +21,41 @@ module @"/home/hydergine/code/circe/tests/c/find_eq.c" attributes {cir.default_t
     cir.store %arg2, %2 : !u32i, !cir.ptr<!u32i> loc(#loc9)
     cir.scope {
       %7 = cir.alloca "i" align(8) init : !cir.ptr<!u64i> loc(#loc37)
-      %8 = cir.const #cir.int<0> : !u64i loc(#loc13)
-      cir.store align(8) %8, %7 : !u64i, !cir.ptr<!u64i> loc(#loc13)
+      %8 = cir.const #cir.int<0> : !s32i loc(#loc13)
+      %9 = cir.const #cir.int<0> : !u64i loc(#loc13)
+      cir.store align(8) %9, %7 : !u64i, !cir.ptr<!u64i> loc(#loc13)
       cir.for : cond {
-        %9 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc14)
-        %10 = cir.load align(8) %1 : !cir.ptr<!u64i>, !u64i loc(#loc15)
-        %11 = cir.cmp lt %9, %10 : !u64i loc(#loc16)
-        cir.condition(%11) loc(#loc16)
+        %10 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc14)
+        %11 = cir.load align(8) %1 : !cir.ptr<!u64i>, !u64i loc(#loc15)
+        %12 = cir.cmp lt %10, %11 : !u64i loc(#loc16)
+        %13 = cir.cast bool_to_int %12 : !cir.bool -> !s32i loc(#loc16)
+        %14 = cir.cast int_to_bool %13 : !s32i -> !cir.bool loc(#loc16)
+        cir.condition(%14) loc(#loc16)
       } body {
         cir.scope {
           cir.scope {
-            %9 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc20)
-            %10 = cir.load align(8) %0 : !cir.ptr<!cir.ptr<!u32i>>, !cir.ptr<!u32i> loc(#loc21)
-            %11 = cir.ptr_stride %10, %9 : (!cir.ptr<!u32i>, !u64i) -> !cir.ptr<!u32i> loc(#loc22)
-            %12 = cir.load align(4) %11 : !cir.ptr<!u32i>, !u32i loc(#loc21)
-            %13 = cir.load align(4) %2 : !cir.ptr<!u32i>, !u32i loc(#loc23)
-            %14 = cir.cmp eq %12, %13 : !u32i loc(#loc24)
-            cir.if %14 {
-              %15 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc26)
-              %16 = cir.cast integral %15 : !u64i -> !u32i loc(#loc26)
-              cir.store %16, %3 : !u32i, !cir.ptr<!u32i> loc(#loc41)
-              %17 = cir.load %3 : !cir.ptr<!u32i>, !u32i loc(#loc41)
-              cir.return %17 : !u32i loc(#loc41)
+            %10 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc20)
+            %11 = cir.load align(8) %0 : !cir.ptr<!cir.ptr<!u32i>>, !cir.ptr<!u32i> loc(#loc21)
+            %12 = cir.ptr_stride %11, %10 : (!cir.ptr<!u32i>, !u64i) -> !cir.ptr<!u32i> loc(#loc22)
+            %13 = cir.load align(4) %12 : !cir.ptr<!u32i>, !u32i loc(#loc21)
+            %14 = cir.load align(4) %2 : !cir.ptr<!u32i>, !u32i loc(#loc23)
+            %15 = cir.cmp eq %13, %14 : !u32i loc(#loc24)
+            %16 = cir.cast bool_to_int %15 : !cir.bool -> !s32i loc(#loc24)
+            %17 = cir.cast int_to_bool %16 : !s32i -> !cir.bool loc(#loc24)
+            cir.if %17 {
+              %18 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc26)
+              %19 = cir.cast integral %18 : !u64i -> !u32i loc(#loc26)
+              cir.store %19, %3 : !u32i, !cir.ptr<!u32i> loc(#loc41)
+              %20 = cir.load %3 : !cir.ptr<!u32i>, !u32i loc(#loc41)
+              cir.return %20 : !u32i loc(#loc41)
             } loc(#loc40)
           } loc(#loc39)
         } loc(#loc38)
         cir.yield loc(#loc11)
       } step {
-        %9 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc28)
-        %10 = cir.inc %9 : !u64i loc(#loc29)
-        cir.store align(8) %10, %7 : !u64i, !cir.ptr<!u64i> loc(#loc42)
+        %10 = cir.load align(8) %7 : !cir.ptr<!u64i>, !u64i loc(#loc28)
+        %11 = cir.inc %10 : !u64i loc(#loc29)
+        cir.store align(8) %11, %7 : !u64i, !cir.ptr<!u64i> loc(#loc42)
         cir.yield loc(#loc36)
       } loc(#loc36)
     } loc(#loc36)

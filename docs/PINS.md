@@ -35,13 +35,14 @@ Date: 2026-09-20. Update this file on every toolchain bump.
   Expected artifacts: `build-cir/bin/clang` (CIR-enabled).
   Smoke test (no `cir-opt` tool at this SHA — it appeared later upstream):
   `build-cir/bin/clang -cc1 -emit-cir <f>.c -o <f>.cir`.
-- CIR capture flags (once built):
+- CIR capture flags (once built; standardized option B: raw CIRGen with
+  passes disabled, so `tools/emit-cir.sh` reproduces `tests/cir/*.cir`
+  byte-for-byte):
   ```
   build-cir/bin/clang -fclangir -Xclang -emit-cir \
+    -Xclang -clangir-disable-passes \
     tests/c/<f>.c -S -o tests/cir/<f>.cir
   ```
-  (`-fclangir-disable-passes` does not exist at the pinned SHA; re-add if
-  supported after the upgrade below.)
   Plus oracle verdicts: `-Rpass-missed=...` / `-fsave-optimization-record`
   for `basicaa` noalias evidence (exact flags TBD during Phase 4).
 
@@ -97,7 +98,7 @@ vs plain `cir.add` (unsigned); `cir.scope` nesting; module attrs
 Capture (`tools/emit-cir.sh` `.cpp` loop; extension selects C++):
 
 ```
-clang -fclangir -Xclang -emit-cir -fno-exceptions \
+clang -fclangir -Xclang -emit-cir -Xclang -clangir-disable-passes -fno-exceptions \
   tests/cpp/<f>.cpp -S -o tests/cir/<f>.cir
 ```
 

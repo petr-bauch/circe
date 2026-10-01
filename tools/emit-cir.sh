@@ -18,9 +18,10 @@ fi
 for src in tests/c/*.c; do
   base="$(basename "$src" .c)"
   echo "== $base =="
-  # NOTE: -fclangir-disable-passes only exists on newer SHAs; plain -emit-cir
-  # gives raw CIRGen-equivalent output on the Jan-2025 pin.
-  "$CLANG" -fclangir -Xclang -emit-cir \
+  # Raw CIRGen: disable the default CIR passes so the captured `.cir`
+  # matches CIRGen output byte-for-byte (standardized on
+  # `-clangir-disable-passes`, option B).
+  "$CLANG" -fclangir -Xclang -emit-cir -Xclang -clangir-disable-passes \
     "$src" -S -o "$OUTDIR/$base.cir"
 done
 # M2 C++ corpus: same CIRGen capture, plus `-fno-exceptions` (pinned:
@@ -32,7 +33,7 @@ shopt -s nullglob
 for src in tests/cpp/*.cpp; do
   base="$(basename "$src" .cpp)"
   echo "== $base =="
-  "$CLANG" -fclangir -Xclang -emit-cir -fno-exceptions \
+  "$CLANG" -fclangir -Xclang -emit-cir -Xclang -clangir-disable-passes -fno-exceptions \
     "$src" -S -o "$OUTDIR/$base.cir"
 done
 shopt -u nullglob
