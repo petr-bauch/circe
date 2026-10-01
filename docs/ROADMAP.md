@@ -228,8 +228,38 @@ overloaded methods, operators, implicit copy/move ctors (avoided by
 corpus construction; exact call-multiset pins make surprises reject
 loudly), `std::nothrow` lowering (covered by never-fails),
 polymorphism, threads.
-- **M3 — Shrinking oracle trust**: Stacked-Borrows-style
-  justification (`oracle_noalias f → memEval f = Eval f` on the
-  admitted fragment), trust base down to CIRGen text + Lean/Mathlib.
-  Until then: verdicts checked in, differential testing P0, validator
-  conservative.
+## M3. Shrinking oracle trust — APPROVED (2026-10-01)
+
+Goal: replace trust in `tests/oracle/verdicts.txt` + differential
+testing with a proved transfer `oracle_noalias f → memEval f = Eval f`
+on the admitted fragment. Trust base becomes CIRGen text +
+Lean/Mathlib; verdicts stay as a checked cache, not a trust root.
+
+Method (lightweight, not full Stacked Borrows): a small tag model just
+strong enough for our three uniqueness sources — `__restrict__` /
+`noalias` attrs, the C++ single-ref triple (`nonnull +
+dereferenceable + noundef`), and disjoint `malloc` / `new` results.
+No retag/protect generality beyond what the admitted shapes express.
+
+State shape (locked): flat block map (`Mem`: next-address counter +
+`Addr → Block` list-map; a block is a tag + width + word list).
+`memEval` takes its own fuel bound alongside `EVAL_FUEL`.
+
+Order: M3a → M3b → M3c → M3d. Each slice gated by model/lemma +
+transfer + `check.sh` stage before admission.
+
+| Slice | Core change | Design pin |
+|---|---|---|
+| M3a mem model skeleton (C only) — ACTIVE | New `Circe.Mem`: flat block map + tags; `memEval` mirroring `Eval` for call-free C leaves + `sum` / `vec_alloc`. Tag creation at `restrict`-param bind + each `malloc`; load/store require a live tag. `Eval` untouched | C leaves + `sum`/`vec_alloc` first; no callers, no structs/flow, no C++. Transfer statement lands as a stub theorem, proved per-leaf only |
+| M3b derived noalias (C only) | Per-shape noalias lemmas: each admitted C shape implies disjoint footprints (attr text for `restrict`; two-`malloc` disjointness by construction; length-pairing for stride loops). New `check.sh` stage asserts checked-in verdicts match the derived facts (cache, not trust) | `Oracle.lookupOracle` + `verdictAdmits` unchanged; new `derivedNoalias : RawFunc → Bool` implies `verdictAdmits`. No validator behavior change |
+| M3c end-to-end transfer (C only) | Full `oracle_noalias f → memEval f = Eval f` for every admitted C `Func` (leaves, S1 callers, S2 `translate`, S3 flow, M1 heap, S3b widths). `check.sh` fails on verdict/derived mismatch | Transfer per-`FragKind`, reusing `emit_correct` bridges as the `Eval`-side; no new `Func` shapes. `Diff*` fuzz stays P0 but is no longer the soundness argument |
+| M3d C++ follow-up | Tags + single-ref (`this`/`const&`) + box tokens (`Box32.freed` as affine tag); `cleanup`-scope and null-guard erasure justified in `memEval`. Transfer for M2a/b/c | Call-multisets + `cxx_ctor`/`cxx_dtor` markers become tag-creation points; `trap`/`cleanup` erasure mirrors the exemption gates. No inheritance/templates/EH/vtables |
+
+Per-slice acceptance (M3 adaptation): model/lemma → per-shape
+transfer proof → `check.sh` stage (verdict-cache assert from M3b on) →
+existing goldens still green (no `.cir`/Emit churn expected) →
+`CHECK-OK`. No new corpus unless a tag-creation point needs a pin the
+text doesn't already carry.
+Non-goals: full Stacked Borrows, OOM paths (never-fails stays),
+polymorphism, threads, deleting `verdicts.txt` (stays as cache +
+assert), removing `Diff*` fuzzing (stays as P0 signal).

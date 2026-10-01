@@ -461,4 +461,15 @@ echo "== emitted-body correspondence (M2c emit_correct transfer) =="
 grep -qF "boxThrough x" out/BoxThrough.lean
 echo "emitted new/delete body matches Emit assumptions"
 
+echo "== M3a mem model (flat block map + per-leaf transfer) =="
+lake env lean Circe/Mem.lean
+lake env lean Circe/Transfer.lean
+grep -q "theorem memTransfer_add" Circe/Mem.lean
+grep -q "theorem memTransfer_incr" Circe/Mem.lean
+grep -q "theorem memTransfer_sum " Circe/Transfer.lean
+grep -q "theorem memTransfer_sum_oob" Circe/Transfer.lean
+grep -q "theorem memTransfer_vec " Circe/Transfer.lean
+grep -q "def m3c_transfer_statement" Circe/Mem.lean
+echo "mem model builds, per-leaf transfers present (add/incr/sum/sum-oob/vec)"
+
 echo "CHECK-OK"
