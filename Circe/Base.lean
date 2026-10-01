@@ -307,6 +307,49 @@ theorem pointSum_err (p : Point) (e : Panic)
     pointSum p = .error e := by
   simp [pointSum, h]
 
+/-- M2b `Acc` value model: the struct never crosses the boundary (the
+    entry is int-only), so the accumulator state is a single `i32` word
+    threaded functionally (mutating methods functionalized, as in
+    `incr`). `accCtor` is the field-init (`s = 0`), `accAdd` the checked
+    `s += v`, `accGet` / `accDtor` the identity (const getter / trivial
+    dtor are no-ops). -/
+def accCtor : BitVec 32 := 0
+
+def accAdd (s v : BitVec 32) : Result (BitVec 32) :=
+  checkedAddI32 s v
+
+def accGet (s : BitVec 32) : Result (BitVec 32) :=
+  .ok s
+
+def accDtor (s : BitVec 32) : Result (BitVec 32) :=
+  .ok s
+
+/-- M2b `acc_two`: ctor-init `0`, two checked adds, get (identity). -/
+def accTwo (a b : BitVec 32) : Result (BitVec 32) :=
+  match checkedAddI32 0 a with
+  | .error e => .error e
+  | .ok s1 => checkedAddI32 s1 b
+
+/-- `accTwo` succeeds exactly when both adds succeed. -/
+theorem accTwo_ok (a b s1 s2 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (h2 : checkedAddI32 s1 b = .ok s2) :
+    accTwo a b = .ok s2 := by
+  simp only [accTwo, h1, h2]
+
+/-- A failing first add propagates (and determines the error). -/
+theorem accTwo_err_a (a b : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .error e) :
+    accTwo a b = .error e := by
+  simp only [accTwo, h1]
+
+/-- A failing second add propagates once the first succeeds. -/
+theorem accTwo_err_b (a b s1 : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (h2 : checkedAddI32 s1 b = .error e) :
+    accTwo a b = .error e := by
+  simp only [accTwo, h1, h2]
+
 /-! ## S3a control-flow folds: `nested_sum` / `skip_sum` value models -/
 
 /-- One row of `nested_sum`: `Σ_{j<m} i*j` as a wrapping `u32` sum of

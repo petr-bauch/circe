@@ -89,10 +89,15 @@ inductive CExpr : Type
     `validate`). Heap block statements: `vset`/`vfree` thread `Vec32` /
     `Vec64` values with an affine token; `vrealloc vec m` (M1c) resizes
     the named block to `m` words via `vecRealloc` (prefix preserved,
-    growth zero-filled, never fails). -/
+    growth zero-filled, never fails). `cleanup body` (M2b) sequences a
+    destructor-guarded scope: the body runs, then the `cleanup normal`
+    region (a trivial-dtor call, a no-op at validation, so `cleanup`
+    evaluates exactly its body; the trailing `cir.trap` marks the
+    unreachable exceptional path and has no model). -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
+  | cleanup (body : CStmt)
   | let_ (name : String) (ty : CType) (val : CExpr)
   | assign (name : String) (val : CExpr)
   | vset (vec : String) (idx val : CExpr)

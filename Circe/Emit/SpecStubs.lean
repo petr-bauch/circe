@@ -337,6 +337,105 @@ def emitPointSumRefSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd p)).pretty\n"
   ++ s!"      == (repr (pointSum p)).pretty\n"
 
+/-- Spec stub for the `accCtor` shape (M2b ctor leaf). -/
+def emitAccCtorSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `Acc::Acc()` (`{name}`: field-init `s = 0`).\n"
+  ++ s!"    Base body reference: `accCtor` (cf. emitted `{name}_fwd`, `evalFuncFuel_accCtor`). -/\n"
+  ++ s!"def {name}_spec_fwd : Result (BitVec 32) :=\n"
+  ++ "  .ok accCtor\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the ctor is total (one trivial edge). -/\n"
+  ++ s!"def {name}_spec_edges : List Unit :=\n"
+  ++ "  [()]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `accCtor` on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun _ =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty\n"
+  ++ s!"      == (repr ((.ok accCtor : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `accAdd` shape (M2b method leaf). -/
+def emitAccAddSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `void Acc::add(int32_t v)` (`{name}`: checked `s += v`).\n"
+  ++ s!"    Base body reference: `accAdd` (cf. emitted `{name}_fwd`, `evalFuncFuel_accAdd`). -/\n"
+  ++ s!"def {name}_spec_fwd (s v : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accAdd s v\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 0), (0x7FFFFFFF, 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `accAdd` on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err bridges (`accAddFwd_ok/err`\n"
+  ++ "    — both fire in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (accAdd t.1 t.2)).pretty\n"
+
+/-- Spec stub for the `accGet` shape (M2b getter leaf). -/
+def emitAccGetSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t Acc::get() const` (`{name}`: identity).\n"
+  ++ s!"    Base body reference: `accGet` (cf. emitted `{name}_fwd`, `evalFuncFuel_accGet`). -/\n"
+  ++ s!"def {name}_spec_fwd (s : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accGet s\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, extrema. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 0x7FFFFFFF, 0x80000000]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `accGet` on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun s =>\n"
+  ++ s!"    (repr ({name}_spec_fwd s)).pretty\n"
+  ++ s!"      == (repr (accGet s)).pretty\n"
+
+/-- Spec stub for the `accDtor` shape (M2b trivial-dtor leaf). -/
+def emitAccDtorSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `Acc::~Acc()` (`{name}`: no-op identity).\n"
+  ++ s!"    Base body reference: `accDtor` (cf. emitted `{name}_fwd`, `evalFuncFuel_accDtor`). -/\n"
+  ++ s!"def {name}_spec_fwd (t : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accDtor t\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, extrema. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 0x7FFFFFFF, 0x80000000]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `accDtor` on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t)).pretty\n"
+  ++ s!"      == (repr (accDtor t)).pretty\n"
+
+/-- Spec stub for the `accTwo` shape (M2b entry). -/
+def emitAccTwoSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t {name}(int32_t a, int32_t b)` (ctor + two `add` + `get`, dtor no-op).\n"
+  ++ s!"    Base body reference: `accTwo` (cf. emitted `{name}_fwd`, `evalProgFunc_accTwo`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accTwo a b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, first-add overflow, second-add overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 0), (0x7FFFFFFF, 1), (1, 0x7FFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `accTwo` on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err bridges (`accTwo_ok/err_a/err_b`,\n"
+  ++ "    `accTwoFwd_is_accTwo` — all four fire in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (accTwo t.1 t.2)).pretty\n"
+
 /-- Spec stub for the `nested_sum` shape (S3a). -/
 def emitNestedSpecText (name : String) : String :=
   emitSpecHeader

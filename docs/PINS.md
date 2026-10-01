@@ -131,3 +131,10 @@ clang -fclangir -Xclang -emit-cir -fno-exceptions \
   `tests/cir/point_sum_ref.cir` (`cir-opt` VERIFY-OK), entry
   `@_Z13point_sum_refRK5Point` + leaf `@_ZNK5Point3sumEv`, no oracle
   facts.
+- Checked-in M2b corpus: `tests/cpp/acc_two.cpp` →
+  `tests/cir/acc_two.cir` (`cir-opt` VERIFY-OK), int-only entry
+  `@_Z7acc_twoii` + leaves `@_ZN3AccC2Ev` (`cxx_ctor`, const-`0`
+  init) / `@_ZN3Acc3addEi` (one `nsw` add) / `@_ZNK3Acc3getEv`
+  (identity) / `@_ZN3AccD2Ev` (`cxx_dtor`, empty); entry scope is
+  `cleanup.scope` + `cleanup normal` (dtor) + trailing `cir.trap`
+  with exactly 5 call sites; one oracle fact (the entry, `unknown`).

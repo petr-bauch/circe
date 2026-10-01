@@ -150,6 +150,32 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Misshapen uses (unknown callees, calls in the leaf, non-`i32`
     returns, bare pointers without the triple, extra call sites) are
     rejected with dedicated messages.
+14. Ctors/dtors (M2b): exact shapes only —
+    `_ZN3AccC2Ev` ctor leaf (no CoreIR params; the CIR def takes single
+    `this` with the single-reference triple and the `cxx_ctor` marker,
+    `get_member` + `cir.const #cir.int<0>` field-init, void return),
+    `_ZN3Acc3addEi` method leaf (`this` + one `i32`, `get_member` + one
+    `nsw` add, void return; the store-back is functionalized),
+    `_ZNK3Acc3getEv` getter leaf (single `this`, `get_member` read with
+    no arithmetic, `i32` return; identity),
+    `_ZN3AccD2Ev` trivial-dtor leaf (single `this`, `cxx_dtor` marker,
+    empty body, void return; no-op identity), and the `_Z7acc_twoii`
+    entry (two by-value `i32`s, `i32` return; a `cleanup` scope
+    sequencing 1 ctor + 2 `add` + 1 `get` + 1 dtor call closed by the
+    unreachable `cir.trap`).
+    Semantics: the accumulator state is a single `i32` word threaded
+    functionally (`accCtor` = `0`, `accAdd` = checked add, `accGet` /
+    `accDtor` = identity, `accTwo` = init + two adds); the entry
+    dispatches to the leaves at the same fuel via `evalProgFunc`, with
+    `cleanup` evaluating exactly its scope; errors propagate. The
+    struct never crosses the boundary (all params/returns are `i32`).
+    The int-only entry needs its oracle fact (like every int-only
+    func); leaf defs need none (uniqueness is the attr triple).
+    `cir.cleanup` / `cir.trap` are admitted only here (exact call
+    multiset + no-EH pins); everywhere else they reject loudly.
+    Misshapen uses (missing/extra calls, non-trivial dtor bodies,
+    wrapping leaf arithmetic, bare pointers without the triple,
+    non-zero ctor init) are rejected with dedicated messages.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -159,9 +185,13 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 (`@malloc`/`@free` in the vec/vec2/vec64/vecRealloc shapes only,
 `@realloc` in the vecRealloc shape only; `@add`/`@sum_array` in the exact
 S1 caller shapes only; `@_ZNK5Point3sumEv` in the exact M2a entry shape
-only), `cir.const`, `cir.get_member` (S2 `translate`
+only; `@_ZN3AccC2Ev` / `@_ZN3Acc3addEi` / `@_ZNK3Acc3getEv` /
+`@_ZN3AccD2Ev` in the exact M2b entry shape only (1 + 2 + 1 + 1 sites)),
+`cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
-only: single-`this` field reads with one `nsw` add; all other struct
+only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf
+shapes only: `cxx_ctor` const-`0` init / `add` one-`nsw`-add /
+`get` identity read; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`, all other switches rejected),
@@ -169,6 +199,9 @@ on pinned consts + `default`, all other switches rejected),
 `get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
+`cir.cleanup.scope` / `cleanup normal` + `cir.trap` in the exact M2b
+`acc_two` entry shape only (single `cleanup` scope, exact 1 + 2 + 1 + 1
+call multiset, no `cir.try` / `personality` / `cleanup eh` / heap).
 `cir.get_global @malloc/@free` plumbing allowed in vec/vec2/vec64/vecRealloc
 shapes only (`@realloc` in vecRealloc only).
 64-bit spellings (`!s64i`/`!u64i` + long forms) in the S3b `add64` /
@@ -176,7 +209,8 @@ shapes only (`@realloc` in vecRealloc only).
 
 ## Rejected (loud, with dedicated messages)
 
-`cir.try`/cleanup/EH, vtables, atomics, `volatile`, float,
+`cir.try`/cleanup/EH (except the exact M2b `acc_two` entry scope),
+vtables, atomics, `volatile`, float,
 inline asm, `void*`/int-ptr casts, escaping address-of, unbounded
 pointer arithmetic, non-admitted heap uses, `setjmp`/`longjmp`,
 globals, function pointers, VLAs, variadics, non-lowerable
@@ -188,4 +222,4 @@ Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
-+ `GoldenMethod.lean` (8).
++ `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12).

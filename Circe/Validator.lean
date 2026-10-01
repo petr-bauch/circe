@@ -32,8 +32,10 @@ Check order (first hit wins — rejection codes are priority-ordered):
 5. shape admission (canonical `Func` or a precise code: `escapeReject`
    for non-`choose` pointer returns, `oobPossible` for unbounded
    `ptr_stride`, `outOfSubset` otherwise, including misshapen struct
-   uses outside the S2 `translate` shape and the M2a method shapes,
-   and by-value struct params stuck in the deferred `coerce` lowering).
+   uses outside the S2 `translate` shape, the M2a method shapes, and
+   the M2b `Acc` leaf shapes, the M2b entry shape (with its
+   `cleanup`/`trap` exemption), and by-value struct params stuck in
+   the deferred `coerce` lowering).
 -/
 import Circe.CoreIR
 import Circe.Parser
@@ -660,10 +662,165 @@ def lineHasBareBr (line : String) : Bool :=
 def hasBareBr (text : String) : Bool :=
   (text.splitOn "\n").any lineHasBareBr
 
+/-! ## M2b: value-ctor scope exemption (`acc_two` entry) -/
+
+/-- The M2b `Acc` struct type: CIRGen's `!rec_Acc` alias (long-form
+    `!cir.struct<"Acc" …>` also matches via the `"Acc"` substring;
+    applied to short type tokens only, never whole text). -/
+def isAccType (t : String) : Bool :=
+  t == "!rec_Acc" || containsSubstr t "Acc"
+
+/-- Text-level exemption check for the M2b entry: a `cleanup.scope` /
+    `cleanup normal` region (the local `Acc` with its user-defined
+    no-op dtor) closed by the unreachable `cir.trap`, with exactly the
+    `acc_two` call multiset (1 ctor + 2 `add` + 1 `get` + 1 dtor, 5
+    `cir.call` sites total) and no EH (`cir.try` / `personality` /
+    `cleanup eh`) or heap. This is the `forbiddenOp` exemption gate
+    (cf. `isClsLowerableText` for `cir.switch`); full admission
+    additionally pins the signature (`isAccTwoShape`). -/
+def isAccTwoExemptText (text : String) : Bool :=
+  containsSubstr text "cir.cleanup.scope" &&
+  containsSubstr text "cleanup normal" &&
+  containsSubstr text "cir.trap" &&
+  callsFunc text "_ZN3AccC2Ev" &&
+  callsFunc text "_ZN3Acc3addEi" &&
+  callsFunc text "_ZNK3Acc3getEv" &&
+  callsFunc text "_ZN3AccD2Ev" &&
+  opCount text "cir.call @" == 5 &&
+  opCount text "cir.call @_ZN3Acc3addEi(" == 2 &&
+  opCount text "cir.call @_ZN3AccC2Ev(" == 1 &&
+  opCount text "cir.call @_ZNK3Acc3getEv(" == 1 &&
+  opCount text "cir.call @_ZN3AccD2Ev(" == 1 &&
+  !containsSubstr text "cir.try" &&
+  !containsSubstr text "personality" &&
+  !containsSubstr text "cleanup eh" &&
+  !containsSubstr text "cir.call @malloc" &&
+  !containsSubstr text "cir.call @free("
+
+/-- The M2b ctor leaf: no params in CoreIR (field-init `s = 0`), but the
+    CIR def takes single `this` (`!cir.ptr<!rec_Acc>` with the
+    single-reference triple) and carries the `cxx_ctor` marker;
+    `get_member` + `cir.const 0` + store, void return. No calls,
+    control flow, heap, or indexing. -/
+def isAccCtorShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with | some inner => isAccType inner | none => false) &&
+    raw.ret == "" &&
+    containsSubstr raw.text "cxx_ctor" &&
+    containsSubstr raw.text "cir.get_member" &&
+    containsSubstr raw.text "cir.const" &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The M2b `add` method leaf: `this` + one `i32`, void return,
+    `get_member` + one `nsw` add (the store-back is functionalized).
+    No calls, control flow, heap, or indexing. -/
+def isAccAddShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this, v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with | some inner => isAccType inner | none => false) &&
+    isI32 v.ctype && !isPtrType v.ctype &&
+    raw.ret == "" &&
+    containsSubstr raw.text "cir.get_member" &&
+    containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The M2b `get` const-getter leaf: single `this`, `i32` return,
+    `get_member` read with no arithmetic (identity). No calls, control
+    flow, heap, or indexing. -/
+def isAccGetShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with | some inner => isAccType inner | none => false) &&
+    isI32 raw.ret &&
+    containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The M2b trivial-dtor leaf: single `this`, void return, the
+    `cxx_dtor` marker, empty body (no `get_member`, no arithmetic).
+    No calls, control flow, heap, or indexing. -/
+def isAccDtorShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with | some inner => isAccType inner | none => false) &&
+    raw.ret == "" &&
+    containsSubstr raw.text "cxx_dtor" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The M2b entry: two by-value `i32`s, `i32` return, the exempt
+    `cleanup` / `trap` scope (see `isAccTwoExemptText`; the arithmetic
+    lives in the callees, so no local `nsw` / `get_member`), no other
+    control flow, heap, or indexing. -/
+def isAccTwoShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    noBreakContinueSwitch raw.text &&
+    isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
+    isAccTwoExemptText raw.text &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
 /-- First forbidden construct found (all `outOfSubset`), if any.
     `cir.cleanup` / `cir.trap` reject generally (C++ destructor /
-    unreachable lowering); the exact M2b shape will earn a shape-aware
-    exemption here, everything else stays loud. -/
+    unreachable lowering); the exact M2b `acc_two` entry shape is
+    exempt via `isAccTwoExemptText` (everything else stays loud). -/
 def forbiddenOp (text : String) : Option String :=
   if containsSubstr text "cir.try" then some "exception handling (`cir.try`/cleanup/EH)"
   else if containsSubstr text "landingpad" then some "exception handling (landingpad)"
@@ -685,8 +842,8 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
-  else if containsSubstr text "cir.cleanup" then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
-  else if containsSubstr text "cir.trap" then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.trap" && !isAccTwoExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
@@ -698,8 +855,9 @@ def forbiddenOp (text : String) : Option String :=
 /-- The verified gate: `RawFunc` + oracle fact → admitted `Func`.
     Only the canonical shapes pass (`add`/`incr`/`choose`/`sum`,
     `vec_alloc`, `vec_alloc_u64` (M1b), `vec_realloc` (M1c), S1 DAG
-    callers, S2 `translate`, S3a control flow, S3b 64-bit loop-free
-    `add64`/`addu64`); everything
+    callers, S2 `translate`, M2a const-methods, M2b `Acc` ctor/add/get/
+    dtor leaves + `acc_two` entry (the sole `cleanup`/`trap` exemption),
+    S3a control flow, S3b 64-bit loop-free `add64`/`addu64`); everything
     else is rejected with a precise code (see the module docstring for
     check order). -/
 def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
@@ -750,6 +908,16 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { methodSumFunc with name := raw.name }
       else if isPointSumRefShape raw then
         .ok { pointSumRefFunc with name := raw.name }
+      else if isAccCtorShape raw then
+        .ok { accCtorFunc with name := raw.name }
+      else if isAccAddShape raw then
+        .ok { accAddFunc with name := raw.name }
+      else if isAccGetShape raw then
+        .ok { accGetFunc with name := raw.name }
+      else if isAccDtorShape raw then
+        .ok { accDtorFunc with name := raw.name }
+      else if isAccTwoShape raw then
+        .ok { accTwoFunc with name := raw.name }
       else if isNestedShape raw then
         .ok { nestedFunc with name := raw.name }
       else if isSkipShape raw then
@@ -791,7 +959,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/SUBSET.md rule 4)"
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only) and the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), and the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.switch" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape (S3a: equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30`; see docs/SUBSET.md)"
@@ -812,10 +980,11 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     Declarations (`cir.func private @callee...` without a body) are
     skipped (S1 precedent: caller files carry callee declarations).
     A defined function without an oracle fact is a loud error — except
-    functions whose every pointer param carries the C++ single-reference
-    triple (M2a method/entry defs): their uniqueness comes from the
-    `nonnull + dereferenceable + noundef` attrs in the CIR text itself,
-    so they validate under a synthetic `unknown` fact. -/
+    functions with a C++ single-reference (`this` / `const&`) pointer
+    param (M2a method/entry defs, M2b `Acc` leaf defs): their uniqueness
+    comes from the `nonnull + dereferenceable + noundef` attrs in the
+    CIR text itself, so they validate under a synthetic `unknown` fact.
+    (The M2b int-only entry needs its fact, like every int-only func.) -/
 def validateModule (text : String) (facts : List OracleFact) :
     List (String × Validation) :=
   match parseModule text with
@@ -983,3 +1152,20 @@ example : runModulePipelineOpt (include_str "../tests/cir/point_sum_ref.cir") []
       include_str "../tests/golden/MethodSum.lean")] := by native_decide
 
 
+
+/-- The checked-in `acc_two` C++ module (real CIRGen output with
+    `-fno-exceptions`: int-only entry + ctor/add/get/dtor leaves, one
+    oracle fact for the entry) validates and emits exactly the goldens,
+    in file order. -/
+example : runModulePipelineOpt (include_str "../tests/cir/acc_two.cir")
+    [⟨"_Z7acc_twoii", .unknown⟩] =
+    some [("_Z7acc_twoii",
+      include_str "../tests/golden/AccTwo.lean"),
+      ("_ZN3AccC2Ev",
+      include_str "../tests/golden/AccCtor.lean"),
+      ("_ZN3Acc3addEi",
+      include_str "../tests/golden/AccAdd.lean"),
+      ("_ZNK3Acc3getEv",
+      include_str "../tests/golden/AccGet.lean"),
+      ("_ZN3AccD2Ev",
+      include_str "../tests/golden/AccDtor.lean")] := by native_decide

@@ -3,7 +3,7 @@ Circe.Emit — verified emitter `CoreIR → Lean` (facade).
 
 Fragment definitions and proofs live in `Circe.Emit.*` (`Fragment`, `Add`,
 `Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `VecRealloc`, `Calls`, `Struct`,
-`Method`, `Flow`); shape
+`Method`, `Acc`, `Flow`); shape
 recognition in `Circe.Emit.Match`; file-text and spec-stub rendering in
 `Circe.Emit.Render` / `Circe.Emit.SpecStubs`. This module wires them
 together (`emitSpec`, `emitFunc`, `emitFunc_rejects`) and holds the golden
@@ -42,6 +42,11 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .translate => .ok (emitTranslateSpecText f.name)
   | some .methodSum => .ok (emitMethodSumSpecText f.name)
   | some .pointSumRef => .ok (emitPointSumRefSpecText f.name)
+  | some .accCtor => .ok (emitAccCtorSpecText f.name)
+  | some .accAdd => .ok (emitAccAddSpecText f.name)
+  | some .accGet => .ok (emitAccGetSpecText f.name)
+  | some .accDtor => .ok (emitAccDtorSpecText f.name)
+  | some .accTwo => .ok (emitAccTwoSpecText f.name)
   | some .nested => .ok (emitNestedSpecText f.name)
   | some .skip => .ok (emitSkipSpecText f.name)
   | some .findEq => .ok (emitFindEqSpecText f.name)
@@ -68,6 +73,11 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .translate => .ok ⟨emitTranslateText f.name, none⟩
   | some .methodSum => .ok ⟨emitMethodSumText f.name, none⟩
   | some .pointSumRef => .ok ⟨emitPointSumRefText f.name, none⟩
+  | some .accCtor => .ok ⟨emitAccCtorText f.name, none⟩
+  | some .accAdd => .ok ⟨emitAccAddText f.name, none⟩
+  | some .accGet => .ok ⟨emitAccGetText f.name, none⟩
+  | some .accDtor => .ok ⟨emitAccDtorText f.name, none⟩
+  | some .accTwo => .ok ⟨emitAccTwoText f.name, none⟩
   | some .nested => .ok ⟨emitNestedText f.name, none⟩
   | some .skip => .ok ⟨emitSkipText f.name, none⟩
   | some .findEq => .ok ⟨emitFindEqText f.name, none⟩
@@ -147,5 +157,30 @@ example : emitFileText (emitFunc methodSumFunc) =
     checked-in golden. -/
 example : emitFileText (emitFunc pointSumRefFunc) =
     include_str "../tests/golden/PointSumRef.lean" := by native_decide
+
+/-- The emitter output for `accCtorFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc accCtorFunc) =
+    include_str "../tests/golden/AccCtor.lean" := by native_decide
+
+/-- The emitter output for `accAddFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc accAddFunc) =
+    include_str "../tests/golden/AccAdd.lean" := by native_decide
+
+/-- The emitter output for `accGetFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc accGetFunc) =
+    include_str "../tests/golden/AccGet.lean" := by native_decide
+
+/-- The emitter output for `accDtorFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc accDtorFunc) =
+    include_str "../tests/golden/AccDtor.lean" := by native_decide
+
+/-- The emitter output for `accTwoFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc accTwoFunc) =
+    include_str "../tests/golden/AccTwo.lean" := by native_decide
 
 

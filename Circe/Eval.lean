@@ -712,6 +712,7 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok (ρ', .broke) => .ok (ρ', .broke)
     | .ok (ρ', .continued) => .ok (ρ', .continued)
     | .ok (ρ', .fellThrough) => evalStmtWith wh b ρ'
+  | .cleanup body, ρ => evalStmtWith wh body ρ
   | .let_ x _ e, ρ =>
     match evalExpr e ρ with
     | .error err => .error err
@@ -1105,6 +1106,7 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
     | .ok (ρ', .broke) => .ok (ρ', .broke)
     | .ok (ρ', .continued) => .ok (ρ', .continued)
     | .ok (ρ', .fellThrough) => evalProgStmt prog fuel b ρ'
+  | .cleanup body, ρ => evalProgStmt prog fuel body ρ
   | s, ρ => evalStmtFuel fuel s ρ
 
 /-- `callRet` with resolved actuals + callee runs the callee. -/
@@ -1263,3 +1265,18 @@ theorem evalProgStmt_return (prog : Prog) (fuel : Nat) (e : CExpr)
     evalProgStmt prog fuel (.return_ e) ρ = .ok (ρ, .returned v) := by
   have hfuel := evalStmtFuel_return fuel e ρ v h
   simp only [evalProgStmt, hfuel]
+
+/-- `cleanup` evaluates exactly its body (M2b: the `cleanup normal`
+    region is a trivial-dtor call, a no-op, so normal exit just runs the
+    scope; the trailing `cir.trap` is unreachable and unmodeled). -/
+theorem evalStmtFuel_cleanup (f : Nat) (body : CStmt) (ρ : Env) :
+    evalStmtFuel f (.cleanup body) ρ = evalStmtFuel f body ρ := by
+  cases f <;> rfl
+
+/-- `cleanup` under a program evaluates exactly its body (M2b: the scope
+    holds `callRet`s, so the program evaluator must recurse, not
+    delegate to the call-free `evalStmtFuel`). -/
+theorem evalProgStmt_cleanup (prog : Prog) (fuel : Nat) (body : CStmt)
+    (ρ : Env) :
+    evalProgStmt prog fuel (.cleanup body) ρ =
+      evalProgStmt prog fuel body ρ := rfl

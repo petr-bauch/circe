@@ -17,6 +17,7 @@ import Circe.Emit.VecRealloc
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Method
+import Circe.Emit.Acc
 import Circe.Emit.Flow
 
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
@@ -163,6 +164,26 @@ def matchFrag : Func → Option FragKind
     | .seq (.callRet "s" "_ZNK5Point3sumEv" ["p"])
         (.return_ (.var "s")) => some .pointSumRef
     | _ => none
+  | ⟨_, [], _, .return_ (.lit (.i32 z))⟩ =>
+    if z == 0 then some .accCtor else none
+  | ⟨_, [⟨"s", .i 32, .owned⟩, ⟨"v", .i 32, .owned⟩], _,
+      .return_ (.add (.var "s") (.var "v"))⟩ =>
+    some .accAdd
+  | ⟨_, [⟨"s", .i 32, .owned⟩], _, .return_ (.var "s")⟩ =>
+    some .accGet
+  | ⟨_, [⟨"t", .i 32, .owned⟩], _, .return_ (.var "t")⟩ =>
+    some .accDtor
+  | ⟨_, [⟨"a", .i 32, .owned⟩, ⟨"b", .i 32, .owned⟩], _, .cleanup body⟩ =>
+    -- Mangled callees + list literals + `cleanup` wrapper: body matched
+    -- separately (cf. `addCall` note).
+    match body with
+    | .seq (.callRet "s0" "_ZN3AccC2Ev" [])
+      (.seq (.callRet "s1" "_ZN3Acc3addEi" ["s0", "a"])
+      (.seq (.callRet "s2" "_ZN3Acc3addEi" ["s1", "b"])
+      (.seq (.callRet "s3" "_ZNK3Acc3getEv" ["s2"])
+      (.seq (.callRet "u" "_ZN3AccD2Ev" ["s3"])
+            (.return_ (.var "s3")))))) => some .accTwo
+    | _ => none
   | ⟨_, [⟨"n", .u 32, .owned⟩, ⟨"m", .u 32, .owned⟩], _, body⟩ =>
     -- Nested loop bodies matched separately: deeply-nested `.seq`
     -- patterns inside `⟨⟩` Func patterns hit the same equation-compiler
@@ -244,6 +265,11 @@ theorem matchFrag_sumCaller : matchFrag sumCallerFunc = some .sumCall := rfl
 theorem matchFrag_translate : matchFrag translateFunc = some .translate := rfl
 theorem matchFrag_methodSum : matchFrag methodSumFunc = some .methodSum := rfl
 theorem matchFrag_pointSumRef : matchFrag pointSumRefFunc = some .pointSumRef := rfl
+theorem matchFrag_accCtor : matchFrag accCtorFunc = some .accCtor := rfl
+theorem matchFrag_accAdd : matchFrag accAddFunc = some .accAdd := rfl
+theorem matchFrag_accGet : matchFrag accGetFunc = some .accGet := rfl
+theorem matchFrag_accDtor : matchFrag accDtorFunc = some .accDtor := rfl
+theorem matchFrag_accTwo : matchFrag accTwoFunc = some .accTwo := rfl
 theorem matchFrag_nested : matchFrag nestedFunc = some .nested := rfl
 theorem matchFrag_skip : matchFrag skipFunc = some .skip := rfl
 theorem matchFrag_findEq : matchFrag findEqFunc = some .findEq := rfl

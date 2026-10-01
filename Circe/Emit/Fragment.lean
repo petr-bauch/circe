@@ -23,7 +23,11 @@ import Circe.Eval
     (`vec64` = `vec_alloc` at width 64), and in M1c with a grown `u32`
     heap block (`vecRealloc` = fill / `realloc` to `2*n` / fill-extension
     / sum), in M2a with POD const-methods (`methodSum` = the
-    `_ZNK5Point3sumEv` leaf, `pointSumRef` = the single-call entry). -/
+    `_ZNK5Point3sumEv` leaf, `pointSumRef` = the single-call entry), in
+    M2b with value ctors + trivial dtors (`accCtor` = the `_ZN3AccC2Ev`
+    field-init leaf, `accAdd` = the `_ZN3Acc3addEi` checked-add leaf,
+    `accGet` = the `_ZNK3Acc3getEv` identity leaf, `accDtor` = the
+    `_ZN3AccD2Ev` no-op leaf, `accTwo` = the `cleanup`-scoped entry). -/
 inductive FragKind : Type
   | add
   | add64
@@ -40,6 +44,11 @@ inductive FragKind : Type
   | translate
   | methodSum
   | pointSumRef
+  | accCtor
+  | accAdd
+  | accGet
+  | accDtor
+  | accTwo
   | nested
   | skip
   | findEq

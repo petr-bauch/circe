@@ -186,6 +186,52 @@ def emitPointSumRefText (name : String) : String :=
   ++ s!"def {name}_fwd (p : Point) : Result (BitVec 32) :=\n"
   ++ "  pointSum p\n"
 
+/-- Render the `_ZN3AccC2Ev` ctor-leaf forward definition: the
+    field-init (`accCtor` = `0`; `evalFuncFuel_accCtor` certifies it). -/
+def emitAccCtorText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (value ctor: field-init `s = 0`). -/\n"
+  ++ s!"def {name}_fwd : Result (BitVec 32) :=\n"
+  ++ "  .ok accCtor\n"
+
+/-- Render the `_ZN3Acc3addEi` method-leaf forward definition: checked
+    `s += v` (`accAddFwd_ok/err` bridges certify the delegation). -/
+def emitAccAddText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (mutating `add`: checked field addition). -/\n"
+  ++ s!"def {name}_fwd (s v : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accAdd s v\n"
+
+/-- Render the `_ZNK3Acc3getEv` getter-leaf forward definition
+    (identity; `evalFuncFuel_accGet` certifies it). -/
+def emitAccGetText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (const getter: identity). -/\n"
+  ++ s!"def {name}_fwd (s : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accGet s\n"
+
+/-- Render the `_ZN3AccD2Ev` trivial-dtor-leaf forward definition
+    (no-op identity; `evalFuncFuel_accDtor` certifies it). -/
+def emitAccDtorText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (trivial dtor: no-op identity). -/\n"
+  ++ s!"def {name}_fwd (t : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accDtor t\n"
+
+/-- Render the `_Z7acc_twoii` entry forward definition: direct
+    delegation to `accTwo` (ctor-init + two checked adds; see
+    `evalProgFunc_accTwo`). -/
+def emitAccTwoText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (ctor + two `add` + `get`, dtor no-op). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accTwo a b\n"
+
 /-- Render the `nested_sum` forward definition: the double fold over
     `Base.nestedSumU32` (both bounds travel as words; fuel sufficiency
     is the `emit_correct_nested` side condition). -/

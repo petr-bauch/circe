@@ -60,6 +60,12 @@
 #    method differential fuzzer, and runs the method golden pipeline +
 #    rejection suite (real C++ corpus with `-fno-exceptions`, no oracle
 #    facts, coerce-deferral pin + method misshapen cases).
+# 17. (M2b) Regenerates + diffs the ctor/dtor goldens, typechecks the
+#    emitted files, builds the native C++ accumulator driver, runs the
+#    accumulator differential fuzzer, and runs the accumulator golden
+#    pipeline + rejection suite (real C++ corpus with `-fno-exceptions`,
+#    one oracle fact for the int-only entry, exact call-multiset +
+#    const-0 pins + cleanup-gate strictness cases).
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -200,10 +206,10 @@ echo "emitted 64-bit bodies match Emit assumptions"
 echo "== regenerate out/ (S4 spec stubs) =="
 lake env lean --run tools/GenOut.lean
 
-echo "== spec stub existence + typecheck (19 stubs) =="
-[ "$(ls out/*_Spec.lean | wc -l)" = 19 ] || { echo "expected 19 spec stubs"; exit 1; }
+echo "== spec stub existence + typecheck (24 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 24 ] || { echo "expected 24 spec stubs"; exit 1; }
 for f in out/*_Spec.lean; do lake env lean "$f"; done
-echo "all 19 spec stubs typecheck"
+echo "all 24 spec stubs typecheck"
 
 echo "== cir_simp coverage (S4 growth) =="
 grep -qF "addCallerFwd_as_calls, sumCallerFwd_is_call" Circe/Tactics.lean
@@ -214,7 +220,8 @@ grep -qF "vecReallocFillSumU32_correct" Circe/Tactics.lean
 grep -qF "vecFillSumU64_correct" Circe/Tactics.lean
 grep -qF "result_bind_assoc, result_pure_bind" Circe/Tactics.lean
 grep -qF "pointSum, pointSum_ok, pointSum_err, methodSumFwd_ok," Circe/Tactics.lean
-echo "cir_simp covers call-unfold, struct-field, method, wider-width, vec rules"
+grep -qF "accTwo, accTwo_ok, accTwo_err_a, accTwo_err_b, accAddFwd_ok," Circe/Tactics.lean
+echo "cir_simp covers call-unfold, struct-field, method, ctor, wider-width, vec rules"
 
 echo "== spec stub contents (signature + body ref + edges + prop entry) =="
 grep -qF "_spec_fwd" out/SumArray_Spec.lean
@@ -231,7 +238,7 @@ for f in out/*_Spec.lean; do
   echo "#eval $check" >> "$tmp"
   lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
 done
-echo "all 19 spec prop entries true"
+echo "all 24 spec prop entries true"
 
 echo "== S5 helpers present (Tactics stage 2) =="
 grep -qF 'macro "cir_fuel"' Circe/Eval.lean
@@ -337,7 +344,12 @@ echo "== golden pipeline + free-discipline suite =="
 lake env lean --run tests/lean/GoldenFreeDiscipline.lean
 
 echo "== M2 setup gates (trap/cleanup + module validation) =="
-if grep -rl "cir.cleanup\|cir.trap" tests/cir/; then
+# The C corpus must stay free of the newly-gated ops; the C++ corpus
+# (tests/cpp/ → tests/cir/) legitimately carries `cleanup` / `trap`
+# in the exact M2b entry shape, so it is excluded by construction.
+excludes=()
+for src in tests/cpp/*.cpp; do excludes+=(--exclude="$(basename "$src" .cpp).cir"); done
+if grep -rl "cir.cleanup\|cir.trap" "${excludes[@]}" tests/cir/; then
   echo "newly-gated ops present in C corpus (breaks M2 setup gate)"
   exit 1
 fi
@@ -373,5 +385,47 @@ echo "== emitted-body correspondence (M2a emit_correct transfer) =="
 grep -qF "pointSum p" out/MethodSum.lean
 grep -qF "pointSum p" out/PointSumRef.lean
 echo "emitted method bodies match Emit assumptions"
+
+echo "== regenerate out/ (M2b ctors/dtors) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (M2b ctors/dtors) =="
+diff -u tests/golden/AccCtor.lean out/AccCtor.lean
+diff -u tests/golden/AccAdd.lean out/AccAdd.lean
+diff -u tests/golden/AccGet.lean out/AccGet.lean
+diff -u tests/golden/AccDtor.lean out/AccDtor.lean
+diff -u tests/golden/AccTwo.lean out/AccTwo.lean
+echo "ctor/dtor goldens in sync"
+
+echo "== typecheck emitted ctor/dtor files =="
+lake env lean out/AccCtor.lean
+lake env lean out/AccAdd.lean
+lake env lean out/AccGet.lean
+lake env lean out/AccDtor.lean
+lake env lean out/AccTwo.lean
+lake env lean out/AccCtor_Spec.lean
+lake env lean out/AccAdd_Spec.lean
+lake env lean out/AccGet_Spec.lean
+lake env lean out/AccDtor_Spec.lean
+lake env lean out/AccTwo_Spec.lean
+echo "emitted ctor/dtor files typecheck"
+
+echo "== native accumulator driver =="
+ACC_BIN="$WORKDIR/circe_acc_native"
+c++ -O0 -Wall tests/cpp/acc_two.cpp tests/diff/driver_acc.cpp -o "$ACC_BIN"
+
+echo "== differential test accumulator (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffAcc.lean "$ACC_BIN" "$TRIALS"
+
+echo "== golden pipeline + accumulator rejection suite =="
+lake env lean --run tests/lean/GoldenAcc.lean
+
+echo "== emitted-body correspondence (M2b emit_correct transfer) =="
+grep -qF ".ok accCtor" out/AccCtor.lean
+grep -qF "accAdd s v" out/AccAdd.lean
+grep -qF "accGet s" out/AccGet.lean
+grep -qF "accDtor t" out/AccDtor.lean
+grep -qF "accTwo a b" out/AccTwo.lean
+echo "emitted ctor/dtor bodies match Emit assumptions"
 
 echo "CHECK-OK"
