@@ -436,6 +436,27 @@ def emitAccTwoSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
   ++ s!"      == (repr (accTwo t.1 t.2)).pretty\n"
 
+/-- Spec stub for the `boxThrough` shape (M2c entry). -/
+def emitBoxThroughSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t {name}(int32_t x)` (`new` → read → `delete` passthrough).\n"
+  ++ s!"    Base body reference: `boxThrough` (cf. emitted `{name}_fwd`, `evalFuncFuel_boxThrough`). -/\n"
+  ++ s!"def {name}_spec_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  boxThrough x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, extrema (the passthrough is total). -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 0x7FFFFFFF, 0x80000000]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `boxThrough` on every edge.\n"
+  ++ "    TODO (user): strengthen to the identity equation (`boxThrough_ok`\n"
+  ++ "    — fires in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun x =>\n"
+  ++ s!"    (repr ({name}_spec_fwd x)).pretty\n"
+  ++ s!"      == (repr (boxThrough x)).pretty\n"
+
 /-- Spec stub for the `nested_sum` shape (S3a). -/
 def emitNestedSpecText (name : String) : String :=
   emitSpecHeader

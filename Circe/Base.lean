@@ -350,6 +350,87 @@ theorem accTwo_err_b (a b s1 : BitVec 32) (e : Panic)
     accTwo a b = .error e := by
   simp only [accTwo, h1, h2]
 
+/-! ## M2c: uniquely-owned heap box `Box32` (`new` / `delete`) -/
+
+/-- A uniquely-owned single-`i32` heap box (`new Box{x}` / `delete`
+    functionalized, Vec32 precedent at one word). `val` is the field
+    value; `freed` is the affine token: `boxFree` sets it, and every use
+    checks it (`AssertFail` on use-after-delete / double-`delete` —
+    incompleteness, never unsoundness). Allocation is unbounded
+    (`boxNew` never fails, like `_Znwm` / `vecNew`); the null-guarded
+    `cir.if` in the corpus is dead (the pointer is `nonnull`) and erased
+    at validation. -/
+structure Box32 where
+  val : BitVec 32
+  freed : Bool
+  deriving DecidableEq, Repr
+
+/-- `new Box{x}`: fresh live box holding `x`. Never fails (unbounded
+    allocation; `_Znwm` carries `nonnull + noundef`). -/
+def boxNew (x : BitVec 32) : Result Box32 :=
+  .ok ⟨x, false⟩
+
+/-- `p->x`: token then value. -/
+def boxGet (b : Box32) : Result (BitVec 32) :=
+  if b.freed then .error .AssertFail
+  else .ok b.val
+
+/-- `delete p`: consumes the token (double-`delete` is `AssertFail`). -/
+def boxFree (b : Box32) : Result Box32 :=
+  if b.freed then .error .AssertFail
+  else .ok ⟨b.val, true⟩
+
+/-- Allocation delivers a live box holding the init value. -/
+theorem boxNew_ok (x : BitVec 32) :
+    boxNew x = .ok ⟨x, false⟩ := rfl
+
+/-- Allocation keeps the box live. -/
+theorem boxNew_live (x : BitVec 32) (b : Box32)
+    (h : boxNew x = .ok b) : b.freed = false := by
+  rw [boxNew_ok] at h
+  cases h
+  rfl
+
+/-- Read on a live box succeeds. -/
+theorem boxGet_ok (b : Box32)
+    (hlive : b.freed = false) :
+    boxGet b = .ok b.val := by
+  simp [boxGet, hlive]
+
+/-- Read on a freed box is rejected (use-after-`delete`). -/
+theorem boxGet_freed (b : Box32)
+    (h : b.freed = true) : boxGet b = .error .AssertFail := by
+  simp [boxGet, h]
+
+/-- Freeing a live box sets the token, keeping the value. -/
+theorem boxFree_ok (b : Box32)
+    (hlive : b.freed = false) :
+    boxFree b = .ok ⟨b.val, true⟩ := by
+  simp [boxFree, hlive]
+
+/-- Double-`delete` is rejected. -/
+theorem boxFree_double (b : Box32)
+    (h : b.freed = true) : boxFree b = .error .AssertFail := by
+  simp [boxFree, h]
+
+/-- M2c `box_through`: `new` → read → `delete` passthrough (total). -/
+def boxThrough (x : BitVec 32) : Result (BitVec 32) :=
+  match boxNew x with
+  | .error e => .error e
+  | .ok b0 =>
+    match boxGet b0 with
+    | .error e => .error e
+    | .ok r =>
+      match boxFree b0 with
+      | .error e => .error e
+      | .ok _ => .ok r
+
+/-- `box_through` is the identity (all three ops succeed on the fresh
+    live box). -/
+theorem boxThrough_ok (x : BitVec 32) :
+    boxThrough x = .ok x := by
+  simp [boxThrough, boxNew, boxGet, boxFree]
+
 /-! ## S3a control-flow folds: `nested_sum` / `skip_sum` value models -/
 
 /-- One row of `nested_sum`: `Σ_{j<m} i*j` as a wrapping `u32` sum of

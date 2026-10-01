@@ -66,6 +66,12 @@
 #    pipeline + rejection suite (real C++ corpus with `-fno-exceptions`,
 #    one oracle fact for the int-only entry, exact call-multiset +
 #    const-0 pins + cleanup-gate strictness cases).
+# 18. (M2c) Regenerates + diffs the new/delete golden, typechecks the
+#    emitted files, builds the native C++ box driver, runs the box
+#    differential fuzzer, and runs the box golden pipeline + rejection
+#    suite (real C++ corpus with `-fno-exceptions`, one oracle fact for
+#    the int-only entry, 4-byte size + null-guard + call-multiset pins,
+#    leak acceptance, double-delete gate, token checks).
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -206,10 +212,10 @@ echo "emitted 64-bit bodies match Emit assumptions"
 echo "== regenerate out/ (S4 spec stubs) =="
 lake env lean --run tools/GenOut.lean
 
-echo "== spec stub existence + typecheck (24 stubs) =="
-[ "$(ls out/*_Spec.lean | wc -l)" = 24 ] || { echo "expected 24 spec stubs"; exit 1; }
+echo "== spec stub existence + typecheck (25 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 25 ] || { echo "expected 25 spec stubs"; exit 1; }
 for f in out/*_Spec.lean; do lake env lean "$f"; done
-echo "all 24 spec stubs typecheck"
+echo "all 25 spec stubs typecheck"
 
 echo "== cir_simp coverage (S4 growth) =="
 grep -qF "addCallerFwd_as_calls, sumCallerFwd_is_call" Circe/Tactics.lean
@@ -221,6 +227,7 @@ grep -qF "vecFillSumU64_correct" Circe/Tactics.lean
 grep -qF "result_bind_assoc, result_pure_bind" Circe/Tactics.lean
 grep -qF "pointSum, pointSum_ok, pointSum_err, methodSumFwd_ok," Circe/Tactics.lean
 grep -qF "accTwo, accTwo_ok, accTwo_err_a, accTwo_err_b, accAddFwd_ok," Circe/Tactics.lean
+grep -qF "boxThrough, boxThrough_ok" Circe/Tactics.lean
 echo "cir_simp covers call-unfold, struct-field, method, ctor, wider-width, vec rules"
 
 echo "== spec stub contents (signature + body ref + edges + prop entry) =="
@@ -238,7 +245,7 @@ for f in out/*_Spec.lean; do
   echo "#eval $check" >> "$tmp"
   lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
 done
-echo "all 24 spec prop entries true"
+echo "all 25 spec prop entries true"
 
 echo "== S5 helpers present (Tactics stage 2) =="
 grep -qF 'macro "cir_fuel"' Circe/Eval.lean
@@ -427,5 +434,31 @@ grep -qF "accGet s" out/AccGet.lean
 grep -qF "accDtor t" out/AccDtor.lean
 grep -qF "accTwo a b" out/AccTwo.lean
 echo "emitted ctor/dtor bodies match Emit assumptions"
+
+echo "== regenerate out/ (M2c new/delete) =="
+lake env lean --run tools/GenOut.lean
+
+echo "== golden diff (M2c new/delete) =="
+diff -u tests/golden/BoxThrough.lean out/BoxThrough.lean
+echo "new/delete golden in sync"
+
+echo "== typecheck emitted new/delete files =="
+lake env lean out/BoxThrough.lean
+lake env lean out/BoxThrough_Spec.lean
+echo "emitted new/delete files typecheck"
+
+echo "== native box driver =="
+BOX_BIN="$WORKDIR/circe_box_native"
+c++ -O0 -Wall tests/cpp/box_through.cpp tests/diff/driver_box.cpp -o "$BOX_BIN"
+
+echo "== differential test box (${TRIALS} trials) =="
+lake env lean --run tests/lean/DiffBox.lean "$BOX_BIN" "$TRIALS"
+
+echo "== golden pipeline + box rejection suite =="
+lake env lean --run tests/lean/GoldenBox.lean
+
+echo "== emitted-body correspondence (M2c emit_correct transfer) =="
+grep -qF "boxThrough x" out/BoxThrough.lean
+echo "emitted new/delete body matches Emit assumptions"
 
 echo "CHECK-OK"

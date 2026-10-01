@@ -138,3 +138,14 @@ clang -fclangir -Xclang -emit-cir -fno-exceptions \
   (identity) / `@_ZN3AccD2Ev` (`cxx_dtor`, empty); entry scope is
   `cleanup.scope` + `cleanup normal` (dtor) + trailing `cir.trap`
   with exactly 5 call sites; one oracle fact (the entry, `unknown`).
+- Checked-in M2c corpus: `tests/cpp/box_through.cpp` →
+  `tests/cir/box_through.cir` (`cir-opt` VERIFY-OK), int-only entry
+  `@_Z11box_throughi` (one `i32`, `i32` return): `new` is
+  `cir.const #cir.int<4> : !u64i` + `cir.call @_Znwm` (`allocsize`,
+  `builtin`) + bitcast + `get_member x` store; read is `get_member x`
+  + load; `delete` is a null guard (`cir.cmp ne` vs `#cir.ptr<null>`
+  + `cir.if`) with a `cleanup`-scoped sized
+  `cir.call @_ZdlPvm(ptr, 4)` (no `cir.trap`: `Box` has a trivial
+  dtor); exactly 2 call sites; one oracle fact (the entry, `unknown`).
+  The 1-`new` / 0-`delete` leak spelling is accepted by the shape
+  (M1d) and needs no `cleanup` exemption.

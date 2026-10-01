@@ -38,6 +38,7 @@ inductive Value : Type
   | arr32 : List (BitVec 32) → Value
   | vecVal : Vec32 → Value
   | vecVal64 : Vec64 → Value
+  | boxVal : Box32 → Value
   | structVal : String → List (String × BitVec 32) → Value
   deriving DecidableEq, Repr
 
@@ -369,6 +370,22 @@ def evalExpr : CExpr → Env → Result Value
         | .ok x => .ok (.u64 x)
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
+  | .boxNew se, ρ =>
+    match evalExpr se ρ with
+    | .error e => .error e
+    | .ok (.i32 x) =>
+      match boxNew x with
+      | .error e => .error e
+      | .ok b => .ok (.boxVal b)
+    | .ok _ => .error .AssertFail
+  | .boxGet b, ρ =>
+    match envLookup ρ b with
+    | none => .error .Uninit
+    | some (.boxVal v) =>
+      match boxGet v with
+      | .error e => .error e
+      | .ok x => .ok (.i32 x)
+    | some _ => .error .AssertFail
   | .fget obj field, ρ =>
     match envLookup ρ obj with
     | none => .error .Uninit
@@ -610,6 +627,46 @@ theorem evalExpr_vget_mix64 (arr : String) (v : Vec64) (i : BitVec 32)
     evalExpr (.vget arr (.lit (.u32 i))) ρ = .error .AssertFail := by
   simp [evalExpr, litVal, harr]
 
+/-- `boxNew` on an `i32` init allocates a live box (M2c). -/
+theorem evalExpr_boxNew_ok (e : CExpr) (ρ : Env) (x : BitVec 32)
+    (h : evalExpr e ρ = .ok (.i32 x)) :
+    evalExpr (.boxNew e) ρ = .ok (.boxVal ⟨x, false⟩) := by
+  simp [evalExpr, h, boxNew]
+
+/-- `boxNew` propagates init errors. -/
+theorem evalExpr_boxNew_err (e : CExpr) (ρ : Env) (err : Panic)
+    (h : evalExpr e ρ = .error err) :
+    evalExpr (.boxNew e) ρ = .error err := by
+  simp [evalExpr, h]
+
+/-- `boxNew` on a non-`i32` init is rejected. -/
+theorem evalExpr_boxNew_mismatch (e : CExpr) (ρ : Env) (v : Value)
+    (hv : ∀ x : BitVec 32, v ≠ .i32 x)
+    (h : evalExpr e ρ = .ok v) :
+    evalExpr (.boxNew e) ρ = .error .AssertFail := by
+  simp [evalExpr, h]
+
+/-- Live box read succeeds (M2c). -/
+theorem evalExpr_boxGet_hit (b : String) (v : Box32) (ρ : Env) (x : BitVec 32)
+    (harr : envLookup ρ b = some (.boxVal v))
+    (hget : boxGet v = .ok x) :
+    evalExpr (.boxGet b) ρ = .ok (.i32 x) := by
+  simp [evalExpr, harr, hget]
+
+/-- Box read errors (use-after-`delete`) propagate (M2c). -/
+theorem evalExpr_boxGet_err (b : String) (v : Box32) (ρ : Env) (e : Panic)
+    (harr : envLookup ρ b = some (.boxVal v))
+    (hget : boxGet v = .error e) :
+    evalExpr (.boxGet b) ρ = .error e := by
+  simp [evalExpr, harr, hget]
+
+/-- Reading a non-box is rejected, never silently modeled (M2c). -/
+theorem evalExpr_boxGet_notbox (b : String) (v : BitVec 32)
+    (ρ : Env)
+    (harr : envLookup ρ b = some (.i32 v)) :
+    evalExpr (.boxGet b) ρ = .error .AssertFail := by
+  simp [evalExpr, harr]
+
 /-- Field projection hits. -/
 theorem evalExpr_fget_hit (obj : String) (tag : String)
     (fields : List (String × BitVec 32)) (f : String) (x : BitVec 32)
@@ -781,6 +838,17 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
       | .error e => .error e
       | .ok b' =>
         match envUpdate ρ x (.vecVal64 b') with
+        | none => .error .Uninit
+        | some ρ' => .ok (ρ', .fellThrough)
+    | some _ => .error .AssertFail
+  | .boxFree x, ρ =>
+    match envLookup ρ x with
+    | none => .error .Uninit
+    | some (.boxVal b) =>
+      match boxFree b with
+      | .error e => .error e
+      | .ok b' =>
+        match envUpdate ρ x (.boxVal b') with
         | none => .error .Uninit
         | some ρ' => .ok (ρ', .fellThrough)
     | some _ => .error .AssertFail
@@ -968,6 +1036,38 @@ theorem evalStmtFuel_vfree64 (f : Nat) (x : String) (ρ : Env)
     (hu : envUpdate ρ x (.vecVal64 b') = some ρ') :
     evalStmtFuel f (.vfree x) ρ = .ok (ρ', .fellThrough) := by
   cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
+
+/-- `boxFree` consumes the token and updates the binding (M2c, any fuel). -/
+theorem evalStmtFuel_boxFree (f : Nat) (x : String) (ρ : Env)
+    (b b' : Box32) (ρ' : Env)
+    (harr : envLookup ρ x = some (.boxVal b))
+    (hfree : boxFree b = .ok b')
+    (hu : envUpdate ρ x (.boxVal b') = some ρ') :
+    evalStmtFuel f (.boxFree x) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
+
+/-- `boxFree` errors (double-`delete`) propagate (M2c, any fuel). -/
+theorem evalStmtFuel_boxFree_err (f : Nat) (x : String) (ρ : Env)
+    (b : Box32) (e : Panic)
+    (harr : envLookup ρ x = some (.boxVal b))
+    (hfree : boxFree b = .error e) :
+    evalStmtFuel f (.boxFree x) ρ = .error e := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree]
+
+/-- `let_` binds the value and extends the environment (any fuel). -/
+theorem evalStmtFuel_let_ (f : Nat) (x : String) (ty : CType) (e : CExpr)
+    (ρ : Env) (v : Value)
+    (h : evalExpr e ρ = .ok v) :
+    evalStmtFuel f (.let_ x ty e) ρ =
+      .ok (envExtend ρ x v, .fellThrough) := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h]
+
+/-- `let_` propagates expression errors (any fuel). -/
+theorem evalStmtFuel_let_err (f : Nat) (x : String) (ty : CType) (e : CExpr)
+    (ρ : Env) (err : Panic)
+    (h : evalExpr e ρ = .error err) :
+    evalStmtFuel f (.let_ x ty e) ρ = .error err := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, h]
 
 /-- `vrealloc` resizes a live block and updates the binding (M1c, any fuel). -/
 theorem evalStmtFuel_vrealloc (f : Nat) (x : String) (se : CExpr) (ρ : Env)

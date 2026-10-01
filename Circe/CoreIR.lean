@@ -57,6 +57,10 @@ inductive CLit : Type
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
     update functionalized: `q.x = …; q.y = …; return q`).
+    `boxNew e` is `new Box{…}` (`cir.call @_Znwm` + bitcast + field
+    store fused: `e` must be an `i32`); `boxGet b` is `p->x`
+    (`cir.get_member` + `cir.load` fused: `b` must be a `boxVal`;
+    use-after-`delete` is `AssertFail`).
     Each constructor requires per-op `Eval`/`Emit` lemmas before admission
     (see docs/PIPELINE.md). -/
 inductive CExpr : Type
@@ -70,6 +74,8 @@ inductive CExpr : Type
   | idx : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
+  | boxNew : CExpr → CExpr
+  | boxGet : String → CExpr
   | fget : String → String → CExpr
   | pmk : CExpr → CExpr → CExpr
   deriving DecidableEq, Repr
@@ -89,7 +95,9 @@ inductive CExpr : Type
     `validate`). Heap block statements: `vset`/`vfree` thread `Vec32` /
     `Vec64` values with an affine token; `vrealloc vec m` (M1c) resizes
     the named block to `m` words via `vecRealloc` (prefix preserved,
-    growth zero-filled, never fails). `cleanup body` (M2b) sequences a
+    growth zero-filled, never fails). `boxFree box` (M2c) consumes the
+    named box via `boxFree` (double-`delete` is `AssertFail`).
+    `cleanup body` (M2b) sequences a
     destructor-guarded scope: the body runs, then the `cleanup normal`
     region (a trivial-dtor call, a no-op at validation, so `cleanup`
     evaluates exactly its body; the trailing `cir.trap` marks the
@@ -103,6 +111,7 @@ inductive CStmt : Type
   | vset (vec : String) (idx val : CExpr)
   | vrealloc (vec : String) (newSize : CExpr)
   | vfree (vec : String)
+  | boxFree (box : String)
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)
   | break_

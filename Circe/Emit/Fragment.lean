@@ -49,6 +49,7 @@ inductive FragKind : Type
   | accGet
   | accDtor
   | accTwo
+  | boxThrough
   | nested
   | skip
   | findEq

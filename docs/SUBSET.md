@@ -176,6 +176,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Misshapen uses (missing/extra calls, non-trivial dtor bodies,
     wrapping leaf arithmetic, bare pointers without the triple,
     non-zero ctor init) are rejected with dedicated messages.
+15. `new` / `delete` (M2c): exact shape only —
+    `_Z11box_throughi` (one by-value `i32`, `i32` return: `new Box{x}`
+    (4-byte `!u64i` size const + `cir.call @_Znwm` + bitcast + field
+    store) + read (`cir.get_member` `x`) + at most one null-guarded
+    `cleanup`-scoped sized `cir.call @_ZdlPvm` (M1d: the 1-`new` /
+    0-`delete` leak spelling validates to the same body; more
+    `delete`s than `new`s is double-`delete`)).
+    Semantics: the box is a single `i32` value plus an affine `freed`
+    token threaded functionally (`boxNew` never fails, `boxGet` reads
+    the value, `boxFree` consumes the token; double-`delete` /
+    use-after-`delete` are `AssertFail`); the entry is total
+    (`boxThrough` = identity). The box never crosses the boundary
+    (param/return are `i32`). The int-only entry needs its oracle
+    fact (like every int-only func). The null guard (`cir.cmp ne` vs
+    `#cir.ptr<null>` + `cir.if`) is dead (`_Znwm` returns `nonnull`)
+    and erased, as is the `cleanup` scope; the gate pins the guard,
+    the size const, and the call multiset instead. `cir.cleanup` is
+    admitted here (exact 1 + 1 multiset + guard + no-EH pins) and in
+    M2b; `cir.trap` only in M2b; everywhere else both reject loudly.
+    Misshapen uses (missing `new`, unguarded `delete`, double-
+    `delete`, wrong size const) are rejected with dedicated messages.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -186,30 +207,42 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 `@realloc` in the vecRealloc shape only; `@add`/`@sum_array` in the exact
 S1 caller shapes only; `@_ZNK5Point3sumEv` in the exact M2a entry shape
 only; `@_ZN3AccC2Ev` / `@_ZN3Acc3addEi` / `@_ZNK3Acc3getEv` /
-`@_ZN3AccD2Ev` in the exact M2b entry shape only (1 + 2 + 1 + 1 sites)),
+`@_ZN3AccD2Ev` in the exact M2b entry shape only (1 + 2 + 1 + 1 sites);
+`@_Znwm` / `@_ZdlPvm` in the exact M2c entry shape only (1 + at most 1
+sites: leak allowed, double-`delete` rejected)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf
 shapes only: `cxx_ctor` const-`0` init / `add` one-`nsw`-add /
-`get` identity read; all other struct
+`get` identity read; M2c `box_through` entry shape only: `Box` field
+`x` write + read; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`, all other switches rejected),
 `cir.mul` (plain unsigned, S3a `nested_sum` shape only),
 `get_element`/`ptr_stride` (bounded),
-`cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`,
-`cir.scope`/`cir.yield`, `cir.const #cir.int<N>`.
+`cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`
+(`cir.if` carries the M2c null guard: `cir.cmp ne` vs
+`#cir.ptr<null>`),
+`cir.scope`/`cir.yield`, `cir.const #cir.int<N>`
+(`#cir.int<4> : !u64i` pinned in the M2c shape).
 `cir.cleanup.scope` / `cleanup normal` + `cir.trap` in the exact M2b
 `acc_two` entry shape only (single `cleanup` scope, exact 1 + 2 + 1 + 1
-call multiset, no `cir.try` / `personality` / `cleanup eh` / heap).
+call multiset, no `cir.try` / `personality` / `cleanup eh` / heap);
+`cir.cleanup.scope` / `cleanup normal` (no `cir.trap`) in the exact M2c
+`box_through` entry shape only (null-guarded, exact 1 + 1 call
+multiset, 4-byte size const, no `cir.try` / `personality` /
+`cleanup eh` / C heap).
 `cir.get_global @malloc/@free` plumbing allowed in vec/vec2/vec64/vecRealloc
 shapes only (`@realloc` in vecRealloc only).
+`cir.cast bitcast` (`void` ↔ `Box`) in the M2c shape only.
 64-bit spellings (`!s64i`/`!u64i` + long forms) in the S3b `add64` /
-`addu64` shapes only; 8/16-bit spellings always rejected (promotion).
+`addu64` shapes only (plus the M2c 4-byte `!u64i` size const); 8/16-bit spellings always rejected (promotion).
 
 ## Rejected (loud, with dedicated messages)
 
-`cir.try`/cleanup/EH (except the exact M2b `acc_two` entry scope),
+`cir.try`/cleanup/EH (except the exact M2b `acc_two` entry scope and
+the exact M2c `box_through` entry scope),
 vtables, atomics, `volatile`, float,
 inline asm, `void*`/int-ptr casts, escaping address-of, unbounded
 pointer arithmetic, non-admitted heap uses, `setjmp`/`longjmp`,
@@ -222,4 +255,4 @@ Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
-+ `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12).
++ `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9).

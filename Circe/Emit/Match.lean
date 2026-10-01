@@ -18,6 +18,7 @@ import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Method
 import Circe.Emit.Acc
+import Circe.Emit.Box
 import Circe.Emit.Flow
 
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
@@ -184,6 +185,15 @@ def matchFrag : Func → Option FragKind
       (.seq (.callRet "u" "_ZN3AccD2Ev" ["s3"])
             (.return_ (.var "s3")))))) => some .accTwo
     | _ => none
+  | ⟨_, [⟨"x", .i 32, .owned⟩], _, body⟩ =>
+    -- `let_`/`boxFree` chain: body matched separately (nested `.seq`
+    -- patterns inside `⟨⟩` hit the parser quirk, cf. `addCall` note).
+    match body with
+    | .seq (.let_ "p" _ (.boxNew (.var "x")))
+      (.seq (.let_ "r" _ (.boxGet "p"))
+      (.seq (.boxFree "p")
+            (.return_ (.var "r")))) => some .boxThrough
+    | _ => none
   | ⟨_, [⟨"n", .u 32, .owned⟩, ⟨"m", .u 32, .owned⟩], _, body⟩ =>
     -- Nested loop bodies matched separately: deeply-nested `.seq`
     -- patterns inside `⟨⟩` Func patterns hit the same equation-compiler
@@ -270,6 +280,7 @@ theorem matchFrag_accAdd : matchFrag accAddFunc = some .accAdd := rfl
 theorem matchFrag_accGet : matchFrag accGetFunc = some .accGet := rfl
 theorem matchFrag_accDtor : matchFrag accDtorFunc = some .accDtor := rfl
 theorem matchFrag_accTwo : matchFrag accTwoFunc = some .accTwo := rfl
+theorem matchFrag_boxThrough : matchFrag boxThroughFunc = some .boxThrough := rfl
 theorem matchFrag_nested : matchFrag nestedFunc = some .nested := rfl
 theorem matchFrag_skip : matchFrag skipFunc = some .skip := rfl
 theorem matchFrag_findEq : matchFrag findEqFunc = some .findEq := rfl

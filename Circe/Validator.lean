@@ -73,11 +73,14 @@ def callsFunc (text fname : String) : Bool :=
   containsSubstr text ("cir.call @" ++ fname ++ "(")
 
 /-- A line performing a non-heap call (`malloc`/`free` plumbing excluded —
-    those are gated by the vec shape instead). -/
+    those are gated by the vec shape instead; `new`/`delete` excluded —
+    those are gated by the M2c `box_through` shape instead). -/
 def lineHasNonHeapCall (line : String) : Bool :=
   containsSubstr line "cir.call @" &&
   !containsSubstr line "cir.call @malloc(" &&
-  !containsSubstr line "cir.call @free("
+  !containsSubstr line "cir.call @free(" &&
+  !containsSubstr line "cir.call @_Znwm(" &&
+  !containsSubstr line "cir.call @_ZdlPvm("
 
 /-- Whole-text wrapper (cf. `hasWrappingSignedArith`). -/
 def hasNonHeapCall (text : String) : Bool :=
@@ -226,6 +229,20 @@ def mallocCallCount (text : String) : Nat :=
 def reallocCallCount (text : String) : Nat :=
   ((text.splitOn "\n").filter (fun line =>
     containsSubstr line "cir.call @realloc(")).length
+
+/-- `new` *call* sites (`cir.call @_Znwm(`/n): same line-aware
+    rationale as `freeCallCount` — the `cir.func private @_Znwm`
+    declaration also contains `@_Znwm(`. -/
+def newCallCount (text : String) : Nat :=
+  ((text.splitOn "\n").filter (fun line =>
+    containsSubstr line "cir.call @_Znwm(")).length
+
+/-- Sized-`delete` *call* sites (`cir.call @_ZdlPvm(`/n): same line-aware
+    rationale as `freeCallCount` — the `cir.func private @_ZdlPvm`
+    declaration also contains `@_ZdlPvm(`. -/
+def deleteCallCount (text : String) : Nat :=
+  ((text.splitOn "\n").filter (fun line =>
+    containsSubstr line "cir.call @_ZdlPvm(")).length
 
 /-- A line performing a non-heap, non-`realloc` call (`malloc`/`free`
     plumbing excluded — those are gated by the vec shapes instead;
@@ -817,10 +834,99 @@ def isAccTwoShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_stride"
   | _ => false
 
+/-! ## M2c: `new` / `delete` as ownership ops (`box_through` entry) -/
+
+/-- The M2c `Box` struct type: CIRGen's `!rec_Box` alias (long-form
+    `!cir.struct<"Box" …>` also matches via the `"Box"` substring;
+    applied to short type tokens only, never whole text). -/
+def isBoxType (t : String) : Bool :=
+  t == "!rec_Box" || containsSubstr t "Box"
+
+/-- Text-level exemption check for the M2c entry: a `cleanup.scope` /
+    `cleanup normal` region (the sized `delete` inside the null guard)
+    with exactly the `box_through` call multiset (1 `new` + 1 sized
+    `delete`, 2 `cir.call` sites total), the null guard (`cir.cmp ne`
+    vs `#cir.ptr<null>` + `cir.if`), the 4-byte size const, bitcasts,
+    and no EH (`cir.try` / `personality` / `cleanup eh`) or C heap.
+    This is the `forbiddenOp` exemption gate (cf.
+    `isAccTwoExemptText`); full admission additionally pins the
+    signature (`isBoxThroughShape`). The leak variant (1 `new`, 0
+    `delete`, no `cleanup`) needs no exemption: it has no `cir.cleanup`
+    for the general gate to fire on. -/
+def isBoxThroughExemptText (text : String) : Bool :=
+  containsSubstr text "cir.cleanup.scope" &&
+  containsSubstr text "cleanup normal" &&
+  callsFunc text "_Znwm" &&
+  callsFunc text "_ZdlPvm" &&
+  containsSubstr text "cir.cmp ne" &&
+  containsSubstr text "#cir.ptr<null>" &&
+  containsSubstr text "cir.if" &&
+  containsSubstr text "#cir.int<4>" &&
+  containsSubstr text "bitcast" &&
+  opCount text "cir.call @" == 2 &&
+  newCallCount text == 1 &&
+  deleteCallCount text == 1 &&
+  !containsSubstr text "cir.try" &&
+  !containsSubstr text "personality" &&
+  !containsSubstr text "cleanup eh" &&
+  !containsSubstr text "cir.call @malloc" &&
+  !containsSubstr text "cir.call @free("
+
+/-- The M2c entry: one by-value `i32`, `i32` return, `new Box{x}` (the
+    4-byte `!u64i` size const + `cir.call @_Znwm` + bitcast + field
+    store) + read (`cir.get_member` `x`) + at most one sized `delete`
+    (M1d: leak is forgetting a value, sound — the 1-`new`/0-`delete`
+    spelling validates to the same body; more `delete`s than `new`s is
+    double-`delete`). The full spelling additionally pins the
+    null-guarded `cleanup`-scoped delete (see
+    `isBoxThroughExemptText`); the leak spelling has no `cleanup` /
+    null guard. No other control flow, arithmetic, C heap, or
+    indexing. -/
+def isBoxThroughShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x] =>
+    noBreakContinueSwitch raw.text &&
+    isI32 x.ctype && isI32 raw.ret &&
+    callsFunc raw.text "_Znwm" &&
+    newCallCount raw.text == 1 &&
+    !(1 < deleteCallCount raw.text) &&
+    opCount raw.text "cir.call @" == newCallCount raw.text + deleteCallCount raw.text &&
+    containsSubstr raw.text "#cir.int<4>" &&
+    containsSubstr raw.text "bitcast" &&
+    containsSubstr raw.text "cir.get_member" &&
+    containsSubstr raw.text "\"x\"" &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "personality" &&
+    !containsSubstr raw.text "cleanup eh" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    (match deleteCallCount raw.text with
+     | 1 =>
+       containsSubstr raw.text "cir.cleanup.scope" &&
+       containsSubstr raw.text "cleanup normal" &&
+       containsSubstr raw.text "cir.cmp ne" &&
+       containsSubstr raw.text "#cir.ptr<null>" &&
+       containsSubstr raw.text "cir.if" &&
+       !containsSubstr raw.text "cir.trap"
+     | _ =>
+       !containsSubstr raw.text "cir.cleanup" &&
+       !containsSubstr raw.text "cir.trap")
+  | _ => false
+
 /-- First forbidden construct found (all `outOfSubset`), if any.
     `cir.cleanup` / `cir.trap` reject generally (C++ destructor /
     unreachable lowering); the exact M2b `acc_two` entry shape is
-    exempt via `isAccTwoExemptText` (everything else stays loud). -/
+    exempt via `isAccTwoExemptText` and the exact M2c `box_through`
+    entry shape via `isBoxThroughExemptText` (everything else stays
+    loud). -/
 def forbiddenOp (text : String) : Option String :=
   if containsSubstr text "cir.try" then some "exception handling (`cir.try`/cleanup/EH)"
   else if containsSubstr text "landingpad" then some "exception handling (landingpad)"
@@ -842,7 +948,7 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
-  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isBoxThroughExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.trap" && !isAccTwoExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
@@ -856,7 +962,8 @@ def forbiddenOp (text : String) : Option String :=
     Only the canonical shapes pass (`add`/`incr`/`choose`/`sum`,
     `vec_alloc`, `vec_alloc_u64` (M1b), `vec_realloc` (M1c), S1 DAG
     callers, S2 `translate`, M2a const-methods, M2b `Acc` ctor/add/get/
-    dtor leaves + `acc_two` entry (the sole `cleanup`/`trap` exemption),
+    dtor leaves + `acc_two` entry (the `cleanup`/`trap` exemption),
+    M2c `box_through` entry (the `cleanup`-scoped-delete exemption),
     S3a control flow, S3b 64-bit loop-free `add64`/`addu64`); everything
     else is rejected with a precise code (see the module docstring for
     check order). -/
@@ -918,6 +1025,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { accDtorFunc with name := raw.name }
       else if isAccTwoShape raw then
         .ok { accTwoFunc with name := raw.name }
+      else if isBoxThroughShape raw then
+        .ok { boxThroughFunc with name := raw.name }
       else if isNestedShape raw then
         .ok { nestedFunc with name := raw.name }
       else if isSkipShape raw then
@@ -944,6 +1053,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls `free` more times than `malloc`: double-`free` is rejected (heap blocks are freed at most once; leak is allowed, double-`free` is not, see docs/SUBSET.md rule 8)"
+      else if newCallCount raw.text < deleteCallCount raw.text then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls sized `delete` more times than `new`: double-`delete` is rejected (heap boxes are deleted at most once; leak is allowed, double-`delete` is not, see docs/SUBSET.md rule 15)"
+      else if containsSubstr raw.text "_Znwm" ||
+          containsSubstr raw.text "_ZdlPvm" then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses `new`/`delete` outside the admitted `box_through` shape (single `new` of a 4-byte `Box` + field read + at most one null-guarded `cleanup`-scoped sized `delete` (leak allowed, M1d); double-`delete` is rejected, see docs/ROADMAP.md M2c)"
       else if containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses `realloc` outside the admitted `vec_realloc` shape (single `malloc`, one `realloc` to `2*n`, at most one `free` (leak allowed, M1d), fill / fill-extension / sum discipline; `realloc(p, 0)` (= `free`) and `realloc(NULL, n)` (= `malloc`) spellings are rejected: use `free`/`malloc` directly, see docs/ROADMAP.md M1c)"
@@ -959,7 +1075,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/SUBSET.md rule 4)"
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), and the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity), and the admitted M2c `box_through` entry shape (M2c: `new` + `Box.x` field write/read + at most one sized `delete`; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.switch" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape (S3a: equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30`; see docs/SUBSET.md)"

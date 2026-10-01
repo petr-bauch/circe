@@ -232,6 +232,16 @@ def emitAccTwoText (name : String) : String :=
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accTwo a b\n"
 
+/-- Render the `_Z11box_throughi` entry forward definition: direct
+    delegation to `boxThrough` (`new` → read → `delete` passthrough;
+    see `evalFuncFuel_boxThrough`). -/
+def emitBoxThroughText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`new` → read → `delete` passthrough). -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  boxThrough x\n"
+
 /-- Render the `nested_sum` forward definition: the double fold over
     `Base.nestedSumU32` (both bounds travel as words; fuel sufficiency
     is the `emit_correct_nested` side condition). -/
