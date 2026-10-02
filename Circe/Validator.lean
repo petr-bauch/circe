@@ -679,6 +679,143 @@ def lineHasBareBr (line : String) : Bool :=
 def hasBareBr (text : String) : Bool :=
   (text.splitOn "\n").any lineHasBareBr
 
+/-! ## M3b: derived noalias (C only, text-derived, no oracle) -/
+
+/-- C shapes with no pointer params (entry footprint vacuously disjoint:
+    pure leaves, S1 `add_caller`, S2 `translate`, M1 heap shapes (whose
+    disjointness is internal — distinct `malloc` results by construction),
+    S3a flow, S3b widths). C++ shapes never match (M3d). -/
+def isCNoPtrShape (raw : RawFunc) : Bool :=
+  isAddShape raw || isAddCallerShape raw || isTranslateShape raw ||
+  isVecShape raw || isVec2Shape raw || isVec64Shape raw ||
+  isVecReallocShape raw || isNestedShape raw || isSkipShape raw ||
+  isClsShape raw || isAdd64Shape raw || isAddu64Shape raw
+
+/-- Text-derived noalias evidence (C only): no live pointer params and an
+    admitted no-ptr C shape (vacuous), one `noalias` param in an admitted
+    single-pointer shape (`incr` / `sum` / `sum_caller` / `find_eq`:
+    singleton footprint), or two `noalias` params in the admitted
+    two-pointer shape (`choose`: functionalized scalars, empty footprint).
+    Everything else — including all C++ — is `false` (out of M3b scope).
+    `Oracle.lookupOracle` / `verdictAdmits` are unchanged; `validate`
+    behavior is unchanged (this is a parallel check, not a gate). -/
+def derivedNoalias (raw : RawFunc) : Bool :=
+  match oracleParams raw with
+  | [] => isCNoPtrShape raw
+  | [p] =>
+    p.noalias &&
+    (isIncrShape raw || isSumShape raw || isSumCallerShape raw ||
+      isFindEqShape raw)
+  | [p1, p2] =>
+    p1.noalias && p2.noalias && isChooseShape raw
+  | _ => false
+
+/-- `derivedNoalias` never claims a param without its `noalias` attr:
+    every oracle-governed param carries the text evidence. -/
+theorem derivedNoalias_all_noalias (raw : RawFunc)
+    (h : derivedNoalias raw = true) :
+    ∀ p ∈ oracleParams raw, p.noalias = true := by
+  intro q hq
+  cases hps : oracleParams raw with
+  | nil =>
+    simp [hps] at hq
+  | cons p rest =>
+    cases rest with
+    | nil =>
+      have hD : (p.noalias &&
+          (isIncrShape raw || isSumShape raw || isSumCallerShape raw ||
+            isFindEqShape raw)) = true := by
+        have hT : derivedNoalias raw = true := h
+        unfold derivedNoalias at hT
+        rw [hps] at hT
+        exact hT
+      have hpT : p.noalias = true := (Bool.and_eq_true_iff.mp hD).1
+      have hqq : q = p := by simpa [hps] using hq
+      subst hqq
+      exact hpT
+    | cons p2 rest2 =>
+      cases rest2 with
+      | nil =>
+        have hD : (p.noalias && p2.noalias && isChooseShape raw) = true := by
+          have hT : derivedNoalias raw = true := h
+          unfold derivedNoalias at hT
+          rw [hps] at hT
+          exact hT
+        have h1 : p.noalias = true :=
+        (Bool.and_eq_true_iff.mp
+          (Bool.and_eq_true_iff.mp hD).1).1
+        have h2 : p2.noalias = true :=
+          (Bool.and_eq_true_iff.mp
+            (Bool.and_eq_true_iff.mp hD).1).2
+        have hqq : q = p ∨ q = p2 := by simpa [hps] using hq
+        cases hqq with
+        | inl hqq => subst hqq; exact h1
+        | inr hqq => subst hqq; exact h2
+      | cons _ _ =>
+        have hD : (false : Bool) = true := by
+          have hT : derivedNoalias raw = true := h
+          unfold derivedNoalias at hT
+          rw [hps] at hT
+          exact hT
+        simp at hD
+
+/-- `derivedNoalias` only fires inside the admitted C fragment (no C++
+    shape, no misshapen text, no 3+-pointer shape). -/
+theorem derivedNoalias_admitted_c (raw : RawFunc)
+    (h : derivedNoalias raw = true) :
+    (isCNoPtrShape raw || isIncrShape raw || isSumShape raw ||
+      isSumCallerShape raw || isFindEqShape raw || isChooseShape raw) = true := by
+  cases hps : oracleParams raw with
+  | nil =>
+    have hD : isCNoPtrShape raw = true := by
+      have hT : derivedNoalias raw = true := h
+      unfold derivedNoalias at hT
+      rw [hps] at hT
+      exact hT
+    simp [hD]
+  | cons p rest =>
+    cases rest with
+    | nil =>
+      have hD : (p.noalias &&
+          (isIncrShape raw || isSumShape raw || isSumCallerShape raw ||
+            isFindEqShape raw)) = true := by
+        have hT : derivedNoalias raw = true := h
+        unfold derivedNoalias at hT
+        rw [hps] at hT
+        exact hT
+      have hS := (Bool.and_eq_true_iff.mp hD).2
+      rw [Bool.or_eq_true] at hS
+      cases hS with
+      | inl h1 =>
+        rw [Bool.or_eq_true] at h1
+        cases h1 with
+        | inl h2 =>
+          rw [Bool.or_eq_true] at h2
+          cases h2 with
+          | inl ha => simp [ha]
+          | inr hb => simp [hb]
+        | inr hc => simp [hc]
+      | inr hd => simp [hd]
+    | cons p2 rest2 =>
+      cases rest2 with
+      | nil =>
+        have hD : (p.noalias && p2.noalias &&
+            isChooseShape raw) = true := by
+          have hT : derivedNoalias raw = true := h
+          unfold derivedNoalias at hT
+          rw [hps] at hT
+          exact hT
+        have hc : isChooseShape raw = true :=
+          (Bool.and_eq_true_iff.mp hD).2
+        simp [hc]
+      | cons _ _ =>
+        have hD : (false : Bool) = true := by
+          have hT : derivedNoalias raw = true := h
+          unfold derivedNoalias at hT
+          rw [hps] at hT
+          exact hT
+        simp at hD
+
 /-! ## M2b: value-ctor scope exemption (`acc_two` entry) -/
 
 /-- The M2b `Acc` struct type: CIRGen's `!rec_Acc` alias (long-form

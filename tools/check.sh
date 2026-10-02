@@ -472,4 +472,17 @@ grep -q "theorem memTransfer_vec " Circe/Transfer.lean
 grep -q "def m3c_transfer_statement" Circe/Mem.lean
 echo "mem model builds, per-leaf transfers present (add/incr/sum/sum-oob/vec)"
 
+echo "== M3b derived noalias (text-derived, verdict-cache agreement) =="
+lake env lean Circe/Validator.lean
+lake env lean Circe/Derived.lean
+lake env lean --run tests/lean/DerivedNoalias.lean
+grep -q "def derivedNoalias" Circe/Validator.lean
+grep -q "theorem derivedNoalias_all_noalias" Circe/Validator.lean
+grep -q "theorem derivedNoalias_admitted_c" Circe/Validator.lean
+grep -q "theorem oracleNoalias_choose" Circe/Derived.lean
+grep -q "theorem oracleNoalias_sumCaller" Circe/Derived.lean
+grep -q "theorem oracleNoalias_findEq" Circe/Derived.lean
+grep -q "theorem derived_bridge_noalias" Circe/Derived.lean
+echo "derived noalias builds, per-shape footprints + cache agreement green"
+
 echo "CHECK-OK"
