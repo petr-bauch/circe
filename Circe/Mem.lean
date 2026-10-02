@@ -329,8 +329,21 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       | .error e, _ => .error e
   | .boxNew _, _, _, _ => .error .AssertFail
   | .boxGet _, _, _, _ => .error .AssertFail
-  | .fget _ _, _, _, _ => .error .AssertFail
-  | .pmk _ _, _, _, _ => .error .AssertFail
+  | .fget obj field, ρ, _, _ =>
+    match envLookup ρ obj with
+    | none => .error .Uninit
+    | some (.structVal _ fields) =>
+      match fieldLookup fields field with
+      | some x => .ok (.i32 x)
+      | none => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .pmk x y, ρ, m, π =>
+    match memEvalExpr x ρ m π, memEvalExpr y ρ m π with
+    | .ok (.i32 xv), .ok (.i32 yv) =>
+      .ok (.structVal "Point" [("x", xv), ("y", yv)])
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
 
 /-- Pure-expression agreement for closed shapes: `lit`/`var` hold by
     definition; binary operators agree once their discriminants are
@@ -345,6 +358,24 @@ theorem memEvalExpr_lit (l : CLit) (ρ : Env) (m : Mem) (π : Layout) :
 
 theorem memEvalExpr_var (x : String) (ρ : Env) (m : Mem) (π : Layout) :
     memEvalExpr (.var x) ρ m π = evalExpr (.var x) ρ := rfl
+
+/-- `fget` is pure (struct values need no footprint): memory untouched,
+    agreement with `Eval` by definition. -/
+theorem memEvalExpr_fget (obj field : String) (ρ : Env) (m : Mem)
+    (π : Layout) :
+    memEvalExpr (.fget obj field) ρ m π = evalExpr (.fget obj field) ρ := rfl
+
+/-- `add` over `fget`/`var` agrees (the `translate` shape): both sides
+    read the same field and delta, then run `checkedAddI32`. -/
+theorem memEvalExpr_add_fget_var (ρ : Env) (m : Mem) (π : Layout)
+    (obj f xv : String) (tag : String) (fields : List (String × BitVec 32))
+    (px dx : BitVec 32)
+    (hobj : envLookup ρ obj = some (.structVal tag fields))
+    (hfield : fieldLookup fields f = some px)
+    (hvar : envLookup ρ xv = some (.i32 dx)) :
+    memEvalExpr (.add (.fget obj f) (.var xv)) ρ m π =
+      (checkedAddI32 px dx).map .i32 := by
+  simp [memEvalExpr, hobj, hfield, hvar]
 
 /-- `idx` agreement under consistency: the layout pin resolves, the tag
     matches, the block is live, and the memory word equals the

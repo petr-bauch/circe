@@ -24,6 +24,7 @@ import Circe.Validator
 import Circe.Emit.Add
 import Circe.Emit.Choose
 import Circe.Emit.Calls
+import Circe.Emit.Struct
 import Circe.Emit.Flow
 
 /-! ## All-scalar shapes: empty footprint -/
@@ -81,6 +82,99 @@ theorem oracleNoalias_addCaller (x y z : BitVec 32) :
        { name := "z", ty := .i 32, role := .owned }]
       [.i32 x, .i32 y, .i32 z] emptyMem = _
     exact bindMemArgs_addCaller x y z
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-! ## Loop-free scalar shapes: empty footprint (M3c) -/
+
+/-- `add64` binding pins nothing (two owned 64-bit scalars). -/
+theorem bindMemArgs_add64 (a b : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .i 64, role := .owned },
+       { name := "b", ty := .i 64, role := .owned }]
+      [.i64 a, .i64 b] emptyMem =
+      some ([("a", .i64 a), ("b", .i64 b)], emptyMem, []) := by
+  rfl
+
+/-- `add64` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_add64 (a b : BitVec 64) :
+    oracleNoalias add64Func [.i64 a, .i64 b] := by
+  have hb : bindMemArgs add64Func.args [.i64 a, .i64 b] emptyMem =
+      some ([("a", .i64 a), ("b", .i64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .i 64, role := .owned },
+       { name := "b", ty := .i 64, role := .owned }]
+      [.i64 a, .i64 b] emptyMem = _
+    exact bindMemArgs_add64 a b
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `addu64` binding pins nothing (two owned 64-bit scalars). -/
+theorem bindMemArgs_addu64 (a b : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+  rfl
+
+/-- `addu64` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_addu64 (a b : BitVec 64) :
+    oracleNoalias addu64Func [.u64 a, .u64 b] := by
+  have hb : bindMemArgs addu64Func.args [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem = _
+    exact bindMemArgs_addu64 a b
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `cls` binding pins nothing (one owned scalar; the switch is an
+    if-chain over pure comparisons). -/
+theorem bindMemArgs_cls (x : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+  rfl
+
+/-- `cls` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_cls (x : BitVec 32) :
+    oracleNoalias clsFunc [.u32 x] := by
+  have hb : bindMemArgs clsFunc.args [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+    show bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem = _
+    exact bindMemArgs_cls x
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `translate` binding pins nothing (the struct crosses by value —
+    copy semantics — plus two owned scalars). -/
+theorem bindMemArgs_translate (px py dx dy : BitVec 32) :
+    bindMemArgs
+      [{ name := "p", ty := .struct "Point" [.i 32, .i 32], role := .owned },
+       { name := "dx", ty := .i 32, role := .owned },
+       { name := "dy", ty := .i 32, role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy]
+      emptyMem =
+      some ([("p", .structVal "Point" [("x", px), ("y", py)]),
+        ("dx", .i32 dx), ("dy", .i32 dy)], emptyMem, []) := by
+  rfl
+
+/-- `translate` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_translate (px py dx dy : BitVec 32) :
+    oracleNoalias translateFunc
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] := by
+  have hb : bindMemArgs translateFunc.args
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy]
+      emptyMem =
+      some ([("p", .structVal "Point" [("x", px), ("y", py)]),
+        ("dx", .i32 dx), ("dy", .i32 dy)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "p", ty := .struct "Point" [.i 32, .i 32], role := .owned },
+       { name := "dx", ty := .i 32, role := .owned },
+       { name := "dy", ty := .i 32, role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy]
+      emptyMem = _
+    exact bindMemArgs_translate px py dx dy
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
 /-! ## Single-array shapes: singleton footprint -/

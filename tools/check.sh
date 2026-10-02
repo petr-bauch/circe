@@ -485,4 +485,18 @@ grep -q "theorem oracleNoalias_findEq" Circe/Derived.lean
 grep -q "theorem derived_bridge_noalias" Circe/Derived.lean
 echo "derived noalias builds, per-shape footprints + cache agreement green"
 
+echo "== M3c loop-free transfers (choose/widths/cls/translate) =="
+lake env lean Circe/Transfer.lean
+grep -q "theorem memTransfer_choose" Circe/Transfer.lean
+grep -q "theorem memTransfer_add64" Circe/Transfer.lean
+grep -q "theorem memTransfer_addu64" Circe/Transfer.lean
+grep -q "theorem memTransfer_cls" Circe/Transfer.lean
+grep -q "theorem memTransfer_translate" Circe/Transfer.lean
+grep -q "theorem oracleNoalias_add64" Circe/Derived.lean
+grep -q "theorem oracleNoalias_addu64" Circe/Derived.lean
+grep -q "theorem oracleNoalias_cls" Circe/Derived.lean
+grep -q "theorem oracleNoalias_translate" Circe/Derived.lean
+grep -q "theorem memEvalExpr_add_fget_var" Circe/Mem.lean
+echo "loop-free C transfers green (choose/add64/addu64/cls/translate)"
+
 echo "CHECK-OK"

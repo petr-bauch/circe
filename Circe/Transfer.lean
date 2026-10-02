@@ -12,6 +12,10 @@ re-inducted with `Mem`/`Layout` constant or lockstepped).
 import Circe.Mem
 import Circe.Emit.Sum
 import Circe.Emit.Vec
+import Circe.Emit.Add
+import Circe.Emit.Choose
+import Circe.Emit.Struct
+import Circe.Emit.Flow
 
 /-! ## `sum_array` transfer -/
 
@@ -762,3 +766,299 @@ theorem memTransfer_vec (F : Nat) (nv : BitVec 32)
     memEvalFuncFuel F vecFunc [.u32 nv] =
       evalFuncFuel F vecFunc [.u32 nv] := by
   rw [memEvalFuncFuel_vec F nv hn hn32, evalFuncFuel_vec F nv hn hn32]
+
+/-! ## M3c loop-free transfers: `choose`, 64-bit widths, `cls`, `translate` -/
+
+/-- Transfer for `choose` (any fuel): the body is a pure `if` over
+    functionalized borrows, so memory is untouched and both sides
+    select identically. -/
+theorem memTransfer_choose (F : Nat) (b : Bool) (x y : BitVec 32)
+    (_h : oracleNoalias chooseFunc [.b b, .i32 x, .i32 y]) :
+    memEvalFuncFuel F chooseFunc [.b b, .i32 x, .i32 y] =
+      evalFuncFuel F chooseFunc [.b b, .i32 x, .i32 y] := by
+  have hbf : chooseFunc.args =
+      [{ name := "b", ty := .bool, role := .owned },
+       { name := "x", ty := .i 32, role := .mutBorrow 0 },
+       { name := "y", ty := .i 32, role := .mutBorrow 0 }] := rfl
+  have hbody : chooseFunc.body =
+      .if_ (.var "b") (.return_ (.var "x")) (.return_ (.var "y")) := rfl
+  have hb : bindMemArgs
+      [{ name := "b", ty := .bool, role := .owned },
+       { name := "x", ty := .i 32, role := .mutBorrow 0 },
+       { name := "y", ty := .i 32, role := .mutBorrow 0 }]
+      [.b b, .i32 x, .i32 y] emptyMem =
+      some ([("b", .b b), ("x", .i32 x), ("y", .i32 y)], emptyMem, []) := rfl
+  have hbb : envLookup [("b", .b b), ("x", .i32 x), ("y", .i32 y)] "b" =
+      some (.b b) := by simp [envLookup]
+  have hx : envLookup [("b", .b b), ("x", .i32 x), ("y", .i32 y)] "x" =
+      some (.i32 x) := by
+    simp [envLookup, show ("x" : String) ≠ "b" by decide]
+  have hy : envLookup [("b", .b b), ("x", .i32 x), ("y", .i32 y)] "y" =
+      some (.i32 y) := by
+    simp [envLookup, show ("y" : String) ≠ "b" by decide,
+      show ("y" : String) ≠ "x" by decide]
+  cases b <;> cases F <;>
+    simp [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb,
+      memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith,
+      memEvalExpr, evalExpr, hbb, hx, hy]
+
+/-- Transfer for `add64` (any fuel): same pure shape as `add`, at width
+    64 through `checkedAddI64`. -/
+theorem memTransfer_add64 (F : Nat) (a b : BitVec 64)
+    (_h : oracleNoalias add64Func [.i64 a, .i64 b]) :
+    memEvalFuncFuel F add64Func [.i64 a, .i64 b] =
+      evalFuncFuel F add64Func [.i64 a, .i64 b] := by
+  have hbf : add64Func.args =
+      [{ name := "a", ty := .i 64, role := .owned },
+       { name := "b", ty := .i 64, role := .owned }] := rfl
+  have hbody : add64Func.body =
+      .return_ (.add (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .i 64, role := .owned },
+       { name := "b", ty := .i 64, role := .owned }]
+      [.i64 a, .i64 b] emptyMem =
+      some ([("a", .i64 a), ("b", .i64 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .i64 a), ("b", .i64 b)] "a" =
+      some (.i64 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .i64 a), ("b", .i64 b)] "b" =
+      some (.i64 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb] <;>
+    (cases h : checkedAddI64 a b <;> rfl)
+
+/-- Transfer for `addu64` (any fuel): wrapping unsigned addition never
+    fails, so both sides compute the sum directly. -/
+theorem memTransfer_addu64 (F : Nat) (a b : BitVec 64)
+    (_h : oracleNoalias addu64Func [.u64 a, .u64 b]) :
+    memEvalFuncFuel F addu64Func [.u64 a, .u64 b] =
+      evalFuncFuel F addu64Func [.u64 a, .u64 b] := by
+  have hbf : addu64Func.args =
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }] := rfl
+  have hbody : addu64Func.body =
+      .return_ (.uadd (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .u64 a), ("b", .u64 b)] "a" =
+      some (.u64 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .u64 a), ("b", .u64 b)] "b" =
+      some (.u64 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith,
+      memEvalExpr, evalExpr, ha, hbb]
+
+/-- Transfer for `cls` (any fuel): the switch-as-if-chain is pure, so
+    memory is untouched and both sides classify identically. -/
+theorem memTransfer_cls (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias clsFunc [.u32 x]) :
+    memEvalFuncFuel F clsFunc [.u32 x] =
+      evalFuncFuel F clsFunc [.u32 x] := by
+  have hbf : clsFunc.args =
+      [{ name := "x", ty := .u 32, role := .owned }] := rfl
+  have hbody : clsFunc.body =
+      .if_ (.ueq (.var "x") (.lit (.u32 0)))
+        (.return_ (.lit (.u32 10)))
+        (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+          (.return_ (.lit (.u32 20)))
+          (.return_ (.lit (.u32 30)))) := rfl
+  have hb : bindMemArgs
+      [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) := by
+    simp [envLookup]
+  by_cases h0 : x = 0
+  · subst h0
+    simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        evalStmtFuel, evalStmtZero, evalStmtWith,
+        memEvalExpr, evalExpr, litVal, envLookup]
+  · have h0' : x ≠ 0#32 := h0
+    by_cases h1 : x = 1
+    · subst h1
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup]
+    · have h1' : x ≠ 1#32 := h1
+      have e0 : (x == 0#32) = false := by simp [h0']
+      have e1 : (x == 1#32) = false := by simp [h1']
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup, e0, e1]
+
+/-- Transfer for `translate` (any fuel): field projection + checked
+    adds + struct construction are all pure (the struct crosses by
+    value), so memory rides alongside untouched. The `Eval` side reuses
+    `evalFuncFuel_translate` + the `translateFwd` bridges; the memory
+    side computes directly. -/
+theorem memTransfer_translate (F : Nat) (px py dx dy : BitVec 32)
+    (_h : oracleNoalias translateFunc
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy]) :
+    memEvalFuncFuel F translateFunc
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+      evalFuncFuel F translateFunc
+        [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] := by
+  have hbf : translateFunc.args =
+      [{ name := "p", ty := .struct "Point" [.i 32, .i 32], role := .owned },
+       { name := "dx", ty := .i 32, role := .owned },
+       { name := "dy", ty := .i 32, role := .owned }] := rfl
+  have hb : bindMemArgs
+      [{ name := "p", ty := .struct "Point" [.i 32, .i 32], role := .owned },
+       { name := "dx", ty := .i 32, role := .owned },
+       { name := "dy", ty := .i 32, role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy]
+      emptyMem =
+      some ([("p", .structVal "Point" [("x", px), ("y", py)]),
+        ("dx", .i32 dx), ("dy", .i32 dy)], emptyMem, []) := rfl
+  have hbody : translateFunc.body =
+      .seq (.let_ "qx" (.i 32) (.add (.fget "p" "x") (.var "dx")))
+      (.seq (.let_ "qy" (.i 32) (.add (.fget "p" "y") (.var "dy")))
+            (.return_ (.pmk (.var "qx") (.var "qy")))) := rfl
+  have hp : envLookup [("p", .structVal "Point" [("x", px), ("y", py)]),
+      ("dx", .i32 dx), ("dy", .i32 dy)] "p" =
+      some (.structVal "Point" [("x", px), ("y", py)]) := by
+    simp [envLookup]
+  have hdx : envLookup [("p", .structVal "Point" [("x", px), ("y", py)]),
+      ("dx", .i32 dx), ("dy", .i32 dy)] "dx" = some (.i32 dx) := by
+    simp [envLookup, show ("dx" : String) ≠ "p" by decide]
+  have hdy : envLookup [("p", .structVal "Point" [("x", px), ("y", py)]),
+      ("dx", .i32 dx), ("dy", .i32 dy)] "dy" = some (.i32 dy) := by
+    simp [envLookup, show ("dy" : String) ≠ "p" by decide,
+      show ("dy" : String) ≠ "dx" by decide]
+  have hfx : fieldLookup [("x", px), ("y", py)] "x" = some px :=
+    fieldLookup_translate_x px py
+  have hfy : fieldLookup [("x", px), ("y", py)] "y" = some py :=
+    fieldLookup_translate_y px py
+  have haddx : memEvalExpr (.add (.fget "p" "x") (.var "dx"))
+      [("p", .structVal "Point" [("x", px), ("y", py)]),
+        ("dx", .i32 dx), ("dy", .i32 dy)] emptyMem [] =
+      (checkedAddI32 px dx).map .i32 :=
+    memEvalExpr_add_fget_var _ _ _ _ _ _ _ _ _ _ hp hfx hdx
+  cases hx : checkedAddI32 px dx with
+  | error e =>
+    have haddx' : memEvalExpr (.add (.fget "p" "x") (.var "dx"))
+        [("p", .structVal "Point" [("x", px), ("y", py)]),
+          ("dx", .i32 dx), ("dy", .i32 dy)] emptyMem [] = .error e := by
+      rw [haddx, hx]
+      exact i32_map_error e
+    have hmem : memEvalFuncFuel F translateFunc
+        [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+        .error e := by
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, haddx']
+    have heval : evalFuncFuel F translateFunc
+        [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+        .error e := by
+      rw [evalFuncFuel_translate]
+      exact translateFwd_err_x _ _ _ _ _ hx
+    rw [hmem, heval]
+  | ok x' =>
+    have haddx' : memEvalExpr (.add (.fget "p" "x") (.var "dx"))
+        [("p", .structVal "Point" [("x", px), ("y", py)]),
+          ("dx", .i32 dx), ("dy", .i32 dy)] emptyMem [] =
+        .ok (.i32 x') := by
+      rw [haddx, hx]
+      exact i32_map_ok x'
+    have hobj2 : envLookup (("qx", .i32 x') ::
+        [("p", .structVal "Point" [("x", px), ("y", py)]),
+          ("dx", .i32 dx), ("dy", .i32 dy)]) "p" =
+        some (.structVal "Point" [("x", px), ("y", py)]) := by
+      simp [envLookup, show ("p" : String) ≠ "qx" by decide]
+    have hvar2 : envLookup (("qx", .i32 x') ::
+        [("p", .structVal "Point" [("x", px), ("y", py)]),
+          ("dx", .i32 dx), ("dy", .i32 dy)]) "dy" = some (.i32 dy) := by
+      simp [envLookup, show ("dy" : String) ≠ "qx" by decide]
+    have haddy : memEvalExpr (.add (.fget "p" "y") (.var "dy"))
+        (("qx", .i32 x') ::
+        [("p", .structVal "Point" [("x", px), ("y", py)]),
+          ("dx", .i32 dx), ("dy", .i32 dy)]) emptyMem [] =
+        (checkedAddI32 py dy).map .i32 :=
+      memEvalExpr_add_fget_var _ _ _ _ _ _ _ _ _ _ hobj2 hfy hvar2
+    cases hy : checkedAddI32 py dy with
+    | error e =>
+      have haddy' : memEvalExpr (.add (.fget "p" "y") (.var "dy"))
+          (("qx", .i32 x') ::
+          [("p", .structVal "Point" [("x", px), ("y", py)]),
+            ("dx", .i32 dx), ("dy", .i32 dy)]) emptyMem [] =
+          .error e := by
+        rw [haddy, hy]
+        exact i32_map_error e
+      have hmem : memEvalFuncFuel F translateFunc
+          [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+          .error e := by
+        simp only [memEvalFuncFuel, hbf, hbody, hb]
+        cases F <;>
+          simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+            haddx', haddy']
+      have heval : evalFuncFuel F translateFunc
+          [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+          .error e := by
+        rw [evalFuncFuel_translate]
+        exact translateFwd_err_y _ _ _ _ _ _ hx hy
+      rw [hmem, heval]
+    | ok y' =>
+      have haddy' : memEvalExpr (.add (.fget "p" "y") (.var "dy"))
+          (("qx", .i32 x') ::
+          [("p", .structVal "Point" [("x", px), ("y", py)]),
+            ("dx", .i32 dx), ("dy", .i32 dy)]) emptyMem [] =
+          .ok (.i32 y') := by
+        rw [haddy, hy]
+        exact i32_map_ok y'
+      have hqx : evalExpr (.var "qx")
+          (("qy", .i32 y') :: ("qx", .i32 x') ::
+          [("p", .structVal "Point" [("x", px), ("y", py)]),
+            ("dx", .i32 dx), ("dy", .i32 dy)]) = .ok (.i32 x') := by
+        simp [evalExpr, envLookup, show ("qx" : String) ≠ "qy" by decide]
+      have hqy : evalExpr (.var "qy")
+          (("qy", .i32 y') :: ("qx", .i32 x') ::
+          [("p", .structVal "Point" [("x", px), ("y", py)]),
+            ("dx", .i32 dx), ("dy", .i32 dy)]) = .ok (.i32 y') := by
+        simp [evalExpr, envLookup]
+      have hpmk : memEvalExpr (.pmk (.var "qx") (.var "qy"))
+          (("qy", .i32 y') :: ("qx", .i32 x') ::
+          [("p", .structVal "Point" [("x", px), ("y", py)]),
+            ("dx", .i32 dx), ("dy", .i32 dy)]) emptyMem [] =
+          .ok (.structVal "Point" [("x", x'), ("y", y')]) := by
+        have e1 : envLookup
+            (("qy", .i32 y') :: ("qx", .i32 x') ::
+            [("p", .structVal "Point" [("x", px), ("y", py)]),
+              ("dx", .i32 dx), ("dy", .i32 dy)]) "qx" =
+            some (.i32 x') := by
+          simp [envLookup, show ("qx" : String) ≠ "qy" by decide]
+        have e2 : envLookup
+            (("qy", .i32 y') :: ("qx", .i32 x') ::
+            [("p", .structVal "Point" [("x", px), ("y", py)]),
+              ("dx", .i32 dx), ("dy", .i32 dy)]) "qy" =
+            some (.i32 y') := by
+          simp [envLookup]
+        simp [memEvalExpr, e1, e2]
+      have hmem : memEvalFuncFuel F translateFunc
+          [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+          .ok (.structVal "Point" [("x", x'), ("y", y')]) := by
+        simp only [memEvalFuncFuel, hbf, hbody, hb]
+        cases F <;>
+          simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+            haddx', haddy', hpmk]
+      have heval : evalFuncFuel F translateFunc
+          [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy] =
+          .ok (.structVal "Point" [("x", x'), ("y", y')]) := by
+        rw [evalFuncFuel_translate]
+        exact translateFwd_ok_bridge _ _ _ _ _ _ hx hy
+      rw [hmem, heval]
