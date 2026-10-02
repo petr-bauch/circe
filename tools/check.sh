@@ -499,4 +499,17 @@ grep -q "theorem oracleNoalias_translate" Circe/Derived.lean
 grep -q "theorem memEvalExpr_add_fget_var" Circe/Mem.lean
 echo "loop-free C transfers green (choose/add64/addu64/cls/translate)"
 
+echo "== M3c flow transfers (nested/skip/find_eq) =="
+lake env lean Circe/Transfer.lean
+grep -q "theorem memTransfer_nested" Circe/Transfer.lean
+grep -q "theorem memTransfer_skip" Circe/Transfer.lean
+grep -q "theorem memTransfer_findEq" Circe/Transfer.lean
+grep -q "theorem memNestedOuter_correct" Circe/Transfer.lean
+grep -q "theorem memSkipWhile_correct" Circe/Transfer.lean
+grep -q "theorem memFindWhile_some" Circe/Transfer.lean
+grep -q "theorem memFindWhile_none" Circe/Transfer.lean
+grep -q "theorem oracleNoalias_nested" Circe/Derived.lean
+grep -q "theorem oracleNoalias_skip" Circe/Derived.lean
+echo "flow C transfers green (nested/skip/find_eq)"
+
 echo "CHECK-OK"

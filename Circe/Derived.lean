@@ -177,6 +177,46 @@ theorem oracleNoalias_translate (px py dx dy : BitVec 32) :
     exact bindMemArgs_translate px py dx dy
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-- `nested_sum` binding pins nothing (two owned scalars; nested loops
+    are pure accumulator updates). -/
+theorem bindMemArgs_nested (nv mv : BitVec 32) :
+    bindMemArgs
+      [{ name := "n", ty := .u 32, role := .owned },
+       { name := "m", ty := .u 32, role := .owned }]
+      [.u32 nv, .u32 mv] emptyMem =
+      some ([("n", .u32 nv), ("m", .u32 mv)], emptyMem, []) := by
+  rfl
+
+/-- `nested_sum` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_nested (nv mv : BitVec 32) :
+    oracleNoalias nestedFunc [.u32 nv, .u32 mv] := by
+  have hb : bindMemArgs nestedFunc.args [.u32 nv, .u32 mv] emptyMem =
+      some ([("n", .u32 nv), ("m", .u32 mv)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "n", ty := .u 32, role := .owned },
+       { name := "m", ty := .u 32, role := .owned }]
+      [.u32 nv, .u32 mv] emptyMem = _
+    exact bindMemArgs_nested nv mv
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `skip_sum` binding pins nothing (one owned scalar; break/continue
+    only steer the pure accumulation loop). -/
+theorem bindMemArgs_skip (nv : BitVec 32) :
+    bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
+      [.u32 nv] emptyMem =
+      some ([("n", .u32 nv)], emptyMem, []) := by
+  rfl
+
+/-- `skip_sum` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_skip (nv : BitVec 32) :
+    oracleNoalias skipFunc [.u32 nv] := by
+  have hb : bindMemArgs skipFunc.args [.u32 nv] emptyMem =
+      some ([("n", .u32 nv)], emptyMem, []) := by
+    show bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
+      [.u32 nv] emptyMem = _
+    exact bindMemArgs_skip nv
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-! ## Single-array shapes: singleton footprint -/
 
 /-- `sum_caller` binding pins exactly the array block (mirrors
