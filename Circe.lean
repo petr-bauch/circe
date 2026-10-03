@@ -7,6 +7,7 @@ import Circe.Mem
 import Circe.Validator
 import Circe.Emit
 import Circe.Derived
+import Circe.ReadOnly
 import Circe.Transfer
 import Circe.Tactics
 import Circe.Specs

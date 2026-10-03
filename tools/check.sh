@@ -72,6 +72,12 @@
 #    suite (real C++ corpus with `-fno-exceptions`, one oracle fact for
 #    the int-only entry, 4-byte size + null-guard + call-multiset pins,
 #    leak acceptance, double-delete gate, token checks).
+# 19. (N2a) Typechecks the read-only sharing discipline (`Circe.ReadOnly`:
+#    two-`sharedBorrow`-reader footprints + alias soundness, writer
+#    exclusion) and runs the read-only golden rejection suite
+#    (`GoldenReadOnly`: writer+reader still rejects loudly, two-reader
+#    shape does not derive). No new corpus: text-gate admission is
+#    N2b/N2c work.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -590,5 +596,19 @@ grep -q "theorem oracleNoalias_pointSumRef" Circe/Derived.lean
 grep -q "theorem oracleNoalias_accTwo" Circe/Derived.lean
 grep -q "theorem oracleNoalias_boxThrough" Circe/Derived.lean
 echo "C++ transfers green (method/acc/box)"
+
+echo "== N2a read-only sharing discipline (two sharedBorrow readers, no writers) =="
+lake env lean Circe/ReadOnly.lean
+lake env lean --run tests/lean/GoldenReadOnly.lean
+grep -q "def IsReadOnlyParams" Circe/ReadOnly.lean
+grep -q "theorem hasWriter_not_readOnly" Circe/ReadOnly.lean
+grep -q "theorem writer_reader_excluded" Circe/ReadOnly.lean
+grep -q "theorem twoReaderParams_readOnly" Circe/ReadOnly.lean
+grep -q "theorem bindMemArgs_twoShared" Circe/ReadOnly.lean
+grep -q "theorem twoShared_noalias" Circe/ReadOnly.lean
+grep -q "theorem twoShared_consistent" Circe/ReadOnly.lean
+grep -q "theorem twoShared_alias_sound" Circe/ReadOnly.lean
+grep -q "GoldenReadOnly" tools/check.sh
+echo "read-only discipline green (model footprints + writer+reader rejection)"
 
 echo "CHECK-OK"

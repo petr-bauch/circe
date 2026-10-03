@@ -80,4 +80,6 @@ affine tokens, no aliasing in the common case), with tactic and
 spec-scaffolding support for proving properties of the emitted code.
 Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
 (C++-lite) done (M2a–M2c); M3 (shrinking oracle trust) done for C
-(M3a–M3c) and C++ (M3d). Details in `ROADMAP.md`.
+(M3a–M3c) and C++ (M3d); N2a (read-only sharing discipline,
+model-side: `Circe.ReadOnly` + `GoldenReadOnly`) done. Details in
+`ROADMAP.md`.

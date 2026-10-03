@@ -9,7 +9,8 @@ State (2026-10-04): C pipeline complete with proved memory transfer
 Eval f`); STL-free C++-lite admission complete (M2a–M2c) with proved
 memory transfer (M3d: method/acc/box shapes). Short-term S0–S5 done;
 M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
-M3d; the active frontier is N2 (viability past noalias).
+M3d; N2a (read-only sharing discipline, model-side) is done; the active
+frontier is N2b/N2c (rejection catalog + `restrict`-recovery).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -306,10 +307,18 @@ borrows already exist (`sharedBorrow`); what is missing is (a) a
 precise statement of what we accept and (b) loud, specific rejections
 for what we do not.
 
-- N2a: read-only sharing discipline — pin down which `const`
-  aliasing shapes are value-sound (multiple `sharedBorrow` readers,
-  no writers) and prove the corresponding footprints; everything with
-  a live writer + reader still rejects.
+- N2a: read-only sharing discipline — DONE (2026-10-04, model-side:
+  `Circe.ReadOnly` pins the value-sound `const` shape as two
+  `sharedBorrow` readers + owned length (`IsReadOnlyParams`,
+  `twoReaderParams`), proves the footprints (`bindMemArgs_twoShared`,
+  `twoShared_noalias`, `twoShared_consistent`) and alias soundness
+  (`twoShared_alias_sound`: the aliased call `f(a, a, n)` reads
+  identically through either pin), excludes any writer
+  (`hasWriter_not_readOnly`, `writer_reader_excluded`), and
+  `GoldenReadOnly` (5/5) pins that writer + reader still rejects loudly
+  while the two-reader shape does not derive. Text-gate admission of
+  multi-reader shapes (`derivedNoalias` / `validate`) is N2b/N2c work;
+  no new corpus in this slice.
 - N2b: interior rejection catalog — turn today's catch-all
   `alias-reject` into per-cause messages (writer+reader, escaping
   borrow, borrow-after-free), each with a golden rejection test, so
