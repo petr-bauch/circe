@@ -27,10 +27,13 @@ Check order (first hit wins — rejection codes are priority-ordered):
    `outOfSubset` with dedicated messages (double-`free`,
    `realloc`-shape, heap-shape, calls);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`
-   and without the C++ single-reference triple, oracle verdict other
-   than `noalias` with live oracle-governed pointer params, or
-   writer+reader ambiguity — two or more live oracle-governed pointer
-   params outside the `choose` borrow-return shape);
+   and without the C++ single-reference triple (N2c carve-out: the single
+   live array of a recovered reader shape — `recoveredNoalias` —
+   recovers noalias from construction instead of attr text), oracle
+   verdict other than `noalias` with live oracle-governed pointer params
+   (same N2c carve-out), or writer+reader ambiguity — two or more live
+   oracle-governed pointer params outside the `choose` borrow-return
+   shape);
 5. shape admission (canonical `Func` or a precise code: `escapeReject`
    for non-`choose` pointer returns (borrow-after-free when a heap
    `free`/`delete` is present, escaping-borrow when there are no pointer
@@ -820,6 +823,85 @@ theorem derivedNoalias_admitted_c (raw : RawFunc)
           exact hT
         simp at hD
 
+/-! ## N2c: construction-recovered noalias (reader shapes, no attr text) -/
+
+/-- Text-level recovery (N2c): a single live pointer param in an admitted
+    single-reader shape (`sum` / `sum_caller` / `find_eq`) recovers noalias
+    from construction — singleton footprint (see `oracleNoalias_sum` /
+    `oracleNoalias_sumCaller` / `oracleNoalias_findEq` in `Circe.Derived`,
+    all attr-free) plus a CoreIR with no array-write primitive plus N2a
+    reader alias-soundness — instead of demanding `llvm.noalias` attr
+    text. Notably the param's `noalias` flag is NOT consulted: that is
+    the recovery. Writers (`incr`, `choose`) and multi-pointer shapes
+    never recover (see `recoveredNoalias_single_oracle`); C++ is untouched
+    (`oracleParams` already excludes the single-ref triple). -/
+def recoveredNoalias (raw : RawFunc) : Bool :=
+  match oracleParams raw with
+  | [_] =>
+    isSumShape raw || isSumCallerShape raw || isFindEqShape raw
+  | _ => false
+
+/-- Recovery fires only inside the admitted single-reader shapes. -/
+theorem recoveredNoalias_admitted_reader (raw : RawFunc)
+    (h : recoveredNoalias raw = true) :
+    (isSumShape raw || isSumCallerShape raw || isFindEqShape raw) = true := by
+  cases hps : oracleParams raw with
+  | nil =>
+    have hD : (false : Bool) = true := by
+      have hT : recoveredNoalias raw = true := h
+      unfold recoveredNoalias at hT
+      rw [hps] at hT
+      exact hT
+    simp at hD
+  | cons p rest =>
+    cases rest with
+    | nil =>
+      have hD : (isSumShape raw || isSumCallerShape raw ||
+          isFindEqShape raw) = true := by
+        have hT : recoveredNoalias raw = true := h
+        unfold recoveredNoalias at hT
+        rw [hps] at hT
+        simpa using hT
+      exact hD
+    | cons _ _ =>
+      have hD : (false : Bool) = true := by
+        have hT : recoveredNoalias raw = true := h
+        unfold recoveredNoalias at hT
+        rw [hps] at hT
+        exact hT
+      simp at hD
+
+/-- Recovery pins exactly one live oracle-governed param (the recovered
+    reader is unambiguous; writers and writer+reader pairs never recover). -/
+theorem recoveredNoalias_single_oracle (raw : RawFunc)
+    (h : recoveredNoalias raw = true) :
+    (oracleParams raw).length = 1 := by
+  cases hps : oracleParams raw with
+  | nil =>
+    have hD : (false : Bool) = true := by
+      have hT : recoveredNoalias raw = true := h
+      unfold recoveredNoalias at hT
+      rw [hps] at hT
+      exact hT
+    simp at hD
+  | cons p rest =>
+    cases rest with
+    | nil => simp
+    | cons _ _ =>
+      have hD : (false : Bool) = true := by
+        have hT : recoveredNoalias raw = true := h
+        unfold recoveredNoalias at hT
+        rw [hps] at hT
+        exact hT
+      simp at hD
+
+/-- A param whose missing `llvm.noalias` is recovered from construction:
+    the function is a recovered reader shape and this param is its single
+    live array. (`recoveredNoalias_single_oracle` pins `oracleParams` to a
+    singleton, so the recovered reader is unambiguous.) -/
+def isRecoveredParam (raw : RawFunc) (p : RawParam) : Bool :=
+  recoveredNoalias raw && decide (p ∈ oracleParams raw)
+
 /-! ## M2b: value-ctor scope exemption (`acc_two` entry) -/
 
 /-- The M2b `Acc` struct type: CIRGen's `!rec_Acc` alias (long-form
@@ -1118,12 +1200,14 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       s!"out-of-subset: function '{raw.name}' uses {what}, outside the v0.1 Ownable-C subset (see docs/CIR_SUBSET.md)"
   | none =>
     match raw.params.find? (fun p =>
-      isPtrType p.ctype && !p.noalias && !p.singleRef) with
+      isPtrType p.ctype && !p.noalias && !p.singleRef &&
+      !isRecoveredParam raw p) with
     | some p =>
       reject raw.name .aliasReject
         s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`) or the full C++ single-reference triple (`nonnull + dereferenceable + noundef`): uniqueness cannot be established (see docs/SUBSET.md rule 1)"
     | none =>
-      if !(oracleParams raw).isEmpty && !verdictAdmits oracle.verdict then
+      if !(oracleParams raw).isEmpty && !verdictAdmits oracle.verdict &&
+          !recoveredNoalias raw then
         let why := match oracle.verdict with
           | .mayAlias => "reports `mayAlias`"
           | .unknown => "is inconclusive (`unknown`)"

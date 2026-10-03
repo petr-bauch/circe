@@ -26,3 +26,4 @@ find_eq noalias
 cls unknown
 add64 unknown
 addu64 unknown
+sum_norestrict unknown

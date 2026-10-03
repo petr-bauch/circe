@@ -9,9 +9,10 @@ State (2026-10-04): C pipeline complete with proved memory transfer
 Eval f`); STL-free C++-lite admission complete (M2a–M2c) with proved
 memory transfer (M3d: method/acc/box shapes). Short-term S0–S5 done;
 M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
-M3d; N2a (read-only sharing discipline, model-side) and N2b
-(rejection catalog) are done; the active frontier is N2c
-(`restrict`-recovery) then N3 (spec + tactic support).
+M3d; N2a (read-only sharing discipline, model-side), N2b
+(rejection catalog), and N2c (`restrict`-recovery) are done — N2
+(viability past noalias) is complete; the active frontier is N3
+(spec + tactic support).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -331,10 +332,32 @@ for what we do not.
   return-freed-pointer) and the N2a two-pointer case now assert their
   precise causes. No new admission: every cataloged input still
   rejects loudly.)
-- N2c: `restrict`-recovery report — where CIRGen drops `noalias`
-  evidence the source discipline guarantees (e.g. fresh `malloc`
-  results), derive it from construction (M1a precedent) instead of
-  demanding attr text.
+- N2c: `restrict`-recovery report — DONE (2026-10-04: probed CIRGen
+  (pinned clang, raw CIRGen) on the evidence matrix and recovered the
+  derivable gap from construction (M1a precedent) instead of demanding
+  attr text:
+  - `const` reader without `restrict` → no `llvm.noalias` (correctly
+    silent: the source guarantees nothing) — still rejects, unless the
+    shape is a proven single-reader (next bullet);
+  - `const ... __restrict__` reader → `{llvm.noalias, llvm.noundef}`
+    (control: attr present, unchanged path);
+  - fresh `malloc`/`realloc`/`new` results → no `noalias` on the call
+    result (fresh by construction; the heap shapes already consume this
+    without demanding attrs — M1a precedent, unchanged);
+  - single live array in an admitted reader shape (`sum` /
+    `sum_caller` / `find_eq`) → `recoveredNoalias` (new
+    `Validator` predicate, attr-blind by construction) carves the
+    reader out of both the rule-1 and oracle-verdict gates; writers
+    (`incr`, `choose`) and multi-pointer shapes never recover.
+  - New corpus `sum_norestrict` (real CIRGen, zero `llvm.noalias`,
+    `cir-opt` VERIFY-OK, oracle verdict honestly `unknown`) validates
+    to the canonical `sumFunc` body and fuzzes clean (`DiffNorestrict`
+    vs native); `GoldenPhase4` pipeline + `DerivedNoalias`
+    recovery-agreement (`recovered=true`, `derived=false`, cache
+    `unknown`) + `GoldenRejectCatalog` overreach negatives pin both
+    sides. `derivedNoalias` stays strictly attr-demanding (M3b trust
+    story untouched). No new `Func`: recovery reuses the whole sum
+    pipeline, gate-only change.)
 
 Non-goals: true mutable aliasing, raw-pointer arithmetic, lifetime
 inference — if the discipline is not visible in CIR text, it rejects.

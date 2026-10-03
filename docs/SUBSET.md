@@ -62,6 +62,11 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
    (C++ M2: `this` / `const&` params carry `nonnull + dereferenceable
    + noundef` instead — `this` cannot carry `restrict` / `noalias`;
    see `ROADMAP.md` M2 and `PINS.md`.)
+   (N2c recovery: the single live array of an admitted reader shape
+   (`sum` / `sum_caller` / `find_eq`, e.g. `sum_norestrict`) needs
+   neither — singleton footprint + read-only CoreIR recover noalias
+   from construction; writers and multi-pointer shapes still need
+   attr text or a `noalias` verdict.)
 2. No two live params may alias (oracle verdict required).
 3. No escaping, except the borrow-return pattern below.
 4. Indexing only as `p[i]` / `*(p+i)` with `0 <= i < n`, `n` a
@@ -257,10 +262,10 @@ escaping-borrow (pointer return with no pointer inputs,
 return, `escape-reject`); missing `__restrict__`/triple evidence and
 inconclusive oracle verdicts keep their `alias-reject` messages, and
 the ambiguous-inputs escape keeps the borrow-return `escape-reject`.
-Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
+Coverage: `tests/lean/GoldenPhase4.lean` (19) + `GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
 + `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9)
-+ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (3).
++ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (5).

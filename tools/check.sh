@@ -80,8 +80,15 @@
 #    N2b/N2c work.
 # 20. (N2b) Runs the interior rejection catalog (`GoldenRejectCatalog`:
 #    writer+reader / escaping-borrow / borrow-after-free each reject
-#    with their per-cause message) and asserts the three cause tokens
-#    are present in `Circe.Validator`.
+#    with their per-cause message, plus recovery-overreach negatives)
+#    and asserts the three cause tokens are present in `Circe.Validator`.
+# 21. (N2c) Regenerates + diffs the recovered-reader golden
+#    (`SumNorestrict`: real CIRGen without `llvm.noalias`, admitted by
+#    construction), typechecks the emitted files, builds the native
+#    no-`restrict` driver, runs the norestrict differential fuzzer, and
+#    asserts the recovery predicate + theorems are present (the
+#    `DerivedNoalias` recovery-agreement and `GoldenPhase4` pipeline
+#    cases run in their existing slots).
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -99,6 +106,7 @@ FIND_BIN="$WORKDIR/circe_find_native"
 CLS_BIN="$WORKDIR/circe_cls_native"
 ADD64_BIN="$WORKDIR/circe_add64_native"
 ADDU64_BIN="$WORKDIR/circe_addu64_native"
+NORESTRICT_BIN="$WORKDIR/circe_sum_norestrict_native"
 
 tools/check-phase7.sh "$TRIALS"
 
@@ -222,10 +230,10 @@ echo "emitted 64-bit bodies match Emit assumptions"
 echo "== regenerate out/ (S4 spec stubs) =="
 lake env lean --run tools/GenOut.lean
 
-echo "== spec stub existence + typecheck (25 stubs) =="
-[ "$(ls out/*_Spec.lean | wc -l)" = 25 ] || { echo "expected 25 spec stubs"; exit 1; }
+echo "== spec stub existence + typecheck (26 stubs) =="
+[ "$(ls out/*_Spec.lean | wc -l)" = 26 ] || { echo "expected 26 spec stubs"; exit 1; }
 for f in out/*_Spec.lean; do lake env lean "$f"; done
-echo "all 25 spec stubs typecheck"
+echo "all 26 spec stubs typecheck"
 
 echo "== cir_simp coverage (S4 growth) =="
 grep -qF "addCallerFwd_as_calls, sumCallerFwd_is_call" Circe/Tactics.lean
@@ -255,7 +263,7 @@ for f in out/*_Spec.lean; do
   echo "#eval $check" >> "$tmp"
   lake env lean "$tmp" | grep -q '^true$' || { echo "spec check false: $f"; exit 1; }
 done
-echo "all 25 spec prop entries true"
+echo "all 26 spec prop entries true"
 
 echo "== S5 helpers present (Tactics stage 2) =="
 grep -qF 'macro "cir_fuel"' Circe/Eval.lean
@@ -622,5 +630,21 @@ grep -q "escaping-borrow" Circe/Validator.lean
 grep -q "borrow-after-free" Circe/Validator.lean
 grep -q "GoldenRejectCatalog" tools/check.sh
 echo "rejection catalog green (per-cause messages + golden pins)"
+
+echo "== N2c restrict-recovery (noattr reader admitted by construction) =="
+lake env lean --run tools/GenOut.lean
+diff -u tests/golden/SumNorestrict.lean out/SumNorestrict.lean
+echo "recovered-reader golden in sync"
+lake env lean out/SumNorestrict.lean
+lake env lean out/SumNorestrict_Spec.lean
+echo "emitted recovered-reader files typecheck"
+cc -O0 -Wall tests/c/sum_norestrict.c tests/diff/driver_sum_norestrict.c -o "$NORESTRICT_BIN"
+lake env lean --run tests/lean/DiffNorestrict.lean "$NORESTRICT_BIN" "$TRIALS"
+grep -q "def recoveredNoalias" Circe/Validator.lean
+grep -q "theorem recoveredNoalias_admitted_reader" Circe/Validator.lean
+grep -q "theorem recoveredNoalias_single_oracle" Circe/Validator.lean
+grep -q "def isRecoveredParam" Circe/Validator.lean
+grep -qF "prefixSumU32 a.val a.val.length" out/SumNorestrict.lean
+echo "restrict-recovery green (corpus gate + fuzz + predicate presence)"
 
 echo "CHECK-OK"

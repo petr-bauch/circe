@@ -12,6 +12,11 @@
 -- against `memEval` in `Circe.Transfer` — M3d). Oracle facts are not
 -- required there yet. `validate` behavior is unchanged; this is a
 -- parallel assert.
+-- N2c recovery agreement (same runner): for the recovered-reader
+-- `tests/cir/sum_norestrict.cir`, `recoveredNoalias` must be `true`
+-- while `derivedNoalias` stays `false` and the cache verdict stays
+-- `unknown` (construction evidence, oracle silence); a writer-shaped
+-- no-attr raw must not recover.
 import Circe.Validator
 
 def checkCFile (verdicts : List OracleFact) (cir : String) : IO Nat := do
@@ -59,6 +64,46 @@ def checkCppFile (cir : String) : IO Nat := do
     n := n + 1
   pure n
 
+/-- N2c recovery agreement: for every definition in a recovered-reader
+    `.cir`, `recoveredNoalias` must be `true` (construction evidence),
+    `derivedNoalias` must stay `false` (no attr text to derive from),
+    and the checked-in cache verdict must be `unknown` (the oracle is
+    genuinely silent — recovery fabricates no evidence). -/
+def checkRecoveryFile (verdicts : List OracleFact) (cir : String) : IO Nat := do
+  let text ← IO.FS.readFile cir
+  let raw ← match parseModule text with
+    | none => throw (IO.userError s!"recovery-check: parse failed for {cir}")
+    | some r => pure r
+  if raw.funcs.isEmpty then
+    throw (IO.userError s!"recovery-check: no definitions in {cir}")
+  let mut n := 0
+  for func in raw.funcs do
+    if recoveredNoalias func != true then
+      throw (IO.userError
+        s!"recovery-check: {cir}:{func.name}: expected recoveredNoalias = true")
+    if derivedNoalias func != false then
+      throw (IO.userError
+        s!"recovery-check: {cir}:{func.name}: expected derivedNoalias = false (no attr text)")
+    match lookupOracle verdicts func.name with
+    | none =>
+      throw (IO.userError s!"recovery-check: no oracle fact for {func.name}")
+    | some o =>
+      if o.verdict != .unknown then
+        throw (IO.userError
+          s!"recovery-check: {cir}:{func.name}: cache must stay `unknown` (oracle silence is the recovery premise)")
+    IO.println s!"PASS recovery {func.name} (construction, oracle silent)"
+    n := n + 1
+  pure n
+
+/-- Writer-shaped raw without `llvm.noalias`: recovery must stay `false`
+    (writers never recover; the rule-1 gate still fires — pinned at the
+    pipeline level in `GoldenRejectCatalog`). -/
+def writerNoAttrRaw : RawFunc :=
+  { name := "incr_nr", params :=
+    [{ name := "p", ctype := "!cir.ptr<!s32i>", noalias := false, singleRef := false }],
+    ret := "",
+    text := "cir.func @incr_nr(%arg0: !cir.ptr<!s32i> {llvm.noundef}) { cir.return }" }
+
 def threePtrRaw : RawFunc :=
   { name := "three", params :=
     [{ name := "a", ctype := "!cir.ptr<!s32i>", noalias := true, singleRef := false },
@@ -99,5 +144,11 @@ def main : IO Unit := do
   if derivedNoalias cppRefRaw != false then
     throw (IO.userError "derived-check: C++ single-ref must not derive (attr triple is not text-level noalias)")
   IO.println "PASS derived single-ref exclusion"
+  passed := passed + 1
+  let c ← checkRecoveryFile verdicts "tests/cir/sum_norestrict.cir"
+  passed := passed + c
+  if recoveredNoalias writerNoAttrRaw != false then
+    throw (IO.userError "recovery-check: writer shape must not recover")
+  IO.println "PASS recovery writer exclusion"
   passed := passed + 1
   IO.println s!"DERIVED-OK passed={passed}"

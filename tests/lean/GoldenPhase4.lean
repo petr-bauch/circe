@@ -143,6 +143,12 @@ def main : IO Unit := do
   let c16 ← checkReject "br" advBranchInAdd .unknown
     "out-of-subset" "admitted"
   passed := passed + c16
+  -- N2c recovery: the no-`restrict` reader validates under an `unknown`
+  -- verdict (noalias recovered from construction, not attr text) and
+  -- emits the canonical sum bytes.
+  let c17 ← checkPipeline verdicts
+    "tests/cir/sum_norestrict.cir" "tests/golden/SumNorestrict.lean" "sum_norestrict"
+  passed := passed + c17
   -- oracle wiring case needs a mismatched fact: redo with name "other"
   let oracleOther : OracleFact := ⟨"other", .unknown⟩
   match runPipeline advAddText oracleOther with

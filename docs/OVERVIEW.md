@@ -16,6 +16,7 @@ input rejects loudly, never silently models memory.
 | `mutBorrow` | `incr_ptr` | `incr_fwd = checkedIncrI32` | `emit_correct_incr` |
 | borrow-return | `choose_ptr` | `choose_fwd` + `choose_back` | lens laws |
 | bounded loop | `sum_array` | `prefixSumU32` over `BoundedList` | `emit_correct_sum` (fuel induction) |
+| recovered reader, no `restrict` (N2c) | `sum_norestrict` | same `prefixSumU32` body (`recoveredNoalias`: singleton footprint + read-only CoreIR) | `emit_correct_sum` + `memTransfer_sum` reused (gate-only change) |
 | uniquely-owned heap (`u32`-only) | `vec_alloc` (+ M1d leak variant `vec_alloc_leak`: same body, validator-side only) | `vecFillSumU32 n.toNat` | `emit_correct_vec` (two-loop induction) |
 | uniquely-owned heap (`u64`-only, M1b mirror) | `vec_alloc_u64` | `vecFillSumU64 n.toNat` | `emit_correct_vec64` (two-loop induction) |
 | two live blocks (`u32`-only) | `vec_copy_sum` (M1a) | `vecFillSumU32 n.toNat` (copy value-invisible) | `emit_correct_vec2` (fill/copy/sum induction) |
@@ -81,6 +82,7 @@ spec-scaffolding support for proving properties of the emitted code.
 Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
 (C++-lite) done (M2a–M2c); M3 (shrinking oracle trust) done for C
 (M3a–M3c) and C++ (M3d); N2a (read-only sharing discipline,
-model-side: `Circe.ReadOnly` + `GoldenReadOnly`) and N2b (per-cause
-rejection catalog: `GoldenRejectCatalog`) done. Details in
-`ROADMAP.md`.
+model-side: `Circe.ReadOnly` + `GoldenReadOnly`), N2b (per-cause
+rejection catalog: `GoldenRejectCatalog`), and N2c (`restrict`-recovery:
+`recoveredNoalias` + `sum_norestrict` corpus) done — N2 complete.
+Details in `ROADMAP.md`.

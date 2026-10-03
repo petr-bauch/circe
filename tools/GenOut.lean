@@ -3,8 +3,8 @@
 -- M1b u64 heap, M1c grown heap, M2a const-methods, M2b ctors/dtors,
 -- M2c new/delete).
 -- Run from the repo root: `lake env lean --run tools/GenOut.lean`
--- Writes `out/{Add,Incr,Choose,SumArray,VecAlloc,VecAllocU64,VecCopySum,VecRealloc,AddCaller,SumCaller,StructByValue,MethodSum,PointSumRef,AccCtor,AccAdd,AccGet,AccDtor,AccTwo,BoxThrough,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}.lean`
--- plus `out/{Add,Incr,Choose,SumArray,VecAlloc,VecAllocU64,VecCopySum,VecRealloc,AddCaller,SumCaller,StructByValue,MethodSum,PointSumRef,AccCtor,AccAdd,AccGet,AccDtor,AccTwo,BoxThrough,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}_Spec.lean`
+-- Writes `out/{Add,Incr,Choose,SumArray,SumNorestrict,VecAlloc,VecAllocU64,VecCopySum,VecRealloc,AddCaller,SumCaller,StructByValue,MethodSum,PointSumRef,AccCtor,AccAdd,AccGet,AccDtor,AccTwo,BoxThrough,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}.lean`
+-- plus `out/{Add,Incr,Choose,SumArray,SumNorestrict,VecAlloc,VecAllocU64,VecCopySum,VecRealloc,AddCaller,SumCaller,StructByValue,MethodSum,PointSumRef,AccCtor,AccAdd,AccGet,AccDtor,AccTwo,BoxThrough,NestedSum,SkipSum,FindEq,Cls,Add64,Addu64}_Spec.lean`
 -- from `Circe.Emit.emitFunc` / `Circe.Emit.emitSpec` (single source of truth;
 -- `tests/golden/*.lean` pins the forward bytes).
 import Circe.Emit
@@ -24,6 +24,7 @@ def main : IO Unit := do
   let incr ← emitOrDie incrFunc
   let choose ← emitOrDie chooseFunc
   let sum ← emitOrDie sumFunc
+  let sumNr ← emitOrDie { sumFunc with name := "sum_norestrict" }
   let vec ← emitOrDie vecFunc
   let vec64 ← emitOrDie vec64Func
   let vec2 ← emitOrDie vec2Func
@@ -49,6 +50,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
   IO.FS.writeFile "out/SumArray.lean" (emitFileText (.ok sum))
+  IO.FS.writeFile "out/SumNorestrict.lean" (emitFileText (.ok sumNr))
   IO.FS.writeFile "out/VecAlloc.lean" (emitFileText (.ok vec))
   IO.FS.writeFile "out/VecAllocU64.lean" (emitFileText (.ok vec64))
   IO.FS.writeFile "out/VecCopySum.lean" (emitFileText (.ok vec2))
@@ -74,6 +76,7 @@ def main : IO Unit := do
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
   let sumSpec ← specOrDie sumFunc
+  let sumNrSpec ← specOrDie { sumFunc with name := "sum_norestrict" }
   let vecSpec ← specOrDie vecFunc
   let vec64Spec ← specOrDie vec64Func
   let vec2Spec ← specOrDie vec2Func
@@ -99,6 +102,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
   IO.FS.writeFile "out/SumArray_Spec.lean" sumSpec
+  IO.FS.writeFile "out/SumNorestrict_Spec.lean" sumNrSpec
   IO.FS.writeFile "out/VecAlloc_Spec.lean" vecSpec
   IO.FS.writeFile "out/VecAllocU64_Spec.lean" vec64Spec
   IO.FS.writeFile "out/VecCopySum_Spec.lean" vec2Spec
@@ -125,6 +129,8 @@ def main : IO Unit := do
   | none => throw (IO.userError "choose must have a backward definition")
   if sum.backward.isSome then
     throw (IO.userError "sum must not have a backward definition")
+  if sumNr.backward.isSome then
+    throw (IO.userError "sum_norestrict must not have a backward definition")
   if vec.backward.isSome then
     throw (IO.userError "vec must not have a backward definition")
   if vec2.backward.isSome then
@@ -167,4 +173,4 @@ def main : IO Unit := do
     throw (IO.userError "add64 must not have a backward definition")
   if addu64.backward.isSome then
     throw (IO.userError "addu64 must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean + 25 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean + 26 *_Spec.lean stubs"
