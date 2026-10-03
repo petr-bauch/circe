@@ -14,6 +14,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenVec64
+
 def checkVec64Pipeline (verdicts : List OracleFact) : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_alloc_u64.cir"
   let want ← IO.FS.readFile "tests/golden/VecAllocU64.lean"
@@ -96,3 +98,5 @@ def main : IO Unit := do
   let c6 ← checkEvalMixSet
   passed := passed + c6
   IO.println s!"GOLDENVEC64-OK passed={passed}"
+
+end GoldenVec64

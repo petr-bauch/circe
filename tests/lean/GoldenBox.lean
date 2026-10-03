@@ -19,6 +19,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenBox
+
 def boxEntryFact : OracleFact := ⟨"_Z11box_throughi", .unknown⟩
 
 def checkBoxPipeline : IO Nat := do
@@ -171,3 +173,5 @@ def main : IO Unit := do
   let c8 ← checkTokenBox "double-delete" (boxFree ⟨5, true⟩)
   passed := passed + c8
   IO.println s!"GOLDENBOX-OK passed={passed}"
+
+end GoldenBox

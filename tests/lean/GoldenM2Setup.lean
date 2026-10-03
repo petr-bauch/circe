@@ -13,6 +13,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenM2Setup
+
 /-- Adversarial case: inline CIR must reject with `code` in the message
     plus `substr`. -/
 def checkRejectSetup (name text : String) (verdict : Verdict) (code substr : String) :
@@ -82,3 +84,5 @@ def main : IO Unit := do
   let c5 ← checkModuleMissingFact
   passed := passed + c5
   IO.println s!"GOLDENM2SETUP-OK passed={passed}"
+
+end GoldenM2Setup

@@ -11,6 +11,8 @@
 -- (runtime loop check).
 import Circe.Emit
 
+namespace DiffPhase4
+
 /-- 64-bit LCG step. -/
 def lcgNext (s : Nat) : Nat :=
   (s * 6364136223846793005 + 1442695040888963407) % 2 ^ 64
@@ -156,3 +158,5 @@ def main (args : List String) : IO Unit := do
     let c3 ← checkSum sumBin l (BitVec.ofNat 32 nn)
     passed := passed + c3
   IO.println s!"DIFF4-OK passed={passed} (edges + {trials} random trials)"
+
+end DiffPhase4

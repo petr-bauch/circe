@@ -12,6 +12,8 @@
 -- here must reject loudly (never silently model memory).
 import Circe.Validator
 
+namespace GoldenPhase6
+
 /-- Adversarial case: inline CIR must reject with `code` in the message
     plus `substr`. -/
 def checkReject6 (name text : String) (verdict : Verdict) (code substr : String) :
@@ -139,3 +141,5 @@ def main : IO Unit := do
     "out-of-subset" "setjmp"
   passed := passed + c18
   IO.println s!"GOLDEN6-OK passed={passed}"
+
+end GoldenPhase6

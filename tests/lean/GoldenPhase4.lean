@@ -12,6 +12,8 @@
 --    `validate` branch is exercised.
 import Circe.Validator
 
+namespace GoldenPhase4
+
 def checkPipeline (verdicts : List OracleFact) (cir golden func : String) :
     IO Nat := do
   let text ← IO.FS.readFile cir
@@ -166,3 +168,5 @@ def main : IO Unit := do
     IO.println "PASS reject garbage [parse]"
     passed := passed + 1
   IO.println s!"GOLDEN4-OK passed={passed}"
+
+end GoldenPhase4

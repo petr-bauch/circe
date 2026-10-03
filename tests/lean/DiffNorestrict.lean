@@ -8,6 +8,8 @@
 -- Run: `lake env lean --run tests/lean/DiffNorestrict.lean <norestrict_bin> [trials]`
 import Circe.Emit
 
+namespace DiffNorestrict
+
 /-- 64-bit LCG step. -/
 def lcgNextNr (s : Nat) : Nat :=
   (s * 6364136223846793005 + 1442695040888963407) % 2 ^ 64
@@ -76,3 +78,5 @@ def main (args : List String) : IO Unit := do
     let c ← checkNorestrict nrBin l (BitVec.ofNat 32 nn)
     passed := passed + c
   IO.println s!"DIFFNORESTRICT-OK passed={passed} (edges + {trials} random trials)"
+
+end DiffNorestrict

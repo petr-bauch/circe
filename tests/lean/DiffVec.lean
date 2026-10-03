@@ -7,6 +7,8 @@
 -- (`n ≤ 64 ≪ EVAL_FUEL`), so fuel hypotheses always hold; mismatch = P0.
 import Circe.Emit
 
+namespace DiffVec
+
 /-- 64-bit LCG step. -/
 def lcgNext (s : Nat) : Nat :=
   (s * 6364136223846793005 + 1442695040888963407) % 2 ^ 64
@@ -52,3 +54,5 @@ def main (args : List String) : IO Unit := do
     let c ← checkVec vecBin k
     passed := passed + c
   IO.println s!"DIFFVEC-OK passed={passed} (edges + {trials} random trials)"
+
+end DiffVec

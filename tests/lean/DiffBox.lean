@@ -9,6 +9,8 @@
 -- Mismatch = P0.
 import Circe.Emit
 
+namespace DiffBox
+
 /-- 64-bit LCG step. -/
 def lcgNext (s : Nat) : Nat :=
   (s * 6364136223846793005 + 1442695040888963407) % 2 ^ 64
@@ -56,3 +58,5 @@ def main (args : List String) : IO Unit := do
     let c ← checkBox boxBin (BitVec.ofInt 32 xi)
     passed := passed + c
   IO.println s!"DIFFBOX-OK passed={passed} (edges + {trials} random trials)"
+
+end DiffBox

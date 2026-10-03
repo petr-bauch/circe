@@ -12,6 +12,8 @@
 --    divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
+namespace GoldenCalls
+
 def checkCallPipeline (name cir golden : String) (verdict : Verdict) : IO Nat := do
   let text ← IO.FS.readFile cir
   let want ← IO.FS.readFile golden
@@ -93,3 +95,5 @@ def main : IO Unit := do
     "out-of-subset" "outside the admitted call shapes"
   passed := passed + c7
   IO.println s!"GOLDENCALLS-OK passed={passed}"
+
+end GoldenCalls

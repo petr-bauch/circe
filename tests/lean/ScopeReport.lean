@@ -13,6 +13,8 @@
 import Circe.Scope
 import Circe.Validator
 
+namespace ScopeReport
+
 /-- One expectation: function name, locals as `(name, depth)` in source
     order, maximum depth. -/
 abbrev ScopeWant := String × List (String × Nat) × Nat
@@ -124,3 +126,5 @@ def main : IO Unit := do
   IO.println "PASS scope malformed-alloca loudness"
   passed := passed + 1
   IO.println s!"SCOPEREPORT-OK passed={passed}"
+
+end ScopeReport

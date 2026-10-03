@@ -19,6 +19,8 @@
 -- no-attr raw must not recover.
 import Circe.Validator
 
+namespace DerivedNoalias
+
 def checkCFile (verdicts : List OracleFact) (cir : String) : IO Nat := do
   let text ← IO.FS.readFile cir
   let raw ← match parseModule text with
@@ -152,3 +154,5 @@ def main : IO Unit := do
   IO.println "PASS recovery writer exclusion"
   passed := passed + 1
   IO.println s!"DERIVED-OK passed={passed}"
+
+end DerivedNoalias

@@ -10,6 +10,8 @@
 -- wrongly-lenient Lean side agreeing with wrapping native code).
 import Circe.Emit
 
+namespace DiffPhase3
+
 /-- 64-bit LCG step. -/
 def lcgNext (s : Nat) : Nat :=
   (s * 6364136223846793005 + 1442695040888963407) % 2 ^ 64
@@ -98,3 +100,5 @@ def main (args : List String) : IO Unit := do
     let c2 ← checkIncr incrBin (BitVec.ofInt 32 x)
     passed := passed + c2
   IO.println s!"DIFF-OK passed={passed} (edges + {trials} random trials × 2)"
+
+end DiffPhase3

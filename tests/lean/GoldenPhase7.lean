@@ -11,6 +11,8 @@
 --    policy: any in-subset divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
+namespace GoldenPhase7
+
 def checkVecPipeline (verdicts : List OracleFact) : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_alloc.cir"
   let want ← IO.FS.readFile "tests/golden/VecAlloc.lean"
@@ -84,3 +86,5 @@ def main : IO Unit := do
     "escape-reject" "borrow-after-free"
   passed := passed + c6
   IO.println s!"GOLDEN7-OK passed={passed}"
+
+end GoldenPhase7

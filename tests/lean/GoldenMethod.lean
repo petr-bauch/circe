@@ -15,6 +15,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenMethod
+
 def tripleAttrs : String :=
   "{llvm.align = 4 : i64, llvm.dereferenceable = 8 : i64, llvm.nonnull, llvm.noundef}"
 
@@ -107,3 +109,5 @@ def main : IO Unit := do
     "out-of-subset" "outside the admitted call shapes"
   passed := passed + c6
   IO.println s!"GOLDENMETHOD-OK passed={passed}"
+
+end GoldenMethod

@@ -12,6 +12,8 @@
 --    must reject loudly.
 import Circe.Validator
 
+namespace GoldenWidth
+
 def checkWidthPipeline (verdicts : List OracleFact) (cir golden func : String) :
     IO Nat := do
   let text ← IO.FS.readFile cir
@@ -80,3 +82,5 @@ def main : IO Unit := do
     "out-of-subset" "8/16-bit"
   passed := passed + r3
   IO.println s!"GOLDENWIDTH-OK passed={passed}"
+
+end GoldenWidth

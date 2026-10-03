@@ -13,6 +13,8 @@
 --    is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
+namespace GoldenStruct
+
 def checkStructPipeline (verdicts : List OracleFact) : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/struct_by_value.cir"
   let want ← IO.FS.readFile "tests/golden/StructByValue.lean"
@@ -83,3 +85,5 @@ def main : IO Unit := do
     "out-of-subset" "outside the admitted `translate` shape"
   passed := passed + c5
   IO.println s!"GOLDENSTRUCT-OK passed={passed}"
+
+end GoldenStruct

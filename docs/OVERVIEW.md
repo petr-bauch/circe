@@ -56,18 +56,20 @@ tests/c/*.c → tests/cir/*.cir (tools/emit-cir.sh, CIR clang)
   → emitFunc (verified) → out/*.lean (tests/golden/*.lean pins bytes)
 ```
 
-E2E: `tools/check.sh [trials]` (single entry; `check-phase*.sh` kept for
-compat) runs the full pipeline: C corpus → caller golden `diff`s →
-`lake env lean` typecheck → native caller drivers → `DiffCalls` fuzz vs
-native → `GoldenCalls` pipeline + rejection suite → struct, control-flow,
-and 64-bit stages (same shape: golden `diff` → native driver → `Diff*`
-fuzz → rejection suite → emitted-body correspondence) → spec-stub
-regeneration (25/25 typecheck, `cir_simp` coverage greps, 25/25 `_check`
-entries `true`) → S5 helper presence + adoption greps → M1 heap stages
-(two-block, `u64`, grown-block, leak discipline) → M2 C++ stages
-(setup gates, const-methods, ctors/dtors, new/delete) → M3 transfer
-stages (mem model, derived noalias + cache agreement, loop-free / flow /
-caller / heap transfers) → `CHECK-OK`).
+E2E: `tools/check.sh [trials]` (thin entry delegating to the parallel
+driver `lake exe circe-test`, roster in `Test/Driver.lean`;
+`check-phase*.sh` kept for compat) runs the full pipeline: C corpus →
+caller golden `diff`s → `lake env lean` typecheck → native caller
+drivers → `DiffCalls` fuzz vs native → `GoldenCalls` pipeline +
+rejection suite → struct, control-flow, and 64-bit stages (same shape:
+golden `diff` → native driver → `Diff*` fuzz → rejection suite →
+emitted-body correspondence) → spec-stub regeneration (26/26 typecheck,
+`cir_simp` coverage greps, 26/26 `_check` entries `true`) → S5 helper
+presence + adoption greps → M1 heap stages (two-block, `u64`,
+grown-block, leak discipline) → M2 C++ stages (setup gates,
+const-methods, ctors/dtors, new/delete) → M3 transfer stages (mem
+model, derived noalias + cache agreement, loop-free / flow / caller /
+heap transfers) → N2 viability stages → L1 evidence stage → `CHECK-OK`.
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next

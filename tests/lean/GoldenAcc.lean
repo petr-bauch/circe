@@ -16,6 +16,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenAcc
+
 def accTripleAttrs : String :=
   "{llvm.align = 4 : i64, llvm.dereferenceable = 4 : i64, llvm.nonnull, llvm.noundef}"
 
@@ -142,3 +144,5 @@ def main : IO Unit := do
     "out-of-subset" "get_member"
   passed := passed + c7
   IO.println s!"GOLDENACC-OK passed={passed}"
+
+end GoldenAcc

@@ -15,6 +15,8 @@
 import Circe.Validator
 import Circe.ReadOnly
 
+namespace GoldenReadOnly
+
 def checkRejectReadOnly (name text : String) (verdict : Verdict)
     (code substr : String) : IO Nat := do
   let oracle : OracleFact := ⟨name, verdict⟩
@@ -79,3 +81,5 @@ def main : IO Unit := do
   IO.println "PASS readonly two-reader footprint linked"
   passed := passed + 1
   IO.println s!"GOLDENREADONLY-OK passed={passed}"
+
+end GoldenReadOnly

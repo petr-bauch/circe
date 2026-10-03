@@ -14,6 +14,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenVecRealloc
+
 def checkVecReallocPipeline (verdicts : List OracleFact) : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_realloc.cir"
   let want ← IO.FS.readFile "tests/golden/VecRealloc.lean"
@@ -103,3 +105,5 @@ def main : IO Unit := do
   let c7 ← checkEvalVreallocWidth
   passed := passed + c7
   IO.println s!"GOLDENVECREALLOC-OK passed={passed}"
+
+end GoldenVecRealloc

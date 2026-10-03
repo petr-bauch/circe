@@ -12,6 +12,8 @@
 --    divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
+namespace GoldenVec2
+
 def checkVec2Pipeline (verdicts : List OracleFact) : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_copy_sum.cir"
   let want ← IO.FS.readFile "tests/golden/VecCopySum.lean"
@@ -80,3 +82,5 @@ def main : IO Unit := do
     "out-of-subset" "outside the admitted"
   passed := passed + c6
   IO.println s!"GOLDENVEC2-OK passed={passed}"
+
+end GoldenVec2

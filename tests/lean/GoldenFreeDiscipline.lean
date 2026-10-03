@@ -18,6 +18,8 @@
 --    reject loudly.
 import Circe.Validator
 
+namespace GoldenFreeDiscipline
+
 /-- Real leak corpus: validates and emits the `VecAlloc` body under its own
     name (validator-side-only relaxation: same canonical `Func`). -/
 def checkLeakPipeline (verdicts : List OracleFact) : IO Nat := do
@@ -145,3 +147,5 @@ def main : IO Unit := do
   let c13 ← checkTokenFD "use-after-free-get-64" (vecGet64 ⟨[1, 2], true⟩ 0)
   passed := passed + c13
   IO.println s!"GOLDENFREEDISCIPLINE-OK passed={passed}"
+
+end GoldenFreeDiscipline

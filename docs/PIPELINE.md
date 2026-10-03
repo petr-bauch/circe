@@ -85,10 +85,13 @@ longer the soundness argument where transfer is proved.
 
 ## E2E harness
 
-`tools/check.sh [trials]` (single entry; `check-phase*.sh` kept for
-compat): build → regenerate `out/` (`tools/GenOut.lean`,
-single source of truth) → golden `diff`s (`tests/golden/*.lean`) →
-`lake env lean` typecheck → native drivers → `Diff*` fuzz vs native →
-`GoldenPhase*`/`GoldenCalls` pipeline + rejection suites →
-emitted-body `grep` correspondence → specs typecheck → `CHECK-OK`.
+`tools/check.sh [trials]` (thin entry; `check-phase*.sh` kept for
+compat) delegates to the parallel Lean driver (`lake exe circe-test`,
+`Test/Driver.lean`, whose roster IS the wiring): regenerate `out/`
+(`tools/GenOut.lean`, single source of truth) → native drivers →
+golden `diff`s (`tests/golden/*.lean`) → `lake env lean` typecheck →
+`Diff*` fuzz vs native → `Golden*` pipeline + rejection suites →
+emitted-body correspondence → specs typecheck (26/26) → `TEST-OK`
+(`CHECK-OK` at the shell entry). Suites run as parallel `IO` tasks,
+run-all-and-report (every failure prints, nonzero exit at the end).
 `lake` does not track `include_str` deps, so `diff` enforces drift.

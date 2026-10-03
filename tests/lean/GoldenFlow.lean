@@ -14,6 +14,8 @@
 --    divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
+namespace GoldenFlow
+
 def checkFlowPipeline (verdicts : List OracleFact) (cir golden func : String) :
     IO Nat := do
   let text ← IO.FS.readFile cir
@@ -114,3 +116,5 @@ def main : IO Unit := do
     "out-of-subset" "`cir.switch`"
   passed := passed + r6
   IO.println s!"GOLDENFLOW-OK passed={passed}"
+
+end GoldenFlow

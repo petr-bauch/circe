@@ -16,3 +16,13 @@ rev = "v4.34.0"
 
 [[lean_lib]]
 name = "Circe"
+
+[[lean_lib]]
+name = "Suites"
+srcDir = "tests/lean"
+roots = ["DerivedNoalias","DiffAcc","DiffBox","DiffCalls","DiffFlow","DiffMethod","DiffNorestrict","DiffPhase3","DiffPhase4","DiffStruct","DiffVec","DiffVec2","DiffVec64","DiffVecLeak","DiffVecRealloc","DiffWidth","GoldenAcc","GoldenBox","GoldenCalls","GoldenFlow","GoldenFreeDiscipline","GoldenM2Setup","GoldenMethod","GoldenPhase4","GoldenPhase6","GoldenPhase7","GoldenReadOnly","GoldenRejectCatalog","GoldenStruct","GoldenVec2","GoldenVec64","GoldenVecRealloc","GoldenWidth","ScopeReport"]
+
+[[lean_exe]]
+name = "circe-test"
+root = "Test.Driver"
+

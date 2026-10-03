@@ -18,6 +18,8 @@
 -- reject loudly.
 import Circe.Validator
 
+namespace GoldenRejectCatalog
+
 def checkRejectCatalog (name text : String) (verdict : Verdict)
     (code substr : String) : IO Nat := do
   let oracle : OracleFact := ⟨name, verdict⟩
@@ -77,3 +79,5 @@ def main : IO Unit := do
     "alias-reject" "without `__restrict__`"
   passed := passed + c5
   IO.println s!"GOLDENREJECTCATALOG-OK passed={passed}"
+
+end GoldenRejectCatalog
