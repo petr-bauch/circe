@@ -1,8 +1,9 @@
-# Circe — Overview (current state, 2026-09-27)
+# Circe — Overview (current state, 2026-10-03)
 
-CIR → Lean 4 verification pipeline for non-aliasing C, Aeneas-style:
-C source → ClangIR (raw CIRGen) → pure, memory-free Lean 4 via a
-verified emitter, with functional-correctness proofs as pure equations.
+CIR → Lean 4 verification pipeline for non-aliasing C and STL-free
+C++-lite, Aeneas-style: source → ClangIR (raw CIRGen) → pure,
+memory-free Lean 4 via a verified emitter, with
+functional-correctness proofs as pure equations.
 
 No memory model, no separation logic in the common case. Out-of-subset
 input rejects loudly, never silently models memory.
@@ -28,14 +29,20 @@ input rejects loudly, never silently models memory.
 | switch-as-if-chain | `cls` | if-chain on `ueq` | `emit_correct_cls` (loop-free) |
 | 64-bit `add` | `add64` (`int64_t`, `nsw`) | `add64_fwd = checkedAddI64` | `emit_correct_add64` + ok/err |
 | 64-bit wrapping `add` | `addu64` (`uint64_t`) | `addu64_fwd = .ok (a + b)` | `emit_correct_addu64` (always succeeds) |
+| C++ const-method (M2a) | `point_sum_ref(const Point&)` | `pointSumRefFwd` → `pointSum` delegation | `emit_correct_method` (leaf + entry composition) |
+| C++ ctor/dtor (M2b) | `acc_two(a, b)` | `accTwo` (init + two checked adds) | `emit_correct_accTwo` (1 ctor + 2 add + 1 get + 1 dtor) |
+| C++ `new`/`delete` (M2c) | `box_through(x)` | `boxThrough` (identity; box + affine token) | `emit_correct_box` (token threading) |
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
-(`Eval`), verified gate (`validate` + oracle verdicts), emitter
+(`Eval`), addressful block-map model + proved memory transfer on the
+admitted C fragment (`Mem` / `Derived` / `Transfer`: `oracle_noalias f →
+memEval f = Eval f`, so oracle verdicts are a checked cache, not a trust
+root), verified gate (`validate` + oracle verdicts), emitter
 (`Emit`), grown `cir_simp` tactic (call-unfold, struct-field,
 wider-width, vec rules, bind automation) + stage-2 helpers (`cir_fuel`
 + fuel-bound lemma, `cir_choose`), specs (`incr_correct`,
-`choose_lens_laws`, `sum_correct`, `vec_correct` — the last refactored
-onto the grown set) plus 17 generated `out/*_Spec.lean` stubs
+`choose_lens_laws`, `sum_correct`, `vec_correct`, `vec64_correct`,
+`vecRealloc_correct`) plus 25 generated `out/*_Spec.lean` stubs
 (signature + body reference + edge list + prop-test entry).
 
 ## Pipeline
@@ -48,30 +55,18 @@ tests/c/*.c → tests/cir/*.cir (tools/emit-cir.sh, CIR clang)
   → emitFunc (verified) → out/*.lean (tests/golden/*.lean pins bytes)
 ```
 
-E2E: `tools/check.sh [trials]` (single entry; superset: phase-7 pipeline
-→ caller golden `diff`s → `lake env lean` typecheck → native caller
-drivers → `DiffCalls` fuzz vs native → `GoldenCalls` pipeline +
-rejection suite → struct golden `diff` → native struct driver →
-`DiffStruct` fuzz vs native → `GoldenStruct` pipeline + rejection
-suite → emitted-body correspondence → control-flow golden `diff`s →
-native control-flow drivers → `DiffFlow` fuzz vs native →
-`GoldenFlow` pipeline + rejection suite → emitted-body correspondence
-→ 64-bit golden `diff`s → native 64-bit drivers → `DiffWidth` fuzz
-vs native (boundary values per width) → `GoldenWidth` pipeline +
-rejection suite → emitted-body correspondence → S4 spec-stub
-rejection suite → emitted-body correspondence → S4 spec-stub
-regeneration (15/15 typecheck, `cir_simp` coverage greps, 15/15
-`_check` entries `true`) → S5 helper presence + adoption greps →
-M1a two-block golden `diff` → native two-block driver → `DiffVec2`
-fuzz vs native → `GoldenVec2` pipeline + rejection suite →
-emitted-body correspondence → M1b `u64` golden `diff` → native `u64`
-driver → `DiffVec64` fuzz vs native → `GoldenVec64` pipeline +
-rejection suite → emitted-body correspondence → M1c grown-block
-golden `diff` → native grown-block driver → `DiffVecRealloc` fuzz vs
-native → `GoldenVecRealloc` pipeline + rejection suite →
-emitted-body correspondence → M1d native leak driver → `DiffVecLeak`
-fuzz vs native → `GoldenFreeDiscipline` pipeline + rejection suite →
-`CHECK-OK`).
+E2E: `tools/check.sh [trials]` (single entry; `check-phase*.sh` kept for
+compat) runs the full pipeline: C corpus → caller golden `diff`s →
+`lake env lean` typecheck → native caller drivers → `DiffCalls` fuzz vs
+native → `GoldenCalls` pipeline + rejection suite → struct, control-flow,
+and 64-bit stages (same shape: golden `diff` → native driver → `Diff*`
+fuzz → rejection suite → emitted-body correspondence) → spec-stub
+regeneration (25/25 typecheck, `cir_simp` coverage greps, 25/25 `_check`
+entries `true`) → S5 helper presence + adoption greps → M1 heap stages
+(two-block, `u64`, grown-block, leak discipline) → M2 C++ stages
+(setup gates, const-methods, ctors/dtors, new/delete) → M3 transfer
+stages (mem model, derived noalias + cache agreement, loop-free / flow /
+caller / heap transfers) → `CHECK-OK`).
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next
@@ -79,9 +74,10 @@ milestones, `PINS.md` for toolchain pins.
 
 ## Mid-term goal
 
-Non-aliasing C/C++ code: more syntax, tactics that simplify working
-with the Lean versions, and scaffolding for simple verification of the
-input programs on the Lean side. Short-term scope (per planning):
-C + struct-by-value only, calls first, `cir_simp` now + DSL next,
-spec skeletons in `out/*_Spec.lean`. Short-term S0–S5 complete;
-M1 (heap generics) locked: M1a–M1d done. Details in `ROADMAP.md`.
+A viable verification platform for modern C++: the subset of C++ that
+is amenable to Aeneas-style translation to Lean (value semantics +
+affine tokens, no aliasing in the common case), with tactic and
+spec-scaffolding support for proving properties of the emitted code.
+Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
+(C++-lite) done (M2a–M2c); M3 (shrinking oracle trust) done for C
+(M3a–M3c), C++ transfer (M3d) next. Details in `ROADMAP.md`.

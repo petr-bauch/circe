@@ -1,12 +1,14 @@
-# Circe — Roadmap: short-term plan + mid-term notes
+# Circe — Roadmap: where we are + where next
 
-Mid-term goal: non-aliasing C/C++ code, more syntax, tactics that
-simplify working with the Lean versions, scaffolding for simple
-verification of the input programs on the Lean side.
+Long-term goal: a viable verification platform for modern C++ —
+the subset of C++ amenable to Aeneas-style translation to Lean,
+with tactic and spec support for proving properties of the emitted code.
 
-Short-term scope (locked 2026-09-27): C + struct-by-value only,
-calls first, `cir_simp` now + DSL next, spec skeletons in
-`out/*_Spec.lean`.
+State (2026-10-03): C pipeline complete with proved memory transfer
+(M3a–M3c: every admitted C `Func` has `oracle_noalias f → memEval f =
+Eval f`); STL-free C++-lite admission complete (M2a–M2c); C++ memory
+transfer (M3d) is the open item that closes M3. Short-term S0–S5 done;
+M1 (heap generics) done; M2 done.
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -252,8 +254,8 @@ transfer + `check.sh` stage before admission.
 |---|---|---|
 | M3a mem model skeleton (C only) — DONE (2026-10-02) | New `Circe.Mem`: flat block map + tags; `memEval` mirroring `Eval` for call-free C leaves + `sum` / `vec_alloc`. Tag creation at `restrict`-param bind + each `malloc`; load/store require a live tag. `Eval` untouched | C leaves + `sum`/`vec_alloc` first; no callers, no structs/flow, no C++. Transfer statement lands as a stub theorem, proved per-leaf only |
 | M3b derived noalias (C only) — DONE (2026-10-02) | Per-shape noalias lemmas: each admitted C shape implies disjoint footprints (attr text for `restrict`; two-`malloc` disjointness by construction; length-pairing for stride loops). New `check.sh` stage asserts checked-in verdicts match the derived facts (cache, not trust) | `Oracle.lookupOracle` + `verdictAdmits` unchanged; new `derivedNoalias : RawFunc → Bool` implies `verdictAdmits`. No validator behavior change |
-| M3c end-to-end transfer (C only) — ACTIVE (loop-free slice DONE 2026-10-02: `choose`/64-bit widths/`cls`/`translate` with `oracleNoalias` witnesses + `memTransfer_*`; flow slice DONE 2026-10-02: `nested_sum`/`skip_sum`/`find_eq` with `oracleNoalias` witnesses + `memTransfer_*`; caller slice DONE 2026-10-03: `add_caller`/`sum_caller` via a new memory program layer (`memEvalProgStmt`/`memEvalProgFunc` mirroring `Eval`) + `memTransferProg_*`; heap slice 1 DONE 2026-10-03: `vec_copy_sum` (two live blocks, cross-block preservation lemmas + `memTransfer_vec2`); heap slice 2 DONE 2026-10-03: `vec_realloc` (`memRealloc` in-place resize + `vrealloc_lockstep` + `memTransfer_vecRealloc`); heap slice 3 DONE 2026-10-03: `vec_alloc_u64` (parallel 64-bit block map `blocks64` + `vset64`/`vfree64` lockstep + `memTransfer_vec64`); M3c heap complete) | Full `oracle_noalias f → memEval f = Eval f` for every admitted C `Func` (leaves, S1 callers, S2 `translate`, S3 flow, M1 heap, S3b widths). `check.sh` fails on verdict/derived mismatch | Transfer per-`FragKind`, reusing `emit_correct` bridges as the `Eval`-side; no new `Func` shapes. `Diff*` fuzz stays P0 but is no longer the soundness argument |
-| M3d C++ follow-up | Tags + single-ref (`this`/`const&`) + box tokens (`Box32.freed` as affine tag); `cleanup`-scope and null-guard erasure justified in `memEval`. Transfer for M2a/b/c | Call-multisets + `cxx_ctor`/`cxx_dtor` markers become tag-creation points; `trap`/`cleanup` erasure mirrors the exemption gates. No inheritance/templates/EH/vtables |
+| M3c end-to-end transfer (C only) — DONE (2026-10-03: loop-free slice `choose`/64-bit widths/`cls`/`translate`; flow slice `nested_sum`/`skip_sum`/`find_eq`; caller slice `add_caller`/`sum_caller` via a new memory program layer; heap slices `vec_copy_sum` / `vec_realloc` / `vec_alloc_u64`; each with `oracleNoalias` witnesses + `memTransfer_*`) | Full `oracle_noalias f → memEval f = Eval f` for every admitted C `Func` (leaves, S1 callers, S2 `translate`, S3 flow, M1 heap, S3b widths). `check.sh` fails on verdict/derived mismatch | Transfer per-`FragKind`, reusing `emit_correct` bridges as the `Eval`-side; no new `Func` shapes. `Diff*` fuzz stays P0 but is no longer the soundness argument |
+| M3d C++ follow-up — NEXT | Tags + single-ref (`this`/`const&`) + box tokens (`Box32.freed` as affine tag); `cleanup`-scope and null-guard erasure justified in `memEval`. Transfer for M2a/b/c | Call-multisets + `cxx_ctor`/`cxx_dtor` markers become tag-creation points; `trap`/`cleanup` erasure mirrors the exemption gates. No inheritance/templates/EH/vtables |
 
 Per-slice acceptance (M3 adaptation): model/lemma → per-shape
 transfer proof → `check.sh` stage (verdict-cache assert from M3b on) →
@@ -263,3 +265,112 @@ text doesn't already carry.
 Non-goals: full Stacked Borrows, OOM paths (never-fails stays),
 polymorphism, threads, deleting `verdicts.txt` (stays as cache +
 assert), removing `Diff*` fuzzing (stays as P0 signal).
+
+## N. Toward a verification platform for modern C++ — PLAN (2026-10-03)
+
+Guiding principle (locked): admit exactly the C++ that is amenable to
+Aeneas-style translation — value semantics + affine tokens, lifetime
+discipline visible in CIR text (`restrict`/`noalias` attrs, the C++
+single-ref triple, `malloc`/`new` freshness, call multisets,
+`cxx_ctor`/`cxx_dtor` markers). Everything else rejects loudly with a
+dedicated message. Each slice below follows the standing convention:
+corpus (real CIRGen, `cir-opt` VERIFY-OK) → shape gate → proof →
+golden diff → tamper-checked `Diff*` fuzz → rejection suite →
+`check.sh` stage → `CHECK-OK`.
+
+### N1. Close M3: C++ transfer (M3d) — NEXT, short-term
+
+The open item that finishes the trust story: `memTransfer` for the
+three M2 shapes, so C++ admission rests on tags + text pins rather
+than the attr triple taken on faith.
+
+- N1a: `this`/`const&` tags — `memEval` binds single-ref params to
+  fresh read-only tags (method leaf + ref entry, M2a); `cleanup`-scope
+  erasure justified as scope sequencing (M2b groundwork).
+- N1b: ctor/dtor + box tokens — `cxx_ctor` marker as tag-creation,
+  trivial dtor as no-op identity, `Box32.freed` as affine tag;
+  null-guard + `trap` erasure mirrors the exemption gates (M2b/M2c).
+- N1c: `check.sh` C++ transfer stage + verdict story for C++: leaf
+  defs need no oracle facts (uniqueness is text), int-only entries
+  keep the cache-agreement assert.
+
+### N2. Viability past noalias — short-term
+
+Today `validate` admits only proven-disjoint inputs. The next ring out
+is code that is *safe but not statically disjoint*: shared immutable
+borrows already exist (`sharedBorrow`); what is missing is (a) a
+precise statement of what we accept and (b) loud, specific rejections
+for what we do not.
+
+- N2a: read-only sharing discipline — pin down which `const`
+  aliasing shapes are value-sound (multiple `sharedBorrow` readers,
+  no writers) and prove the corresponding footprints; everything with
+  a live writer + reader still rejects.
+- N2b: interior rejection catalog — turn today's catch-all
+  `alias-reject` into per-cause messages (writer+reader, escaping
+  borrow, borrow-after-free), each with a golden rejection test, so
+  users can tell *amenable* apart from *out of scope*.
+- N2c: `restrict`-recovery report — where CIRGen drops `noalias`
+  evidence the source discipline guarantees (e.g. fresh `malloc`
+  results), derive it from construction (M1a precedent) instead of
+  demanding attr text.
+
+Non-goals: true mutable aliasing, raw-pointer arithmetic, lifetime
+inference — if the discipline is not visible in CIR text, it rejects.
+
+### N3. Spec + tactic support for real properties — short/mid-term
+
+`cir_simp` + `_Spec` stubs bootstrap the workflow, but proving
+anything beyond `List.sum` shapes is still manual. Goal: a user
+verifying an admitted function writes the statement once and the
+tactics discharge the plumbing.
+
+- N3a: spec DSL — a small, checked vocabulary for pre/post statements
+  over emitted forward functions (bounds, sums, sortedness, token
+  liveness), elaborating to plain Lean props so no new trusted code
+  is needed; `emitSpec` grows one template, old stubs still typecheck.
+- N3b: tactic automation for loop/shape plumbing — generalize `cir_fuel`
+  past `EVAL_FUEL`-shaped goals (length-pairing side conditions,
+  take-length facts like `htake` in `vec_correct`), and grow `cir_simp`
+  with each newly admitted shape's bridges at landing time (standing
+  rule, already practiced through M1/M2); each addition must shorten
+  at least one existing proof or it does not land.
+- N3c: verification gallery — 3–5 end-to-end worked proofs over
+  existing corpus (sortedness of a fill loop, `find_eq` first-match
+  minimality, `vec_realloc` prefix preservation at spec level) that
+  double as regression tests for N3a/N3b.
+- Non-goals: a general program logic, framing automation beyond the
+  admitted shapes — the shapes stay small enough that equational
+  specs suffice.
+
+### N4. C++ syntax coverage toward useful programs — mid-term
+
+In admission order (each: probe CIR lowering → shape gate →
+`emit_correct` → golden; stop at the first construct whose lowering
+is not value-faithful):
+
+- N4a: overloading + namespaces (name-mangling generalization of the
+  M2a exact-name pins; no semantic change).
+- N4b: move semantics + RAII on owned values (move = rebind + source
+  invalidation, the affine-token story we already tell for
+  `free`/`delete`; dtor-runs-on-scope-exit generalizes M2b `cleanup`).
+- N4c: monomorphized templates on value types (each instantiation is
+  its own shape; no generic reasoning, mirroring the `Vec32`/`Vec64`
+  monomorphization precedent).
+- N4d: `std::` vocabulary types with value semantics — `std::array`
+  (fixed-size, bounds-checked), `std::optional` (nullable as
+  `Option`), `std::string_view`/`std::span` (borrow + length, the
+  `sharedBorrow` story). Each needs a probed lowering + a token/value
+  model before admission; `std::vector` (reallocation moves values)
+  only after N4b+N4c both hold.
+
+Non-goals (platform-level): inheritance/vtables, exceptions, RTTI,
+concurrency, allocators, iterator invalidation reasoning beyond
+length-paired discipline.
+
+### Suggested order
+
+N1 (close the trust story) → N2a/N2b (wider, clearer viability) →
+N3a/N3b (cheaper proofs) → N4a/N4b (more real code) → N3c gallery →
+N4c/N4d (templates + `std::`). N2c opportunistically wherever a
+missing-attr rejection blocks an otherwise-amenable corpus entry.

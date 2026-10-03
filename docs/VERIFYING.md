@@ -13,9 +13,10 @@ verbatim.
 | `sum_correct` | in-range = `List.sum` of taken prefix (`prefixSumU32_take_sum`); `sum_correct_full` is the `BoundedList` body | `.ok (prefixSumU32 a.val a.val.length)` |
 | `vec_correct` | heap program = `List.sum` of `[0,n)` (`vecFillSumU32_correct` + take bridge); `vec_empty` is `n = 0` | `vecFillSumU32 n.toNat` |
 | `vec64_correct` (M1b) | `u64` heap program = `List.sum` of `[0,n)` (`vecFillSumU64_correct` + take bridge); `vec64_empty` is `n = 0` | `vecFillSumU64 n.toNat` |
+| `vecRealloc_correct` (M1c) | grown heap program = `List.sum` of `[0,n+n)` (`vecReallocFillSumU32_correct` + take bridge); `vecRealloc_empty` is `n = 0` | `vecReallocFillSumU32 n.toNat` |
 
 Body identity enforced two ways: `native_decide` golden linkage in
-`Circe.Emit` (+ `diff` in check scripts) and emitted-body `grep`
+`Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`
 assertions in the check script.
 
 ## Tactics
@@ -90,7 +91,7 @@ hand-rolled fuel steps and can migrate as needed.
 ## Spec scaffolding (ROADMAP.md S4 — done)
 
 The emitter writes `out/<name>_Spec.lean` next to each forward file
-(15 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
+(25 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
 dispatched on `matchFrag` exactly like `emitFunc`): unverified stub
 with the function signature, the `Base`-op body reference, an
 edge-case list (empty / singleton / max-fuel), and a `Diff*`-style
@@ -121,7 +122,7 @@ def sum_array_spec_check : Bool :=
 
 (`repr`-pretty-`==` is the same comparison the `Diff*` fuzzers use:
 `Except` has no `DecidableEq` instance to feed `decide`, so both
-sides render before comparing.) Acceptance met: 15/15 stubs
-typecheck, 15/15 `_check` entries evaluate to `true` (14/14 at S4
-landing, plus M1a's `VecCopySum` stub); `vec_correct`
+sides render before comparing.) Acceptance met: 25/25 stubs
+typecheck, 25/25 `_check` entries evaluate to `true` (asserted in
+`tools/check.sh`); `vec_correct`
 refactored shorter onto the grown set (see Tactics above).

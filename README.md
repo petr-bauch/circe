@@ -1,10 +1,13 @@
 # circe
 
-CIR → Lean 4 verification pipeline for C (MVP subset), Aeneas-style:
-C source → ClangIR (CIR, raw `CIRGen` output) → pure, memory-free Lean 4
+CIR → Lean 4 verification pipeline for C and STL-free C++-lite, Aeneas-style:
+source → ClangIR (CIR, raw `CIRGen` output) → pure, memory-free Lean 4
 via a verified emitter, with functional-correctness proofs as pure equations.
-No memory model, no separation logic in the common case.
-See `docs/PLAN.md` for the full plan.
+No memory model, no separation logic in the common case; a proved memory
+transfer (`Circe.Mem` / `Circe.Transfer`, ROADMAP.md M3) backs the value
+semantics on the admitted C fragment, so trust is CIRGen text +
+Lean/Mathlib, not oracle verdicts or differential fuzz.
+See `docs/OVERVIEW.md` for the current state.
 
 ## Requirements
 
@@ -30,38 +33,21 @@ for f in tests/c/*.c; do clang -O0 "$f" -o "/tmp/$(basename $f .c)"; done
 # re-capture CIR goldens (requires the CIR-enabled clang, see docs/PINS.md)
 tools/emit-cir.sh  # writes tests/cir/*.cir
 
-# Phase 3 end-to-end: build, regenerate out/, golden diff, typecheck emitted
-# files, build native drivers, differential fuzz vs native (default 1000 trials)
-tools/check-phase3.sh [trials]
-
-# Phase 4 end-to-end (superset): above plus choose/sum outputs, both fuzzers,
-# and the golden pipeline + rejection suite (18 checks)
-tools/check-phase4.sh [trials]
-
-# Phase 5 end-to-end (superset): phase-4 pipeline plus emitted-body
-# correspondence and functional-specs typecheck (incr/choose/sum)
-tools/check-phase5.sh [trials]
-
-# Phase 6 end-to-end (superset): phase-5 pipeline plus the extended
-# rejection suite (heap/globals/func-ptrs/VLA/variadics/switch/goto/
-# wrapping-arithmetic, 18 checks) and roadmap/docs linkage
-tools/check-phase6.sh [trials]
-
-# Phase 7 end-to-end (superset): phase-5 pipeline plus the uniquely-owned
-# heap fragment (vec_alloc golden, DiffVec fuzz vs native, 6-check
-# golden + heap rejection suite, vec emitted-body correspondence,
-# vec specs typecheck)
-tools/check-phase7.sh [trials]
-
-# End-to-end (single entry point): phase-7 pipeline plus the S1 DAG-call
-# fragment (caller goldens, DiffCalls fuzz vs native, 7-check golden +
-# call rejection suite, caller emitted-body correspondence)
+# End-to-end (single entry point): the full pipeline — C corpus, C++ corpus
+# (M2), and the M3 memory-transfer stages — plus golden diffs, native
+# drivers, differential fuzz vs native (default 1000 trials), rejection
+# suites, spec stubs, and tactic-adoption checks
 tools/check.sh [trials]
 ```
 
 Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`
-(verified IR), `Circe/Eval.lean` (loan-based value semantics),
-`Circe/Validator.lean` (verified gate), `Circe/Emit.lean` (emitter),
+(verified IR), `Circe/Eval.lean` (loan-based value semantics + `cir_fuel`),
+`Circe/Mem.lean` (addressful block-map model + lockstep bridges),
+`Circe/Validator.lean` (verified gate + `derivedNoalias`),
+`Circe/Emit*.lean` (emitter + per-shape proofs), `Circe/Derived.lean`
+(per-shape noalias footprints), `Circe/Transfer.lean` (memory transfer),
+`Circe/Tactics.lean` (`cir_simp`), `Circe/Specs.lean` (user specs),
 `Circe/Parser/` + `Circe/Oracle/` (trusted front ends).
-Docs: `docs/PLAN.md`, `docs/PINS.md`, `docs/CIR_SUBSET.md`,
-`docs/OWNERSHIP.md`, `docs/SEMANTICS.md`, `docs/VERIFYING.md`.
+Docs: `docs/OVERVIEW.md`, `docs/SUBSET.md`, `docs/PIPELINE.md`,
+`docs/VERIFYING.md`, `docs/ROADMAP.md`, `docs/PINS.md`
+(`docs/archive/` holds the superseded phase-history docs).

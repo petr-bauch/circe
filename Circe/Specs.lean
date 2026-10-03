@@ -14,7 +14,7 @@ of the emitted definitions in `out/*.lean`:
 
 Body identity is machine-checked: `tests/golden/*.lean` pin the bytes
 (`native_decide` linkage in `Circe.Emit`, `diff` in
-`tools/check-phase4.sh`), so every theorem below transfers verbatim to
+`tools/check.sh`), so every theorem below transfers verbatim to
 the emitted files. The required three (§8 DoD item 2) are `incr_correct`,
 `choose_lens_laws`, and `sum_correct`; Phase 7 adds the heap spec
 `vec_correct` (+ `vec_empty`); surrounding lemmas package the

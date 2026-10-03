@@ -66,13 +66,18 @@ casts (integer promotion — rejected with the promotion message).
 
 ## Trust boundary
 
-Trusted: Clang/CIRGen, CIR syntax, oracle verdicts, Lean+Mathlib,
-rendering, parser. Verified: `CoreIR`, `Eval`, `Emit`,
-`emit_correct`, `validate` gate.
-Explicit gap: oracle `noalias` + CIRGen trusted; shrinking this is a
-mid-term milestone (ROADMAP.md M3). Mitigations: verdicts checked in,
-validator conservative (inconclusive = reject), differential fuzz
-mismatch = P0.
+Trusted: Clang/CIRGen, CIR syntax, Lean+Mathlib,
+rendering, parser. Oracle verdicts (`tests/oracle/verdicts.txt`) were a
+trust root through M2; M3 (ROADMAP.md) shrinks that trust on the admitted
+C fragment: `Validator.derivedNoalias` derives noalias from CIR text,
+`Circe.Derived` proves per-shape footprints, and `Circe.Transfer` proves
+`oracle_noalias f → memEval f = Eval f` — so for C the verdicts file is a
+checked cache (CI asserts agreement) rather than a soundness argument.
+C++ shapes still trust the attr triple + call multisets until M3d.
+Verified: `CoreIR`, `Eval`, `Mem`, `Emit`,
+`emit_correct`, `validate` gate, per-shape transfers.
+Differential fuzz (`Diff*`) stays as a P0 signal throughout, but is no
+longer the soundness argument where transfer is proved.
 
 ## E2E harness
 
