@@ -29,6 +29,7 @@ import Circe.Emit.Flow
 import Circe.Emit.Vec2
 import Circe.Emit.VecRealloc
 import Circe.Emit.Vec64
+import Circe.Emit.Method
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -178,6 +179,59 @@ theorem oracleNoalias_translate (px py dx dy : BitVec 32) :
       [.structVal "Point" [("x", px), ("y", py)], .i32 dx, .i32 dy]
       emptyMem = _
     exact bindMemArgs_translate px py dx dy
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `methodSum` binding pins nothing: `this` carries a `Point` *value*
+    (copy semantics — CoreIR has no field-store, so struct values are
+    immutable and need no footprint). The CIR `nonnull +
+    dereferenceable + noundef` triple is the uniqueness evidence that
+    justifies treating the borrow as a copy. -/
+theorem bindMemArgs_methodSum (px py : BitVec 32) :
+    bindMemArgs
+      [{ name := "this", ty := .struct "Point" [.i 32, .i 32],
+         role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem =
+      some ([("this", .structVal "Point" [("x", px), ("y", py)])],
+        emptyMem, []) := by
+  rfl
+
+/-- `methodSum` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_methodSum (px py : BitVec 32) :
+    oracleNoalias methodSumFunc
+      [.structVal "Point" [("x", px), ("y", py)]] := by
+  have hb : bindMemArgs methodSumFunc.args
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem =
+      some ([("this", .structVal "Point" [("x", px), ("y", py)])],
+        emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "this", ty := .struct "Point" [.i 32, .i 32],
+         role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem = _
+    exact bindMemArgs_methodSum px py
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `pointSumRef` binding pins nothing (single `const&` value + the
+    `callRet` delegation happens after entry). -/
+theorem bindMemArgs_pointSumRef (px py : BitVec 32) :
+    bindMemArgs
+      [{ name := "p", ty := .struct "Point" [.i 32, .i 32], role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem =
+      some ([("p", .structVal "Point" [("x", px), ("y", py)])],
+        emptyMem, []) := by
+  rfl
+
+/-- `pointSumRef` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_pointSumRef (px py : BitVec 32) :
+    oracleNoalias pointSumRefFunc
+      [.structVal "Point" [("x", px), ("y", py)]] := by
+  have hb : bindMemArgs pointSumRefFunc.args
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem =
+      some ([("p", .structVal "Point" [("x", px), ("y", py)])],
+        emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "p", ty := .struct "Point" [.i 32, .i 32], role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem = _
+    exact bindMemArgs_pointSumRef px py
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
 /-- `nested_sum` binding pins nothing (two owned scalars; nested loops

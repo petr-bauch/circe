@@ -21,6 +21,7 @@ import Circe.Emit.Calls
 import Circe.Emit.Vec2
 import Circe.Emit.VecRealloc
 import Circe.Emit.Vec64
+import Circe.Emit.Method
 
 /-! ## `sum_array` transfer -/
 
@@ -4163,3 +4164,163 @@ theorem memTransferProg_sumCaller (F : Nat) (l : List (BitVec 32))
       evalProgFunc [sumFunc] F sumCallerFunc [.arr32 l, .u32 nv] := by
   rw [memEvalProgFunc_sumCaller F l nv hle h32 hF,
     evalProgFunc_sumCaller F l nv hle h32 hF]
+
+/-! ## M3d C++ transfers: `methodSum` leaf + `pointSumRef` entry (N1a) -/
+
+/-- `add` of two projected fields agrees on the memory side (the
+    method-leaf shape; cf. `evalExpr_add_fget_fget` on the value side
+    and `memEvalExpr_add_fget_var` for the `translate` shape). -/
+theorem memEvalExpr_add_fget_fget (ρ : Env) (m : Mem) (π : Layout)
+    (obj : String) (tag : String) (fields : List (String × BitVec 32))
+    (px py : BitVec 32)
+    (hobj : envLookup ρ obj = some (.structVal tag fields))
+    (hfx : fieldLookup fields "x" = some px)
+    (hfy : fieldLookup fields "y" = some py) :
+    memEvalExpr (.add (.fget obj "x") (.fget obj "y")) ρ m π =
+      (checkedAddI32 px py).map .i32 := by
+  simp [memEvalExpr, hobj, hfx, hfy]
+
+/-- `memEval` for the method leaf: evaluation agrees with the forward
+    on all inputs (mirrors `evalFuncFuel_methodSum`; `this` binds a
+    `Point` value, so no layout pin is consulted and memory is
+    untouched). -/
+theorem memEvalFuncFuel_methodSum (F : Nat) (px py : BitVec 32) :
+    memEvalFuncFuel F methodSumFunc
+      [.structVal "Point" [("x", px), ("y", py)]] =
+      methodSumFwd px py := by
+  have hbind : bindMemArgs methodSumFunc.args
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem =
+      some ([("this", .structVal "Point" [("x", px), ("y", py)])],
+        emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "this", ty := .struct "Point" [.i 32, .i 32],
+         role := .owned }]
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem = _
+    exact bindMemArgs_methodSum px py
+  have hbody : methodSumFunc.body =
+      .return_ (.add (.fget "this" "x") (.fget "this" "y")) := rfl
+  have hthis := envLookup_methodSum_this px py
+  have hfx := fieldLookup_methodSum_x px py
+  have hfy := fieldLookup_methodSum_y px py
+  have hadd : memEvalExpr (.add (.fget "this" "x") (.fget "this" "y"))
+      [("this", .structVal "Point" [("x", px), ("y", py)])] emptyMem [] =
+      (checkedAddI32 px py).map .i32 :=
+    memEvalExpr_add_fget_fget _ _ _ _ _ _ _ _ hthis hfx hfy
+  have heval : evalExpr (.add (.fget "this" "x") (.fget "this" "y"))
+      [("this", .structVal "Point" [("x", px), ("y", py)])] =
+      (checkedAddI32 px py).map .i32 :=
+    evalExpr_add_fget_fget _ _ _ _ _ _ hthis hfx hfy
+  have hagree : memEvalExpr (.add (.fget "this" "x") (.fget "this" "y"))
+      [("this", .structVal "Point" [("x", px), ("y", py)])] emptyMem [] =
+      evalExpr (.add (.fget "this" "x") (.fget "this" "y"))
+        [("this", .structVal "Point" [("x", px), ("y", py)])] := by
+    rw [hadd, heval]
+  cases h : checkedAddI32 px py with
+  | error e =>
+    have hadd' : memEvalExpr (.add (.fget "this" "x") (.fget "this" "y"))
+        [("this", .structVal "Point" [("x", px), ("y", py)])] emptyMem [] =
+        .error e := by
+      rw [hadd, h]
+      exact i32_map_error e
+    have hret : memEvalStmtFuel F
+        (.return_ (.add (.fget "this" "x") (.fget "this" "y")))
+        [("this", .structVal "Point" [("x", px), ("y", py)])] emptyMem [] =
+        .error e := by
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, hadd']
+    simp only [memEvalFuncFuel, hbind, hbody, hret, methodSumFwd, h,
+      i32_map_error]
+  | ok s =>
+    have hv : evalExpr (.add (.fget "this" "x") (.fget "this" "y"))
+        [("this", .structVal "Point" [("x", px), ("y", py)])] =
+        .ok (.i32 s) := by
+      rw [heval, h]
+      exact i32_map_ok s
+    have hret : memEvalStmtFuel F
+        (.return_ (.add (.fget "this" "x") (.fget "this" "y")))
+        [("this", .structVal "Point" [("x", px), ("y", py)])] emptyMem [] =
+        .ok (([("this", .structVal "Point" [("x", px), ("y", py)])],
+          emptyMem, []), .returned (.i32 s)) :=
+      memEvalStmtFuel_return _ _ _ _ _ (.i32 s) hagree hv
+    simp only [memEvalFuncFuel, hbind, hbody, hret, methodSumFwd, h,
+      i32_map_ok]
+
+/-- Transfer for the method leaf: both sides equal `methodSumFwd`. -/
+theorem memTransfer_methodSum (F : Nat) (px py : BitVec 32)
+    (_h : oracleNoalias methodSumFunc
+      [.structVal "Point" [("x", px), ("y", py)]]) :
+    memEvalFuncFuel F methodSumFunc
+      [.structVal "Point" [("x", px), ("y", py)]] =
+      evalFuncFuel F methodSumFunc
+        [.structVal "Point" [("x", px), ("y", py)]] := by
+  rw [memEvalFuncFuel_methodSum, evalFuncFuel_methodSum]
+
+/-- `memEval` for the `point_sum_ref` entry: program evaluation over
+    `[methodSumFunc]` agrees with the delegating forward (mirrors
+    `evalProgFunc_pointSumRef`; caller `Mem`/`Layout` stay
+    `emptyMem`/`[]` — the callee runs on its own fresh entry blocks). -/
+theorem memEvalProgFunc_pointSumRef (F : Nat) (px py : BitVec 32) :
+    memEvalProgFunc [methodSumFunc] F pointSumRefFunc
+      [.structVal "Point" [("x", px), ("y", py)]] =
+      pointSumRefFwd px py := by
+  have hbind : bindMemArgs pointSumRefFunc.args
+      [.structVal "Point" [("x", px), ("y", py)]] emptyMem =
+      some ([("p", .structVal "Point" [("x", px), ("y", py)])],
+        emptyMem, []) :=
+    bindMemArgs_pointSumRef px py
+  have hbody : pointSumRefFunc.body =
+      .seq (.callRet "s" "_ZNK5Point3sumEv" ["p"])
+           (.return_ (.var "s")) := rfl
+  have hp := envLookup_pointSumRef_p px py
+  have hfind : findFunc [methodSumFunc] "_ZNK5Point3sumEv" =
+      some methodSumFunc :=
+    findFunc_hit methodSumFunc []
+  have hargs : lookupArgs [("p", .structVal "Point" [("x", px), ("y", py)])]
+      ["p"] = some [.structVal "Point" [("x", px), ("y", py)]] := by
+    simp [lookupArgs, hp]
+  have hcall := memEvalFuncFuel_methodSum F px py
+  cases hsum : methodSumFwd px py with
+  | error e =>
+    have hcall' : memEvalFuncFuel F methodSumFunc
+        [.structVal "Point" [("x", px), ("y", py)]] = .error e := by
+      rw [hcall, hsum]
+    have hstep := memEvalProgStmt_callRet_err [methodSumFunc] F "s"
+      "_ZNK5Point3sumEv" ["p"]
+      [("p", .structVal "Point" [("x", px), ("y", py)])]
+      emptyMem []
+      [.structVal "Point" [("x", px), ("y", py)]] methodSumFunc e hargs
+      hfind hcall'
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstep]
+    simp [pointSumRefFwd, hsum]
+  | ok v =>
+    have hcall' : memEvalFuncFuel F methodSumFunc
+        [.structVal "Point" [("x", px), ("y", py)]] = .ok v := by
+      rw [hcall, hsum]
+    have hstep := memEvalProgStmt_callRet_ok [methodSumFunc] F "s"
+      "_ZNK5Point3sumEv" ["p"]
+      [("p", .structVal "Point" [("x", px), ("y", py)])]
+      emptyMem []
+      [.structVal "Point" [("x", px), ("y", py)]] methodSumFunc v hargs
+      hfind hcall'
+    have hret : memEvalProgStmt [methodSumFunc] F (.return_ (.var "s"))
+        (envExtend [("p", .structVal "Point" [("x", px), ("y", py)])]
+          "s" v) emptyMem [] =
+        .ok ((envExtend [("p", .structVal "Point" [("x", px), ("y", py)])]
+          "s" v, emptyMem, []), .returned v) :=
+      memEvalProgStmt_return [methodSumFunc] F (.var "s") _
+        _ _ v (by simp [memEvalExpr, envExtend_hit])
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep, hret]
+    simp [pointSumRefFwd, hsum]
+
+/-- Transfer for `point_sum_ref` (program level): both sides equal
+    `pointSumRefFwd`. -/
+theorem memTransferProg_pointSumRef (F : Nat) (px py : BitVec 32)
+    (_h : oracleNoalias pointSumRefFunc
+      [.structVal "Point" [("x", px), ("y", py)]]) :
+    memEvalProgFunc [methodSumFunc] F pointSumRefFunc
+      [.structVal "Point" [("x", px), ("y", py)]] =
+      evalProgFunc [methodSumFunc] F pointSumRefFunc
+        [.structVal "Point" [("x", px), ("y", py)]] := by
+  rw [memEvalProgFunc_pointSumRef, evalProgFunc_pointSumRef]
