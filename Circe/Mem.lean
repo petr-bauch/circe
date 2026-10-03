@@ -197,6 +197,22 @@ def memFree (m : Mem) (a : Addr) (t : Nat) : Result Mem :=
     else
       .ok ⟨m.next, (a, ⟨b.tag, false, b.data⟩) :: m.blocks⟩
 
+/-- Checked realloc: same tag/liveness discipline as `memStore`; resize
+    preserves the `min(old, new)` prefix and zero-fills growth — exactly
+    the `vecRealloc` update on the value side (see `memRealloc_vecRealloc`).
+    The address/tag are kept (in-place model: `realloc` never moves the
+    block, so the layout pin survives); the counter is untouched. -/
+def memRealloc (m : Mem) (a : Addr) (t : Nat) (newSize : Nat) : Result Mem :=
+  match memFind m a with
+  | none => .error .AssertFail
+  | some b =>
+    if b.tag != t then .error .AssertFail
+    else if !b.live then .error .AssertFail
+    else
+      .ok ⟨m.next, (a, ⟨b.tag, true,
+        b.data.take newSize ++ List.replicate (newSize - b.data.length) 0⟩) ::
+        m.blocks⟩
+
 /-! ## Layout: which variable pins which `(addr, tag)` -/
 
 /-- Borrow layout: bound variable → address + expected tag. Scalars
@@ -462,7 +478,18 @@ def memEvalStmtWith
     | .ok _, .ok _, _, _ => .error .AssertFail
     | .error e, _, _, _ => .error e
     | _, .error e, _, _ => .error e
-  | .vrealloc _ _, _, _, _ => .error .AssertFail
+  | .vrealloc x se, ρ, m, π =>
+    match memEvalExpr se ρ m π, envLookup ρ x, layoutLookup π x with
+    | .ok (.u32 n), some (.vecVal b), some (a, t) =>
+      match vecRealloc b n.toNat, memRealloc m a t n.toNat with
+      | .ok b', .ok m' =>
+        match envUpdate ρ x (.vecVal b') with
+        | none => .error .Uninit
+        | some ρ' => .ok ((ρ', m', π), .fellThrough)
+      | .error e, _ => .error e
+      | _, .error e => .error e
+    | .ok _, _, _ => .error .AssertFail
+    | .error e, _, _ => .error e
   | .vfree x, ρ, m, π =>
     match envLookup ρ x, layoutLookup π x with
     | some (.vecVal b), some (a, t) =>
@@ -967,6 +994,55 @@ theorem vfree_lockstep (m : Mem) (a t : Nat) (b : Vec32) (blk : Block)
   have hhit := memFind_cons_hit m.next m.blocks a
     ⟨blk.tag, false, blk.data⟩
   simpa only [htag, hdata] using hhit
+
+/-- `vrealloc` lockstep: under the pin invariant, `vecRealloc` and
+    `memRealloc` resize together with synced state (tag kept, live,
+    resized words). -/
+theorem vrealloc_lockstep (m : Mem) (a t : Nat) (b : Vec32) (newSize : Nat)
+    (blk : Block) (b' : Vec32)
+    (hfind : memFind m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true) (hdata : blk.data = b.val)
+    (hunfreed : b.freed = false)
+    (hre : vecRealloc b newSize = .ok b') :
+    ∃ m', memRealloc m a t newSize = .ok m' ∧
+      memFind m' a = some ⟨t, true, b'.val⟩ := by
+  have hre' : vecRealloc b newSize =
+      .ok ⟨b.val.take newSize ++
+        List.replicate (newSize - b.val.length) 0, false⟩ :=
+    vecRealloc_ok b newSize hunfreed
+  rw [hre'] at hre
+  cases hre
+  show ∃ m', memRealloc m a t newSize = .ok m' ∧
+    memFind m' a =
+      some ⟨t, true, b.val.take newSize ++
+        List.replicate (newSize - b.val.length) 0⟩
+  have hmre : memRealloc m a t newSize =
+      .ok ⟨m.next, (a, ⟨blk.tag, true, blk.data.take newSize ++
+        List.replicate (newSize - blk.data.length) 0⟩) :: m.blocks⟩ := by
+    simp [memRealloc, hfind, htag, hlive]
+  refine ⟨_, hmre, ?_⟩
+  have hhit := memFind_cons_hit m.next m.blocks a
+    ⟨blk.tag, true, blk.data.take newSize ++
+      List.replicate (newSize - blk.data.length) 0⟩
+  simpa only [htag, hdata] using hhit
+
+/-- `vrealloc` statement on memory (any fuel): the size expression runs
+    on memory, the value side resizes via `vecRealloc`, the memory side
+    via `memRealloc` in lockstep (mirrors `evalStmtFuel_vrealloc`). -/
+theorem memEvalStmtFuel_vrealloc (f : Nat) (x : String) (se : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (n : BitVec 32)
+    (a t : Addr) (b b' : Vec32) (m' : Mem) (ρ' : Env)
+    (hse : memEvalExpr se ρ m π = .ok (.u32 n))
+    (harr : envLookup ρ x = some (.vecVal b))
+    (hlay : layoutLookup π x = some (a, t))
+    (hre : vecRealloc b n.toNat = .ok b')
+    (hmre : memRealloc m a t n.toNat = .ok m')
+    (hup : envUpdate ρ x (.vecVal b') = some ρ') :
+    memEvalStmtFuel f (.vrealloc x se) ρ m π =
+      .ok (((ρ', m', π)), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hse, harr, hlay, hre, hmre, hup]
 
 /-- A successful `vecGet` carries its list read + liveness, so the
     mirrored memory load agrees. -/

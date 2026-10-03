@@ -536,4 +536,17 @@ grep -q "theorem memFind_memStore_other" Circe/Mem.lean
 grep -q "theorem memFind_memFree_other" Circe/Mem.lean
 echo "heap C transfers green (vec_copy_sum)"
 
+echo "== M3c heap transfers (vec_realloc) =="
+grep -q "def memRealloc" Circe/Mem.lean
+grep -q "theorem vrealloc_lockstep" Circe/Mem.lean
+grep -q "theorem memEvalStmtFuel_vrealloc" Circe/Mem.lean
+grep -q "theorem memVecReallocFillWhile_correct" Circe/Transfer.lean
+grep -q "theorem memVecReallocExtWhile_correct" Circe/Transfer.lean
+grep -q "theorem memVecReallocSumWhile_correct" Circe/Transfer.lean
+grep -q "theorem memVecReallocStep_eval" Circe/Transfer.lean
+grep -q "theorem memEvalFuncFuel_vecRealloc" Circe/Transfer.lean
+grep -q "theorem memTransfer_vecRealloc" Circe/Transfer.lean
+grep -q "theorem oracleNoalias_vecRealloc" Circe/Derived.lean
+echo "heap C transfers green (vec_realloc)"
+
 echo "CHECK-OK"

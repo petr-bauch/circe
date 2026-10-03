@@ -27,6 +27,7 @@ import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
 import Circe.Emit.Vec2
+import Circe.Emit.VecRealloc
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -236,6 +237,25 @@ theorem oracleNoalias_vec2 (nv : BitVec 32) :
     show bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
       [.u32 nv] emptyMem = _
     exact bindMemArgs_vec2 nv
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `vec_realloc` binding pins nothing (the length is an owned scalar;
+    the single block is allocated after entry and resized in place, so
+    the entry footprint is empty). -/
+theorem bindMemArgs_vecRealloc (nv : BitVec 32) :
+    bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
+      [.u32 nv] emptyMem =
+      some ([("n", .u32 nv)], emptyMem, []) := by
+  rfl
+
+/-- `vec_realloc` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_vecRealloc (nv : BitVec 32) :
+    oracleNoalias vecReallocFunc [.u32 nv] := by
+  have hb : bindMemArgs vecReallocFunc.args [.u32 nv] emptyMem =
+      some ([("n", .u32 nv)], emptyMem, []) := by
+    show bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
+      [.u32 nv] emptyMem = _
+    exact bindMemArgs_vecRealloc nv
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
 /-! ## Single-array shapes: singleton footprint -/
