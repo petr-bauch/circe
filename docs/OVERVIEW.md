@@ -81,5 +81,6 @@ spec-scaffolding support for proving properties of the emitted code.
 Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
 (C++-lite) done (M2a–M2c); M3 (shrinking oracle trust) done for C
 (M3a–M3c) and C++ (M3d); N2a (read-only sharing discipline,
-model-side: `Circe.ReadOnly` + `GoldenReadOnly`) done. Details in
+model-side: `Circe.ReadOnly` + `GoldenReadOnly`) and N2b (per-cause
+rejection catalog: `GoldenRejectCatalog`) done. Details in
 `ROADMAP.md`.

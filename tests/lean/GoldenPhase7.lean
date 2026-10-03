@@ -77,7 +77,10 @@ def main : IO Unit := do
   let c5 ← checkReject7 "fo" advFreeOnly .noalias
     "out-of-subset" "free"
   passed := passed + c5
+  -- N2b re-categorized this case: malloc + free + returning the freed
+  -- pointer is textbook borrow-after-free, now reported as its own cause
+  -- instead of the generic heap-shape message.
   let c6 ← checkReject7 "vr" advVecPtrRet .unknown
-    "out-of-subset" "admitted"
+    "escape-reject" "borrow-after-free"
   passed := passed + c6
   IO.println s!"GOLDEN7-OK passed={passed}"

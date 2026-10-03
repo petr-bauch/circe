@@ -250,9 +250,17 @@ globals, function pointers, VLAs, variadics, non-lowerable
 `cir.switch`, `goto` (`cir.br`, matched line-aware so `cir.break`
 never trips it), bitfields, signed wrapping arithmetic without `nsw`
 (per-line check, `i32` + `i64`).
+Aliasing rejections are per-cause (N2b), not catch-all: writer+reader
+(two or more live pointer params outside `choose`, `alias-reject`),
+escaping-borrow (pointer return with no pointer inputs,
+`escape-reject`), borrow-after-free (`free`/`delete` plus a pointer
+return, `escape-reject`); missing `__restrict__`/triple evidence and
+inconclusive oracle verdicts keep their `alias-reject` messages, and
+the ambiguous-inputs escape keeps the borrow-return `escape-reject`.
 Coverage: `tests/lean/GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
 + `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
-+ `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9).
++ `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9)
++ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (3).

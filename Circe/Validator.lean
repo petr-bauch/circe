@@ -27,10 +27,14 @@ Check order (first hit wins — rejection codes are priority-ordered):
    `outOfSubset` with dedicated messages (double-`free`,
    `realloc`-shape, heap-shape, calls);
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`
-   and without the C++ single-reference triple, or oracle verdict other
-   than `noalias` with live oracle-governed pointer params);
+   and without the C++ single-reference triple, oracle verdict other
+   than `noalias` with live oracle-governed pointer params, or
+   writer+reader ambiguity — two or more live oracle-governed pointer
+   params outside the `choose` borrow-return shape);
 5. shape admission (canonical `Func` or a precise code: `escapeReject`
-   for non-`choose` pointer returns, `oobPossible` for unbounded
+   for non-`choose` pointer returns (borrow-after-free when a heap
+   `free`/`delete` is present, escaping-borrow when there are no pointer
+   inputs at all), `oobPossible` for unbounded
    `ptr_stride`, `outOfSubset` otherwise, including misshapen struct
    uses outside the S2 `translate` shape, the M2a method shapes, and
    the M2b `Acc` leaf shapes, the M2b entry shape (with its
@@ -1126,6 +1130,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           | .noalias => "is unreachable"
         reject raw.name .aliasReject
           s!"alias-reject: function '{raw.name}': oracle {why}: live pointer params require an explicit `noalias` verdict (see docs/OWNERSHIP.md)"
+      else if 2 ≤ (oracleParams raw).length && !isChooseShape raw then
+        reject raw.name .aliasReject
+          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`) is admitted (see docs/SUBSET.md rules 2, 6; N2a admits no multi-reader `Func` yet)"
       else if isAddShape raw then
         .ok { addFunc with name := raw.name }
       else if isIncrShape raw then
@@ -1193,6 +1200,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if newCallCount raw.text < deleteCallCount raw.text then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls sized `delete` more times than `new`: double-`delete` is rejected (heap boxes are deleted at most once; leak is allowed, double-`delete` is not, see docs/SUBSET.md rule 15)"
+      else if isPtrType raw.ret &&
+          (0 < freeCallCount raw.text || 0 < deleteCallCount raw.text) then
+        reject raw.name .escapeReject
+          s!"escape-reject: function '{raw.name}' frees a heap block and returns pointer type '{raw.ret}': the returned borrow may dangle (borrow-after-free) — return values, not pointers, after `free`/`delete` (see docs/SUBSET.md rules 6, 8)"
       else if containsSubstr raw.text "_Znwm" ||
           containsSubstr raw.text "_ZdlPvm" then
         reject raw.name .outOfSubset
@@ -1204,6 +1215,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           containsSubstr raw.text "cir.call @free(" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses heap allocation (`malloc`/`free`/`realloc`) outside the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` / `vec_realloc` shapes (see docs/ROADMAP.md)"
+      else if isPtrType raw.ret && (oracleParams raw).isEmpty &&
+          (raw.params.filter (fun p => isPtrType p.ctype)).isEmpty then
+        reject raw.name .escapeReject
+          s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' with no pointer inputs: an escaping borrow of a locally-created address cannot be returned (escaping-borrow) — borrow-return (`choose`) requires the return to be exactly one of the `noalias` inputs (see docs/SUBSET.md rule 6)"
       else if isPtrType raw.ret then
         reject raw.name .escapeReject
           s!"escape-reject: function '{raw.name}' returns pointer type '{raw.ret}' outside the borrow-return (`choose`) shape: the return must be exactly one of the `noalias` inputs (see docs/SUBSET.md rule 6)"

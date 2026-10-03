@@ -9,8 +9,9 @@ State (2026-10-04): C pipeline complete with proved memory transfer
 Eval f`); STL-free C++-lite admission complete (M2a–M2c) with proved
 memory transfer (M3d: method/acc/box shapes). Short-term S0–S5 done;
 M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
-M3d; N2a (read-only sharing discipline, model-side) is done; the active
-frontier is N2b/N2c (rejection catalog + `restrict`-recovery).
+M3d; N2a (read-only sharing discipline, model-side) and N2b
+(rejection catalog) are done; the active frontier is N2c
+(`restrict`-recovery) then N3 (spec + tactic support).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -319,10 +320,17 @@ for what we do not.
   while the two-reader shape does not derive. Text-gate admission of
   multi-reader shapes (`derivedNoalias` / `validate`) is N2b/N2c work;
   no new corpus in this slice.
-- N2b: interior rejection catalog — turn today's catch-all
-  `alias-reject` into per-cause messages (writer+reader, escaping
-  borrow, borrow-after-free), each with a golden rejection test, so
-  users can tell *amenable* apart from *out of scope*.
+- N2b: interior rejection catalog — DONE (2026-10-04: `validate`
+  reports per-cause messages instead of the catch-all: writer+reader
+  (two or more live pointer params outside `choose`, `alias-reject`),
+  escaping-borrow (pointer return with no pointer inputs,
+  `escape-reject`; the ambiguous-inputs case keeps the existing
+  borrow-return message), borrow-after-free (`free`/`delete` plus a
+  pointer return, `escape-reject`), each pinned by
+  `GoldenRejectCatalog` (3/3); the heap `vr` case (malloc + free +
+  return-freed-pointer) and the N2a two-pointer case now assert their
+  precise causes. No new admission: every cataloged input still
+  rejects loudly.)
 - N2c: `restrict`-recovery report — where CIRGen drops `noalias`
   evidence the source discipline guarantees (e.g. fresh `malloc`
   results), derive it from construction (M1a precedent) instead of

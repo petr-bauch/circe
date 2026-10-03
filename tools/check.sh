@@ -78,6 +78,10 @@
 #    (`GoldenReadOnly`: writer+reader still rejects loudly, two-reader
 #    shape does not derive). No new corpus: text-gate admission is
 #    N2b/N2c work.
+# 20. (N2b) Runs the interior rejection catalog (`GoldenRejectCatalog`:
+#    writer+reader / escaping-borrow / borrow-after-free each reject
+#    with their per-cause message) and asserts the three cause tokens
+#    are present in `Circe.Validator`.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -610,5 +614,13 @@ grep -q "theorem twoShared_consistent" Circe/ReadOnly.lean
 grep -q "theorem twoShared_alias_sound" Circe/ReadOnly.lean
 grep -q "GoldenReadOnly" tools/check.sh
 echo "read-only discipline green (model footprints + writer+reader rejection)"
+
+echo "== N2b interior rejection catalog (writer+reader / escaping-borrow / borrow-after-free) =="
+lake env lean --run tests/lean/GoldenRejectCatalog.lean
+grep -q "writer+reader" Circe/Validator.lean
+grep -q "escaping-borrow" Circe/Validator.lean
+grep -q "borrow-after-free" Circe/Validator.lean
+grep -q "GoldenRejectCatalog" tools/check.sh
+echo "rejection catalog green (per-cause messages + golden pins)"
 
 echo "CHECK-OK"

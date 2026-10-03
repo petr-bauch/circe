@@ -60,8 +60,10 @@ theorem _readonlyFootprintLinked : LayoutNoAlias [("a", 1, 1), ("b", 0, 0)] :=
 
 def main : IO Unit := do
   let mut passed := 0
+  -- N2b re-categorized this case: two live pointers outside `choose` now
+  -- report the writer+reader cause instead of the generic fragment message.
   let c1 ← checkRejectReadOnly "wr" advWriterReaderNoalias .noalias
-    "out-of-subset" "not in the admitted Phase-4 fragment"
+    "alias-reject" "writer+reader"
   passed := passed + c1
   let c2 ← checkRejectReadOnly "wr" advWriterReaderMayAlias .mayAlias
     "alias-reject" "reports `mayAlias`"
