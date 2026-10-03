@@ -855,6 +855,13 @@ def memEvalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Mem → Layou
   | .cleanup body, ρ, m, π => memEvalProgStmt prog fuel body ρ m π
   | s, ρ, m, π => memEvalStmtFuel fuel s ρ m π
 
+/-- `cleanup` scopes sequence on the memory program layer too (the M2b
+    `acc_two` entry shape; mirrors `evalProgStmt_cleanup`). -/
+theorem memEvalProgStmt_cleanup (prog : Prog) (fuel : Nat) (body : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout) :
+    memEvalProgStmt prog fuel (.cleanup body) ρ m π =
+      memEvalProgStmt prog fuel body ρ m π := rfl
+
 /-- `callRet` with resolved actuals + callee runs the callee. -/
 theorem memEvalProgStmt_callRet_ok (prog : Prog) (fuel : Nat)
     (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)

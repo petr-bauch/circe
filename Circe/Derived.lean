@@ -30,6 +30,7 @@ import Circe.Emit.Vec2
 import Circe.Emit.VecRealloc
 import Circe.Emit.Vec64
 import Circe.Emit.Method
+import Circe.Emit.Acc
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -387,6 +388,41 @@ theorem oracleNoalias_findEq (l : List (BitVec 32)) (nv kv : BitVec 32) :
   have hn : LayoutNoAlias [("a", 0, 0)] := by
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
+
+/-! ## M3d C++ shapes: empty footprints (N1b `Acc`, N1b `Box`) -/
+
+/-- The `Acc` leaves are int-only (the accumulator never crosses the
+    boundary — field loads/stores are fused into scalar params at
+    validation), so entry binding pins nothing. -/
+theorem oracleNoalias_accCtor :
+    oracleNoalias accCtorFunc [] := by
+  exact ⟨_, _, _, rfl, layoutNoAlias_nil⟩
+
+theorem oracleNoalias_accAdd (s v : BitVec 32) :
+    oracleNoalias accAddFunc [.i32 s, .i32 v] := by
+  exact ⟨_, _, _, rfl, layoutNoAlias_nil⟩
+
+theorem oracleNoalias_accGet (s : BitVec 32) :
+    oracleNoalias accGetFunc [.i32 s] := by
+  exact ⟨_, _, _, rfl, layoutNoAlias_nil⟩
+
+theorem oracleNoalias_accDtor (t : BitVec 32) :
+    oracleNoalias accDtorFunc [.i32 t] := by
+  exact ⟨_, _, _, rfl, layoutNoAlias_nil⟩
+
+/-- `acc_two` entry footprints are trivially disjoint (two owned
+    scalars; the ctor/dtor calls happen after entry inside the
+    `cleanup` scope). -/
+theorem oracleNoalias_accTwo (a b : BitVec 32) :
+    oracleNoalias accTwoFunc [.i32 a, .i32 b] := by
+  have hb : bindMemArgs accTwoFunc.args [.i32 a, .i32 b] emptyMem =
+      some ([("a", .i32 a), ("b", .i32 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }]
+      [.i32 a, .i32 b] emptyMem = _
+    rfl
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
 /-! ## Cache bridge (discharged by the executable check) -/
 
