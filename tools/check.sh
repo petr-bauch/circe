@@ -512,4 +512,16 @@ grep -q "theorem oracleNoalias_nested" Circe/Derived.lean
 grep -q "theorem oracleNoalias_skip" Circe/Derived.lean
 echo "flow C transfers green (nested/skip/find_eq)"
 
+echo "== M3c caller transfers (add_caller/sum_caller) =="
+lake env lean Circe/Transfer.lean
+grep -q "theorem memEvalProgFunc_addCaller" Circe/Transfer.lean
+grep -q "theorem memTransferProg_addCaller" Circe/Transfer.lean
+grep -q "theorem memEvalProgFunc_sumCaller" Circe/Transfer.lean
+grep -q "theorem memTransferProg_sumCaller" Circe/Transfer.lean
+grep -q "def memEvalProgStmt" Circe/Mem.lean
+grep -q "def memEvalProgFunc" Circe/Mem.lean
+grep -q "theorem memEvalProgStmt_callRet_ok" Circe/Mem.lean
+grep -q "theorem memEvalProgStmt_callRet_err" Circe/Mem.lean
+echo "caller C transfers green (add_caller/sum_caller)"
+
 echo "CHECK-OK"

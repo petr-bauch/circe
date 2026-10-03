@@ -588,6 +588,121 @@ def memEvalFuncFuel (fuel : Nat) (f : Func) (args : List Value) :
     | .ok (_, .returned v) => .ok v
     | .ok _ => .error .AssertFail
 
+/-! ## Memory program layer (S1 callers: `callRet` dispatch) -/
+
+/-- Depth-1 memory program statement evaluation. Mirrors `evalProgStmt`
+    step for step: `callRet dst f xs` looks up the actuals, dispatches
+    to the call-free callee via `memEvalFuncFuel` at the same fuel, and
+    extends the environment with the result (caller `Mem`/`Layout`
+    threaded through untouched — the callee runs on its own fresh
+    entry blocks, so no aliasing is introduced); `seq` recurses;
+    everything else delegates to `memEvalStmtFuel`. Callee errors
+    propagate; unknown callees / unbound actuals are loud. -/
+def memEvalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Mem → Layout →
+    Result ((Env × Mem × Layout) × Outcome)
+  | .callRet dst f xs, ρ, m, π =>
+    match lookupArgs ρ xs with
+    | none => .error .Uninit
+    | some vs =>
+      match findFunc prog f with
+      | none => .error .AssertFail
+      | some callee =>
+        match memEvalFuncFuel fuel callee vs with
+        | .error e => .error e
+        | .ok ret => .ok ((envExtend ρ dst ret, m, π), .fellThrough)
+  | .seq a b, ρ, m, π =>
+    match memEvalProgStmt prog fuel a ρ m π with
+    | .error e => .error e
+    | .ok ((ρ', m', π'), .returned v) => .ok ((ρ', m', π'), .returned v)
+    | .ok ((ρ', m', π'), .broke) => .ok ((ρ', m', π'), .broke)
+    | .ok ((ρ', m', π'), .continued) => .ok ((ρ', m', π'), .continued)
+    | .ok ((ρ', m', π'), .fellThrough) =>
+      memEvalProgStmt prog fuel b ρ' m' π'
+  | .cleanup body, ρ, m, π => memEvalProgStmt prog fuel body ρ m π
+  | s, ρ, m, π => memEvalStmtFuel fuel s ρ m π
+
+/-- `callRet` with resolved actuals + callee runs the callee. -/
+theorem memEvalProgStmt_callRet_ok (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value) (callee : Func) (ret : Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : memEvalFuncFuel fuel callee vs = .ok ret) :
+    memEvalProgStmt prog fuel (.callRet dst f xs) ρ m π =
+      .ok ((envExtend ρ dst ret, m, π), .fellThrough) := by
+  simp [memEvalProgStmt, hargs, hfind, hcall]
+
+/-- `callRet` propagates callee errors. -/
+theorem memEvalProgStmt_callRet_err (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value) (callee : Func) (e : Panic)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : memEvalFuncFuel fuel callee vs = .error e) :
+    memEvalProgStmt prog fuel (.callRet dst f xs) ρ m π = .error e := by
+  simp [memEvalProgStmt, hargs, hfind, hcall]
+
+/-- `callRet` to an unknown callee is rejected, never silently modeled. -/
+theorem memEvalProgStmt_callRet_unknown (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = none) :
+    memEvalProgStmt prog fuel (.callRet dst f xs) ρ m π =
+      .error .AssertFail := by
+  simp [memEvalProgStmt, hargs, hfind]
+
+/-- `callRet` with unbound actuals is `Uninit`. -/
+theorem memEvalProgStmt_callRet_unbound (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (hargs : lookupArgs ρ xs = none) :
+    memEvalProgStmt prog fuel (.callRet dst f xs) ρ m π =
+      .error .Uninit := by
+  simp [memEvalProgStmt, hargs]
+
+/-- Whole-program memory function semantics: bind via `bindMemArgs`
+    (fresh entry blocks), run the body under the program, demand a
+    `return` (falling off the end is `AssertFail`, as before). -/
+def memEvalProgFunc (prog : Prog) (fuel : Nat) (f : Func)
+    (args : List Value) : Result Value :=
+  match bindMemArgs f.args args emptyMem with
+  | none => .error .AssertFail
+  | some (ρ, m, π) =>
+    match memEvalProgStmt prog fuel f.body ρ m π with
+    | .error e => .error e
+    | .ok (_, .returned v) => .ok v
+    | .ok (_, .broke) => .error .AssertFail
+    | .ok (_, .continued) => .error .AssertFail
+    | .ok (_, .fellThrough) => .error .AssertFail
+
+/-- `seq` short-circuits on error in the first component. -/
+theorem memEvalProgStmt_seq_err (prog : Prog) (fuel : Nat) (a b : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout) (e : Panic)
+    (h : memEvalProgStmt prog fuel a ρ m π = .error e) :
+    memEvalProgStmt prog fuel (.seq a b) ρ m π = .error e := by
+  simp only [memEvalProgStmt, h]
+
+/-- `seq` threads the environment on fall-through. -/
+theorem memEvalProgStmt_seq_fallthrough (prog : Prog) (fuel : Nat)
+    (a b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (ρ' : Env) (m' : Mem) (π' : Layout)
+    (h : memEvalProgStmt prog fuel a ρ m π =
+      .ok ((ρ', m', π'), .fellThrough)) :
+    memEvalProgStmt prog fuel (.seq a b) ρ m π =
+      memEvalProgStmt prog fuel b ρ' m' π' := by
+  simp only [memEvalProgStmt, h]
+
+/-- `return_` under a program delegates to the memory evaluator. -/
+theorem memEvalProgStmt_return (prog : Prog) (fuel : Nat) (e : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (v : Value)
+    (h : memEvalExpr e ρ m π = .ok v) :
+    memEvalProgStmt prog fuel (.return_ e) ρ m π =
+      .ok ((ρ, m, π), .returned v) := by
+  cases fuel with
+  | zero => simp [memEvalProgStmt, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtWith, h]
+  | succ g => simp [memEvalProgStmt, memEvalStmtFuel, memEvalStmtWith, h]
+
 /-- Entry footprints are pairwise disjoint (the M3a `oracleNoalias`:
     M3b will show the `derivedNoalias` text check implies it). -/
 def oracleNoalias (f : Func) (args : List Value) : Prop :=
