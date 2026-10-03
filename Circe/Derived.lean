@@ -28,6 +28,7 @@ import Circe.Emit.Struct
 import Circe.Emit.Flow
 import Circe.Emit.Vec2
 import Circe.Emit.VecRealloc
+import Circe.Emit.Vec64
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -258,6 +259,25 @@ theorem oracleNoalias_vecRealloc (nv : BitVec 32) :
     exact bindMemArgs_vecRealloc nv
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-- `vec_alloc_u64` binding pins nothing (the length is an owned 64-bit
+    scalar; the single block is allocated after entry, so the entry
+    footprint is empty). -/
+theorem bindMemArgs_vec64 (nv : BitVec 64) :
+    bindMemArgs [{ name := "n", ty := .u 64, role := .owned }]
+      [.u64 nv] emptyMem =
+      some ([("n", .u64 nv)], emptyMem, []) := by
+  rfl
+
+/-- `vec_alloc_u64` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_vec64 (nv : BitVec 64) :
+    oracleNoalias vec64Func [.u64 nv] := by
+  have hb : bindMemArgs vec64Func.args [.u64 nv] emptyMem =
+      some ([("n", .u64 nv)], emptyMem, []) := by
+    show bindMemArgs [{ name := "n", ty := .u 64, role := .owned }]
+      [.u64 nv] emptyMem = _
+    exact bindMemArgs_vec64 nv
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-! ## Single-array shapes: singleton footprint -/
 /-- `sum_caller` binding pins exactly the array block (mirrors
     `bindMemArgs_sum`; the call itself happens after entry). -/
@@ -267,7 +287,7 @@ theorem bindMemArgs_sumCaller (l : List (BitVec 32)) (nv : BitVec 32) :
        { name := "n", ty := .u 32, role := .owned }]
       [.arr32 l, .u32 nv] emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) := by
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
   rfl
 
 /-- `sum_caller` entry footprints are a singleton. -/
@@ -275,7 +295,7 @@ theorem oracleNoalias_sumCaller (l : List (BitVec 32)) (nv : BitVec 32) :
     oracleNoalias sumCallerFunc [.arr32 l, .u32 nv] := by
   have hb : bindMemArgs sumCallerFunc.args [.arr32 l, .u32 nv] emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) := by
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
     show bindMemArgs
       [{ name := "a", ty := .array (.u 32) 4096, role := .sharedBorrow },
        { name := "n", ty := .u 32, role := .owned }]
@@ -294,7 +314,7 @@ theorem bindMemArgs_findEq (l : List (BitVec 32)) (nv kv : BitVec 32) :
        { name := "k", ty := .u 32, role := .owned }]
       [.arr32 l, .u32 nv, .u32 kv] emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv), ("k", .u32 kv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) := by
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
   rfl
 
 /-- `find_eq` entry footprints are a singleton. -/
@@ -303,7 +323,7 @@ theorem oracleNoalias_findEq (l : List (BitVec 32)) (nv kv : BitVec 32) :
   have hb : bindMemArgs findEqFunc.args [.arr32 l, .u32 nv, .u32 kv]
       emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv), ("k", .u32 kv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) := by
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
     show bindMemArgs
       [{ name := "a", ty := .array (.u 32) 4096, role := .sharedBorrow },
        { name := "n", ty := .u 32, role := .owned },

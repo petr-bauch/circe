@@ -46,41 +46,83 @@ structure Block where
   data : List (BitVec 32)
   deriving DecidableEq, Repr
 
-/-- Flat block map: next-address counter + `Addr → Block` association. -/
+/-- A 64-bit heap block: same tag/live discipline as `Block`, holding
+    `u64` words (the `vec_alloc_u64` shape, M1b). The two widths live in
+    separate maps (no mixed-width block: every `Func` is monomorphized),
+    so 32-bit operations never disturb 64-bit pins and vice versa. -/
+structure Block64 where
+  tag : Nat
+  live : Bool
+  data : List (BitVec 64)
+  deriving DecidableEq, Repr
+
+/-- Flat block map: next-address counter + `Addr → Block` association +
+    `Addr → Block64` association. The counter is shared (fresh addresses
+    never alias across widths either); each map's lookup only sees its
+    own bindings. -/
 structure Mem where
   next : Nat
   blocks : List (Nat × Block)
+  blocks64 : List (Nat × Block64)
   deriving DecidableEq, Repr
 
 /-- Empty memory (function entry before lifting: nothing allocated). -/
-def emptyMem : Mem := ⟨0, []⟩
+def emptyMem : Mem := ⟨0, [], []⟩
 
 /-- Block lookup (first binding wins). -/
 def memFind : Mem → Addr → Option Block
-  | ⟨_, []⟩, _ => none
-  | ⟨n, (k, v) :: rest⟩, a =>
-    if a == k then some v else memFind ⟨n, rest⟩ a
+  | ⟨_, [], _⟩, _ => none
+  | ⟨n, (k, v) :: rest, g64⟩, a =>
+    if a == k then some v else memFind ⟨n, rest, g64⟩ a
 
 theorem memFind_empty (a : Addr) : memFind emptyMem a = none := by
   simp [memFind, emptyMem]
 
+/-- 64-bit block lookup (first binding wins; ignores the 32-bit map). -/
+def memFind64 : Mem → Addr → Option Block64
+  | ⟨_, _, []⟩, _ => none
+  | ⟨n, bs, (k, v) :: rest⟩, a =>
+    if a == k then some v else memFind64 ⟨n, bs, rest⟩ a
+
+theorem memFind64_empty (a : Addr) : memFind64 emptyMem a = none := by
+  simp [memFind64, emptyMem]
+
 /-- Allocate `data` words with a fresh tag (= fresh address, so distinct
-    allocations never alias by construction). -/
+    allocations never alias by construction). The 64-bit map rides along
+    untouched. -/
 def memAllocData (m : Mem) (data : List (BitVec 32)) : Mem × Addr :=
   let a := m.next
-  (⟨m.next + 1, (a, ⟨a, true, data⟩) :: m.blocks⟩, a)
+  (⟨m.next + 1, (a, ⟨a, true, data⟩) :: m.blocks, m.blocks64⟩, a)
+
+/-- Allocate 64-bit `data` words with a fresh tag (the 32-bit map rides
+    along untouched). -/
+def memAllocData64 (m : Mem) (data : List (BitVec 64)) : Mem × Addr :=
+  let a := m.next
+  (⟨m.next + 1, m.blocks, (a, ⟨a, true, data⟩) :: m.blocks64⟩, a)
 
 /-- Allocate `n` zeroed words (the `malloc` shape). -/
 def memAlloc (m : Mem) (n : Nat) : Mem × Addr :=
   memAllocData m (List.replicate n 0)
 
+/-- Allocate `n` zeroed 64-bit words. -/
+def memAlloc64 (m : Mem) (n : Nat) : Mem × Addr :=
+  memAllocData64 m (List.replicate n 0)
+
 theorem memAllocData_next (m : Mem) (data : List (BitVec 32)) :
     (memAllocData m data).2 = m.next := by
   simp [memAllocData]
 
+theorem memAllocData64_next (m : Mem) (data : List (BitVec 64)) :
+    (memAllocData64 m data).2 = m.next := by
+  simp [memAllocData64]
+
 theorem memAlloc_next (m : Mem) (n : Nat) :
     (memAlloc m n).2 = m.next := by
   simp [memAlloc, memAllocData_next]
+
+theorem memAlloc64_next (m : Mem) (n : Nat) :
+    (memAlloc64 m n).2 = m.next := by
+  simp [memAlloc64, memAllocData64_next]
 
 /-- Fresh allocation is found with its tag, live, holding the data. -/
 theorem memFind_alloc_hit (m : Mem) (data : List (BitVec 32)) :
@@ -88,28 +130,67 @@ theorem memFind_alloc_hit (m : Mem) (data : List (BitVec 32)) :
       some ⟨(memAllocData m data).2, true, data⟩ := by
   simp [memAllocData, memFind]
 
-/-- `memFind` ignores the next-address counter (only the map matters). -/
+/-- `memFind` ignores the next-address counter and the 64-bit map (only
+    the 32-bit map matters). -/
 theorem memFind_next_irrelevant (n₁ n₂ : Nat) (bs : List (Nat × Block))
+    (g₁ g₂ : List (Nat × Block64))
     (a : Addr) :
-    memFind ⟨n₁, bs⟩ a = memFind ⟨n₂, bs⟩ a := by
+    memFind ⟨n₁, bs, g₁⟩ a = memFind ⟨n₂, bs, g₂⟩ a := by
   induction bs with
   | nil => simp [memFind]
   | cons kv rest ih =>
     obtain ⟨k, v⟩ := kv
     simp [memFind, ih]
 
+/-- `memFind64` ignores the counter and the 32-bit map. -/
+theorem memFind64_next_irrelevant (n₁ n₂ : Nat) (bs₁ bs₂ : List (Nat × Block))
+    (g : List (Nat × Block64))
+    (a : Addr) :
+    memFind64 ⟨n₁, bs₁, g⟩ a = memFind64 ⟨n₂, bs₂, g⟩ a := by
+  induction g with
+  | nil => simp [memFind64]
+  | cons kv rest ih =>
+    obtain ⟨k, v⟩ := kv
+    simp [memFind64, ih]
+
 /-- Allocation preserves every old binding (monotone growth, never
     reuses an address). -/
 theorem memFind_alloc_miss (m : Mem) (data : List (BitVec 32)) (a : Addr)
     (h : a ≠ m.next) :
     memFind (memAllocData m data).1 a = memFind m a := by
-  obtain ⟨n, bs⟩ := m
+  obtain ⟨n, bs, g64⟩ := m
   have hbe : (a == n) = false := by
     cases heq : (a == n) with
     | true => exact absurd (beq_iff_eq.mp heq) h
     | false => rfl
-  simp only [memAllocData, memFind, hbe]
-  exact memFind_next_irrelevant _ _ _ _
+  simp only [memAllocData, memFind, hbe, Bool.false_eq_true, ite_false]
+  exact memFind_next_irrelevant _ _ _ _ _ _
+
+/-- 64-bit allocation preserves every old 64-bit binding. -/
+theorem memFind64_alloc_miss (m : Mem) (data : List (BitVec 64)) (a : Addr)
+    (h : a ≠ m.next) :
+    memFind64 (memAllocData64 m data).1 a = memFind64 m a := by
+  obtain ⟨n, bs, g64⟩ := m
+  have hbe : (a == n) = false := by
+    cases heq : (a == n) with
+    | true => exact absurd (beq_iff_eq.mp heq) h
+    | false => rfl
+  simp only [memAllocData64, memFind64, hbe, Bool.false_eq_true, ite_false]
+  exact memFind64_next_irrelevant _ _ _ _ _ _
+
+/-- 32-bit allocation preserves every 64-bit binding (separate maps). -/
+theorem memFind64_alloc32_miss (m : Mem) (data : List (BitVec 32)) (a : Addr) :
+    memFind64 (memAllocData m data).1 a = memFind64 m a := by
+  obtain ⟨n, bs, g64⟩ := m
+  simp only [memAllocData]
+  exact memFind64_next_irrelevant _ _ _ _ _ _
+
+/-- 64-bit allocation preserves every 32-bit binding (separate maps). -/
+theorem memFind_alloc64_miss (m : Mem) (data : List (BitVec 64)) (a : Addr) :
+    memFind (memAllocData64 m data).1 a = memFind m a := by
+  obtain ⟨n, bs, g64⟩ := m
+  simp only [memAllocData64]
+  exact memFind_next_irrelevant _ _ _ _ _ _
 
 /-- Checked load: the block must exist, carry the expected tag (the
     borrow check), be live (no use-after-free), and cover `i`
@@ -132,10 +213,21 @@ theorem memFind_memAlloc (m : Mem) (n : Nat) :
       some ⟨(memAlloc m n).2, true, List.replicate n 0⟩ := by
   have h1 : (memAlloc m n).1 =
       ⟨m.next + 1, (m.next, ⟨m.next, true, List.replicate n 0⟩) ::
-        m.blocks⟩ := rfl
+        m.blocks, m.blocks64⟩ := rfl
   have h2 : (memAlloc m n).2 = m.next := rfl
   rw [h1, h2]
   simp [memFind]
+
+/-- Fresh 64-bit allocation is found with its tag, live, holding zeroes. -/
+theorem memFind64_memAlloc64 (m : Mem) (n : Nat) :
+    memFind64 (memAlloc64 m n).1 (memAlloc64 m n).2 =
+      some ⟨(memAlloc64 m n).2, true, List.replicate n 0⟩ := by
+  have h1 : (memAlloc64 m n).1 =
+      ⟨m.next + 1, m.blocks,
+        (m.next, ⟨m.next, true, List.replicate n 0⟩) :: m.blocks64⟩ := rfl
+  have h2 : (memAlloc64 m n).2 = m.next := rfl
+  rw [h1, h2]
+  simp [memFind64]
 
 /-- Load from a known live block with matching tag. -/
 theorem memLoad_hit (m : Mem) (a t i : Nat) (b : Block) (x : BitVec 32)
@@ -183,7 +275,8 @@ def memStore (m : Mem) (a : Addr) (t : Nat) (i : Nat)
     if b.tag != t then .error .AssertFail
     else if !b.live then .error .AssertFail
     else if _ : i < b.data.length then
-      .ok ⟨m.next, (a, ⟨b.tag, b.live, b.data.set i x⟩) :: m.blocks⟩
+      .ok ⟨m.next, (a, ⟨b.tag, b.live, b.data.set i x⟩) :: m.blocks,
+        m.blocks64⟩
     else .error .OOB
 
 /-- Checked free: consumes the live token (double-free is `AssertFail`,
@@ -195,7 +288,7 @@ def memFree (m : Mem) (a : Addr) (t : Nat) : Result Mem :=
     if b.tag != t then .error .AssertFail
     else if !b.live then .error .AssertFail
     else
-      .ok ⟨m.next, (a, ⟨b.tag, false, b.data⟩) :: m.blocks⟩
+      .ok ⟨m.next, (a, ⟨b.tag, false, b.data⟩) :: m.blocks, m.blocks64⟩
 
 /-- Checked realloc: same tag/liveness discipline as `memStore`; resize
     preserves the `min(old, new)` prefix and zero-fills growth — exactly
@@ -211,7 +304,64 @@ def memRealloc (m : Mem) (a : Addr) (t : Nat) (newSize : Nat) : Result Mem :=
     else
       .ok ⟨m.next, (a, ⟨b.tag, true,
         b.data.take newSize ++ List.replicate (newSize - b.data.length) 0⟩) ::
-        m.blocks⟩
+        m.blocks, m.blocks64⟩
+
+/-! ## 64-bit operations (the `vec_alloc_u64` shape, M1b) -/
+
+/-- Checked 64-bit load: same tag/liveness/bounds discipline as
+    `memLoad`, over the 64-bit map. -/
+def memLoad64 (m : Mem) (a : Addr) (t : Nat) (i : Nat) : Result (BitVec 64) :=
+  match memFind64 m a with
+  | none => .error .AssertFail
+  | some b =>
+    if b.tag != t then .error .AssertFail
+    else if !b.live then .error .AssertFail
+    else
+      match b.data[i]? with
+      | some x => .ok x
+      | none => .error .OOB
+
+/-- Load from a known live 64-bit block with matching tag. -/
+theorem memLoad64_hit (m : Mem) (a t i : Nat) (b : Block64) (x : BitVec 64)
+    (hfind : memFind64 m a = some b) (htag : b.tag = t)
+    (hlive : b.live = true) (hget : b.data[i]? = some x) :
+    memLoad64 m a t i = .ok x := by
+  simp [memLoad64, hfind, htag, hlive, hget]
+
+/-- Checked 64-bit store (the 32-bit map rides along untouched). -/
+def memStore64 (m : Mem) (a : Addr) (t : Nat) (i : Nat)
+    (x : BitVec 64) : Result Mem :=
+  match memFind64 m a with
+  | none => .error .AssertFail
+  | some b =>
+    if b.tag != t then .error .AssertFail
+    else if !b.live then .error .AssertFail
+    else if _ : i < b.data.length then
+      .ok ⟨m.next, m.blocks,
+        (a, ⟨b.tag, b.live, b.data.set i x⟩) :: m.blocks64⟩
+    else .error .OOB
+
+/-- Checked 64-bit free: consumes the live token, contents kept. -/
+def memFree64 (m : Mem) (a : Addr) (t : Nat) : Result Mem :=
+  match memFind64 m a with
+  | none => .error .AssertFail
+  | some b =>
+    if b.tag != t then .error .AssertFail
+    else if !b.live then .error .AssertFail
+    else
+      .ok ⟨m.next, m.blocks, (a, ⟨b.tag, false, b.data⟩) :: m.blocks64⟩
+
+/-- 64-bit zeroed words read back `0` in bounds. -/
+theorem replicate_getElem?_zero64 (n i : Nat) (h : i < n) :
+    (List.replicate n (0 : BitVec 64))[i]? = some 0 := by
+  induction n generalizing i with
+  | zero => omega
+  | succ n ih =>
+    cases i with
+    | zero => rfl
+    | succ i =>
+      simp only [List.replicate_succ, List.getElem?_cons_succ]
+      exact ih i (by omega)
 
 /-! ## Layout: which variable pins which `(addr, tag)` -/
 
@@ -251,12 +401,16 @@ theorem layoutLookup_miss (k x : String) (a : Addr) (t : Nat)
 
 /-- Memory/value consistency: every pinned variable resolves in `ρ` to
     a heap-like value whose words equal the block data, with matching
-    tag and a live block. Scalars are unconstrained (no footprint). -/
+    tag and a live block. Scalars are unconstrained (no footprint).
+    64-bit blocks (`vecVal64`) pin the 64-bit map. -/
 def MemConsistent (ρ : Env) (m : Mem) (π : Layout) : Prop :=
   ∀ x a t, layoutLookup π x = some (a, t) →
-    ∃ l, (envLookup ρ x = some (.arr32 l) ∨
+    (∃ l, (envLookup ρ x = some (.arr32 l) ∨
           ∃ v : Vec32, envLookup ρ x = some (.vecVal v) ∧ v.val = l) ∧
-    ∃ b, memFind m a = some b ∧ b.tag = t ∧ b.live = true ∧ b.data = l
+    ∃ b, memFind m a = some b ∧ b.tag = t ∧ b.live = true ∧ b.data = l) ∨
+    (∃ v : Vec64, envLookup ρ x = some (.vecVal64 v) ∧
+    ∃ b, memFind64 m a = some b ∧ b.tag = t ∧ b.live = true ∧
+      b.data = v.val)
 
 /-- The empty layout is consistent with anything. -/
 theorem memConsistent_nil (ρ : Env) (m : Mem) : MemConsistent ρ m [] := by
@@ -330,6 +484,10 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       match vecNew n.toNat with
       | .error e => .error e
       | .ok v => .ok (.vecVal v)
+    | .ok (.u64 n) =>
+      match vecNew64 n.toNat with
+      | .error e => .error e
+      | .ok v => .ok (.vecVal64 v)
     | .ok _ => .error .AssertFail
   | .vget arr ie, ρ, m, π =>
     match layoutLookup π arr with
@@ -339,6 +497,11 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       | .ok (.u32 i), some (.vecVal v) =>
         match memLoad m a t i.toNat, vecGet v i.toNat with
         | .ok w, .ok x => if w == x then .ok (.u32 x) else .error .AssertFail
+        | .error e, _ => .error e
+        | _, .error e => .error e
+      | .ok (.u64 i), some (.vecVal64 v) =>
+        match memLoad64 m a t i.toNat, vecGet64 v i.toNat with
+        | .ok w, .ok x => if w == x then .ok (.u64 x) else .error .AssertFail
         | .error e, _ => .error e
         | _, .error e => .error e
       | .ok _, _ => .error .AssertFail
@@ -426,6 +589,22 @@ theorem memEvalExpr_vget_hit (arr : String) (ie : CExpr) (ρ : Env)
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval,
     beq_self_eq_true, ↓reduceIte]
 
+/-- 64-bit `vget` agreement under consistency (the `vec_alloc_u64` loop
+    shape): same tag/liveness discipline over the 64-bit map,
+    cross-checked against `vecGet64`. -/
+theorem memEvalExpr_vget64_hit (arr : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (v : Vec64) (i : BitVec 64)
+    (x : BitVec 64) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π arr = some (a, t))
+    (harr : envLookup ρ arr = some (.vecVal64 v))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad64 m a t i.toNat = .ok x)
+    (hval : vecGet64 v i.toNat = .ok x) :
+    memEvalExpr (.vget arr ie) ρ m π = evalExpr (.vget arr ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval,
+    beq_self_eq_true, ↓reduceIte]
+
 /-! ## `memEval`: statement layer (fuel-bounded `while_`) -/
 
 /-- Loop-free statement skeleton threaded over `(Env, Mem, Layout)`,
@@ -452,6 +631,12 @@ def memEvalStmtWith
       | .ok v =>
         let (m', a) := memAllocData m v.val
         .ok (((x, .vecVal v) :: ρ, m', (x, a, a) :: π), .fellThrough)
+    | .ok (.u64 n) =>
+      match vecNew64 n.toNat with
+      | .error e => .error e
+      | .ok v =>
+        let (m', a) := memAllocData64 m v.val
+        .ok (((x, .vecVal64 v) :: ρ, m', (x, a, a) :: π), .fellThrough)
     | .ok _ => .error .AssertFail
   | .let_ x _ e, ρ, m, π =>
     match memEvalExpr e ρ m π with
@@ -471,6 +656,14 @@ def memEvalStmtWith
       match vecSet b i.toNat xv, memStore m a t i.toNat xv with
       | .ok b', .ok m' =>
         match envUpdate ρ x (.vecVal b') with
+        | none => .error .Uninit
+        | some ρ' => .ok ((ρ', m', π), .fellThrough)
+      | .error e, _ => .error e
+      | _, .error e => .error e
+    | .ok (.u64 i), .ok (.u64 xv), some (.vecVal64 b), some (a, t) =>
+      match vecSet64 b i.toNat xv, memStore64 m a t i.toNat xv with
+      | .ok b', .ok m' =>
+        match envUpdate ρ x (.vecVal64 b') with
         | none => .error .Uninit
         | some ρ' => .ok ((ρ', m', π), .fellThrough)
       | .error e, _ => .error e
@@ -496,6 +689,14 @@ def memEvalStmtWith
       match vecFree b, memFree m a t with
       | .ok b', .ok m' =>
         match envUpdate ρ x (.vecVal b') with
+        | none => .error .Uninit
+        | some ρ' => .ok ((ρ', m', π), .fellThrough)
+      | .error e, _ => .error e
+      | _, .error e => .error e
+    | some (.vecVal64 b), some (a, t) =>
+      match vecFree64 b, memFree64 m a t with
+      | .ok b', .ok m' =>
+        match envUpdate ρ x (.vecVal64 b') with
         | none => .error .Uninit
         | some ρ' => .ok ((ρ', m', π), .fellThrough)
       | .error e, _ => .error e
@@ -596,7 +797,13 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
       | .vecVal b =>
         let (m'', a) := memAllocData m' b.val
         some (((p.name, v) :: ρ),
-          ⟨m''.next, (a, ⟨a, !b.freed, b.val⟩) :: m''.blocks⟩,
+          ⟨m''.next, (a, ⟨a, !b.freed, b.val⟩) :: m''.blocks, m''.blocks64⟩,
+          (p.name, a, a) :: π)
+      | .vecVal64 b =>
+        let (m'', a) := memAllocData64 m' b.val
+        some (((p.name, v) :: ρ),
+          ⟨m''.next, m''.blocks,
+            (a, ⟨a, !b.freed, b.val⟩) :: m''.blocks64⟩,
           (p.name, a, a) :: π)
       | _ => some (((p.name, v) :: ρ), m', π)
   | _, _, _ => none
@@ -862,6 +1069,20 @@ theorem memEvalStmtFuel_let_vnew (f : Nat) (x : String) (ty : CType)
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse, hnew]
 
+/-- Allocating `let_` (`vnew` over a `u64` size): the value side runs
+    `vecNew64`, the memory side pins a fresh 64-bit block. -/
+theorem memEvalStmtFuel_let_vnew64 (f : Nat) (x : String) (ty : CType)
+    (se : CExpr) (ρ : Env) (m : Mem) (π : Layout) (n : BitVec 64)
+    (v : Vec64)
+    (h : memEvalExpr se ρ m π = evalExpr se ρ)
+    (hse : evalExpr se ρ = .ok (.u64 n))
+    (hnew : vecNew64 n.toNat = .ok v) :
+    memEvalStmtFuel f (.let_ x ty (.vnew se)) ρ m π =
+      let (m', a) := memAllocData64 m v.val
+      .ok (((x, .vecVal64 v) :: ρ, m', (x, a, a) :: π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse, hnew]
+
 /-! ## Lockstep bridges (value op ⟺ memory op under the pin invariant) -/
 
 /-- Pin invariant for one heap block: the layout pins `x` to `(a, a)`,
@@ -877,20 +1098,40 @@ def VecPinInvariant (m : Mem) (a : Addr) (x : String) (blk : Vec32)
 /-- Lookup after a shadowing update at `a` finds the new block
     (updates cons, newest binding wins; stale entries underneath are
     unreachable since allocation never reuses an address). -/
-theorem memFind_cons_hit (n : Nat) (bs : List (Nat × Block)) (a : Addr)
+theorem memFind_cons_hit (n : Nat) (bs : List (Nat × Block))
+    (g64 : List (Nat × Block64)) (a : Addr)
     (b : Block) :
-    memFind ⟨n, (a, b) :: bs⟩ a = some b := by
+    memFind ⟨n, (a, b) :: bs, g64⟩ a = some b := by
   simp [memFind]
 
 /-- Shadowing updates preserve every other address. -/
-theorem memFind_cons_miss (n : Nat) (bs : List (Nat × Block)) (a a' : Addr)
+theorem memFind_cons_miss (n : Nat) (bs : List (Nat × Block))
+    (g64 : List (Nat × Block64)) (a a' : Addr)
     (b : Block) (h : a' ≠ a) :
-    memFind ⟨n, (a, b) :: bs⟩ a' = memFind ⟨n, bs⟩ a' := by
+    memFind ⟨n, (a, b) :: bs, g64⟩ a' = memFind ⟨n, bs, g64⟩ a' := by
   have hbe : (a' == a) = false := by
     cases heq : (a' == a) with
     | true => exact absurd (beq_iff_eq.mp heq) h
     | false => rfl
   simp [memFind, hbe]
+
+/-- Shadowing 64-bit updates hit. -/
+theorem memFind64_cons_hit (n : Nat) (bs : List (Nat × Block))
+    (g64 : List (Nat × Block64)) (a : Addr)
+    (b : Block64) :
+    memFind64 ⟨n, bs, (a, b) :: g64⟩ a = some b := by
+  simp [memFind64]
+
+/-- Shadowing 64-bit updates preserve every other address. -/
+theorem memFind64_cons_miss (n : Nat) (bs : List (Nat × Block))
+    (g64 : List (Nat × Block64)) (a a' : Addr)
+    (b : Block64) (h : a' ≠ a) :
+    memFind64 ⟨n, bs, (a, b) :: g64⟩ a' = memFind64 ⟨n, bs, g64⟩ a' := by
+  have hbe : (a' == a) = false := by
+    cases heq : (a' == a) with
+    | true => exact absurd (beq_iff_eq.mp heq) h
+    | false => rfl
+  simp [memFind64, hbe]
 
 /-- `memStore` preserves every other address (two-block loops: writing
     one block never disturbs the other's pin fact). -/
@@ -911,7 +1152,7 @@ theorem memFind_memStore_other (m m' : Mem) (a b : Addr) (t i : Nat)
         split at hstore
         · next hblen =>
           cases hstore
-          exact memFind_cons_miss _ _ _ _ _ hne
+          exact memFind_cons_miss _ _ _ _ _ _ hne
         · cases hstore
 
 /-- `memFree` preserves every other address (freeing one block never
@@ -930,7 +1171,45 @@ theorem memFind_memFree_other (m m' : Mem) (a b : Addr) (t : Nat)
       · cases hfree
       · next hlive =>
         cases hfree
-        exact memFind_cons_miss _ _ _ _ _ hne
+        exact memFind_cons_miss _ _ _ _ _ _ hne
+
+/-- `memStore64` preserves every other 64-bit address. -/
+theorem memFind64_memStore64_other (m m' : Mem) (a b : Addr) (t i : Nat)
+    (x : BitVec 64)
+    (hstore : memStore64 m a t i x = .ok m') (hne : b ≠ a) :
+    memFind64 m' b = memFind64 m b := by
+  unfold memStore64 at hstore
+  split at hstore
+  · cases hstore
+  · next blk hfind =>
+    split at hstore
+    · cases hstore
+    · next htag =>
+      split at hstore
+      · cases hstore
+      · next hlive =>
+        split at hstore
+        · next hblen =>
+          cases hstore
+          exact memFind64_cons_miss _ _ _ _ _ _ hne
+        · cases hstore
+
+/-- `memFree64` preserves every other 64-bit address. -/
+theorem memFind64_memFree64_other (m m' : Mem) (a b : Addr) (t : Nat)
+    (hfree : memFree64 m a t = .ok m') (hne : b ≠ a) :
+    memFind64 m' b = memFind64 m b := by
+  unfold memFree64 at hfree
+  split at hfree
+  · cases hfree
+  · next blk hfind =>
+    split at hfree
+    · cases hfree
+    · next htag =>
+      split at hfree
+      · cases hfree
+      · next hlive =>
+        cases hfree
+        exact memFind64_cons_miss _ _ _ _ _ _ hne
 
 /-- A successful `vecSet` carries its bounds + liveness. -/
 theorem vecSet_ok_bound (b : Vec32) (i : Nat) (x : BitVec 32) (b' : Vec32)
@@ -941,6 +1220,70 @@ theorem vecSet_ok_bound (b : Vec32) (i : Nat) (x : BitVec 32) (b' : Vec32)
   · by_cases hb : i < b.val.length
     · exact ⟨hb, Bool.eq_false_iff.mpr hf⟩
     · simp [hf, hb] at h
+
+/-- A successful 64-bit `vecSet64` carries its bounds + liveness. -/
+theorem vecSet64_ok_bound (b : Vec64) (i : Nat) (x : BitVec 64) (b' : Vec64)
+    (h : vecSet64 b i x = .ok b') : i < b.val.length ∧ b.freed = false := by
+  unfold vecSet64 at h
+  by_cases hf : b.freed = true
+  · simp [hf] at h
+  · by_cases hb : i < b.val.length
+    · exact ⟨hb, Bool.eq_false_iff.mpr hf⟩
+    · simp [hf, hb] at h
+
+/-- 64-bit `vset` lockstep: `vecSet64` and `memStore64` succeed together
+    with synced state. -/
+theorem vset64_lockstep (m : Mem) (a t : Nat) (b : Vec64) (i : Nat)
+    (x : BitVec 64) (blk : Block64) (b' : Vec64)
+    (hfind : memFind64 m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true) (hdata : blk.data = b.val)
+    (hunfreed : b.freed = false)
+    (hset : vecSet64 b i x = .ok b') :
+    ∃ m', memStore64 m a t i x = .ok m' ∧
+      memFind64 m' a = some ⟨t, true, b'.val⟩ := by
+  obtain ⟨hb, _⟩ := vecSet64_ok_bound b i x b' hset
+  have hset' : vecSet64 b i x = .ok ⟨b.val.set i x, false⟩ :=
+    vecSet64_ok b i x hunfreed hb
+  rw [hset'] at hset
+  cases hset
+  show ∃ m', memStore64 m a t i x = .ok m' ∧
+    memFind64 m' a = some ⟨t, true, (b.val.set i x)⟩
+  have hblen : i < blk.data.length := by rw [hdata]; exact hb
+  have hstore : memStore64 m a t i x =
+      .ok ⟨m.next, m.blocks,
+        (a, ⟨blk.tag, blk.live, blk.data.set i x⟩) ::
+        m.blocks64⟩ := by
+    simp [memStore64, hfind, htag, hlive, hblen]
+  refine ⟨_, hstore, ?_⟩
+  have hhit := memFind64_cons_hit m.next m.blocks m.blocks64 a
+    ⟨blk.tag, blk.live, blk.data.set i x⟩
+  simpa only [htag, hlive, hdata] using hhit
+
+/-- 64-bit `vfree` lockstep: `vecFree64` and `memFree64` consume their
+    tokens together. -/
+theorem vfree64_lockstep (m : Mem) (a t : Nat) (b : Vec64) (blk : Block64)
+    (b' : Vec64)
+    (hfind : memFind64 m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true) (hdata : blk.data = b.val)
+    (hunfreed : b.freed = false)
+    (hfree : vecFree64 b = .ok b') :
+    ∃ m', memFree64 m a t = .ok m' ∧
+      memFind64 m' a = some ⟨t, false, b.val⟩ := by
+  have hfree' : b' = ⟨b.val, true⟩ := by
+    rw [vecFree64_ok b hunfreed] at hfree
+    cases hfree
+    rfl
+  subst hfree'
+  show ∃ m', memFree64 m a t = .ok m' ∧
+    memFind64 m' a = some ⟨t, false, b.val⟩
+  have hmfree : memFree64 m a t =
+      .ok ⟨m.next, m.blocks, (a, ⟨blk.tag, false, blk.data⟩) ::
+        m.blocks64⟩ := by
+    simp [memFree64, hfind, htag, hlive]
+  refine ⟨_, hmfree, ?_⟩
+  have hhit := memFind64_cons_hit m.next m.blocks m.blocks64 a
+    ⟨blk.tag, false, blk.data⟩
+  simpa only [htag, hdata] using hhit
 
 /-- `vset` lockstep: under the pin invariant (matching tag, live block,
     block data = value words, live token), `vecSet` and `memStore`
@@ -963,10 +1306,10 @@ theorem vset_lockstep (m : Mem) (a t : Nat) (b : Vec32) (i : Nat)
   have hblen : i < blk.data.length := by rw [hdata]; exact hb
   have hstore : memStore m a t i x =
       .ok ⟨m.next, (a, ⟨blk.tag, blk.live, blk.data.set i x⟩) ::
-        m.blocks⟩ := by
+        m.blocks, m.blocks64⟩ := by
     simp [memStore, hfind, htag, hlive, hblen]
   refine ⟨_, hstore, ?_⟩
-  have hhit := memFind_cons_hit m.next m.blocks a
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
     ⟨blk.tag, blk.live, blk.data.set i x⟩
   simpa only [htag, hlive, hdata] using hhit
 
@@ -988,10 +1331,11 @@ theorem vfree_lockstep (m : Mem) (a t : Nat) (b : Vec32) (blk : Block)
   show ∃ m', memFree m a t = .ok m' ∧
     memFind m' a = some ⟨t, false, b.val⟩
   have hmfree : memFree m a t =
-      .ok ⟨m.next, (a, ⟨blk.tag, false, blk.data⟩) :: m.blocks⟩ := by
+      .ok ⟨m.next, (a, ⟨blk.tag, false, blk.data⟩) :: m.blocks,
+        m.blocks64⟩ := by
     simp [memFree, hfind, htag, hlive]
   refine ⟨_, hmfree, ?_⟩
-  have hhit := memFind_cons_hit m.next m.blocks a
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
     ⟨blk.tag, false, blk.data⟩
   simpa only [htag, hdata] using hhit
 
@@ -1018,10 +1362,11 @@ theorem vrealloc_lockstep (m : Mem) (a t : Nat) (b : Vec32) (newSize : Nat)
         List.replicate (newSize - b.val.length) 0⟩
   have hmre : memRealloc m a t newSize =
       .ok ⟨m.next, (a, ⟨blk.tag, true, blk.data.take newSize ++
-        List.replicate (newSize - blk.data.length) 0⟩) :: m.blocks⟩ := by
+        List.replicate (newSize - blk.data.length) 0⟩) :: m.blocks,
+        m.blocks64⟩ := by
     simp [memRealloc, hfind, htag, hlive]
   refine ⟨_, hmre, ?_⟩
-  have hhit := memFind_cons_hit m.next m.blocks a
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
     ⟨blk.tag, true, blk.data.take newSize ++
       List.replicate (newSize - blk.data.length) 0⟩
   simpa only [htag, hdata] using hhit
@@ -1067,6 +1412,30 @@ theorem memLoad_of_vecGet (m : Mem) (a : Addr) (blk : Vec32) (j : Nat)
       rw [h2] at hget
       simp at hget
   exact memLoad_hit m a a j _ _ hfind rfl rfl hgetl
+
+/-- A successful 64-bit `vecGet64` carries its list read + liveness, so
+    the mirrored memory load agrees. -/
+theorem memLoad64_of_vecGet64 (m : Mem) (a : Addr) (blk : Vec64) (j : Nat)
+    (hfind : memFind64 m a = some ⟨a, true, blk.val⟩)
+    (hget : vecGet64 blk j = .ok (BitVec.ofNat 64 j)) :
+    memLoad64 m a a j = .ok (BitVec.ofNat 64 j) := by
+  have hlive_v : blk.freed = false := by
+    cases hbf : blk.freed with
+    | true => rw [vecGet64_freed blk j hbf] at hget; simp at hget
+    | false => rfl
+  have hgetl : blk.val[j]? = some (BitVec.ofNat 64 j) := by
+    match hm : blk.val[j]? with
+    | some z =>
+      have h2 : vecGet64 blk j = .ok z := vecGet64_ok blk j z hlive_v hm
+      have hzy : z = BitVec.ofNat 64 j := by
+        rw [h2] at hget
+        simpa using hget
+      exact congrArg some hzy
+    | none =>
+      have h2 : vecGet64 blk j = .error .OOB := vecGet64_oob blk j hlive_v hm
+      rw [h2] at hget
+      simp at hget
+  exact memLoad64_hit m a a j _ _ hfind rfl rfl hgetl
 
 /-- The M3c goal, stated (M3a proves the per-leaf instances above and
     `Transfer` proves `sum` / `vec_alloc`; M3c discharges the general

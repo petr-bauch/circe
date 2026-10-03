@@ -549,4 +549,21 @@ grep -q "theorem memTransfer_vecRealloc" Circe/Transfer.lean
 grep -q "theorem oracleNoalias_vecRealloc" Circe/Derived.lean
 echo "heap C transfers green (vec_realloc)"
 
+echo "== M3c heap transfers (vec_alloc_u64) =="
+grep -q "structure Block64" Circe/Mem.lean
+grep -q "def memFind64" Circe/Mem.lean
+grep -q "def memAllocData64" Circe/Mem.lean
+grep -q "def memLoad64" Circe/Mem.lean
+grep -q "def memStore64" Circe/Mem.lean
+grep -q "def memFree64" Circe/Mem.lean
+grep -q "theorem vset64_lockstep" Circe/Mem.lean
+grep -q "theorem vfree64_lockstep" Circe/Mem.lean
+grep -q "theorem memEvalStmtFuel_let_vnew64" Circe/Mem.lean
+grep -q "theorem memVec64FillWhile_correct" Circe/Transfer.lean
+grep -q "theorem memVec64SumWhile_correct" Circe/Transfer.lean
+grep -q "theorem memEvalFuncFuel_vec64" Circe/Transfer.lean
+grep -q "theorem memTransfer_vec64" Circe/Transfer.lean
+grep -q "theorem oracleNoalias_vec64" Circe/Derived.lean
+echo "heap C transfers green (vec_alloc_u64)"
+
 echo "CHECK-OK"

@@ -20,6 +20,7 @@ import Circe.Emit.Flow
 import Circe.Emit.Calls
 import Circe.Emit.Vec2
 import Circe.Emit.VecRealloc
+import Circe.Emit.Vec64
 
 /-! ## `sum_array` transfer -/
 
@@ -31,7 +32,7 @@ theorem bindMemArgs_sum (l : List (BitVec 32)) (nv : BitVec 32) :
        { name := "n", ty := .u 32, role := .owned }]
       [.arr32 l, .u32 nv] emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) := by
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
   rfl
 
 /-- `sum` entry footprints are a singleton (trivially disjoint). -/
@@ -39,7 +40,7 @@ theorem oracleNoalias_sum (l : List (BitVec 32)) (nv : BitVec 32) :
     oracleNoalias sumFunc [.arr32 l, .u32 nv] := by
   have hb : bindMemArgs sumFunc.args [.arr32 l, .u32 nv] emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) := by
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
     show bindMemArgs
       [{ name := "a", ty := .array (.u 32) 4096, role := .sharedBorrow },
        { name := "n", ty := .u 32, role := .owned }]
@@ -236,7 +237,7 @@ theorem memEvalFuncFuel_sum (F : Nat) (l : List (BitVec 32))
   have hb := bindMemArgs_sum l nv
   have hlay : layoutLookup [("a", 0, 0)] "a" = some (0, 0) := by
     simp [layoutLookup]
-  have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)]⟩ 0 =
+  have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 =
       some ⟨0, true, l⟩ := by
     simp [memFind]
   have henv : [("i", .u32 (BitVec.ofNat 32 0)),
@@ -248,10 +249,10 @@ theorem memEvalFuncFuel_sum (F : Nat) (l : List (BitVec 32))
   | zero =>
     have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
           sumWhile (mkSumEnv l nv 0 (BitVec.ofNat 32 0))
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)]
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)]
         = .ok (((mkSumEnv l nv nv.toNat
             (BitVec.ofNat 32 0 + prefixSumU32 (l.drop 0) (nv.toNat - 0)),
-            ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)])),
+            ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)])),
             .fellThrough) :=
       memSumWhile_correct l nv 0 0 (BitVec.ofNat 32 0) _ _
         (Nat.zero_le _) hle h32 hlay hmem (by cir_fuel)
@@ -261,10 +262,10 @@ theorem memEvalFuncFuel_sum (F : Nat) (l : List (BitVec 32))
   | succ F =>
     have hloopS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
           sumWhile (mkSumEnv l nv 0 (BitVec.ofNat 32 0))
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)]
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)]
         = .ok (((mkSumEnv l nv nv.toNat
             (BitVec.ofNat 32 0 + prefixSumU32 (l.drop 0) (nv.toNat - 0)),
-            ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)])),
+            ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)])),
             .fellThrough) :=
       memSumWhile_correct l nv (F + 1) 0 (BitVec.ofNat 32 0) _ _
         (Nat.zero_le _) hle h32 hlay hmem (by cir_fuel)
@@ -281,7 +282,7 @@ theorem memEvalFuncFuel_sum_oob (F : Nat) (l : List (BitVec 32))
   have hb := bindMemArgs_sum l nv
   have hlay : layoutLookup [("a", 0, 0)] "a" = some (0, 0) := by
     simp [layoutLookup]
-  have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)]⟩ 0 =
+  have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 =
       some ⟨0, true, l⟩ := by
     simp [memFind]
   have henv : [("i", .u32 (BitVec.ofNat 32 0)),
@@ -292,7 +293,7 @@ theorem memEvalFuncFuel_sum_oob (F : Nat) (l : List (BitVec 32))
   | zero =>
     have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
           sumWhile (mkSumEnv l nv 0 (BitVec.ofNat 32 0))
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] = .error .OOB :=
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] = .error .OOB :=
       memSumWhile_oob l nv 0 0 (BitVec.ofNat 32 0) _ _
         (Nat.zero_le _) hlt hlen32 hlay hmem (by cir_fuel)
     simp [memEvalFuncFuel, sumFunc, memEvalStmtFuel,
@@ -301,7 +302,7 @@ theorem memEvalFuncFuel_sum_oob (F : Nat) (l : List (BitVec 32))
   | succ F =>
     have hloopS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
           sumWhile (mkSumEnv l nv 0 (BitVec.ofNat 32 0))
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] = .error .OOB :=
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] = .error .OOB :=
       memSumWhile_oob l nv (F + 1) 0 (BitVec.ofNat 32 0) _ _
         (Nat.zero_le _) hlt hlen32 hlay hmem (by cir_fuel)
     simp [memEvalFuncFuel, sumFunc, memEvalStmtFuel,
@@ -333,8 +334,8 @@ theorem memTransfer_sum_oob (F : Nat) (l : List (BitVec 32))
 /-- `vec_alloc` binding: the bound is owned scalar, empty layout. -/
 theorem bindMemArgs_vec (nv : BitVec 32) :
     bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
-      [.u32 nv] ⟨0, []⟩ =
-      some ([("n", .u32 nv)], ⟨0, []⟩, []) := by
+      [.u32 nv] ⟨0, [], []⟩ =
+      some ([("n", .u32 nv)], ⟨0, [], []⟩, []) := by
   rfl
 
 /-- `vec_alloc` entry footprints are empty (trivially disjoint). -/
@@ -343,7 +344,7 @@ theorem oracleNoalias_vec (nv : BitVec 32) :
   have hb : bindMemArgs vecFunc.args [.u32 nv] emptyMem =
       some ([("n", .u32 nv)], emptyMem, []) := by
     show bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
-      [.u32 nv] ⟨0, []⟩ = some ([("n", .u32 nv)], ⟨0, []⟩, [])
+      [.u32 nv] ⟨0, [], []⟩ = some ([("n", .u32 nv)], ⟨0, [], []⟩, [])
     exact bindMemArgs_vec nv
   have hn : LayoutNoAlias ([] : Layout) := layoutNoAlias_nil
   exact ⟨_, _, _, hb, hn⟩
@@ -651,7 +652,7 @@ theorem memEvalFuncFuel_vec (F : Nat) (nv : BitVec 32)
   have hlayV : layoutLookup [("v", 0, 0)] "v" = some (0, 0) := by
     simp [layoutLookup]
   have hfindV : memFind ⟨1, [(0, ⟨0, true,
-      List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 0 =
+      List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 0 =
       some ⟨0, true,
         List.replicate nv.toNat (BitVec.ofNat 32 0)⟩ := by
     simp [memFind]
@@ -665,14 +666,14 @@ theorem memEvalFuncFuel_vec (F : Nat) (nv : BitVec 32)
         ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv 0 0
         (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) blkOut
         ⟨1, [(0, ⟨0, true,
-          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 0 [("v", 0, 0)]
+          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 0 [("v", 0, 0)]
         (Nat.zero_le _) (by simp) rfl hn32 hlayV hfindV hfill0 (by cir_fuel)
     have hloopF0 : memEvalStmtWith memEvalStmtZeroHandler
           vecFillWhile
           [("j", .u32 0), ("s", .u32 0), ("i", .u32 0),
            ("v", .vecVal ⟨List.replicate nv.toNat 0, false⟩),
            ("n", .u32 nv)]
-          ⟨1, [(0, ⟨0, true, List.replicate nv.toNat 0⟩)]⟩
+          ⟨1, [(0, ⟨0, true, List.replicate nv.toNat 0⟩)], []⟩
           [("v", 0, 0)]
         = .ok ((mkVecEnv blkOut nv (BitVec.ofNat 32 nv.toNat)
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0), mFill, [("v", 0, 0)]),
@@ -717,14 +718,14 @@ theorem memEvalFuncFuel_vec (F : Nat) (nv : BitVec 32)
         ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv (F + 1) 0
         (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) blkOut
         ⟨1, [(0, ⟨0, true,
-          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 0 [("v", 0, 0)]
+          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 0 [("v", 0, 0)]
         (Nat.zero_le _) (by simp) rfl hn32 hlayV hfindV hfill0 (by cir_fuel)
     have hloopFS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
           vecFillWhile
           [("j", .u32 0), ("s", .u32 0), ("i", .u32 0),
            ("v", .vecVal ⟨List.replicate nv.toNat 0, false⟩),
            ("n", .u32 nv)]
-          ⟨1, [(0, ⟨0, true, List.replicate nv.toNat 0⟩)]⟩
+          ⟨1, [(0, ⟨0, true, List.replicate nv.toNat 0⟩)], []⟩
           [("v", 0, 0)]
         = .ok ((mkVecEnv blkOut nv (BitVec.ofNat 32 nv.toNat)
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0), mFill, [("v", 0, 0)]),
@@ -1246,11 +1247,11 @@ theorem memEvalFuncFuel_vec2 (F : Nat) (nv : BitVec 32)
     memEvalFuncFuel F vec2Func [.u32 nv] =
       .ok (.u32 (prefixSumU32 ((List.range nv.toNat).map (BitVec.ofNat 32))
         nv.toNat)) := by
-  -- Stated unfolded (`⟨0, []⟩`): if `emptyMem` unfolds first, the
+  -- Stated unfolded (`⟨0, [], []⟩`): if `emptyMem` unfolds first, the
   -- `bindMemArgs_vec2` match is destroyed and the closing `simp` stalls.
   have hb : bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
-      [.u32 nv] (⟨0, []⟩ : Mem) =
-      some ([("n", .u32 nv)], (⟨0, []⟩ : Mem), []) :=
+      [.u32 nv] (⟨0, [], []⟩ : Mem) =
+      some ([("n", .u32 nv)], (⟨0, [], []⟩ : Mem), []) :=
     bindMemArgs_vec2 nv
   have hfresh : (⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ : Vec32).val.length =
       0 + nv.toNat := by simp
@@ -1329,14 +1330,14 @@ theorem memEvalFuncFuel_vec2 (F : Nat) (nv : BitVec 32)
   have hfindA0 : memFind ⟨2, [(1, ⟨1, true,
         List.replicate nv.toNat (BitVec.ofNat 32 0)⟩),
         (0, ⟨0, true,
-        List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 0 =
+        List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 0 =
       some ⟨0, true,
         List.replicate nv.toNat (BitVec.ofNat 32 0)⟩ := by
     simp [memFind]
   have hfindB0 : memFind ⟨2, [(1, ⟨1, true,
         List.replicate nv.toNat (BitVec.ofNat 32 0)⟩),
         (0, ⟨0, true,
-        List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 1 =
+        List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 1 =
       some ⟨1, true,
         List.replicate nv.toNat (BitVec.ofNat 32 0)⟩ := by
     simp [memFind]
@@ -1349,7 +1350,7 @@ theorem memEvalFuncFuel_vec2 (F : Nat) (nv : BitVec 32)
         (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) (BitVec.ofNat 32 0)
         blkAOut
         ⟨2, [(1, ⟨1, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩),
-          (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩
+          (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩
         0 1 [("b", 1, 1), ("a", 0, 0)]
         (Nat.zero_le _) (by simp) rfl hn32 hlayA hfindA0 hfindB0
         (by decide) hfill0 (by cir_fuel)
@@ -1360,7 +1361,7 @@ theorem memEvalFuncFuel_vec2 (F : Nat) (nv : BitVec 32)
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) (BitVec.ofNat 32 0)
             (BitVec.ofNat 32 0))
           ⟨2, [(1, ⟨1, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩),
-            (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩
+            (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩
           [("b", 1, 1), ("a", 0, 0)]
         = .ok ((mkVec2Env blkAOut
             ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv
@@ -1444,7 +1445,7 @@ theorem memEvalFuncFuel_vec2 (F : Nat) (nv : BitVec 32)
         (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) (BitVec.ofNat 32 0)
         blkAOut
         ⟨2, [(1, ⟨1, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩),
-          (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩
+          (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩
         0 1 [("b", 1, 1), ("a", 0, 0)]
         (Nat.zero_le _) (by simp) rfl hn32 hlayA hfindA0 hfindB0
         (by decide) hfill0 hFS
@@ -1455,7 +1456,7 @@ theorem memEvalFuncFuel_vec2 (F : Nat) (nv : BitVec 32)
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) (BitVec.ofNat 32 0)
             (BitVec.ofNat 32 0))
           ⟨2, [(1, ⟨1, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩),
-            (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩
+            (0, ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩
           [("b", 1, 1), ("a", 0, 0)]
         = .ok ((mkVec2Env blkAOut
             ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv
@@ -2066,11 +2067,11 @@ theorem memEvalFuncFuel_vecRealloc (F : Nat) (nv : BitVec 32)
   rw [h0] at hsum0
   have hfree0 : vecFree blkC = .ok ⟨blkC.val, true⟩ :=
     vecFree_ok blkC hliveC
-  -- Stated unfolded (`⟨0, []⟩`): if `emptyMem` unfolds first, the
+  -- Stated unfolded (`⟨0, [], []⟩`): if `emptyMem` unfolds first, the
   -- `bindMemArgs_vecRealloc` match is destroyed and the closing stalls.
   have hb : bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
-      [.u32 nv] (⟨0, []⟩ : Mem) =
-      some ([("n", .u32 nv)], (⟨0, []⟩ : Mem), []) :=
+      [.u32 nv] (⟨0, [], []⟩ : Mem) =
+      some ([("n", .u32 nv)], (⟨0, [], []⟩ : Mem), []) :=
     bindMemArgs_vecRealloc nv
   have hmn : envLookup
       [("i", .u32 (BitVec.ofNat 32 0)),
@@ -2106,7 +2107,7 @@ theorem memEvalFuncFuel_vecRealloc (F : Nat) (nv : BitVec 32)
     layoutLookup_hit "v" 0 0 []
   have hfindV0 : memFind
       (⟨1, [(0, ⟨0, true,
-        List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ : Mem) 0 =
+        List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ : Mem) 0 =
       some ⟨0, true, List.replicate nv.toNat (BitVec.ofNat 32 0)⟩ := by
     simp [memFind]
   cases F with
@@ -2121,7 +2122,7 @@ theorem memEvalFuncFuel_vecRealloc (F : Nat) (nv : BitVec 32)
         ⟨List.replicate nv.toNat (BitVec.ofNat 32 0), false⟩ nv (nv + nv) 0 0
         nv (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) blkA
         ⟨1, [(0, ⟨0, true,
-          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 0 [("v", 0, 0)]
+          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 0 [("v", 0, 0)]
         (Nat.zero_le _) (by simp) rfl hn32 hlayV hfindV0 hfill0 hF0
     have hloopF0 : memEvalStmtWith memEvalStmtZeroHandler
           vecReallocFillWhile
@@ -2130,7 +2131,7 @@ theorem memEvalFuncFuel_vecRealloc (F : Nat) (nv : BitVec 32)
             nv (nv + nv) (BitVec.ofNat 32 0) nv
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0))
           ⟨1, [(0, ⟨0, true,
-            List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ [("v", 0, 0)]
+            List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ [("v", 0, 0)]
         = .ok ((mkVecReallocEnv blkA nv (nv + nv)
             nv nv
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0), mFill, [("v", 0, 0)]),
@@ -2225,7 +2226,7 @@ theorem memEvalFuncFuel_vecRealloc (F : Nat) (nv : BitVec 32)
         (F + 1) 0
         nv (BitVec.ofNat 32 0) (BitVec.ofNat 32 0) blkA
         ⟨1, [(0, ⟨0, true,
-          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ 0 [("v", 0, 0)]
+          List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ 0 [("v", 0, 0)]
         (Nat.zero_le _) (by simp) rfl hn32 hlayV hfindV0 hfill0 hFS
     have hloopFS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
           vecReallocFillWhile
@@ -2234,7 +2235,7 @@ theorem memEvalFuncFuel_vecRealloc (F : Nat) (nv : BitVec 32)
             nv (nv + nv) (BitVec.ofNat 32 0) nv
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0))
           ⟨1, [(0, ⟨0, true,
-            List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)]⟩ [("v", 0, 0)]
+            List.replicate nv.toNat (BitVec.ofNat 32 0)⟩)], []⟩ [("v", 0, 0)]
         = .ok ((mkVecReallocEnv blkA nv (nv + nv)
             nv nv
             (BitVec.ofNat 32 0) (BitVec.ofNat 32 0), mFill, [("v", 0, 0)]),
@@ -2321,6 +2322,434 @@ theorem memTransfer_vecRealloc (F : Nat) (nv : BitVec 32)
       evalFuncFuel F vecReallocFunc [.u32 nv] := by
   rw [memEvalFuncFuel_vecRealloc F nv hm2 hnowrap,
     evalFuncFuel_vecRealloc F nv hm2 hnowrap]
+
+/-! ## M3c heap transfer: `vec_alloc_u64` (single 64-bit block) -/
+
+/-- One memory fill step stores the index and advances (any fuel),
+    lockstepping value and 64-bit memory. -/
+theorem memVec64FillBody_eval (F : Nat) (blk : Vec64) (nv : BitVec 64)
+    (k : Nat) (sv jv : BitVec 64) (blkMid : Vec64)
+    (m : Mem) (a : Addr) (π : Layout) (mMid : Mem)
+    (_hklen : k < blk.val.length) (hk32 : k < 2 ^ 64)
+    (_hlive : blk.freed = false)
+    (hset : vecSet64 blk k (BitVec.ofNat 64 k) = .ok blkMid)
+    (hstore : memStore64 m a a k (BitVec.ofNat 64 k) = .ok mMid)
+    (hlay : layoutLookup π "v" = some (a, a))
+    (_hfind : memFind64 m a = some ⟨a, true, blk.val⟩) :
+    memEvalStmtFuel F vec64FillBody
+        (mkVec64Env blk nv (BitVec.ofNat 64 k) sv jv) m π =
+      .ok (((mkVec64Env blkMid nv (BitVec.ofNat 64 (k + 1)) sv jv,
+        mMid, π)), .fellThrough) := by
+  have hkk : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk32
+  have hi : memEvalExpr (.var "i")
+        (mkVec64Env blk nv (BitVec.ofNat 64 k) sv jv) m π =
+        .ok (.u64 (BitVec.ofNat 64 k)) := by
+    have h1 := mkVec64Env_i blk nv (BitVec.ofNat 64 k) sv jv
+    simp [memEvalExpr, h1]
+  have harr := mkVec64Env_v blk nv (BitVec.ofNat 64 k) sv jv
+  have hset' : vecSet64 blk (BitVec.ofNat 64 k).toNat (BitVec.ofNat 64 k) =
+      .ok blkMid := by rw [hkk]; exact hset
+  have hstore' : memStore64 m a a (BitVec.ofNat 64 k).toNat
+      (BitVec.ofNat 64 k) = .ok mMid := by rw [hkk]; exact hstore
+  have up1 := vec64Env_update_v blk nv (BitVec.ofNat 64 k) sv jv blkMid
+  have hi2 : memEvalExpr (.uadd (.var "i") (.lit (.u64 1#64)))
+        (mkVec64Env blkMid nv (BitVec.ofNat 64 k) sv jv) mMid π =
+        .ok (.u64 (BitVec.ofNat 64 (k + 1))) := by
+    have h1 := mkVec64Env_i blkMid nv (BitVec.ofNat 64 k) sv jv
+    simp only [memEvalExpr, litVal, h1, ofNat64_add_one]
+  have up2 := vec64Env_update_i blkMid nv (BitVec.ofNat 64 k)
+    (BitVec.ofNat 64 (k + 1)) sv jv
+  cases F <;>
+    simp only [vec64FillBody, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtWith, hi, harr, hlay, hset', hstore', up1, hi2, up2]
+
+/-- The memory fill-loop condition reads the index against the bound. -/
+theorem memVec64FillCond_eval (blk : Vec64) (nv : BitVec 64) (k : Nat)
+    (sv jv : BitVec 64) (m : Mem) (π : Layout) (h : k < 2 ^ 64) :
+    memEvalExpr (.ult (.var "i") (.var "n"))
+        (mkVec64Env blk nv (BitVec.ofNat 64 k) sv jv) m π =
+      .ok (.b (decide (k < nv.toNat))) := by
+  have hi := mkVec64Env_i blk nv (BitVec.ofNat 64 k) sv jv
+  have hn := mkVec64Env_n blk nv (BitVec.ofNat 64 k) sv jv
+  simp only [memEvalExpr, hi, hn, ofNat64_ult k nv h]
+
+/-- Fill-loop correctness on 64-bit memory: the memory loop runs the
+    `Base` fill to completion, lockstepping value and memory. -/
+theorem memVec64FillWhile_correct (blk : Vec64) (nv : BitVec 64)
+    (F k : Nat) (sv jv : BitVec 64) (blkOut : Vec64)
+    (m : Mem) (a : Addr) (π : Layout)
+    (hk : k ≤ nv.toNat)
+    (hlen : blk.val.length = nv.toNat)
+    (hlive : blk.freed = false)
+    (hn32 : nv.toNat < 2 ^ 64)
+    (hlay : layoutLookup π "v" = some (a, a))
+    (hfind : memFind64 m a = some ⟨a, true, blk.val⟩)
+    (hfill : vecFillLoopAux64 blk k (nv.toNat - k) = .ok blkOut)
+    (hF : nv.toNat - k ≤ F) :
+    ∃ mOut, memEvalStmtFuel F vec64FillWhile
+        (mkVec64Env blk nv (BitVec.ofNat 64 k) sv jv) m π =
+      .ok (((mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat) sv jv,
+        mOut, π)), .fellThrough) ∧
+      memFind64 mOut a = some ⟨a, true, blkOut.val⟩ ∧
+      blkOut.freed = false := by
+  induction F generalizing k blk m with
+  | zero =>
+    have hkk : k = nv.toNat := by omega
+    subst hkk
+    have hcond : memEvalExpr (.ult (.var "i") (.var "n"))
+        (mkVec64Env blk nv (BitVec.ofNat 64 nv.toNat) sv jv) m π =
+        .ok (.b false) := by
+      have hc := memVec64FillCond_eval blk nv nv.toNat sv jv m π hn32
+      rw [show decide (nv.toNat < nv.toNat) = false from by simp] at hc
+      exact hc
+    have hsub : nv.toNat - nv.toNat = 0 := Nat.sub_self _
+    rw [hsub] at hfill
+    simp only [vecFillLoopAux64] at hfill
+    cases hfill
+    refine ⟨m, ?_, hfind, hlive⟩
+    simp only [vec64FillWhile, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtZeroHandler, memEvalStmtWith]
+    rw [hcond]
+  | succ F ih =>
+    by_cases hlt : k < nv.toNat
+    · have hk32 : k < 2 ^ 64 := by omega
+      have hklen : k < blk.val.length := by omega
+      have hcond : memEvalExpr (.ult (.var "i") (.var "n"))
+          (mkVec64Env blk nv (BitVec.ofNat 64 k) sv jv) m π =
+          .ok (.b true) := by
+        simpa [hlt] using (memVec64FillCond_eval blk nv k sv jv m π hk32)
+      have hset : vecSet64 blk k (BitVec.ofNat 64 k) =
+          .ok ⟨blk.val.set k (BitVec.ofNat 64 k), false⟩ :=
+        vecSet64_ok blk k _ hlive hklen
+      have hkk1 : nv.toNat - k = (nv.toNat - (k + 1)) + 1 := by omega
+      rw [hkk1] at hfill
+      simp only [vecFillLoopAux64, hset] at hfill
+      obtain ⟨mMid, hstore, hfindMid⟩ := vset64_lockstep m a a blk k
+        (BitVec.ofNat 64 k) ⟨a, true, blk.val⟩
+        ⟨blk.val.set k (BitVec.ofNat 64 k), false⟩
+        hfind rfl rfl rfl hlive hset
+      have hbody := memVec64FillBody_eval F blk nv k sv jv
+        ⟨blk.val.set k (BitVec.ofNat 64 k), false⟩ m a π mMid
+        hklen hk32 hlive hset hstore hlay hfind
+      have hstep : memEvalStmtFuel (F + 1) vec64FillWhile
+            (mkVec64Env blk nv (BitVec.ofNat 64 k) sv jv) m π
+          = memEvalStmtFuel F vec64FillWhile
+            (mkVec64Env ⟨blk.val.set k (BitVec.ofNat 64 k), false⟩ nv
+              (BitVec.ofNat 64 (k + 1)) sv jv) mMid π := by
+        simp [vec64FillWhile, memEvalStmtFuel, memEvalSuccHandler,
+          memEvalStmtWith, hcond, hbody]
+      rw [hstep]
+      have hlenMid : (⟨blk.val.set k (BitVec.ofNat 64 k), false⟩ : Vec64).val.length
+          = nv.toNat := by
+        show (blk.val.set k (BitVec.ofNat 64 k)).length = nv.toNat
+        rw [List.length_set]
+        omega
+      exact ih ⟨blk.val.set k (BitVec.ofNat 64 k), false⟩ (k + 1) mMid
+        (by omega) hlenMid rfl hfindMid hfill (by omega)
+    · have hkk : k = nv.toNat := by omega
+      subst hkk
+      have hcond : memEvalExpr (.ult (.var "i") (.var "n"))
+          (mkVec64Env blk nv (BitVec.ofNat 64 nv.toNat) sv jv) m π =
+          .ok (.b false) := by
+        have hc := memVec64FillCond_eval blk nv nv.toNat sv jv m π hn32
+        rw [show decide (nv.toNat < nv.toNat) = false from by simp] at hc
+        exact hc
+      have hsub : nv.toNat - nv.toNat = 0 := Nat.sub_self _
+      rw [hsub] at hfill
+      simp only [vecFillLoopAux64] at hfill
+      cases hfill
+      refine ⟨m, ?_, hfind, hlive⟩
+      simp only [vec64FillWhile, memEvalStmtFuel, memEvalSuccHandler,
+        memEvalStmtWith]
+      rw [hcond]
+
+/-- One memory sum step accumulates the 64-bit block element and
+    advances (any fuel), with `Mem`/`Layout` untouched (reads only). -/
+theorem memVec64SumBody_eval (F : Nat) (blk : Vec64) (nv iv sv : BitVec 64)
+    (k : Nat) (m : Mem) (a : Addr) (π : Layout)
+    (hk32 : k < 2 ^ 64)
+    (hlay : layoutLookup π "v" = some (a, a))
+    (hfind : memFind64 m a = some ⟨a, true, blk.val⟩)
+    (hget : vecGet64 blk k = .ok (BitVec.ofNat 64 k)) :
+    memEvalStmtFuel F vec64SumBody
+        (mkVec64Env blk nv iv sv (BitVec.ofNat 64 k)) m π =
+      .ok (((mkVec64Env blk nv iv (sv + BitVec.ofNat 64 k)
+        (BitVec.ofNat 64 (k + 1)), m, π)), .fellThrough) := by
+  have hkk : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk32
+  have hload : memLoad64 m a a (BitVec.ofNat 64 k).toNat =
+      .ok (BitVec.ofNat 64 k) := by
+    rw [hkk]
+    exact memLoad64_of_vecGet64 m a blk k hfind hget
+  have hget' : vecGet64 blk (BitVec.ofNat 64 k).toNat =
+      .ok (BitVec.ofNat 64 k) := by rw [hkk]; exact hget
+  have hj := mkVec64Env_j blk nv iv sv (BitVec.ofNat 64 k)
+  have hs0 := mkVec64Env_s blk nv iv sv (BitVec.ofNat 64 k)
+  have harr := mkVec64Env_v blk nv iv sv (BitVec.ofNat 64 k)
+  have hs : memEvalExpr (.uadd (.var "s") (.vget "v" (.var "j")))
+        (mkVec64Env blk nv iv sv (BitVec.ofNat 64 k)) m π =
+        .ok (.u64 (sv + BitVec.ofNat 64 k)) := by
+    simp only [memEvalExpr, hs0, hlay, harr, hj, hload, hget',
+      beq_self_eq_true, ↓reduceIte]
+  have hj2 : memEvalExpr (.uadd (.var "j") (.lit (.u64 1#64)))
+        (mkVec64Env blk nv iv (sv + BitVec.ofNat 64 k)
+          (BitVec.ofNat 64 k)) m π =
+        .ok (.u64 (BitVec.ofNat 64 (k + 1))) := by
+    have h1 := mkVec64Env_j blk nv iv (sv + BitVec.ofNat 64 k)
+      (BitVec.ofNat 64 k)
+    simp only [memEvalExpr, litVal, h1, ofNat64_add_one]
+  have up1 := vec64Env_update_s blk nv iv sv (sv + BitVec.ofNat 64 k)
+    (BitVec.ofNat 64 k)
+  have up2 := vec64Env_update_j blk nv iv (sv + BitVec.ofNat 64 k)
+    (BitVec.ofNat 64 k) (BitVec.ofNat 64 (k + 1))
+  cases F <;>
+    simp only [vec64SumBody, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtWith, hs, hj2, up1, up2]
+
+/-- The memory sum-loop condition reads the index against the bound. -/
+theorem memVec64SumCond_eval (blk : Vec64) (nv iv sv : BitVec 64) (k : Nat)
+    (m : Mem) (π : Layout) (h : k < 2 ^ 64) :
+    memEvalExpr (.ult (.var "j") (.var "n"))
+        (mkVec64Env blk nv iv sv (BitVec.ofNat 64 k)) m π =
+      .ok (.b (decide (k < nv.toNat))) := by
+  have hj := mkVec64Env_j blk nv iv sv (BitVec.ofNat 64 k)
+  have hn := mkVec64Env_n blk nv iv sv (BitVec.ofNat 64 k)
+  simp only [memEvalExpr, hj, hn, ofNat64_ult k nv h]
+
+/-- Sum-loop correctness on 64-bit memory: the memory loop runs the
+    `Base` sum to completion, leaving `Mem`/`Layout` untouched. -/
+theorem memVec64SumWhile_correct (blk : Vec64) (nv : BitVec 64)
+    (F k : Nat) (iv sv : BitVec 64) (sout : BitVec 64)
+    (m : Mem) (a : Addr) (π : Layout)
+    (hk : k ≤ nv.toNat)
+    (hget : ∀ j, k ≤ j → j < nv.toNat →
+      vecGet64 blk j = .ok (BitVec.ofNat 64 j))
+    (hn32 : nv.toNat < 2 ^ 64)
+    (hlay : layoutLookup π "v" = some (a, a))
+    (hfind : memFind64 m a = some ⟨a, true, blk.val⟩)
+    (hsum : vecSumLoopAux64 blk k (nv.toNat - k) sv = .ok sout)
+    (hF : nv.toNat - k ≤ F) :
+    memEvalStmtFuel F vec64SumWhile
+        (mkVec64Env blk nv iv sv (BitVec.ofNat 64 k)) m π =
+      .ok (((mkVec64Env blk nv iv sout (BitVec.ofNat 64 nv.toNat), m, π)),
+        .fellThrough) := by
+  induction F generalizing k sv sout with
+  | zero =>
+    have hkk : k = nv.toNat := by omega
+    subst hkk
+    have hcond : memEvalExpr (.ult (.var "j") (.var "n"))
+        (mkVec64Env blk nv iv sv (BitVec.ofNat 64 nv.toNat)) m π =
+        .ok (.b false) := by
+      have hc := memVec64SumCond_eval blk nv iv sv nv.toNat m π hn32
+      rw [show decide (nv.toNat < nv.toNat) = false from by simp] at hc
+      exact hc
+    have hsub : nv.toNat - nv.toNat = 0 := Nat.sub_self _
+    rw [hsub] at hsum
+    simp only [vecSumLoopAux64] at hsum
+    cases hsum
+    simp only [vec64SumWhile, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtZeroHandler, memEvalStmtWith]
+    rw [hcond]
+  | succ F ih =>
+    by_cases hlt : k < nv.toNat
+    · have hk32 : k < 2 ^ 64 := by omega
+      have hcond : memEvalExpr (.ult (.var "j") (.var "n"))
+          (mkVec64Env blk nv iv sv (BitVec.ofNat 64 k)) m π =
+          .ok (.b true) := by
+        simpa [hlt] using (memVec64SumCond_eval blk nv iv sv k m π hk32)
+      have hgetk : vecGet64 blk k = .ok (BitVec.ofNat 64 k) :=
+        hget k (Nat.le_refl _) hlt
+      have hbody := memVec64SumBody_eval F blk nv iv sv k m a π hk32
+        hlay hfind hgetk
+      have hstep : memEvalStmtFuel (F + 1) vec64SumWhile
+            (mkVec64Env blk nv iv sv (BitVec.ofNat 64 k)) m π
+          = memEvalStmtFuel F vec64SumWhile
+            (mkVec64Env blk nv iv (sv + BitVec.ofNat 64 k)
+              (BitVec.ofNat 64 (k + 1))) m π := by
+        simp [vec64SumWhile, memEvalStmtFuel, memEvalSuccHandler,
+          memEvalStmtWith, hcond, hbody]
+      rw [hstep]
+      have hkk1 : nv.toNat - k = (nv.toNat - (k + 1)) + 1 := by omega
+      rw [hkk1] at hsum
+      have hgetk' : vecGet64 blk k = .ok (BitVec.ofNat 64 k) :=
+        hget k (Nat.le_refl _) hlt
+      simp only [vecSumLoopAux64, hgetk'] at hsum
+      exact ih (k + 1) (sv + BitVec.ofNat 64 k) sout (by omega)
+        (by intro j hjlo hjhi; exact hget j (by omega) hjhi) hsum (by omega)
+    · have hkk : k = nv.toNat := by omega
+      subst hkk
+      have hcond : memEvalExpr (.ult (.var "j") (.var "n"))
+          (mkVec64Env blk nv iv sv (BitVec.ofNat 64 nv.toNat)) m π =
+          .ok (.b false) := by
+        have hc := memVec64SumCond_eval blk nv iv sv nv.toNat m π hn32
+        rw [show decide (nv.toNat < nv.toNat) = false from by simp] at hc
+        exact hc
+      have hsub : nv.toNat - nv.toNat = 0 := Nat.sub_self _
+      rw [hsub] at hsum
+      simp only [vecSumLoopAux64] at hsum
+      cases hsum
+      simp only [vec64SumWhile, memEvalStmtFuel, memEvalSuccHandler,
+        memEvalStmtWith]
+      rw [hcond]
+
+
+/-- `memEval` for `vec_alloc_u64` at any fuel covering `n` (mirrors
+    `evalFuncFuel_vec64`; the single 64-bit block rides alongside in
+    lockstep). -/
+theorem memEvalFuncFuel_vec64 (F : Nat) (nv : BitVec 64)
+    (hn : nv.toNat ≤ F) (hn32 : nv.toNat < 2 ^ 64) :
+    memEvalFuncFuel F vec64Func [.u64 nv] =
+      .ok (.u64 (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64))
+        nv.toNat)) := by
+  -- Stated unfolded (`⟨0, [], []⟩`): if `emptyMem` unfolds first, the
+  -- `bindMemArgs_vec64` match is destroyed and the closing stalls.
+  have hb : bindMemArgs [{ name := "n", ty := .u 64, role := .owned }]
+      [.u64 nv] (⟨0, [], []⟩ : Mem) =
+      some ([("n", .u64 nv)], (⟨0, [], []⟩ : Mem), []) :=
+    bindMemArgs_vec64 nv
+  have hfresh : (⟨List.replicate nv.toNat (BitVec.ofNat 64 0), false⟩ : Vec64).val.length =
+      0 + nv.toNat := by simp
+  obtain ⟨blkOut, hfill0⟩ := vecFillLoopAux64_fresh_ok
+    (List.replicate nv.toNat (BitVec.ofNat 64 0)) 0 nv.toNat (by simp)
+  have hliveOut : blkOut.freed = false :=
+    vecFillLoopAux64_live _ _ _ _ rfl hfill0
+  have hgetOut : ∀ j, 0 ≤ j → j < nv.toNat →
+      vecGet64 blkOut j = .ok (BitVec.ofNat 64 j) := by
+    intro j hjlo hjhi
+    have hjhi' : j < 0 + nv.toNat := by omega
+    exact vecFillLoopAux64_get _ 0 nv.toNat _ rfl hfresh hfill0 j hjlo hjhi'
+  have hsum0 := vecSumLoopAux64_correct blkOut 0 nv.toNat 0 (by
+    intro j hjlo hjhi
+    exact hgetOut j hjlo (by omega))
+  have hrange : List.range' 0 nv.toNat = List.range nv.toNat := by
+    simp [List.range_eq_range']
+  rw [hrange] at hsum0
+  have h0 : (0 : BitVec 64) + prefixSumU64 ((List.range nv.toNat).map
+      (BitVec.ofNat 64)) nv.toNat
+      = prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat :=
+    BitVec.zero_add _
+  rw [h0] at hsum0
+  have hlayV : layoutLookup [("v", 0, 0)] "v" = some (0, 0) := by
+    simp [layoutLookup]
+  have hfindV : memFind64 ⟨1, [], [(0, ⟨0, true,
+      List.replicate nv.toNat (BitVec.ofNat 64 0)⟩)]⟩ 0 =
+      some ⟨0, true,
+        List.replicate nv.toNat (BitVec.ofNat 64 0)⟩ := by
+    simp [memFind64]
+  have hn0 : envLookup [("n", .u64 nv)] "n" = some (.u64 nv) := rfl
+  have hfree0 : vecFree64 blkOut = .ok ⟨blkOut.val, true⟩ :=
+    vecFree64_ok blkOut hliveOut
+  cases F with
+  | zero =>
+    obtain ⟨mFill, hfillLoop, hfindFill, _hliveFill⟩ :=
+      memVec64FillWhile_correct
+        ⟨List.replicate nv.toNat (BitVec.ofNat 64 0), false⟩ nv 0 0
+        (BitVec.ofNat 64 0) (BitVec.ofNat 64 0) blkOut
+        ⟨1, [], [(0, ⟨0, true,
+          List.replicate nv.toNat (BitVec.ofNat 64 0)⟩)]⟩ 0 [("v", 0, 0)]
+        (Nat.zero_le _) (by simp) rfl hn32 hlayV hfindV hfill0 (by cir_fuel)
+    have hloopF0 : memEvalStmtWith memEvalStmtZeroHandler
+          vec64FillWhile
+          [("j", .u64 0), ("s", .u64 0), ("i", .u64 0),
+           ("v", .vecVal64 ⟨List.replicate nv.toNat 0, false⟩),
+           ("n", .u64 nv)]
+          ⟨1, [], [(0, ⟨0, true, List.replicate nv.toNat 0⟩)]⟩
+          [("v", 0, 0)]
+        = .ok ((mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat)
+            (BitVec.ofNat 64 0) (BitVec.ofNat 64 0), mFill, [("v", 0, 0)]),
+          .fellThrough) :=
+      hfillLoop
+    have hloopS0 : memEvalStmtWith memEvalStmtZeroHandler
+          vec64SumWhile
+          (mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat)
+            (BitVec.ofNat 64 0) (BitVec.ofNat 64 0))
+          mFill [("v", 0, 0)]
+        = .ok ((mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat)
+            (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64))
+              nv.toNat)
+            (BitVec.ofNat 64 nv.toNat), mFill, [("v", 0, 0)]),
+          .fellThrough) :=
+      memVec64SumWhile_correct blkOut nv 0 0 (BitVec.ofNat 64 nv.toNat) _ _
+        mFill 0 [("v", 0, 0)]
+        (Nat.zero_le _)
+        (by intro j hjlo hjhi; exact hgetOut j hjlo hjhi) hn32 hlayV
+        hfindFill hsum0 (by cir_fuel)
+    obtain ⟨mFree, hmfree, _hfindFree⟩ := vfree64_lockstep mFill 0 0 blkOut
+      ⟨0, true, blkOut.val⟩ ⟨blkOut.val, true⟩ hfindFill rfl rfl rfl
+      hliveOut hfree0
+    have huv := vec64Env_update_v blkOut nv (BitVec.ofNat 64 nv.toNat)
+      (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat)
+      (BitVec.ofNat 64 nv.toNat) ⟨blkOut.val, true⟩
+    have harv := mkVec64Env_v blkOut nv (BitVec.ofNat 64 nv.toNat)
+      (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat)
+      (BitVec.ofNat 64 nv.toNat)
+    have hars := mkVec64Env_s ⟨blkOut.val, true⟩ nv
+      (BitVec.ofNat 64 nv.toNat)
+      (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat)
+      (BitVec.ofNat 64 nv.toNat)
+    simp only [memEvalFuncFuel, vec64Func, emptyMem, hb, memEvalStmtFuel,
+      memEvalStmtZero, memEvalStmtWith, memEvalExpr, litVal, hn0, vecNew64,
+      memAllocData64, Nat.reduceAdd]
+    simp only [hloopF0, hloopS0, hfree0,
+      hmfree, huv, harv, hars, hlayV]
+  | succ F =>
+    obtain ⟨mFill, hfillLoop, hfindFill, _hliveFill⟩ :=
+      memVec64FillWhile_correct
+        ⟨List.replicate nv.toNat (BitVec.ofNat 64 0), false⟩ nv (F + 1) 0
+        (BitVec.ofNat 64 0) (BitVec.ofNat 64 0) blkOut
+        ⟨1, [], [(0, ⟨0, true,
+          List.replicate nv.toNat (BitVec.ofNat 64 0)⟩)]⟩ 0 [("v", 0, 0)]
+        (Nat.zero_le _) (by simp) rfl hn32 hlayV hfindV hfill0 (by cir_fuel)
+    have hloopFS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+          vec64FillWhile
+          [("j", .u64 0), ("s", .u64 0), ("i", .u64 0),
+           ("v", .vecVal64 ⟨List.replicate nv.toNat 0, false⟩),
+           ("n", .u64 nv)]
+          ⟨1, [], [(0, ⟨0, true, List.replicate nv.toNat 0⟩)]⟩
+          [("v", 0, 0)]
+        = .ok ((mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat)
+            (BitVec.ofNat 64 0) (BitVec.ofNat 64 0), mFill, [("v", 0, 0)]),
+          .fellThrough) :=
+      hfillLoop
+    have hloopSS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+          vec64SumWhile
+          (mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat)
+            (BitVec.ofNat 64 0) (BitVec.ofNat 64 0))
+          mFill [("v", 0, 0)]
+        = .ok ((mkVec64Env blkOut nv (BitVec.ofNat 64 nv.toNat)
+            (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64))
+              nv.toNat)
+            (BitVec.ofNat 64 nv.toNat), mFill, [("v", 0, 0)]),
+          .fellThrough) :=
+      memVec64SumWhile_correct blkOut nv (F + 1) 0 (BitVec.ofNat 64 nv.toNat)
+        _ _ mFill 0 [("v", 0, 0)] (Nat.zero_le _)
+        (by intro j hjlo hjhi; exact hgetOut j hjlo hjhi) hn32 hlayV
+        hfindFill hsum0 (by cir_fuel)
+    obtain ⟨mFree, hmfree, _hfindFree⟩ := vfree64_lockstep mFill 0 0 blkOut
+      ⟨0, true, blkOut.val⟩ ⟨blkOut.val, true⟩ hfindFill rfl rfl rfl
+      hliveOut hfree0
+    have huv := vec64Env_update_v blkOut nv (BitVec.ofNat 64 nv.toNat)
+      (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat)
+      (BitVec.ofNat 64 nv.toNat) ⟨blkOut.val, true⟩
+    have harv := mkVec64Env_v blkOut nv (BitVec.ofNat 64 nv.toNat)
+      (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat)
+      (BitVec.ofNat 64 nv.toNat)
+    have hars := mkVec64Env_s ⟨blkOut.val, true⟩ nv
+      (BitVec.ofNat 64 nv.toNat)
+      (prefixSumU64 ((List.range nv.toNat).map (BitVec.ofNat 64)) nv.toNat)
+      (BitVec.ofNat 64 nv.toNat)
+    simp only [memEvalFuncFuel, vec64Func, emptyMem, hb, memEvalStmtFuel,
+      memEvalStmtWith, memEvalExpr, litVal, hn0, vecNew64,
+      memAllocData64, Nat.reduceAdd]
+    simp only [hloopFS, hloopSS, hfree0,
+      hmfree, huv, harv, hars, hlayV]
+
+/-- Transfer for `vec_alloc_u64`: both sides equal the prefix sum. -/
+theorem memTransfer_vec64 (F : Nat) (nv : BitVec 64)
+    (hn : nv.toNat ≤ F) (hn32 : nv.toNat < 2 ^ 64)
+    (_h : oracleNoalias vec64Func [.u64 nv]) :
+    memEvalFuncFuel F vec64Func [.u64 nv] =
+      evalFuncFuel F vec64Func [.u64 nv] := by
+  rw [memEvalFuncFuel_vec64 F nv hn hn32, evalFuncFuel_vec64 F nv hn hn32]
 
 /-! ## M3c loop-free transfers: `choose`, 64-bit widths, `cls`, `translate` -/
 
@@ -3417,7 +3846,7 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
   have hb := bindMemArgs_findEq l nv kv
   have hlay : layoutLookup [("a", 0, 0)] "a" = some (0, 0) := by
     simp [layoutLookup]
-  have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)]⟩ 0 =
+  have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 =
       some ⟨0, true, l⟩ := by
     simp [memFind]
   have henv : [("i", .u32 (BitVec.ofNat 32 0)), ("a", .arr32 l),
@@ -3429,8 +3858,8 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
     have hloop : ∀ (G : Nat),
         min nv.toNat l.length + 1 ≤ G →
         memEvalStmtFuel G findWhile (mkFindEnv l nv kv 0)
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
-          .ok (((mkFindEnv l nv kv j, ⟨1, [(0, ⟨0, true, l⟩)]⟩,
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+          .ok (((mkFindEnv l nv kv j, ⟨1, [(0, ⟨0, true, l⟩)], []⟩,
             [("a", 0, 0)])), .returned (.u32 (BitVec.ofNat 32 j))) := by
       intro G hG
       exact memFindWhile_some l nv kv G 0 j _ _
@@ -3440,8 +3869,8 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
     | zero =>
       have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
             findWhile (mkFindEnv l nv kv 0)
-            ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
-          .ok (((mkFindEnv l nv kv j, ⟨1, [(0, ⟨0, true, l⟩)]⟩,
+            ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+          .ok (((mkFindEnv l nv kv j, ⟨1, [(0, ⟨0, true, l⟩)], []⟩,
             [("a", 0, 0)])), .returned (.u32 (BitVec.ofNat 32 j))) :=
         hloop 0 (by omega)
       simp only [memEvalFuncFuel, hbf, hbody, hb]
@@ -3450,8 +3879,8 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
     | succ F =>
       have hloopS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
             findWhile (mkFindEnv l nv kv 0)
-            ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
-          .ok (((mkFindEnv l nv kv j, ⟨1, [(0, ⟨0, true, l⟩)]⟩,
+            ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+          .ok (((mkFindEnv l nv kv j, ⟨1, [(0, ⟨0, true, l⟩)], []⟩,
             [("a", 0, 0)])), .returned (.u32 (BitVec.ofNat 32 j))) :=
         hloop (F + 1) (by omega)
       simp only [memEvalFuncFuel, hbf, hbody, hb]
@@ -3461,9 +3890,9 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
     have hloop : ∀ (G : Nat),
         min nv.toNat l.length + 1 ≤ G →
         memEvalStmtFuel G findWhile (mkFindEnv l nv kv 0)
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
           if decide (nv.toNat ≤ l.length) then
-            .ok (((mkFindEnv l nv kv nv.toNat, ⟨1, [(0, ⟨0, true, l⟩)]⟩,
+            .ok (((mkFindEnv l nv kv nv.toNat, ⟨1, [(0, ⟨0, true, l⟩)], []⟩,
               [("a", 0, 0)])), .fellThrough)
           else .error .OOB := by
       intro G hG
@@ -3480,8 +3909,8 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
       | zero =>
         have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
               findWhile (mkFindEnv l nv kv 0)
-              ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
-            .ok (((mkFindEnv l nv kv nv.toNat, ⟨1, [(0, ⟨0, true, l⟩)]⟩,
+              ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+            .ok (((mkFindEnv l nv kv nv.toNat, ⟨1, [(0, ⟨0, true, l⟩)], []⟩,
               [("a", 0, 0)])), .fellThrough) := by
           have h := hloop 0 (by omega)
           rwa [htrue] at h
@@ -3492,8 +3921,8 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
       | succ F =>
         have hloopS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
               findWhile (mkFindEnv l nv kv 0)
-              ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
-            .ok (((mkFindEnv l nv kv nv.toNat, ⟨1, [(0, ⟨0, true, l⟩)]⟩,
+              ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+            .ok (((mkFindEnv l nv kv nv.toNat, ⟨1, [(0, ⟨0, true, l⟩)], []⟩,
               [("a", 0, 0)])), .fellThrough) := by
           have h := hloop (F + 1) (by omega)
           rwa [htrue] at h
@@ -3507,7 +3936,7 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
       | zero =>
         have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
               findWhile (mkFindEnv l nv kv 0)
-              ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] = .error .OOB := by
+              ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] = .error .OOB := by
           have h := hloop 0 (by omega)
           rwa [hfalse] at h
         simp only [memEvalFuncFuel, hbf, hbody, hb]
@@ -3516,7 +3945,7 @@ theorem memEvalFuncFuel_findEq (F : Nat) (l : List (BitVec 32))
       | succ F =>
         have hloopS : memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
               findWhile (mkFindEnv l nv kv 0)
-              ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] = .error .OOB := by
+              ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] = .error .OOB := by
           have h := hloop (F + 1) (by omega)
           rwa [hfalse] at h
         simp only [memEvalFuncFuel, hbf, hbody, hb]
@@ -3680,7 +4109,7 @@ theorem memEvalProgFunc_sumCaller (F : Nat) (l : List (BitVec 32))
       sumCallerFwd l nv := by
   have hbind : bindMemArgs sumCallerFunc.args [.arr32 l, .u32 nv] emptyMem =
       some ([("a", .arr32 l), ("n", .u32 nv)],
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]) :=
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) :=
     bindMemArgs_sumCaller l nv
   have hbody : sumCallerFunc.body =
       .seq (.callRet "s" "sum_array" ["a", "n"])
@@ -3700,7 +4129,7 @@ theorem memEvalProgFunc_sumCaller (F : Nat) (l : List (BitVec 32))
       rw [hcall, hsum]
     have hstep := memEvalProgStmt_callRet_err [sumFunc] F "s" "sum_array"
       ["a", "n"] [("a", .arr32 l), ("n", .u32 nv)]
-      ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)]
       [.arr32 l, .u32 nv] sumFunc e hargs hfind hcall'
     simp only [memEvalProgFunc, hbind, hbody]
     rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstep]
@@ -3710,13 +4139,13 @@ theorem memEvalProgFunc_sumCaller (F : Nat) (l : List (BitVec 32))
       rw [hcall, hsum]
     have hstep := memEvalProgStmt_callRet_ok [sumFunc] F "s" "sum_array"
       ["a", "n"] [("a", .arr32 l), ("n", .u32 nv)]
-      ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)]
       [.arr32 l, .u32 nv] sumFunc v hargs hfind hcall'
     have hret : memEvalProgStmt [sumFunc] F (.return_ (.var "s"))
         (envExtend [("a", .arr32 l), ("n", .u32 nv)] "s" v)
-        ⟨1, [(0, ⟨0, true, l⟩)]⟩ [("a", 0, 0)] =
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
         .ok (((envExtend [("a", .arr32 l), ("n", .u32 nv)] "s" v,
-          ⟨1, [(0, ⟨0, true, l⟩)]⟩, [("a", 0, 0)]), .returned v)) :=
+          ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]), .returned v)) :=
       memEvalProgStmt_return [sumFunc] F (.var "s") _
         _ _ v (by simp [memEvalExpr, envExtend_hit])
     simp only [memEvalProgFunc, hbind, hbody]
