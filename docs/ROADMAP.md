@@ -418,3 +418,35 @@ N1 (close the trust story) → N2a/N2b (wider, clearer viability) →
 N3a/N3b (cheaper proofs) → N4a/N4b (more real code) → N3c gallery →
 N4c/N4d (templates + `std::`). N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
+
+## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)
+
+True lifetime intrinsics do not exist at this pin (raw CIRGen rejects
+`-flifetime-markers`; no checked-in `.cir` mentions `lifetime`), and the
+existing region/loan plumbing is vestigial (every `mutBorrow` region is
+`0`; `LoanState` is never threaded). What raw CIRGen *does* carry is
+lexical lifetime evidence — `cir.scope` nesting plus named `cir.alloca`
+birth points — which the parser currently drops. This track extracts
+that evidence with golden pins but wires no consumers until a slice
+needs them (first expected: real region numbers for N4b moves). Each
+slice follows the standing convention (corpus evidence → extraction →
+proof → golden pins → `check.sh` stage → `CHECK-OK`), minus admission
+(extract-only slices change no `validate` behavior by construction).
+
+### L1. Scope/alloca tree — DONE (2026-10-04, extract-only)
+
+New `Circe.Scope`: per-function `extractScopes` over `RawFunc.text`
+(the `derivedNoalias` precedent — computed predicates, no `RawFunc`
+churn): brace-depth fold with string-literal stripping (attribute
+dicts cannot disturb the count), each `cir.alloca "NAME"` recorded at
+its normalized depth (function top level = 0), scanning stops at the
+first return-to-zero (the function extent), and `balanced = false`
+makes miscounts loud (never entered, went negative, never closed).
+Proved: `extractScopes_empty` + the depth-bound invariant
+(`extractScopes_bound` via a fold-preservation lemma). `ScopeReport`
+(29/29) pins every corpus definition's locals and max depth — loop
+indices sit one `cir.for` region deep, the nested-loop inner index
+four opens deep (verified against `nested_sum.cir`; the reason the
+inner index is re-initialized per outer iteration) — plus
+truncated/malformed-input loudness. `validate`/`Emit`/transfer
+untouched.

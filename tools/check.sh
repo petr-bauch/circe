@@ -89,6 +89,12 @@
 #    asserts the recovery predicate + theorems are present (the
 #    `DerivedNoalias` recovery-agreement and `GoldenPhase4` pipeline
 #    cases run in their existing slots).
+# 22. (L1) Typechecks the scope/alloca evidence tracking (`Circe.Scope`:
+#    per-function locals + depths + balance flag, with the depth-bound
+#    proofs) and runs the scope golden report (`ScopeReport`: every
+#    corpus definition pins its locals and max depth; truncated and
+#    malformed inputs report unbalanced). Extract-only: no `validate`
+#    behavior change.
 # Mismatch policy: any in-subset C -> Lean divergence is P0; everything
 # out of subset must reject loudly (never silently model memory).
 set -euo pipefail
@@ -646,5 +652,14 @@ grep -q "theorem recoveredNoalias_single_oracle" Circe/Validator.lean
 grep -q "def isRecoveredParam" Circe/Validator.lean
 grep -qF "prefixSumU32 a.val a.val.length" out/SumNorestrict.lean
 echo "restrict-recovery green (corpus gate + fuzz + predicate presence)"
+
+echo "== L1 scope/alloca evidence tracking (extract-only) =="
+lake env lean Circe/Scope.lean
+lake env lean --run tests/lean/ScopeReport.lean
+grep -q "def extractScopes" Circe/Scope.lean
+grep -q "theorem extractScopes_empty" Circe/Scope.lean
+grep -q "theorem extractScopes_bound" Circe/Scope.lean
+grep -q "ScopeReport" tools/check.sh
+echo "scope evidence green (extraction + golden pins, no gate change)"
 
 echo "CHECK-OK"

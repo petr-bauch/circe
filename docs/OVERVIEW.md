@@ -85,4 +85,5 @@ Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
 model-side: `Circe.ReadOnly` + `GoldenReadOnly`), N2b (per-cause
 rejection catalog: `GoldenRejectCatalog`), and N2c (`restrict`-recovery:
 `recoveredNoalias` + `sum_norestrict` corpus) done — N2 complete.
-Details in `ROADMAP.md`.
+L1 (scope/alloca evidence tracking, extract-only: `Circe.Scope` +
+`ScopeReport`) done. Details in `ROADMAP.md`.
