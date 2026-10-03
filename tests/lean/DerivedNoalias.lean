@@ -6,8 +6,12 @@
 -- live pointer params exist the checked-in `tests/oracle/verdicts.txt`
 -- verdict must confirm them (`noalias`: cache matches derivation).
 -- For every definition in each C++ `tests/cir/*.cir`: `derivedNoalias`
--- must be `false` (out of M3b scope — M3d). Oracle facts are not required
--- there yet. `validate` behavior is unchanged; this is a parallel assert.
+-- must be `false` (by design: text-level derivation is C-only; C++
+-- uniqueness is the attr triple in CIR text, and the transfer side is
+-- the value-level `oracleNoalias` witnesses in `Circe.Derived`, proved
+-- against `memEval` in `Circe.Transfer` — M3d). Oracle facts are not
+-- required there yet. `validate` behavior is unchanged; this is a
+-- parallel assert.
 import Circe.Validator
 
 def checkCFile (verdicts : List OracleFact) (cir : String) : IO Nat := do
@@ -50,7 +54,7 @@ def checkCppFile (cir : String) : IO Nat := do
   for func in raw.funcs do
     if derivedNoalias func != false then
       throw (IO.userError
-        s!"derived-check: {cir}:{func.name}: expected derivedNoalias = false (M3d scope)")
+        s!"derived-check: {cir}:{func.name}: expected derivedNoalias = false (C++ out of derived scope by design)")
     IO.println s!"PASS derived {func.name} (C++ out of scope)"
     n := n + 1
   pure n
@@ -93,7 +97,7 @@ def main : IO Unit := do
   IO.println "PASS derived three-ptr rejection"
   passed := passed + 1
   if derivedNoalias cppRefRaw != false then
-    throw (IO.userError "derived-check: C++ single-ref must not derive (M3d)")
+    throw (IO.userError "derived-check: C++ single-ref must not derive (attr triple is not text-level noalias)")
   IO.println "PASS derived single-ref exclusion"
   passed := passed + 1
   IO.println s!"DERIVED-OK passed={passed}"

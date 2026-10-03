@@ -73,7 +73,11 @@ C fragment: `Validator.derivedNoalias` derives noalias from CIR text,
 `Circe.Derived` proves per-shape footprints, and `Circe.Transfer` proves
 `oracle_noalias f → memEval f = Eval f` — so for C the verdicts file is a
 checked cache (CI asserts agreement) rather than a soundness argument.
-C++ shapes still trust the attr triple + call multisets until M3d.
+C++ shapes (M2a/b/c) rest on the same transfer story since M3d:
+single-ref params bind values justified by the attr triple, box tokens
+thread through single-word blocks, and `cleanup`/`trap` erasure is
+proved in `memEval` — the triple + call multisets are text pins for
+proved transfer, not faith.
 Verified: `CoreIR`, `Eval`, `Mem`, `Emit`,
 `emit_correct`, `validate` gate, per-shape transfers.
 Differential fuzz (`Diff*`) stays as a P0 signal throughout, but is no

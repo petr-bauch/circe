@@ -35,9 +35,9 @@ input rejects loudly, never silently models memory.
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), addressful block-map model + proved memory transfer on the
-admitted C fragment (`Mem` / `Derived` / `Transfer`: `oracle_noalias f →
-memEval f = Eval f`, so oracle verdicts are a checked cache, not a trust
-root), verified gate (`validate` + oracle verdicts), emitter
+admitted C and C++-lite fragments (`Mem` / `Derived` / `Transfer`:
+`oracle_noalias f → memEval f = Eval f` for every admitted `Func`, so
+oracle verdicts are a checked cache, not a trust root), verified gate (`validate` + oracle verdicts), emitter
 (`Emit`), grown `cir_simp` tactic (call-unfold, struct-field,
 wider-width, vec rules, bind automation) + stage-2 helpers (`cir_fuel`
 + fuel-bound lemma, `cir_choose`), specs (`incr_correct`,
@@ -80,4 +80,4 @@ affine tokens, no aliasing in the common case), with tactic and
 spec-scaffolding support for proving properties of the emitted code.
 Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
 (C++-lite) done (M2a–M2c); M3 (shrinking oracle trust) done for C
-(M3a–M3c), C++ transfer (M3d) next. Details in `ROADMAP.md`.
+(M3a–M3c) and C++ (M3d). Details in `ROADMAP.md`.

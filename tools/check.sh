@@ -566,4 +566,29 @@ grep -q "theorem memTransfer_vec64" Circe/Transfer.lean
 grep -q "theorem oracleNoalias_vec64" Circe/Derived.lean
 echo "heap C transfers green (vec_alloc_u64)"
 
+echo "== M3d C++ transfers (method/acc/box) =="
+lake env lean Circe/Transfer.lean
+grep -q "theorem memEvalProgStmt_cleanup" Circe/Mem.lean
+grep -q "theorem memEvalStmtFuel_let_boxNew" Circe/Mem.lean
+grep -q "theorem memEvalExpr_boxGet_hit" Circe/Mem.lean
+grep -q "theorem vboxFree_lockstep" Circe/Mem.lean
+grep -q "theorem memEvalStmtFuel_boxFree" Circe/Mem.lean
+grep -q "theorem memEvalFuncFuel_methodSum" Circe/Transfer.lean
+grep -q "theorem memTransfer_methodSum" Circe/Transfer.lean
+grep -q "theorem memEvalProgFunc_pointSumRef" Circe/Transfer.lean
+grep -q "theorem memTransferProg_pointSumRef" Circe/Transfer.lean
+grep -q "theorem memEvalFuncFuel_accCtor" Circe/Transfer.lean
+grep -q "theorem memTransfer_accAdd" Circe/Transfer.lean
+grep -q "theorem memTransfer_accGet" Circe/Transfer.lean
+grep -q "theorem memTransfer_accDtor" Circe/Transfer.lean
+grep -q "theorem memEvalProgFunc_accTwo" Circe/Transfer.lean
+grep -q "theorem memTransferProg_accTwo" Circe/Transfer.lean
+grep -q "theorem memEvalFuncFuel_boxThrough" Circe/Transfer.lean
+grep -q "theorem memTransfer_boxThrough" Circe/Transfer.lean
+grep -q "theorem oracleNoalias_methodSum" Circe/Derived.lean
+grep -q "theorem oracleNoalias_pointSumRef" Circe/Derived.lean
+grep -q "theorem oracleNoalias_accTwo" Circe/Derived.lean
+grep -q "theorem oracleNoalias_boxThrough" Circe/Derived.lean
+echo "C++ transfers green (method/acc/box)"
+
 echo "CHECK-OK"

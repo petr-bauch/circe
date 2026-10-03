@@ -4,11 +4,12 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-03): C pipeline complete with proved memory transfer
+State (2026-10-04): C pipeline complete with proved memory transfer
 (M3a–M3c: every admitted C `Func` has `oracle_noalias f → memEval f =
-Eval f`); STL-free C++-lite admission complete (M2a–M2c); C++ memory
-transfer (M3d) is the open item that closes M3. Short-term S0–S5 done;
-M1 (heap generics) done; M2 done.
+Eval f`); STL-free C++-lite admission complete (M2a–M2c) with proved
+memory transfer (M3d: method/acc/box shapes). Short-term S0–S5 done;
+M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
+M3d; the active frontier is N2 (viability past noalias).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -255,7 +256,7 @@ transfer + `check.sh` stage before admission.
 | M3a mem model skeleton (C only) — DONE (2026-10-02) | New `Circe.Mem`: flat block map + tags; `memEval` mirroring `Eval` for call-free C leaves + `sum` / `vec_alloc`. Tag creation at `restrict`-param bind + each `malloc`; load/store require a live tag. `Eval` untouched | C leaves + `sum`/`vec_alloc` first; no callers, no structs/flow, no C++. Transfer statement lands as a stub theorem, proved per-leaf only |
 | M3b derived noalias (C only) — DONE (2026-10-02) | Per-shape noalias lemmas: each admitted C shape implies disjoint footprints (attr text for `restrict`; two-`malloc` disjointness by construction; length-pairing for stride loops). New `check.sh` stage asserts checked-in verdicts match the derived facts (cache, not trust) | `Oracle.lookupOracle` + `verdictAdmits` unchanged; new `derivedNoalias : RawFunc → Bool` implies `verdictAdmits`. No validator behavior change |
 | M3c end-to-end transfer (C only) — DONE (2026-10-03: loop-free slice `choose`/64-bit widths/`cls`/`translate`; flow slice `nested_sum`/`skip_sum`/`find_eq`; caller slice `add_caller`/`sum_caller` via a new memory program layer; heap slices `vec_copy_sum` / `vec_realloc` / `vec_alloc_u64`; each with `oracleNoalias` witnesses + `memTransfer_*`) | Full `oracle_noalias f → memEval f = Eval f` for every admitted C `Func` (leaves, S1 callers, S2 `translate`, S3 flow, M1 heap, S3b widths). `check.sh` fails on verdict/derived mismatch | Transfer per-`FragKind`, reusing `emit_correct` bridges as the `Eval`-side; no new `Func` shapes. `Diff*` fuzz stays P0 but is no longer the soundness argument |
-| M3d C++ follow-up — NEXT | Tags + single-ref (`this`/`const&`) + box tokens (`Box32.freed` as affine tag); `cleanup`-scope and null-guard erasure justified in `memEval`. Transfer for M2a/b/c | Call-multisets + `cxx_ctor`/`cxx_dtor` markers become tag-creation points; `trap`/`cleanup` erasure mirrors the exemption gates. No inheritance/templates/EH/vtables |
+| M3d C++ follow-up — DONE (2026-10-04: N1a `methodSum` leaf + `pointSumRef` entry via the memory program layer; N1b `Acc` leaves + `accTwo` entry with `memEvalProgStmt_cleanup` sequencing; N1b `box_through` with new `boxNew`/`boxGet`/`boxFree` memory arms over single-word blocks + `MemConsistent` box disjunct; `check.sh` M3d stage) | Tags + single-ref (`this`/`const&` bind values — CoreIR has no field-store, so struct values are immutable and need no footprint; the attr triple justifies the copy) + box tokens (`Box32.freed` as affine tag); `cleanup`-scope and null-guard erasure justified in `memEval`. Transfer for M2a/b/c | Call-multisets + `cxx_ctor`/`cxx_dtor` markers become tag-creation points; `trap`/`cleanup` erasure mirrors the exemption gates. No inheritance/templates/EH/vtables |
 
 Per-slice acceptance (M3 adaptation): model/lemma → per-shape
 transfer proof → `check.sh` stage (verdict-cache assert from M3b on) →
@@ -278,21 +279,24 @@ corpus (real CIRGen, `cir-opt` VERIFY-OK) → shape gate → proof →
 golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 `check.sh` stage → `CHECK-OK`.
 
-### N1. Close M3: C++ transfer (M3d) — NEXT, short-term
+### N1. Close M3: C++ transfer (M3d) — DONE (2026-10-04)
 
-The open item that finishes the trust story: `memTransfer` for the
-three M2 shapes, so C++ admission rests on tags + text pins rather
-than the attr triple taken on faith.
+Closed the trust story: `memTransfer` for all three M2 shapes, so C++
+admission rests on tags + text pins rather than the attr triple taken
+on faith.
 
-- N1a: `this`/`const&` tags — `memEval` binds single-ref params to
-  fresh read-only tags (method leaf + ref entry, M2a); `cleanup`-scope
-  erasure justified as scope sequencing (M2b groundwork).
-- N1b: ctor/dtor + box tokens — `cxx_ctor` marker as tag-creation,
-  trivial dtor as no-op identity, `Box32.freed` as affine tag;
-  null-guard + `trap` erasure mirrors the exemption gates (M2b/M2c).
-- N1c: `check.sh` C++ transfer stage + verdict story for C++: leaf
-  defs need no oracle facts (uniqueness is text), int-only entries
-  keep the cache-agreement assert.
+- N1a: `this`/`const&` values — `memEvalFuncFuel_methodSum` +
+  `memEvalProgFunc_pointSumRef`/`memTransferProg_pointSumRef`
+  (single-ref params bind values; CoreIR has no field-store, so the
+  footprint is empty and the attr triple justifies the copy).
+- N1b: ctor/dtor + box tokens — `memEvalFuncFuel_accCtor/Add/Get/Dtor`
+  + `memEvalProgFunc_accTwo`/`memTransferProg_accTwo` (`cleanup`
+  sequences via `memEvalProgStmt_cleanup`); `boxNew`/`boxGet`/`boxFree`
+  memory arms over single-word 32-bit blocks + `memEvalFuncFuel_boxThrough`/`memTransfer_boxThrough`
+  (`MemConsistent` box disjunct, `vboxFree_lockstep`).
+- N1c: `check.sh` M3d stage + C++ verdict story (`DerivedNoalias`
+  pins `derivedNoalias = false` for C++ by design; leaf defs need no
+  oracle facts; int-only entries keep the cache-agreement assert).
 
 ### N2. Viability past noalias — short-term
 
