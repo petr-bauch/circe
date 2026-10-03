@@ -524,4 +524,16 @@ grep -q "theorem memEvalProgStmt_callRet_ok" Circe/Mem.lean
 grep -q "theorem memEvalProgStmt_callRet_err" Circe/Mem.lean
 echo "caller C transfers green (add_caller/sum_caller)"
 
+echo "== M3c heap transfers (vec_copy_sum) =="
+lake env lean Circe/Transfer.lean
+grep -q "theorem memVec2FillWhile_correct" Circe/Transfer.lean
+grep -q "theorem memVec2CopyWhile_correct" Circe/Transfer.lean
+grep -q "theorem memVec2SumWhile_correct" Circe/Transfer.lean
+grep -q "theorem memEvalFuncFuel_vec2" Circe/Transfer.lean
+grep -q "theorem memTransfer_vec2" Circe/Transfer.lean
+grep -q "theorem oracleNoalias_vec2" Circe/Derived.lean
+grep -q "theorem memFind_memStore_other" Circe/Mem.lean
+grep -q "theorem memFind_memFree_other" Circe/Mem.lean
+echo "heap C transfers green (vec_copy_sum)"
+
 echo "CHECK-OK"

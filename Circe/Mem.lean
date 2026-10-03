@@ -865,6 +865,46 @@ theorem memFind_cons_miss (n : Nat) (bs : List (Nat × Block)) (a a' : Addr)
     | false => rfl
   simp [memFind, hbe]
 
+/-- `memStore` preserves every other address (two-block loops: writing
+    one block never disturbs the other's pin fact). -/
+theorem memFind_memStore_other (m m' : Mem) (a b : Addr) (t i : Nat)
+    (x : BitVec 32)
+    (hstore : memStore m a t i x = .ok m') (hne : b ≠ a) :
+    memFind m' b = memFind m b := by
+  unfold memStore at hstore
+  split at hstore
+  · cases hstore
+  · next blk hfind =>
+    split at hstore
+    · cases hstore
+    · next htag =>
+      split at hstore
+      · cases hstore
+      · next hlive =>
+        split at hstore
+        · next hblen =>
+          cases hstore
+          exact memFind_cons_miss _ _ _ _ _ hne
+        · cases hstore
+
+/-- `memFree` preserves every other address (freeing one block never
+    disturbs the other's pin fact). -/
+theorem memFind_memFree_other (m m' : Mem) (a b : Addr) (t : Nat)
+    (hfree : memFree m a t = .ok m') (hne : b ≠ a) :
+    memFind m' b = memFind m b := by
+  unfold memFree at hfree
+  split at hfree
+  · cases hfree
+  · next blk hfind =>
+    split at hfree
+    · cases hfree
+    · next htag =>
+      split at hfree
+      · cases hfree
+      · next hlive =>
+        cases hfree
+        exact memFind_cons_miss _ _ _ _ _ hne
+
 /-- A successful `vecSet` carries its bounds + liveness. -/
 theorem vecSet_ok_bound (b : Vec32) (i : Nat) (x : BitVec 32) (b' : Vec32)
     (h : vecSet b i x = .ok b') : i < b.val.length ∧ b.freed = false := by

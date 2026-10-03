@@ -26,6 +26,7 @@ import Circe.Emit.Choose
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
+import Circe.Emit.Vec2
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -217,8 +218,27 @@ theorem oracleNoalias_skip (nv : BitVec 32) :
     exact bindMemArgs_skip nv
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
-/-! ## Single-array shapes: singleton footprint -/
+/-- `vec_copy_sum` binding pins nothing (the length is an owned scalar;
+    both blocks are allocated after entry, so the entry footprint is
+    empty — disjointness of the two blocks is internal, by fresh
+    allocation). -/
+theorem bindMemArgs_vec2 (nv : BitVec 32) :
+    bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
+      [.u32 nv] emptyMem =
+      some ([("n", .u32 nv)], emptyMem, []) := by
+  rfl
 
+/-- `vec_copy_sum` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_vec2 (nv : BitVec 32) :
+    oracleNoalias vec2Func [.u32 nv] := by
+  have hb : bindMemArgs vec2Func.args [.u32 nv] emptyMem =
+      some ([("n", .u32 nv)], emptyMem, []) := by
+    show bindMemArgs [{ name := "n", ty := .u 32, role := .owned }]
+      [.u32 nv] emptyMem = _
+    exact bindMemArgs_vec2 nv
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-! ## Single-array shapes: singleton footprint -/
 /-- `sum_caller` binding pins exactly the array block (mirrors
     `bindMemArgs_sum`; the call itself happens after entry). -/
 theorem bindMemArgs_sumCaller (l : List (BitVec 32)) (nv : BitVec 32) :
