@@ -23,6 +23,7 @@ import Circe.Emit.VecRealloc
 import Circe.Emit.Vec64
 import Circe.Emit.Method
 import Circe.Emit.Acc
+import Circe.Emit.Box
 
 /-! ## `sum_array` transfer -/
 
@@ -4623,3 +4624,138 @@ theorem memTransferProg_accTwo (F : Nat) (a b : BitVec 32)
     memEvalProgFunc accProg F accTwoFunc [.i32 a, .i32 b] =
       evalProgFunc accProg F accTwoFunc [.i32 a, .i32 b] := by
   rw [memEvalProgFunc_accTwo, evalProgFunc_accTwo]
+
+/-! ## M3d C++ transfers: `box_through` (N1b) -/
+
+/-- `memEval` for `box_through` (mirrors `evalFuncFuel_boxThrough`):
+    `new` pins a fresh single-word block, the read cross-checks memory
+    against the box value, `delete` consumes both tokens. -/
+theorem memEvalFuncFuel_boxThrough (F : Nat) (x : BitVec 32) :
+    memEvalFuncFuel F boxThroughFunc [.i32 x] = boxThroughFwd x := by
+  have hbind : bindMemArgs boxThroughFunc.args [.i32 x] emptyMem =
+      some ([("x", .i32 x)], emptyMem, []) := rfl
+  have hbody : boxThroughFunc.body =
+      .seq (.let_ "p" (.struct "Box" [.i 32]) (.boxNew (.var "x")))
+      (.seq (.let_ "r" (.i 32) (.boxGet "p"))
+      (.seq (.boxFree "p")
+            (.return_ (.var "r")))) := rfl
+  have hstep0 : memEvalStmtFuel F
+      (.let_ "p" (.struct "Box" [.i 32]) (.boxNew (.var "x")))
+      ([("x", .i32 x)] : Env) emptyMem [] =
+      .ok (((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)],
+        (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem), [("p", 0, 0)])),
+        .fellThrough) := by
+    have h0 := memEvalStmtFuel_let_boxNew F "p" (.struct "Box" [.i 32])
+      (.var "x") ([("x", .i32 x)] : Env) emptyMem [] x
+      (⟨x, false⟩ : Box32) rfl rfl (boxNew_ok x)
+    simpa [memAllocData, emptyMem] using h0
+  have hlayV : layoutLookup ([("p", 0, 0)] : Layout) "p" = some (0, 0) :=
+    layoutLookup_hit "p" 0 0 []
+  have harr : envLookup
+      ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env)
+      "p" = some (.boxVal (⟨x, false⟩ : Box32)) := rfl
+  have hfindV : memFind (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) 0 =
+      some ⟨0, true, [x]⟩ := by
+    simp [memFind]
+  have hmem : memLoad (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) 0 0 0 =
+      .ok x :=
+    memLoad_box_hit _ _ x hfindV
+  have hval : boxGet (⟨x, false⟩ : Box32) = .ok x :=
+    boxGet_ok _ rfl
+  have hagree : memEvalExpr (.boxGet "p")
+      ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env)
+      (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) [("p", 0, 0)] =
+      evalExpr (.boxGet "p")
+        ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env) :=
+    memEvalExpr_boxGet_hit "p" _ _ _ _ x 0 0 hlayV harr hmem hval
+  have hgetEval : evalExpr (.boxGet "p")
+      ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env) =
+      .ok (.i32 x) :=
+    evalExpr_boxGet_hit "p" _ _ x harr hval
+  have hget : memEvalExpr (.boxGet "p")
+      ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env)
+      (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) [("p", 0, 0)] =
+      .ok (.i32 x) := by
+    rw [hagree]
+    exact hgetEval
+  have hstep1 : memEvalStmtFuel F (.let_ "r" (.i 32) (.boxGet "p"))
+      ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env)
+      (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) [("p", 0, 0)] =
+      .ok (((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]),
+        (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem), [("p", 0, 0)])),
+        .fellThrough) :=
+    memEvalStmtFuel_let_pure F "r" _ _ _ _ _ _
+      (by intro se h; cases h) (by intro se h; cases h) hagree hgetEval
+  have hfree0 : boxFree (⟨x, false⟩ : Box32) = .ok ⟨x, true⟩ :=
+    boxFree_ok _ rfl
+  obtain ⟨mFree, hmfree, _hfindFree⟩ := vboxFree_lockstep
+    (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) 0 0
+    (⟨x, false⟩ : Box32) ⟨0, true, [x]⟩ (⟨x, true⟩ : Box32)
+    hfindV rfl rfl rfl rfl hfree0
+  have hfreeArr : envLookup
+      ((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)])) : Env)
+      "p" = some (.boxVal (⟨x, false⟩ : Box32)) := by
+    simp [envLookup, show ("p" : String) ≠ "r" by decide]
+  have hfreeLay : layoutLookup ([("p", 0, 0)] : Layout) "p" = some (0, 0) :=
+    layoutLookup_hit "p" 0 0 []
+  have hfreeUp : envUpdate
+      ((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)])) : Env)
+      "p" (.boxVal (⟨x, true⟩ : Box32)) =
+      some ((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, true⟩ : Box32)) :: [("x", .i32 x)])) : Env) := rfl
+  have hstep2 : memEvalStmtFuel F (.boxFree "p")
+      ((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)])) : Env)
+      (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) [("p", 0, 0)] =
+      .ok (((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, true⟩ : Box32)) :: [("x", .i32 x)]),
+        mFree, [("p", 0, 0)])), .fellThrough) :=
+    memEvalStmtFuel_boxFree F "p" _ _ _ 0 0 _ _ _ mFree
+      hfreeArr hfreeLay hfree0 hmfree hfreeUp
+  have hret : memEvalStmtFuel F (.return_ (.var "r"))
+      ((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, true⟩ : Box32)) :: [("x", .i32 x)])) : Env)
+      mFree [("p", 0, 0)] =
+      .ok (((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, true⟩ : Box32)) :: [("x", .i32 x)]),
+        mFree, [("p", 0, 0)])), .returned (.i32 x)) := by
+    have hv : evalExpr (.var "r")
+        ((("r", .i32 x) ::
+          (("p", .boxVal (⟨x, true⟩ : Box32)) ::
+            [("x", .i32 x)])) : Env) = .ok (.i32 x) := rfl
+    exact memEvalStmtFuel_return F _ _ _ _ _ rfl hv
+  have hrest : memEvalStmtFuel F
+      (.seq (.let_ "r" (.i 32) (.boxGet "p"))
+      (.seq (.boxFree "p")
+            (.return_ (.var "r"))))
+      ((("p", .boxVal (⟨x, false⟩ : Box32)) :: [("x", .i32 x)]) : Env)
+      (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem) [("p", 0, 0)] =
+      .ok (((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, true⟩ : Box32)) :: [("x", .i32 x)]),
+        mFree, [("p", 0, 0)])), .returned (.i32 x)) :=
+    memEvalStmtFuel_seq F _ _ _ _ _ _ _ _ _ _ _ _ hstep1
+      (memEvalStmtFuel_seq F _ _ _ _ _ _ _ _ _ _ _ _ hstep2 hret)
+  have hfull : memEvalStmtFuel F
+      (.seq (.let_ "p" (.struct "Box" [.i 32]) (.boxNew (.var "x")))
+      (.seq (.let_ "r" (.i 32) (.boxGet "p"))
+      (.seq (.boxFree "p")
+            (.return_ (.var "r")))))
+      ([("x", .i32 x)] : Env) emptyMem [] =
+      .ok (((("r", .i32 x) ::
+        (("p", .boxVal (⟨x, true⟩ : Box32)) :: [("x", .i32 x)]),
+        mFree, [("p", 0, 0)])), .returned (.i32 x)) :=
+    memEvalStmtFuel_seq F _ _ _ _ _ _ _ _ _ _ _ _ hstep0 hrest
+  simp only [memEvalFuncFuel, hbind, hbody, hfull]
+  have hok : boxThroughFwd x = .ok (.i32 x) := by
+    simp only [boxThroughFwd_is_boxThrough, boxThrough_ok, i32_map_ok]
+  simp [hok]
+
+/-- Transfer for `box_through`: both sides equal `boxThroughFwd`. -/
+theorem memTransfer_boxThrough (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias boxThroughFunc [.i32 x]) :
+    memEvalFuncFuel F boxThroughFunc [.i32 x] =
+      evalFuncFuel F boxThroughFunc [.i32 x] := by
+  rw [memEvalFuncFuel_boxThrough F x, evalFuncFuel_boxThrough F x]

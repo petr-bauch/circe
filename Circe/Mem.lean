@@ -402,7 +402,8 @@ theorem layoutLookup_miss (k x : String) (a : Addr) (t : Nat)
 /-- Memory/value consistency: every pinned variable resolves in `ρ` to
     a heap-like value whose words equal the block data, with matching
     tag and a live block. Scalars are unconstrained (no footprint).
-    64-bit blocks (`vecVal64`) pin the 64-bit map. -/
+    64-bit blocks (`vecVal64`) pin the 64-bit map; boxes (`boxVal`)
+    pin a single-word 32-bit block holding `[val]`. -/
 def MemConsistent (ρ : Env) (m : Mem) (π : Layout) : Prop :=
   ∀ x a t, layoutLookup π x = some (a, t) →
     (∃ l, (envLookup ρ x = some (.arr32 l) ∨
@@ -410,7 +411,10 @@ def MemConsistent (ρ : Env) (m : Mem) (π : Layout) : Prop :=
     ∃ b, memFind m a = some b ∧ b.tag = t ∧ b.live = true ∧ b.data = l) ∨
     (∃ v : Vec64, envLookup ρ x = some (.vecVal64 v) ∧
     ∃ b, memFind64 m a = some b ∧ b.tag = t ∧ b.live = true ∧
-      b.data = v.val)
+      b.data = v.val) ∨
+    (∃ b : Box32, envLookup ρ x = some (.boxVal b) ∧
+    ∃ blk, memFind m a = some blk ∧ blk.tag = t ∧ blk.live = true ∧
+      blk.data = [b.val])
 
 /-- The empty layout is consistent with anything. -/
 theorem memConsistent_nil (ρ : Env) (m : Mem) : MemConsistent ρ m [] := by
@@ -506,8 +510,25 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | _, .error e => .error e
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
-  | .boxNew _, _, _, _ => .error .AssertFail
-  | .boxGet _, _, _, _ => .error .AssertFail
+  | .boxNew se, ρ, m, π =>
+    match memEvalExpr se ρ m π with
+    | .error e => .error e
+    | .ok (.i32 x) =>
+      match boxNew x with
+      | .error e => .error e
+      | .ok b => .ok (.boxVal b)
+    | .ok _ => .error .AssertFail
+  | .boxGet b, ρ, m, π =>
+    match layoutLookup π b with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match envLookup ρ b with
+      | some (.boxVal v) =>
+        match memLoad m a t 0, boxGet v with
+        | .ok w, .ok x => if w == x then .ok (.i32 x) else .error .AssertFail
+        | .error e, _ => .error e
+        | _, .error e => .error e
+      | _ => .error .AssertFail
   | .fget obj field, ρ, _, _ =>
     match envLookup ρ obj with
     | none => .error .Uninit
@@ -605,6 +626,21 @@ theorem memEvalExpr_vget64_hit (arr : String) (ie : CExpr) (ρ : Env)
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval,
     beq_self_eq_true, ↓reduceIte]
 
+/-- `boxGet` agreement under consistency (the `box_through` shape):
+    the layout pin resolves, the tag matches, the block is live, and
+    the single memory word equals the box value — so the cross-check
+    succeeds and both sides read the same word. -/
+theorem memEvalExpr_boxGet_hit (b : String) (ρ : Env)
+    (m : Mem) (π : Layout) (v : Box32)
+    (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π b = some (a, t))
+    (harr : envLookup ρ b = some (.boxVal v))
+    (hmem : memLoad m a t 0 = .ok x)
+    (hval : boxGet v = .ok x) :
+    memEvalExpr (.boxGet b) ρ m π = evalExpr (.boxGet b) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, harr, hmem, hval,
+    beq_self_eq_true, ↓reduceIte]
+
 /-! ## `memEval`: statement layer (fuel-bounded `while_`) -/
 
 /-- Loop-free statement skeleton threaded over `(Env, Mem, Layout)`,
@@ -637,6 +673,16 @@ def memEvalStmtWith
       | .ok v =>
         let (m', a) := memAllocData64 m v.val
         .ok (((x, .vecVal64 v) :: ρ, m', (x, a, a) :: π), .fellThrough)
+    | .ok _ => .error .AssertFail
+  | .let_ x _ (.boxNew se), ρ, m, π =>
+    match memEvalExpr se ρ m π with
+    | .error err => .error err
+    | .ok (.i32 xv) =>
+      match boxNew xv with
+      | .error e => .error e
+      | .ok b =>
+        let (m', a) := memAllocData m [b.val]
+        .ok (((x, .boxVal b) :: ρ, m', (x, a, a) :: π), .fellThrough)
     | .ok _ => .error .AssertFail
   | .let_ x _ e, ρ, m, π =>
     match memEvalExpr e ρ m π with
@@ -702,7 +748,17 @@ def memEvalStmtWith
       | .error e, _ => .error e
       | _, .error e => .error e
     | _, _ => .error .AssertFail
-  | .boxFree _, _, _, _ => .error .AssertFail
+  | .boxFree x, ρ, m, π =>
+    match envLookup ρ x, layoutLookup π x with
+    | some (.boxVal b), some (a, t) =>
+      match boxFree b, memFree m a t with
+      | .ok b', .ok m' =>
+        match envUpdate ρ x (.boxVal b') with
+        | none => .error .Uninit
+        | some ρ' => .ok ((ρ', m', π), .fellThrough)
+      | .error e, _ => .error e
+      | _, .error e => .error e
+    | _, _ => .error .AssertFail
   | .if_ c t e, ρ, m, π =>
     match memEvalExpr c ρ m π with
     | .error err => .error err
@@ -1048,16 +1104,20 @@ theorem memEvalStmtFuel_seq (f : Nat) (a b : CStmt) (ρ : Env)
     simp only [memEvalStmtWith, ha, hb]
 
 /-- Pure `let_` agrees when the bound expression does (`vnew` takes
-    the allocating arm instead — see `memEvalStmtFuel_let_vnew`). -/
+    the allocating arm instead — see `memEvalStmtFuel_let_vnew`;
+    `boxNew` takes its own allocating arm — see
+    `memEvalStmtFuel_let_boxNew`). -/
 theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
     (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (v : Value)
     (hnot : ∀ se, e ≠ .vnew se)
+    (hnotBox : ∀ se, e ≠ .boxNew se)
     (h : memEvalExpr e ρ m π = evalExpr e ρ)
     (hv : evalExpr e ρ = .ok v) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π =
       .ok ((((x, v) :: ρ, m, π)), .fellThrough) := by
   match e with
   | .vnew se => exact absurd rfl (hnot se)
+  | .boxNew se => exact absurd rfl (hnotBox se)
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv]
 
@@ -1087,6 +1147,21 @@ theorem memEvalStmtFuel_let_vnew64 (f : Nat) (x : String) (ty : CType)
     memEvalStmtFuel f (.let_ x ty (.vnew se)) ρ m π =
       let (m', a) := memAllocData64 m v.val
       .ok (((x, .vecVal64 v) :: ρ, m', (x, a, a) :: π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse, hnew]
+
+/-- Allocating `let_` (`boxNew`): the value side runs `boxNew`, the
+    memory side additionally pins a fresh single-word block holding
+    the box value, extending the layout (M2c). -/
+theorem memEvalStmtFuel_let_boxNew (f : Nat) (x : String) (ty : CType)
+    (se : CExpr) (ρ : Env) (m : Mem) (π : Layout) (xv : BitVec 32)
+    (b : Box32)
+    (h : memEvalExpr se ρ m π = evalExpr se ρ)
+    (hse : evalExpr se ρ = .ok (.i32 xv))
+    (hnew : boxNew xv = .ok b) :
+    memEvalStmtFuel f (.let_ x ty (.boxNew se)) ρ m π =
+      let (m', a) := memAllocData m [b.val]
+      .ok (((x, .boxVal b) :: ρ, m', (x, a, a) :: π), .fellThrough) := by
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse, hnew]
 
@@ -1346,6 +1421,48 @@ theorem vfree_lockstep (m : Mem) (a t : Nat) (b : Vec32) (blk : Block)
     ⟨blk.tag, false, blk.data⟩
   simpa only [htag, hdata] using hhit
 
+/-- `boxFree` lockstep: `boxFree` and `memFree` consume their tokens
+    together over the single-word block (M2c). -/
+theorem vboxFree_lockstep (m : Mem) (a t : Nat) (b : Box32) (blk : Block)
+    (b' : Box32)
+    (hfind : memFind m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true) (hdata : blk.data = [b.val])
+    (hunfreed : b.freed = false)
+    (hfree : boxFree b = .ok b') :
+    ∃ m', memFree m a t = .ok m' ∧
+      memFind m' a = some ⟨t, false, [b.val]⟩ := by
+  have hfree' : b' = ⟨b.val, true⟩ := by
+    rw [boxFree_ok b hunfreed] at hfree
+    cases hfree
+    rfl
+  subst hfree'
+  show ∃ m', memFree m a t = .ok m' ∧
+    memFind m' a = some ⟨t, false, [b.val]⟩
+  have hmfree : memFree m a t =
+      .ok ⟨m.next, (a, ⟨blk.tag, false, blk.data⟩) :: m.blocks,
+        m.blocks64⟩ := by
+    simp [memFree, hfind, htag, hlive]
+  refine ⟨_, hmfree, ?_⟩
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
+    ⟨blk.tag, false, blk.data⟩
+  simpa only [htag, hdata] using hhit
+
+/-- `boxFree` consumes the token and updates the binding, freeing the
+    single-word block (M2c, any fuel; mirrors `evalStmtFuel_boxFree`). -/
+theorem memEvalStmtFuel_boxFree (f : Nat) (x : String) (ρ : Env)
+    (m : Mem) (π : Layout) (a t : Nat)
+    (b b' : Box32) (ρ' : Env) (m' : Mem)
+    (harr : envLookup ρ x = some (.boxVal b))
+    (hlay : layoutLookup π x = some (a, t))
+    (hfree : boxFree b = .ok b')
+    (hmfree : memFree m a t = .ok m')
+    (hup : envUpdate ρ x (.boxVal b') = some ρ') :
+    memEvalStmtFuel f (.boxFree x) ρ m π =
+      .ok ((ρ', m', π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      harr, hlay, hfree, hmfree, hup]
+
 /-- `vrealloc` lockstep: under the pin invariant, `vecRealloc` and
     `memRealloc` resize together with synced state (tag kept, live,
     resized words). -/
@@ -1419,6 +1536,12 @@ theorem memLoad_of_vecGet (m : Mem) (a : Addr) (blk : Vec32) (j : Nat)
       rw [h2] at hget
       simp at hget
   exact memLoad_hit m a a j _ _ hfind rfl rfl hgetl
+
+/-- A live single-word box block reads its value back at index `0`. -/
+theorem memLoad_box_hit (m : Mem) (a : Addr) (x : BitVec 32)
+    (hfind : memFind m a = some ⟨a, true, [x]⟩) :
+    memLoad m a a 0 = .ok x := by
+  exact memLoad_hit m a a 0 _ _ hfind rfl rfl rfl
 
 /-- A successful 64-bit `vecGet64` carries its list read + liveness, so
     the mirrored memory load agrees. -/

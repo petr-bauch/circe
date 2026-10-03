@@ -31,6 +31,7 @@ import Circe.Emit.VecRealloc
 import Circe.Emit.Vec64
 import Circe.Emit.Method
 import Circe.Emit.Acc
+import Circe.Emit.Box
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -421,6 +422,19 @@ theorem oracleNoalias_accTwo (a b : BitVec 32) :
       [{ name := "a", ty := .i 32, role := .owned },
        { name := "b", ty := .i 32, role := .owned }]
       [.i32 a, .i32 b] emptyMem = _
+    rfl
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `box_through` entry footprints are trivially disjoint (one owned
+    scalar; the box is allocated after entry, so the entry footprint
+    is empty — the single-word block's disjointness is internal, by
+    fresh allocation). -/
+theorem oracleNoalias_boxThrough (x : BitVec 32) :
+    oracleNoalias boxThroughFunc [.i32 x] := by
+  have hb : bindMemArgs boxThroughFunc.args [.i32 x] emptyMem =
+      some ([("x", .i32 x)], emptyMem, []) := by
+    show bindMemArgs [{ name := "x", ty := .i 32, role := .owned }]
+      [.i32 x] emptyMem = _
     rfl
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
