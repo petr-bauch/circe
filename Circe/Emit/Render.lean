@@ -186,6 +186,24 @@ def emitUseNsAddText (name : String) : String :=
   ++ s!"def {name}_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  checkedAddI32 x y\n"
 
+/-- Render the `use_tadd32` entry forward definition: direct delegation
+    to the 32-bit instantiation body (see `useTadd32Fwd_is_call`). -/
+def emitUseTadd32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_Z4taddIiET_S0_S0_` instantiation body). -/\n"
+  ++ s!"def {name}_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 x y\n"
+
+/-- Render the `use_tadd64` entry forward definition: direct delegation
+    to the 64-bit instantiation body (see `useTadd64Fwd_is_call`). -/
+def emitUseTadd64Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_Z4taddIlET_S0_S0_` instantiation body). -/\n"
+  ++ s!"def {name}_fwd (x y : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  checkedAddI64 x y\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

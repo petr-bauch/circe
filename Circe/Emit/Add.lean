@@ -204,6 +204,20 @@ theorem emit_correct_add64_ok (a b r : BitVec 64)
   rw [h]
   exact i64_map_ok r
 
+/-- `emit_correct` for `add64` under a renamed (e.g. mangled
+    instantiation) leaf: evaluation never inspects the function name,
+    so the 64-bit instantiation shares the body proof (N4c caller
+    programs evaluate over `[{add64Func with name := nm}]`). -/
+theorem evalFuncFuel_add64At (F : Nat) (nm : String) (a b : BitVec 64) :
+    evalFuncFuel F { add64Func with name := nm } [.i64 a, .i64 b] =
+      add64Fwd a b := by
+  have ha := envLookup_add64_a a b
+  have hb := envLookup_add64_b a b
+  cases F <;>
+    simp only [evalFuncFuel, add64Func, bindArgs, evalStmtFuel,
+      evalStmtZero, evalStmtWith, evalExpr, add64Fwd, ha, hb] <;>
+    (cases checkedAddI64 a b <;> rfl)
+
 /-! ## N4a: arity-3 `add` overload leaf (`_Z3addiii`) -/
 
 /-- Canonical CoreIR for the 3-`i32` overload leaf in

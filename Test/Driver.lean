@@ -23,6 +23,7 @@ import DiffOverload
 import DiffPhase3
 import DiffPhase4
 import DiffStruct
+import DiffTadd
 import DiffVec
 import DiffVec2
 import DiffVec64
@@ -44,6 +45,7 @@ import GoldenPhase7
 import GoldenReadOnly
 import GoldenRejectCatalog
 import GoldenStruct
+import GoldenTadd
 import GoldenVec2
 import GoldenVec64
 import GoldenVecRealloc
@@ -138,6 +140,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/move_int.cpp", "tests/diff/driver_move_int.cpp"], bin "circe_move_int_native"),
    ("c++", ["tests/cpp/move_acc.cpp", "tests/diff/driver_move_acc.cpp"], bin "circe_move_acc_native"),
    ("c++", ["tests/cpp/scope_early.cpp", "tests/diff/driver_scope_early.cpp"], bin "circe_scope_early_native"),
+   ("c++", ["tests/cpp/tadd.cpp", "tests/diff/driver_tadd.cpp"], bin "circe_tadd_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
@@ -176,7 +179,11 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/MoveInt.lean", "out/MoveInt.lean"),
    ("tests/golden/MoveCtor.lean", "out/MoveCtor.lean"),
    ("tests/golden/MoveAcc.lean", "out/MoveAcc.lean"),
-   ("tests/golden/ScopeEarly.lean", "out/ScopeEarly.lean")]
+   ("tests/golden/ScopeEarly.lean", "out/ScopeEarly.lean"),
+   ("tests/golden/Tadd32.lean", "out/Tadd32.lean"),
+   ("tests/golden/Tadd64.lean", "out/Tadd64.lean"),
+   ("tests/golden/UseTadd32.lean", "out/UseTadd32.lean"),
+   ("tests/golden/UseTadd64.lean", "out/UseTadd64.lean")]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -205,7 +212,11 @@ def emittedTypechecks : List String :=
    "out/MoveInt.lean", "out/MoveInt_Spec.lean",
    "out/MoveCtor.lean", "out/MoveCtor_Spec.lean",
    "out/MoveAcc.lean", "out/MoveAcc_Spec.lean",
-   "out/ScopeEarly.lean", "out/ScopeEarly_Spec.lean"]
+   "out/ScopeEarly.lean", "out/ScopeEarly_Spec.lean",
+   "out/Tadd32.lean", "out/Tadd32_Spec.lean",
+   "out/Tadd64.lean", "out/Tadd64_Spec.lean",
+   "out/UseTadd32.lean", "out/UseTadd32_Spec.lean",
+   "out/UseTadd64.lean", "out/UseTadd64_Spec.lean"]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -430,7 +441,20 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Derived.lean", "theorem oracleNoalias_useNsAdd"),
      ("Circe/Mem.lean", "theorem memEvalStmtFuel_seq_fallthrough"),
      ("out/UseAdd.lean", "_Z7use_addii_fwd"),
-     ("tests/golden/UseNsAdd.lean", "_Z10use_ns_addii_fwd")])]
+     ("tests/golden/UseNsAdd.lean", "_Z10use_ns_addii_fwd")]),
+   ("n4c-tadd",
+    [("Circe/Validator.lean", "def templateLeafCallees"),
+     ("Circe/Validator.lean", "def isOverloadCaller64Shape"),
+     ("Circe/Validator.lean", "calls a known template-instantiation leaf"),
+     ("Circe/Emit/Match.lean", "some .useTadd32"),
+     ("Circe/Emit/Match.lean", "some .useTadd64"),
+     ("Circe/Emit/Add.lean", "theorem evalFuncFuel_add64At"),
+     ("Circe/Emit/Calls.lean", "theorem evalProgFunc_useTadd64"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_add64At"),
+     ("Circe/Transfer.lean", "theorem memTransferProg_useTadd32"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_useTadd64"),
+     ("out/UseTadd32.lean", "_Z10use_tadd32ii_fwd"),
+     ("tests/golden/UseTadd64.lean", "_Z10use_tadd64ll_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -479,8 +503,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 35 then
-    throw (IO.userError s!"expected 35 spec stubs, found {stubs.length}")
+  if stubs.length != 39 then
+    throw (IO.userError s!"expected 39 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -513,6 +537,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-box", DiffBox.main [bin "circe_box_native", trials]),
    ("diff-overload", DiffOverload.main [bin "circe_overload_native", bin "circe_ns_add_native", trials]),
    ("diff-move", DiffMove.main [bin "circe_move_int_native", bin "circe_move_acc_native", bin "circe_scope_early_native", trials]),
+   ("diff-tadd", DiffTadd.main [bin "circe_tadd_native", trials]),
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials])]
 
 def checkSuites : List Job :=
@@ -533,6 +558,7 @@ def checkSuites : List Job :=
    ("golden-box", GoldenBox.main),
    ("golden-overload", GoldenOverload.main),
    ("golden-move", GoldenMove.main),
+   ("golden-tadd", GoldenTadd.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -543,12 +569,13 @@ def checkSuites : List Job :=
 def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffStruct",
+   "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc",
    "DiffWidth", "DiffOverload",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenStruct", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
+   "GoldenStruct", "GoldenTadd", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=

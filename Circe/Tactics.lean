@@ -83,6 +83,7 @@ macro "cir_simp" : tactic =>
     scopeEarly_err_a, scopeEarly_err_b, scopeEarlyFwd_is_scopeEarly,
     add3Fwd, add3Fwd_ok, add3Fwd_err,
     useAddFwd_is_call, useNsAddFwd_is_call,
+    useTadd32Fwd_is_call, useTadd64Fwd_is_call,
     boxThrough, boxThrough_ok, boxThroughFwd_is_boxThrough,
     boxNew, boxNew_ok, boxGet, boxGet_ok, boxFree, boxFree_ok,
     addCallerFwd_as_calls, sumCallerFwd_is_call,

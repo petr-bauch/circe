@@ -4428,6 +4428,175 @@ theorem memTransferProg_useNsAdd (F : Nat) (x y : BitVec 32)
         [.i32 x, .i32 y] := by
   rw [memEvalProgFunc_useNsAdd, evalProgFunc_useNsAdd]
 
+/-! ## N4c program transfers: `use_tadd32`, `use_tadd64` -/
+
+/-- `memEval` for `add64` under a renamed leaf (mirrors
+    `evalFuncFuel_add64At` on the memory side; the name never
+    matters). -/
+theorem memEvalFuncFuel_add64At (F : Nat) (nm : String) (a b : BitVec 64) :
+    memEvalFuncFuel F { add64Func with name := nm } [.i64 a, .i64 b] =
+      add64Fwd a b := by
+  have hbf : add64Func.args =
+      [{ name := "a", ty := .i 64, role := .owned },
+       { name := "b", ty := .i 64, role := .owned }] := rfl
+  have hbody : add64Func.body =
+      .return_ (.add (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .i 64, role := .owned },
+       { name := "b", ty := .i 64, role := .owned }]
+      [.i64 a, .i64 b] emptyMem =
+      some ([("a", .i64 a), ("b", .i64 b)], emptyMem, []) :=
+    bindMemArgs_add64 a b
+  have ha := envLookup_add64_a a b
+  have hbb := envLookup_add64_b a b
+  simp only [memEvalFuncFuel, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      memEvalExpr, add64Fwd, ha, hbb] <;>
+    (cases checkedAddI64 a b <;> rfl)
+
+/-- `memEval` for `use_tadd32`: program evaluation over the renamed
+    `add` leaf agrees with the delegating forward (mirrors
+    `evalProgFunc_useTadd32`; int-only, so `Mem`/`Layout` stay
+    `emptyMem`/`[]`). -/
+theorem memEvalProgFunc_useTadd32 (F : Nat) (x y : BitVec 32) :
+    memEvalProgFunc [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F
+      useTadd32Func [.i32 x, .i32 y] = useTadd32Fwd x y := by
+  have hbind : bindMemArgs useTadd32Func.args [.i32 x, .i32 y] emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) :=
+    bindMemArgs_useAdd x y
+  have hbody : useTadd32Func.body =
+      .seq (.callRet "s" "_Z4taddIiET_S0_S0_" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useAddCaller_x x y
+  have hy := envLookup_useAddCaller_y x y
+  have hfind : findFunc [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+      "_Z4taddIiET_S0_S0_" =
+      some { addFunc with name := "_Z4taddIiET_S0_S0_" } :=
+    findFunc_hit { addFunc with name := "_Z4taddIiET_S0_S0_" } []
+  have hargs : lookupArgs [("x", .i32 x), ("y", .i32 y)] ["x", "y"] =
+      some [.i32 x, .i32 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := memEvalFuncFuel_addAt F "_Z4taddIiET_S0_S0_" x y
+  cases hadd : addFwd x y with
+  | error e =>
+    have hcall' : memEvalFuncFuel F
+        { addFunc with name := "_Z4taddIiET_S0_S0_" }
+        [.i32 x, .i32 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_err
+      [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+      F "s" "_Z4taddIiET_S0_S0_" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      emptyMem []
+      [.i32 x, .i32 y] { addFunc with name := "_Z4taddIiET_S0_S0_" } e
+      hargs hfind hcall'
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstep]
+    simp [useTadd32Fwd, hadd]
+  | ok v =>
+    have hcall' : memEvalFuncFuel F
+        { addFunc with name := "_Z4taddIiET_S0_S0_" }
+        [.i32 x, .i32 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_ok
+      [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+      F "s" "_Z4taddIiET_S0_S0_" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      emptyMem []
+      [.i32 x, .i32 y] { addFunc with name := "_Z4taddIiET_S0_S0_" } v
+      hargs hfind hcall'
+    have hret : memEvalProgStmt
+        [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v)
+        emptyMem [] =
+        .ok (((envExtend [("x", .i32 x), ("y", .i32 y)] "s" v,
+          emptyMem, []), .returned v)) :=
+      memEvalProgStmt_return
+        [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F (.var "s") _
+        _ _ v (by simp [memEvalExpr, envExtend_hit])
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep, hret]
+    simp [useTadd32Fwd, hadd]
+
+/-- Transfer for `use_tadd32` (program level): both sides equal
+    `useTadd32Fwd`. -/
+theorem memTransferProg_useTadd32 (F : Nat) (x y : BitVec 32)
+    (_h : oracleNoalias useTadd32Func [.i32 x, .i32 y]) :
+    memEvalProgFunc [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F
+      useTadd32Func [.i32 x, .i32 y] =
+      evalProgFunc [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F
+        useTadd32Func [.i32 x, .i32 y] := by
+  rw [memEvalProgFunc_useTadd32, evalProgFunc_useTadd32]
+
+/-- `memEval` for `use_tadd64`: same proof at width 64 over the
+    renamed `add64` leaf. -/
+theorem memEvalProgFunc_useTadd64 (F : Nat) (x y : BitVec 64) :
+    memEvalProgFunc [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F
+      useTadd64Func [.i64 x, .i64 y] = useTadd64Fwd x y := by
+  have hbind : bindMemArgs useTadd64Func.args [.i64 x, .i64 y] emptyMem =
+      some ([("x", .i64 x), ("y", .i64 y)], emptyMem, []) :=
+    bindMemArgs_useTadd64 x y
+  have hbody : useTadd64Func.body =
+      .seq (.callRet "s" "_Z4taddIlET_S0_S0_" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useTadd64Caller_x x y
+  have hy := envLookup_useTadd64Caller_y x y
+  have hfind : findFunc [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+      "_Z4taddIlET_S0_S0_" =
+      some { add64Func with name := "_Z4taddIlET_S0_S0_" } :=
+    findFunc_hit { add64Func with name := "_Z4taddIlET_S0_S0_" } []
+  have hargs : lookupArgs [("x", .i64 x), ("y", .i64 y)] ["x", "y"] =
+      some [.i64 x, .i64 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := memEvalFuncFuel_add64At F "_Z4taddIlET_S0_S0_" x y
+  cases hadd : add64Fwd x y with
+  | error e =>
+    have hcall' : memEvalFuncFuel F
+        { add64Func with name := "_Z4taddIlET_S0_S0_" }
+        [.i64 x, .i64 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_err
+      [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+      F "s" "_Z4taddIlET_S0_S0_" ["x", "y"] [("x", .i64 x), ("y", .i64 y)]
+      emptyMem []
+      [.i64 x, .i64 y] { add64Func with name := "_Z4taddIlET_S0_S0_" } e
+      hargs hfind hcall'
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstep]
+    simp [useTadd64Fwd, hadd]
+  | ok v =>
+    have hcall' : memEvalFuncFuel F
+        { add64Func with name := "_Z4taddIlET_S0_S0_" }
+        [.i64 x, .i64 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_ok
+      [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+      F "s" "_Z4taddIlET_S0_S0_" ["x", "y"] [("x", .i64 x), ("y", .i64 y)]
+      emptyMem []
+      [.i64 x, .i64 y] { add64Func with name := "_Z4taddIlET_S0_S0_" } v
+      hargs hfind hcall'
+    have hret : memEvalProgStmt
+        [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i64 x), ("y", .i64 y)] "s" v)
+        emptyMem [] =
+        .ok (((envExtend [("x", .i64 x), ("y", .i64 y)] "s" v,
+          emptyMem, []), .returned v)) :=
+      memEvalProgStmt_return
+        [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F (.var "s") _
+        _ _ v (by simp [memEvalExpr, envExtend_hit])
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep, hret]
+    simp [useTadd64Fwd, hadd]
+
+/-- Transfer for `use_tadd64` (program level): both sides equal
+    `useTadd64Fwd`. -/
+theorem memTransferProg_useTadd64 (F : Nat) (x y : BitVec 64)
+    (_h : oracleNoalias useTadd64Func [.i64 x, .i64 y]) :
+    memEvalProgFunc [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F
+      useTadd64Func [.i64 x, .i64 y] =
+      evalProgFunc [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F
+        useTadd64Func [.i64 x, .i64 y] := by
+  rw [memEvalProgFunc_useTadd64, evalProgFunc_useTadd64]
+
 /-! ## M3d C++ transfers: `methodSum` leaf + `pointSumRef` entry (N1a) -/
 
 /-- `add` of two projected fields agrees on the memory side (the

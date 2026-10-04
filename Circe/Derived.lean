@@ -153,6 +153,45 @@ theorem oracleNoalias_useNsAdd (x y : BitVec 32) :
     exact bindMemArgs_useAdd x y
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-! ## N4c: template-instantiation footprints (empty: owned scalars) -/
+
+/-- `use_tadd32` entry footprints are trivially disjoint (same arg
+    shape as the overload callers). -/
+theorem oracleNoalias_useTadd32 (x y : BitVec 32) :
+    oracleNoalias useTadd32Func [.i32 x, .i32 y] := by
+  have hb : bindMemArgs useTadd32Func.args [.i32 x, .i32 y]
+      emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "x", ty := .i 32, role := .owned },
+       { name := "y", ty := .i 32, role := .owned }]
+      [.i32 x, .i32 y] emptyMem = _
+    exact bindMemArgs_useAdd x y
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- 64-bit instantiation-caller binding pins nothing (two owned
+    64-bit scalars). -/
+theorem bindMemArgs_useTadd64 (x y : BitVec 64) :
+    bindMemArgs
+      [{ name := "x", ty := .i 64, role := .owned },
+       { name := "y", ty := .i 64, role := .owned }]
+      [.i64 x, .i64 y] emptyMem =
+      some ([("x", .i64 x), ("y", .i64 y)], emptyMem, []) := by
+  rfl
+
+/-- `use_tadd64` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_useTadd64 (x y : BitVec 64) :
+    oracleNoalias useTadd64Func [.i64 x, .i64 y] := by
+  have hb : bindMemArgs useTadd64Func.args [.i64 x, .i64 y]
+      emptyMem =
+      some ([("x", .i64 x), ("y", .i64 y)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "x", ty := .i 64, role := .owned },
+       { name := "y", ty := .i 64, role := .owned }]
+      [.i64 x, .i64 y] emptyMem = _
+    exact bindMemArgs_useTadd64 x y
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-! ## Loop-free scalar shapes: empty footprint (M3c) -/
 
 /-- `add64` binding pins nothing (two owned 64-bit scalars). -/

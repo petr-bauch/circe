@@ -318,6 +318,50 @@ def emitUseNsAddSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
   ++ s!"      == (repr (checkedAddI32 t.1 t.2)).pretty\n"
 
+/-- Spec stub for the `use_tadd32` shape (N4c 32-bit instantiation entry). -/
+def emitUseTadd32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(x, y)` delegates to the `_Z4taddIiET_S0_S0_` instantiation.\n"
+  ++ s!"    Base body reference: `checkedAddI32` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `useTadd32Fwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 x y\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 1), (1, 0x7FFFFFFF), (0x7FFFFFFF, 0x7FFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `checkedAddI32` on every edge.\n"
+  ++ "    TODO (user): strengthen to the delegation equation\n"
+  ++ "    (`useTadd32Fwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (checkedAddI32 t.1 t.2)).pretty\n"
+
+/-- Spec stub for the `use_tadd64` shape (N4c 64-bit instantiation entry). -/
+def emitUseTadd64SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(x, y)` delegates to the `_Z4taddIlET_S0_S0_` instantiation.\n"
+  ++ s!"    Base body reference: `checkedAddI64` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `useTadd64Fwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  checkedAddI64 x y\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64 × BitVec 64) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFFFFFFFFFF, 1), (1, 0x7FFFFFFFFFFFFFFF), (0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `checkedAddI64` on every edge.\n"
+  ++ "    TODO (user): strengthen to the delegation equation\n"
+  ++ "    (`useTadd64Fwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (checkedAddI64 t.1 t.2)).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

@@ -256,6 +256,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     call multisets, `cir.cmp` other than `eq`, `if` outside the
     exact early-return shape, move-assign `aSEOS_`, copy
     ctor/assign) are rejected with dedicated messages.
+18. Templates, monomorphized (N4c): no generic reasoning — each
+    instantiation is its own shape, mirroring the `Vec32`/`Vec64`
+    precedent:
+    `_Z4taddIiET_S0_S0_` (32-bit `tadd` monomorph: two `i32`,
+    `cir.add nsw`, `i32` return; body-identical to `add`, so zero
+    gate change — the gate is name-agnostic),
+    `_Z4taddIlET_S0_S0_` (64-bit monomorph: two `i64`, `cir.add nsw`,
+    `i64` return; body-identical to `add64`),
+    `_Z10use_tadd32ii` entry (two `i32`, exactly one call site to the
+    32-bit monomorph, `i32` return),
+    `_Z10use_tadd64ll` entry (two `i64`, exactly one call site to the
+    64-bit monomorph, `i64` return).
+    Explicit instantiation definitions keep the monomorphs as (weak)
+    symbols; implicit-only instantiation inlines away at `-O1` and the
+    native diff driver could not call the leaves directly. The
+    `weak_odr` linkage parses like `linkonce_odr` (linkage never
+    gates). Int-only leaves and entries need explicit oracle facts.
+    Misshapen uses (wrong-arity calls into known monomorphs, double
+    calls, local arithmetic beside the call, 64-bit monomorph called
+    at 32-bit width) are rejected with dedicated messages
+    (`callsTemplateWrongShape`).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -271,7 +292,10 @@ only; `@_ZN3AccC2Ev` / `@_ZN3Acc3addEi` / `@_ZNK3Acc3getEv` /
 sites: leak allowed, double-`delete` rejected);
 `@_Z3addii` in the exact N4a `use_add` entry shape only (1 site);
 `@_ZN2ns3addEii` in the exact N4a `use_ns_add` entry shape only (1 site);
-`@_ZN3AccC2EOS_` in the exact N4b `move_acc` entry shape only (1 site)),
+`@_ZN3AccC2EOS_` in the exact N4b `move_acc` entry shape only (1 site);
+`@_Z4taddIiET_S0_S0_` in the exact N4c `use_tadd32` entry shape only
+(1 site); `@_Z4taddIlET_S0_S0_` in the exact N4c `use_tadd64` entry
+shape only (1 site)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf

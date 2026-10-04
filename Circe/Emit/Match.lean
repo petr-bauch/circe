@@ -159,6 +159,15 @@ def matchFrag : Func → Option FragKind
         (.return_ (.var "s")) => some .useAdd
     | .seq (.callRet "s" "_ZN2ns3addEii" ["x", "y"])
         (.return_ (.var "s")) => some .useNsAdd
+    | .seq (.callRet "s" "_Z4taddIiET_S0_S0_" ["x", "y"])
+        (.return_ (.var "s")) => some .useTadd32
+    | _ => none
+  | ⟨_, [⟨"x", .i 64, .owned⟩, ⟨"y", .i 64, .owned⟩], _, body⟩ =>
+    -- 64-bit instantiation callee: body matched separately (cf.
+    -- `addCall` note).
+    match body with
+    | .seq (.callRet "s" "_Z4taddIlET_S0_S0_" ["x", "y"])
+        (.return_ (.var "s")) => some .useTadd64
     | _ => none
   | ⟨_, [⟨"a", .array (.u 32) _, .sharedBorrow⟩,
          ⟨"n", .u 32, .owned⟩], _, body⟩ =>
@@ -303,6 +312,8 @@ theorem matchFrag_add : matchFrag addFunc = some .add := rfl
 theorem matchFrag_add3 : matchFrag add3Func = some .add3 := rfl
 theorem matchFrag_useAdd : matchFrag useAddFunc = some .useAdd := rfl
 theorem matchFrag_useNsAdd : matchFrag useNsAddFunc = some .useNsAdd := rfl
+theorem matchFrag_useTadd32 : matchFrag useTadd32Func = some .useTadd32 := rfl
+theorem matchFrag_useTadd64 : matchFrag useTadd64Func = some .useTadd64 := rfl
 theorem matchFrag_incr : matchFrag incrFunc = some .incr := rfl
 theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl

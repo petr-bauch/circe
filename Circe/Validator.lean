@@ -406,6 +406,47 @@ def isOverloadCallerShape (raw : RawFunc) (callee : String) : Bool :=
 def callsOverloadWrongShape (raw : RawFunc) : Bool :=
   overloadLeafCallees.any (callsFunc raw.text)
 
+/-! ## N4c: template-instantiation shapes -/
+
+/-- Known template-instantiation-leaf callees (mangled): the 32-bit and
+    64-bit `tadd` monomorphs. Caller gates admit calls into the
+    (name, arity) pairs named in `validate` below; this registry names
+    every known instantiation for the wrong-shape rejection. Adding an
+    instantiation extends the registry plus one gate arm — unknown
+    mangled callees still reject. -/
+def templateLeafCallees : List String :=
+  ["_Z4taddIiET_S0_S0_", "_Z4taddIlET_S0_S0_"]
+
+/-- Single-delegation caller into one known 64-bit instantiation leaf
+    (the `isOverloadCallerShape` discipline at width 64: exactly one
+    call site to `callee`, arithmetic lives in the callee so no local
+    `nsw`, no self-call). -/
+def isOverloadCaller64Shape (raw : RawFunc) (callee : String) : Bool :=
+  match raw.params with
+  | [x, y] =>
+    noBreakContinueSwitch raw.text &&
+    isI64 x.ctype && isI64 y.ctype && isI64 raw.ret &&
+    callsFunc raw.text callee &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- Calls a known template-instantiation leaf but not with an admitted
+    (name, arity, single-site) shape: dedicated rejection naming the
+    admitted pairs. -/
+def callsTemplateWrongShape (raw : RawFunc) : Bool :=
+  templateLeafCallees.any (callsFunc raw.text)
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -1447,6 +1488,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsOverloadWrongShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls a known overload leaf but not with an admitted (name, arity, single-site) shape: admitted callers are single-site 2-`i32` delegations into `_Z3addii` (`use_add` shape) and `_ZN2ns3addEii` (`use_ns_add` shape) only (known overload leaves `_Z3addii` / `_Z3addiii` / `_ZN2ns3addEii`; see docs/SUBSET.md)"
+      else if isOverloadCallerShape raw "_Z4taddIiET_S0_S0_" then
+        .ok { useTadd32Func with name := raw.name }
+      else if isOverloadCaller64Shape raw "_Z4taddIlET_S0_S0_" then
+        .ok { useTadd64Func with name := raw.name }
+      else if callsTemplateWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known template-instantiation leaf but not with an admitted (name, arity, single-site) shape: admitted callers are single-site 2-`i32` delegations into `_Z4taddIiET_S0_S0_` (`use_tadd32` shape) and single-site 2-`i64` delegations into `_Z4taddIlET_S0_S0_` (`use_tadd64` shape) only (known instantiation leaves `_Z4taddIiET_S0_S0_` / `_Z4taddIlET_S0_S0_`; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then
@@ -1492,7 +1540,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if hasNonHeapCall raw.text &&
           !containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only; M2b/N4b: the exact `Acc` leaf/entry call multisets only), outside the Ownable-C subset (see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only; N4c: single-site 2-`i32` / 2-`i64` calls into the known template-instantiation leaves `_Z4taddIiET_S0_S0_` / `_Z4taddIlET_S0_S0_` only; M2b/N4b: the exact `Acc` leaf/entry call multisets only), outside the Ownable-C subset (see docs/SUBSET.md)"
       else if 1 < freeCallCount raw.text &&
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset

@@ -408,6 +408,20 @@ theorem useNsAdd_correct (x y : BitVec 32) :
     useNsAddFwd x y = addFwd x y := by
   cir_simp
 
+/-! ## N4c: template instantiations (one property per new shape) -/
+
+/-- `use_tadd32` delegates: the entry is the 32-bit instantiation body
+    (via `useTadd32Fwd_is_call`; the delegation rewrite is the spec, as
+    in `useAdd_correct`). -/
+theorem useTadd32_correct (x y : BitVec 32) :
+    useTadd32Fwd x y = addFwd x y := by
+  cir_simp
+
+/-- `use_tadd64` delegates: the entry is the 64-bit instantiation body. -/
+theorem useTadd64_correct (x y : BitVec 64) :
+    useTadd64Fwd x y = add64Fwd x y := by
+  cir_simp
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

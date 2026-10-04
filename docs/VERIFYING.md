@@ -19,6 +19,7 @@ verbatim.
 | `accMoveCtor_correct` (N4b) | dst takes src word (zeroing is entry-level) | `accMoveCtorFwd d s` |
 | `moveAcc_correct_ok/err_a/err_b` (N4b) | threaded adds with zeroing `assign`; move invisible at spec level | `moveAccFwd a b` |
 | `scopeEarly_correct_eq/ne/err_a/err_b` (N4b) | early `get` on `a == b`, else second add + `get` | `scopeEarlyFwd a b` |
+| `useTadd32_correct` / `useTadd64_correct` (N4c) | entry forward = `addFwd` / `add64Fwd` (monomorph resolution is identity at spec level) | `useTadd32Fwd` / `useTadd64Fwd` |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`
@@ -32,7 +33,8 @@ checked-op unfoldings (+ ok/err + range bridges, 32- and 64-bit),
 shapes (+ struct-field ok/err bridges), call-unfold
 (`addCallerFwd_as_calls`, `sumCallerFwd_is_call`) + the N4a overload
 folds (`add3Fwd`/`add3Fwd_ok/err`, `useAddFwd_is_call`,
-`useNsAddFwd_is_call`) + the N4b move folds (`accMoveCtorFwd_is_ok`,
+`useNsAddFwd_is_call`) + the N4c instantiation folds
+(`useTadd32Fwd_is_call`, `useTadd64Fwd_is_call`) + the N4b move folds (`accMoveCtorFwd_is_ok`,
 `moveAccFwd_is_moveAcc` + `moveAcc_ok/err_a/err_b`,
 `scopeEarlyFwd_is_scopeEarly` + `scopeEarly_ok_eq/ok_ne/err_a/err_b`;
 program-level `if_` + `seq_returned` lemmas back the early return),
@@ -168,7 +170,7 @@ one proof); `vecRealloc_empty`/`vec64_empty` shortened to bare
 ## Spec scaffolding (ROADMAP.md S4 — done)
 
 The emitter writes `out/<name>_Spec.lean` next to each forward file
-(35 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
+(39 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
 dispatched on `matchFrag` exactly like `emitFunc`): unverified stub
 with the function signature, the `Base`-op body reference, an
 edge-case list (empty / singleton / max-fuel), and a `Diff*`-style

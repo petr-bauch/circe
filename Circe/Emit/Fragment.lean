@@ -33,12 +33,16 @@ import Circe.Eval
     source-zeroing `assign`, `scopeEarly` = the early-return entry),
     and in N4a with overloads + namespaces (`add3` = the 3-`i32`
     overload leaf, `useAdd`/`useNsAdd` = single-delegation entries
-    resolving to a mangled `add` leaf). -/
+    resolving to a mangled `add` leaf), and in N4c with template
+    instantiations (`useTadd32`/`useTadd64` = single-delegation entries
+    resolving to a mangled instantiation leaf). -/
 inductive FragKind : Type
   | add
   | add3
   | useAdd
   | useNsAdd
+  | useTadd32
+  | useTadd64
   | add64
   | addu64
   | incr

@@ -387,3 +387,161 @@ theorem evalProgFunc_sumCaller (F : Nat) (l : List (BitVec 32))
     simp only [evalProgFunc, hbind, hbody]
     rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep, hret]
     simp [sumCallerFwd, hsum]
+
+/-! ## N4c: template-instantiation callers (`use_tadd32`, `use_tadd64`) -/
+
+/-- Canonical CoreIR for `tests/cpp/tadd.cpp:use_tadd32`: single DAG
+    call resolving to the 32-bit instantiation
+    (`_Z4taddIiET_S0_S0_`). The callee is the renamed `add` leaf
+    (matched by mangled name in `evalProgStmt`). -/
+def useTadd32Func : Func :=
+  ⟨"_Z10use_tadd32ii",
+   [{ name := "x", ty := .i 32, role := .owned },
+    { name := "y", ty := .i 32, role := .owned }],
+   .i 32,
+   .seq (.callRet "s" "_Z4taddIiET_S0_S0_" ["x", "y"])
+        (.return_ (.var "s"))⟩
+
+/-- Canonical CoreIR for `tests/cpp/tadd.cpp:use_tadd64`: single DAG
+    call resolving to the 64-bit instantiation
+    (`_Z4taddIlET_S0_S0_`). The callee is the renamed `add64` leaf. -/
+def useTadd64Func : Func :=
+  ⟨"_Z10use_tadd64ll",
+   [{ name := "x", ty := .i 64, role := .owned },
+    { name := "y", ty := .i 64, role := .owned }],
+   .i 64,
+   .seq (.callRet "s" "_Z4taddIlET_S0_S0_" ["x", "y"])
+        (.return_ (.var "s"))⟩
+
+/-- Value-level forward for `use_tadd32`: direct delegation to the
+    `add` leaf forward (cf. rendered `_Z10use_tadd32ii_fwd`). -/
+def useTadd32Fwd (x y : BitVec 32) : Result Value :=
+  addFwd x y
+
+theorem useTadd32Fwd_is_call (x y : BitVec 32) :
+    useTadd32Fwd x y = addFwd x y := rfl
+
+/-- Value-level forward for `use_tadd64`: direct delegation to the
+    `add64` leaf forward. -/
+def useTadd64Fwd (x y : BitVec 64) : Result Value :=
+  add64Fwd x y
+
+theorem useTadd64Fwd_is_call (x y : BitVec 64) :
+    useTadd64Fwd x y = add64Fwd x y := rfl
+
+/-- Env facts for the 64-bit instantiation-caller shape. -/
+theorem envLookup_useTadd64Caller_x (x y : BitVec 64) :
+    envLookup [("x", .i64 x), ("y", .i64 y)] "x" = some (.i64 x) := by
+  simp [envLookup]
+
+theorem envLookup_useTadd64Caller_y (x y : BitVec 64) :
+    envLookup [("x", .i64 x), ("y", .i64 y)] "y" = some (.i64 y) := by
+  simp [envLookup, show ("y" : String) ≠ "x" by decide]
+
+/-- `emit_correct` for `use_tadd32`: program evaluation over the
+    renamed `add` leaf agrees with the delegating forward (loop-free
+    leaf, so no fuel side conditions). -/
+theorem evalProgFunc_useTadd32 (F : Nat) (x y : BitVec 32) :
+    evalProgFunc [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F
+      useTadd32Func [.i32 x, .i32 y] = useTadd32Fwd x y := by
+  have hbind : bindArgs useTadd32Func.args [.i32 x, .i32 y] =
+      some [("x", .i32 x), ("y", .i32 y)] := rfl
+  have hbody : useTadd32Func.body =
+      .seq (.callRet "s" "_Z4taddIiET_S0_S0_" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useAddCaller_x x y
+  have hy := envLookup_useAddCaller_y x y
+  have hfind : findFunc [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+      "_Z4taddIiET_S0_S0_" =
+      some { addFunc with name := "_Z4taddIiET_S0_S0_" } :=
+    findFunc_hit { addFunc with name := "_Z4taddIiET_S0_S0_" } []
+  have hargs : lookupArgs [("x", .i32 x), ("y", .i32 y)] ["x", "y"] =
+      some [.i32 x, .i32 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := evalFuncFuel_addAt F "_Z4taddIiET_S0_S0_" x y
+  cases hadd : addFwd x y with
+  | error e =>
+    have hcall' : evalFuncFuel F { addFunc with name := "_Z4taddIiET_S0_S0_" }
+        [.i32 x, .i32 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_err
+      [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+      F "s" "_Z4taddIiET_S0_S0_" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      [.i32 x, .i32 y] { addFunc with name := "_Z4taddIiET_S0_S0_" } e
+      hargs hfind hcall'
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstep]
+    simp [useTadd32Fwd, hadd]
+  | ok v =>
+    have hcall' : evalFuncFuel F { addFunc with name := "_Z4taddIiET_S0_S0_" }
+        [.i32 x, .i32 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_ok
+      [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+      F "s" "_Z4taddIiET_S0_S0_" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      [.i32 x, .i32 y] { addFunc with name := "_Z4taddIiET_S0_S0_" } v
+      hargs hfind hcall'
+    have hret : evalProgStmt [{ addFunc with name := "_Z4taddIiET_S0_S0_" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v) =
+        .ok (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v,
+          .returned v) :=
+      evalProgStmt_return [{ addFunc with name := "_Z4taddIiET_S0_S0_" }]
+        F (.var "s") _
+        v (evalExpr_var_hit _ _ _ (envExtend_hit _ _ _))
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep, hret]
+    simp [useTadd32Fwd, hadd]
+
+/-- `emit_correct` for `use_tadd64`: same proof at width 64 over the
+    renamed `add64` leaf. -/
+theorem evalProgFunc_useTadd64 (F : Nat) (x y : BitVec 64) :
+    evalProgFunc [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F
+      useTadd64Func [.i64 x, .i64 y] = useTadd64Fwd x y := by
+  have hbind : bindArgs useTadd64Func.args [.i64 x, .i64 y] =
+      some [("x", .i64 x), ("y", .i64 y)] := rfl
+  have hbody : useTadd64Func.body =
+      .seq (.callRet "s" "_Z4taddIlET_S0_S0_" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useTadd64Caller_x x y
+  have hy := envLookup_useTadd64Caller_y x y
+  have hfind : findFunc [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+      "_Z4taddIlET_S0_S0_" =
+      some { add64Func with name := "_Z4taddIlET_S0_S0_" } :=
+    findFunc_hit { add64Func with name := "_Z4taddIlET_S0_S0_" } []
+  have hargs : lookupArgs [("x", .i64 x), ("y", .i64 y)] ["x", "y"] =
+      some [.i64 x, .i64 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := evalFuncFuel_add64At F "_Z4taddIlET_S0_S0_" x y
+  cases hadd : add64Fwd x y with
+  | error e =>
+    have hcall' : evalFuncFuel F { add64Func with name := "_Z4taddIlET_S0_S0_" }
+        [.i64 x, .i64 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_err
+      [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+      F "s" "_Z4taddIlET_S0_S0_" ["x", "y"] [("x", .i64 x), ("y", .i64 y)]
+      [.i64 x, .i64 y] { add64Func with name := "_Z4taddIlET_S0_S0_" } e
+      hargs hfind hcall'
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstep]
+    simp [useTadd64Fwd, hadd]
+  | ok v =>
+    have hcall' : evalFuncFuel F { add64Func with name := "_Z4taddIlET_S0_S0_" }
+        [.i64 x, .i64 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_ok
+      [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+      F "s" "_Z4taddIlET_S0_S0_" ["x", "y"] [("x", .i64 x), ("y", .i64 y)]
+      [.i64 x, .i64 y] { add64Func with name := "_Z4taddIlET_S0_S0_" } v
+      hargs hfind hcall'
+    have hret : evalProgStmt
+        [{ add64Func with name := "_Z4taddIlET_S0_S0_" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i64 x), ("y", .i64 y)] "s" v) =
+        .ok (envExtend [("x", .i64 x), ("y", .i64 y)] "s" v,
+          .returned v) :=
+      evalProgStmt_return [{ add64Func with name := "_Z4taddIlET_S0_S0_" }]
+        F (.var "s") _
+        v (evalExpr_var_hit _ _ _ (envExtend_hit _ _ _))
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep, hret]
+    simp [useTadd64Fwd, hadd]
