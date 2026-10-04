@@ -20,6 +20,7 @@ import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Move
 import Circe.Emit.Array
+import Circe.Emit.Optional
 import Circe.Emit.Box
 import Circe.Emit.Flow
 
@@ -333,6 +334,39 @@ def matchFrag : Func → Option FragKind
         some .arraySum
       else none
     | _ => none
+  | ⟨_, [⟨"b", .struct "std::optional<int>" [.i 32, .bool],
+         .sharedBorrow⟩], _,
+      .return_ (.optHas "b")⟩ =>
+    some .optHas
+  | ⟨_, [⟨"o", .struct "std::optional<int>" [.i 32, .bool],
+         .sharedBorrow⟩], _,
+      .return_ (.optHas "o")⟩ =>
+    some .optHasValue
+  | ⟨_, [⟨"p", .struct "std::optional<int>" [.i 32, .bool],
+         .sharedBorrow⟩], _,
+      .return_ (.optGet "p")⟩ =>
+    some .optGet
+  | ⟨_, [⟨"o", .struct "std::optional<int>" [.i 32, .bool],
+         .sharedBorrow⟩], _,
+      .return_ (.optGet "o")⟩ =>
+    some .optDerefOp
+  | ⟨_, [⟨"o", .struct "std::optional<int>" [.i 32, .bool],
+         .sharedBorrow⟩], _, body⟩ =>
+    -- Two prog shapes share the `[o]` params: matched on the body
+    -- (nested `.seq`/`.if_` patterns inside `⟨⟩` hit the parser
+    -- quirk, cf. the `arraySum` note above).
+    match body with
+    | .seq (.callRet "r"
+        "_ZNKSt22_Optional_payload_baseIiE6_M_getEv" ["o"])
+        (.return_ (.var "r")) =>
+      some .optImplGet
+    | .seq (.callRet "h" "_ZNKSt8optionalIiE9has_valueEv" ["o"])
+        (.if_ (.var "h")
+          (.seq (.callRet "v" "_ZNKRSt8optionalIiEdeEv" ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 neg1)))) =>
+      if neg1 == (-1 : BitVec 32) then some .optDeref else none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -371,3 +405,9 @@ theorem matchFrag_cls : matchFrag clsFunc = some .cls := rfl
 theorem matchFrag_arrayRef : matchFrag arrayRefFunc = some .arrayRef := rfl
 theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
 theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl
+theorem matchFrag_optHas : matchFrag optHasFunc = some .optHas := rfl
+theorem matchFrag_optHasValue : matchFrag optHasValueFunc = some .optHasValue := rfl
+theorem matchFrag_optGet : matchFrag optGetFunc = some .optGet := rfl
+theorem matchFrag_optDerefOp : matchFrag optDerefOpFunc = some .optDerefOp := rfl
+theorem matchFrag_optImplGet : matchFrag optImplGetFunc = some .optImplGet := rfl
+theorem matchFrag_optDeref : matchFrag optDerefFunc = some .optDeref := rfl

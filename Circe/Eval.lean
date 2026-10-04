@@ -28,7 +28,9 @@ import Circe.CoreIR
     lists — never pointers (flat-value fragment; uniquely-owned heap
     blocks are `vecVal` values with an affine token, Phase 7).
     64-bit arrays/loops are future work (S3b admits loop-free 64-bit
-    adds only); a `u64` index into a 32-bit array is `AssertFail`. -/
+    adds only); a `u64` index into a 32-bit array is `AssertFail`.
+    `std::optional<int32_t>` is `optVal` (the engaged word or
+    `none`; N4d-ii). -/
 inductive Value : Type
   | i32 : BitVec 32 → Value
   | u32 : BitVec 32 → Value
@@ -41,6 +43,7 @@ inductive Value : Type
   | vecVal64 : Vec64 → Value
   | boxVal : Box32 → Value
   | structVal : String → List (String × BitVec 32) → Value
+  | optVal : Option (BitVec 32) → Value
   deriving DecidableEq, Repr
 
 /-- Evaluation environment: variables to values. Loan/borrow bookkeeping
@@ -288,6 +291,11 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
     - `idxi a i` looks up `arr32` array `a` at `u64` index `i` and
       delivers the word as `i32` (`cir.get_element` over a static
       `i32` array, N4d; `OOB` off the end, mirroring `idx`);
+    - `optHas o` reads the engaged bit of `optVal` `o` (`.b`
+      of `isSome`; non-`optVal` is `AssertFail`);
+    - `optGet o` reads the payload word of engaged `optVal` `o`
+      (disengaged is `AssertFail`: the `unreachable` assert made
+      loud; non-`optVal` is `AssertFail`);
     - `fget o f` projects field `f` from `structVal` `o` (missing
       field / non-struct is `AssertFail`);
     - `pmk x y` builds the S2 `Point` `structVal` from two `i32`s;
@@ -358,6 +366,19 @@ def evalExpr : CExpr → Env → Result Value
         | some x => .ok (.i32 x)
         | none => .error .OOB
       | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .optHas o, ρ =>
+    match envLookup ρ o with
+    | none => .error .Uninit
+    | some (.optVal v) => .ok (.b v.isSome)
+    | some _ => .error .AssertFail
+  | .optGet o, ρ =>
+    match envLookup ρ o with
+    | none => .error .Uninit
+    | some (.optVal v) =>
+      match v with
+      | some x => .ok (.i32 x)
+      | none => .error .AssertFail
     | some _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
@@ -595,6 +616,43 @@ theorem evalExpr_idxi_notarray (arr : String) (v : BitVec 32) (i : BitVec 64)
     (harr : envLookup ρ arr = some (.i32 v)) :
     evalExpr (.idxi arr (.lit (.u64 i))) ρ = .error .AssertFail := by
   simp [evalExpr, harr]
+
+/-- Engaged `optVal` reports `true`. -/
+theorem evalExpr_optHas_some (o : String) (ρ : Env) (x : BitVec 32)
+    (ho : envLookup ρ o = some (.optVal (some x))) :
+    evalExpr (.optHas o) ρ = .ok (.b true) := by
+  simp [evalExpr, ho]
+
+/-- Disengaged `optVal` reports `false`. -/
+theorem evalExpr_optHas_none (o : String) (ρ : Env)
+    (ho : envLookup ρ o = some (.optVal none)) :
+    evalExpr (.optHas o) ρ = .ok (.b false) := by
+  simp [evalExpr, ho]
+
+/-- `optHas` of a non-optional is rejected, never silently modeled. -/
+theorem evalExpr_optHas_notval (o : String) (v : BitVec 32) (ρ : Env)
+    (ho : envLookup ρ o = some (.i32 v)) :
+    evalExpr (.optHas o) ρ = .error .AssertFail := by
+  simp [evalExpr, ho]
+
+/-- Engaged `optVal` delivers the payload word. -/
+theorem evalExpr_optGet_some (o : String) (ρ : Env) (x : BitVec 32)
+    (ho : envLookup ρ o = some (.optVal (some x))) :
+    evalExpr (.optGet o) ρ = .ok (.i32 x) := by
+  simp [evalExpr, ho]
+
+/-- Disengaged `optVal` is `AssertFail` (the `unreachable` assert
+    made loud). -/
+theorem evalExpr_optGet_none (o : String) (ρ : Env)
+    (ho : envLookup ρ o = some (.optVal none)) :
+    evalExpr (.optGet o) ρ = .error .AssertFail := by
+  simp [evalExpr, ho]
+
+/-- `optGet` of a non-optional is rejected, never silently modeled. -/
+theorem evalExpr_optGet_notval (o : String) (v : BitVec 32) (ρ : Env)
+    (ho : envLookup ρ o = some (.i32 v)) :
+    evalExpr (.optGet o) ρ = .error .AssertFail := by
+  simp [evalExpr, ho]
 
 /-- `vnew` on a `u32` size allocates a zeroed live block. -/
 theorem evalExpr_vnew_lit (n : BitVec 32) (ρ : Env) :

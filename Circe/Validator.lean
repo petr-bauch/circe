@@ -556,6 +556,252 @@ def arrayLeafCallees : List String :=
 def callsArrayWrongShape (raw : RawFunc) : Bool :=
   arrayLeafCallees.any (callsFunc raw.text)
 
+/-! ## N4d-ii: `std::optional<int32_t>` guarded-deref shapes -/
+
+/-- The `std::optional<int>` object type (CIRGen's
+    `!rec_std3A3Aoptional3Cint3E` alias; the `int` payload is part of
+    the admitted monomorph — each instantiation is its own shape, the
+    N4c monomorphization precedent). -/
+def isStdOptionalIntType (t : String) : Bool :=
+  containsSubstr t "rec_std3A3Aoptional3Cint3E"
+
+/-- The `_Optional_base_impl<int, …>` inner type (the `_M_is_engaged`
+    / impl `_M_get` receiver). -/
+def isOptBaseImplType (t : String) : Bool :=
+  containsSubstr t "_Optional_base_impl"
+
+/-- The `_Optional_payload_base<int>` inner type (the payload
+    `_M_get` receiver). -/
+def isOptPayloadBaseType (t : String) : Bool :=
+  containsSubstr t "_Optional_payload_base"
+
+/-- The `_M_is_engaged` engaged-bit leaf: single `const&` to the
+    base-impl object with the single-reference triple, `bool` return,
+    the `derived [0]` + `get_member [0]` (`_M_payload`) + `base [0]`
+    + `get_member [1]` (`_M_engaged`) projection chain with the bit
+    load, no calls, no control flow. -/
+def isOptHasShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with
+     | some inner => isOptBaseImplType inner
+     | none => false) &&
+    isBoolType raw.ret &&
+    opCount raw.text "cir.get_member" == 2 &&
+    containsSubstr raw.text "_M_engaged" &&
+    containsSubstr raw.text "_M_payload" &&
+    opCount raw.text "cir.derived_class_addr" == 1 &&
+    opCount raw.text "cir.base_class_addr" == 1 &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The payload `_M_get` leaf: single `const&` to the payload-base
+    object with the single-reference triple, pointer-to-`i32` return,
+    the `get_member [0]` (`_M_payload`) + `get_member [1]`
+    (`_M_value`) projection pair (no class-addr steps: the receiver
+    already is the payload base), no calls, no control flow. -/
+def isOptGetShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with
+     | some inner => isOptPayloadBaseType inner
+     | none => false) &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    opCount raw.text "cir.get_member" == 2 &&
+    containsSubstr raw.text "_M_payload" &&
+    containsSubstr raw.text "_M_value" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `has_value` single-delegation entry: single `const&` to the
+    `std::optional<int>` object with the single-reference triple,
+    `bool` return, exactly one call site to the `_M_is_engaged` leaf
+    (the `base_class_addr [0]` projection is fused into the `optHas`
+    read downstream, cf. `optHasValueFunc`), no local projections. -/
+def isOptHasValueShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType o.ctype && o.singleRef && isStdOptionalIntType o.ctype &&
+    isBoolType raw.ret &&
+    callsFunc raw.text optHasName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.base_class_addr" == 1 &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The impl `_M_get` delegation entry: single `const&` to the
+    base-impl object with the single-reference triple,
+    pointer-to-`i32` return, exactly two call sites — the live
+    payload-`_M_get` call plus the `_M_is_engaged` call in the dead
+    assert arm — with the dead disabled-`__glibcxx_assert` skeleton
+    pinned exactly (single `cir.ternary` over three `#false` consts,
+    one-sided `cir.if`, `cir.unreachable`, `cir.do`/`cir.condition`;
+    a live-assert variant rejects loudly). The dead scope is dropped
+    downstream (cf. `optImplGetFunc`). -/
+def isOptImplGetShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType o.ctype && o.singleRef &&
+    (match ptrInner o.ctype with
+     | some inner => isOptBaseImplType inner
+     | none => false) &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    callsFunc raw.text optGetName &&
+    callsFunc raw.text optHasName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    containsSubstr raw.text "cir.unreachable" &&
+    containsSubstr raw.text "cir.do" &&
+    containsSubstr raw.text "cir.condition" &&
+    opCount raw.text "cir.const" == 3 &&
+    containsSubstr raw.text "cir.const #false" &&
+    !containsSubstr raw.text "cir.const #cir.int" &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_payload" &&
+    opCount raw.text "cir.derived_class_addr" == 1 &&
+    opCount raw.text "cir.base_class_addr" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `operator*` fused leaf: single `const&` to the
+    `std::optional<int>` object with the single-reference triple,
+    pointer-to-`i32` return, exactly one call site to impl `_M_get`
+    (the `base_class_addr [0]` projection, the impl→payload edge,
+    and the caller-side load are all fused into the `optGet` read
+    downstream, cf. `optDerefOpFunc`), no local projections. -/
+def isOptDerefOpShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType o.ctype && o.singleRef && isStdOptionalIntType o.ctype &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    callsFunc raw.text optImplGetName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.base_class_addr" == 1 &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `opt_deref` guarded-deref entry: single `const&` to the
+    `std::optional<int>` object with the single-reference triple,
+    `i32` return, exactly two call sites (`has_value` for the guard,
+    `operator*` for the engaged word), the one-sided `cir.if` with
+    the deref inside, two `cir.const` (the live `-1` sentinel plus
+    the stray dead `1`, dropped downstream), no projections of its
+    own. -/
+def isOptDerefShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType o.ctype && o.singleRef && isStdOptionalIntType o.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text optHasValueName &&
+    callsFunc raw.text optDerefOpName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.const" == 2 &&
+    containsSubstr raw.text "#cir.int<-1>" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Known `std::optional<int32_t>` leaf callees (mangled): the
+    `_M_is_engaged` engaged-bit leaf, the payload `_M_get` leaf, the
+    impl `_M_get` delegation entry, the `has_value` delegation entry,
+    and the fused `operator*` leaf. Entry gates admit calls into the
+    (name, arity, site-count) pairs named in `validate` below; this
+    registry names every known optional leaf for the wrong-shape
+    rejection. -/
+def optLeafCallees : List String :=
+  [optHasName, optGetName, optImplGetName, optHasValueName, optDerefOpName]
+
+/-- Calls a known `std::optional` leaf but not with an admitted
+    (name, arity, site-count) shape: dedicated rejection naming the
+    admitted shapes. -/
+def callsOptWrongShape (raw : RawFunc) : Bool :=
+  optLeafCallees.any (callsFunc raw.text)
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -1613,6 +1859,21 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsArrayWrongShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls a known `std::array` leaf but not with an admitted (name, arity, site-count) shape: admitted callers are the single-site `operator[]` delegation into `{arrayRefName}` (`array_at` shape) and the 4-site `array_sum` entry into `{arrayAtName}` (`array_sum` shape) only (known array leaves `{arrayRefName}` / `{arrayAtName}`; see docs/SUBSET.md)"
+      else if isOptHasShape raw then
+        .ok { optHasFunc with name := raw.name }
+      else if isOptGetShape raw then
+        .ok { optGetFunc with name := raw.name }
+      else if isOptHasValueShape raw then
+        .ok { optHasValueFunc with name := raw.name }
+      else if isOptImplGetShape raw then
+        .ok { optImplGetFunc with name := raw.name }
+      else if isOptDerefOpShape raw then
+        .ok { optDerefOpFunc with name := raw.name }
+      else if isOptDerefShape raw then
+        .ok { optDerefFunc with name := raw.name }
+      else if callsOptWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known `std::optional` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_is_engaged` engaged-bit leaf (`opt_has`), the payload `_M_get` leaf (`opt_get`), the single-site `has_value` delegation (`opt_has_value`), the impl `_M_get` delegation with the dead assert skeleton (`opt_impl_get`), the single-site `operator*` fused leaf (`opt_deref_op`), and the 2-site `opt_deref` guarded entry (`opt_deref`) only (known optional leaves `{optHasName}` / `{optGetName}` / `{optImplGetName}` / `{optHasValueName}` / `{optDerefOpName}`; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then

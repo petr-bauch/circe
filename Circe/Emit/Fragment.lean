@@ -38,7 +38,13 @@ import Circe.Eval
     resolving to a mangled instantiation leaf), and in N4d-i with
     `std::array<int, 4>` reads (`arrayRef` = the `_S_ref`
     unchecked-index leaf, `arrayAt` = the `operator[]`
-    single-delegation entry, `arraySum` = the 4-call entry). -/
+    single-delegation entry, `arraySum` = the 4-call entry), and in
+    N4d-ii with `std::optional<int32_t>` guarded dereference
+    (`optHas` = the `_M_is_engaged` engaged-bit leaf, `optGet` =
+    the payload `_M_get` leaf, `optHasValue` = the `has_value`
+    single-delegation entry, `optImplGet` = the impl `_M_get`
+    delegation entry, `optDerefOp` = the fused `operator*` leaf,
+    `optDeref` = the 2-call guarded-deref entry). -/
 inductive FragKind : Type
   | add
   | add3
@@ -76,6 +82,12 @@ inductive FragKind : Type
   | arrayRef
   | arrayAt
   | arraySum
+  | optHas
+  | optGet
+  | optHasValue
+  | optImplGet
+  | optDerefOp
+  | optDeref
   deriving DecidableEq, Repr
 
 

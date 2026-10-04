@@ -23,6 +23,10 @@ verbatim.
 | `arrayRef_correct_hit/oob` (N4d-i) | leaf reads the word at a live index, `OOB` off the end | `arrayRefFwd l n` (index read) |
 | `arrayAt_correct` (N4d-i) | entry forward = `_S_ref` body (call edge fused, resolution is identity at spec level) | `arrayAtFwd` / `arrayRefFwd` |
 | `arraySum_correct_ok/err_a/err_b/err_c` (N4d-i) | threaded three-add: ok needs all three `checkedAddI32` certs, each-site error propagates | `arraySumFwd a b c d` (three sequenced binds) |
+| `optHas_correct` (N4d-ii) | leaf reports the engaged bit | `optHasFwd v` (bit read) |
+| `optHasValue_correct` / `optDerefOp_correct` (N4d-ii) | entry forwards = leaf bodies (call edges fused, resolution is identity at spec level) | `optHasValueFwd` / `optDerefOpFwd` |
+| `optGet_correct_some/none` (N4d-ii) | word on engaged, `AssertFail` on disengaged (unreachable made loud) | `optGetFwd v` (payload match) |
+| `optDeref_correct_some/none` (N4d-ii) | word on engaged, `-1` sentinel on disengaged | `optDerefFwd v` (guarded match) |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`

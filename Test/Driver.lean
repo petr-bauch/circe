@@ -20,6 +20,7 @@ import DiffFlow
 import DiffMethod
 import DiffMove
 import DiffNorestrict
+import DiffOptional
 import DiffOverload
 import DiffPhase3
 import DiffPhase4
@@ -40,6 +41,7 @@ import GoldenFreeDiscipline
 import GoldenM2Setup
 import GoldenMethod
 import GoldenMove
+import GoldenOptional
 import GoldenOverload
 import GoldenPhase4
 import GoldenPhase6
@@ -144,6 +146,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/scope_early.cpp", "tests/diff/driver_scope_early.cpp"], bin "circe_scope_early_native"),
    ("c++", ["tests/cpp/tadd.cpp", "tests/diff/driver_tadd.cpp"], bin "circe_tadd_native"),
    ("c++", ["tests/cpp/array_sum.cpp", "tests/diff/driver_array_sum.cpp"], bin "circe_array_sum_native"),
+   ("c++", ["tests/cpp/opt_deref.cpp", "tests/diff/driver_opt_deref.cpp"], bin "circe_opt_deref_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
@@ -189,7 +192,13 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/UseTadd64.lean", "out/UseTadd64.lean"),
    ("tests/golden/ArrayRef.lean", "out/ArrayRef.lean"),
    ("tests/golden/ArrayAt.lean", "out/ArrayAt.lean"),
-   ("tests/golden/ArraySum.lean", "out/ArraySum.lean")]
+   ("tests/golden/ArraySum.lean", "out/ArraySum.lean"),
+   ("tests/golden/OptHas.lean", "out/OptHas.lean"),
+   ("tests/golden/OptHasValue.lean", "out/OptHasValue.lean"),
+   ("tests/golden/OptGet.lean", "out/OptGet.lean"),
+   ("tests/golden/OptImplGet.lean", "out/OptImplGet.lean"),
+   ("tests/golden/OptDerefOp.lean", "out/OptDerefOp.lean"),
+   ("tests/golden/OptDeref.lean", "out/OptDeref.lean")]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -225,7 +234,13 @@ def emittedTypechecks : List String :=
    "out/UseTadd64.lean", "out/UseTadd64_Spec.lean",
    "out/ArrayRef.lean", "out/ArrayRef_Spec.lean",
    "out/ArrayAt.lean", "out/ArrayAt_Spec.lean",
-   "out/ArraySum.lean", "out/ArraySum_Spec.lean"]
+   "out/ArraySum.lean", "out/ArraySum_Spec.lean",
+   "out/OptHas.lean", "out/OptHas_Spec.lean",
+   "out/OptHasValue.lean", "out/OptHasValue_Spec.lean",
+   "out/OptGet.lean", "out/OptGet_Spec.lean",
+   "out/OptImplGet.lean", "out/OptImplGet_Spec.lean",
+   "out/OptDerefOp.lean", "out/OptDerefOp_Spec.lean",
+   "out/OptDeref.lean", "out/OptDeref_Spec.lean"]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -489,7 +504,53 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Mem.lean", "theorem memEvalExpr_idxi_hit"),
      ("Circe/Mem.lean", "theorem memEvalExpr_idxi_oob"),
      ("out/ArraySum.lean", "_Z9array_sumRKSt5arrayIiLm4EE_fwd"),
-     ("tests/golden/ArrayRef.lean", "_S_refERA4_Kim_fwd")])]
+     ("tests/golden/ArrayRef.lean", "_S_refERA4_Kim_fwd")]),
+   ("n4d-optional",
+    [("Circe/Validator.lean", "def isOptHasShape"),
+     ("Circe/Validator.lean", "def isOptGetShape"),
+     ("Circe/Validator.lean", "def isOptHasValueShape"),
+     ("Circe/Validator.lean", "def isOptImplGetShape"),
+     ("Circe/Validator.lean", "def isOptDerefOpShape"),
+     ("Circe/Validator.lean", "def isOptDerefShape"),
+     ("Circe/Validator.lean", "def optLeafCallees"),
+     ("Circe/Validator.lean", "calls a known `std::optional` leaf"),
+     ("Circe/Emit/Match.lean", "some .optHas"),
+     ("Circe/Emit/Match.lean", "some .optHasValue"),
+     ("Circe/Emit/Match.lean", "some .optGet"),
+     ("Circe/Emit/Match.lean", "some .optImplGet"),
+     ("Circe/Emit/Match.lean", "some .optDerefOp"),
+     ("Circe/Emit/Match.lean", "some .optDeref"),
+     ("Circe/Emit/Optional.lean", "theorem evalFuncFuel_optHas"),
+     ("Circe/Emit/Optional.lean", "theorem evalFuncFuel_optHasValue"),
+     ("Circe/Emit/Optional.lean", "theorem evalFuncFuel_optGet"),
+     ("Circe/Emit/Optional.lean", "theorem evalFuncFuel_optDerefOp"),
+     ("Circe/Emit/Optional.lean", "theorem evalProgFunc_optImplGet"),
+     ("Circe/Emit/Optional.lean", "theorem evalProgFunc_optDeref"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_optHas_some"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_optHas_none"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_optGet_some"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_optGet_none"),
+     ("Circe/Transfer.lean", "theorem memEvalProgFunc_optImplGet"),
+     ("Circe/Transfer.lean", "theorem memEvalProgFunc_optDeref"),
+     ("Circe/Transfer.lean", "theorem memTransferProg_optImplGet"),
+     ("Circe/Transfer.lean", "theorem memTransferProg_optDeref"),
+     ("Circe/Derived.lean", "theorem bindMemArgs_optVal"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_optHas"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_optDeref"),
+     ("Circe/Specs.lean", "theorem optHas_correct"),
+     ("Circe/Specs.lean", "theorem optHasValue_correct"),
+     ("Circe/Specs.lean", "theorem optGet_correct_some"),
+     ("Circe/Specs.lean", "theorem optGet_correct_none"),
+     ("Circe/Specs.lean", "theorem optDerefOp_correct"),
+     ("Circe/Specs.lean", "theorem optDeref_correct_some"),
+     ("Circe/Specs.lean", "theorem optDeref_correct_none"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_optHas_hit"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_optGet_hit"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_optGet_oob"),
+     ("Circe/Eval.lean", "theorem evalExpr_optHas_some"),
+     ("Circe/Eval.lean", "theorem evalExpr_optGet_none"),
+     ("out/OptDeref.lean", "_Z9opt_derefRKSt8optionalIiE_fwd"),
+     ("tests/golden/OptHas.lean", "_M_is_engagedEv_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -539,8 +600,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 42 then
-    throw (IO.userError s!"expected 42 spec stubs, found {stubs.length}")
+  if stubs.length != 48 then
+    throw (IO.userError s!"expected 48 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -575,6 +636,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-move", DiffMove.main [bin "circe_move_int_native", bin "circe_move_acc_native", bin "circe_scope_early_native", trials]),
    ("diff-tadd", DiffTadd.main [bin "circe_tadd_native", trials]),
    ("diff-array", DiffArray.main [bin "circe_array_sum_native", trials]),
+   ("diff-optional", DiffOptional.main [bin "circe_opt_deref_native", trials]),
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials])]
 
 def checkSuites : List Job :=
@@ -597,6 +659,7 @@ def checkSuites : List Job :=
    ("golden-move", GoldenMove.main),
    ("golden-tadd", GoldenTadd.main),
    ("golden-array", GoldenArray.main),
+   ("golden-optional", GoldenOptional.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -606,12 +669,12 @@ def checkSuites : List Job :=
     `tests/lean` runner without registration fails loudly here). -/
 def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffBox", "DiffCalls", "DiffFlow",
-   "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffStruct",
+   "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc",
    "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
-   "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOverload", "GoldenPhase4",
+   "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
    "GoldenWidth", "ScopeReport"]

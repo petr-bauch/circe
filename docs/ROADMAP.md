@@ -12,8 +12,9 @@ M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
 M3d; N2a (read-only sharing discipline, model-side), N2b
 (rejection catalog), and N2c (`restrict`-recovery) are done — N2
 (viability past noalias) is complete; N3 (spec + tactic support) is
-done — N4d-i (`std::array` reads) is done; the active frontier
-is N4d-ii (`optional` / `string_view` / `vector`).
+done — N4d-i (`std::array` reads) is done; N4d-ii (`optional`
+guarded deref) is done; the active frontier
+is N4d-iii (`string_view` / `span`) / N4d-iv (`vector`).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -422,17 +423,24 @@ is not value-faithful):
   `_S_ref` unchecked-index leaf + `operator[]` single-delegation
   entry + 4-call `array_sum` entry with one fused edge;
   `idxi` u64-index read; gate + emit + transfer + golden/diff/spec
-  green). N4d-ii `std::optional`, N4d-iii `std::string_view` /
-  `std::span` (borrow + length, the `sharedBorrow` story), N4d-iv
-  `std::vector` (reallocation moves values) remain: each needs a
-  probed lowering + a token/value model before admission. Probes so
-  far: `optional::value` lowers to `cir.trap` (throw path),
-  `operator*` keeps `cir.ternary` + `cir.unreachable` + assert
-  downcasts; `string_view` range-for is `cir.scope` + `cir.for` with
+  green). N4d-ii `std::optional` guarded deref — DONE (2026-10-04:
+  `_M_is_engaged` bit leaf + payload `_M_get` leaf + `has_value` /
+  impl `_M_get` delegation entries + fused `operator*` leaf +
+  2-call `opt_deref` entry with the `-1` sentinel; `optVal` +
+  `optHas`/`optGet` with the disengaged `AssertFail`; the dead
+  disabled-`__glibcxx_assert` skeleton dropped and gate-pinned;
+  gate + emit + transfer + golden/diff/spec green).
+  N4d-iii `std::string_view` / `std::span` (borrow + length, the
+  `sharedBorrow` story), N4d-iv `std::vector` (reallocation moves
+  values) remain: each needs a probed lowering + a token/value
+  model before admission. Probes so far: `optional::value` lowers
+  to `cir.trap` (throw path, still deferred);
+  `string_view` range-for is `cir.scope` + `cir.for` with
   `begin`/`end` as `get_member` projections; `vector` is 2188-line
   CIR over 60+ defs (allocators, `memmove`, throws); no
   `std::span` pre-C++20 on the pinned flags. Deferral pins live in
-  `tests/lean/GoldenArray.lean`.
+  `tests/lean/GoldenArray.lean` (`optional` graduated to
+  `tests/lean/GoldenOptional.lean`).
 
 Non-goals (platform-level): inheritance/vtables, exceptions, RTTI,
 concurrency, allocators, iterator invalidation reasoning beyond
@@ -444,8 +452,9 @@ N1 (close the trust story) → N2a/N2b (wider, clearer viability) →
 N3 (specs + cheaper proofs + gallery, done 2026-10-04) → N4a
 (overloads + namespaces, done 2026-10-04) → N4b (move + RAII, done
 2026-10-04) → N4c (templates, done 2026-10-04) → N4d-i
-(`std::array` reads, done 2026-10-04) → N4d-ii+ (`optional` /
-`string_view` / `vector`). N2c opportunistically wherever a
+(`std::array` reads, done 2026-10-04) → N4d-ii (`optional`
+guarded deref, done 2026-10-04) → N4d-iii+ (`string_view` /
+`span` / `vector`). N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)

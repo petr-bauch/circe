@@ -496,6 +496,30 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | _, _ => .error .AssertFail
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
+  | .optHas o, ρ, m, π =>
+    match layoutLookup π o with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memLoad m a t 1, envLookup ρ o with
+      | .ok ew, some (.optVal v) =>
+        if ew == (if v.isSome then 1 else 0 : BitVec 32) then
+          .ok (.b v.isSome)
+        else .error .AssertFail
+      | .error e, _ => .error e
+      | _, _ => .error .AssertFail
+  | .optGet o, ρ, m, π =>
+    match layoutLookup π o with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memLoad m a t 0, memLoad m a t 1, envLookup ρ o with
+      | .ok w, .ok ew, some (.optVal (some x)) =>
+        if w == x then
+          if ew == 1 then .ok (.i32 x) else .error .AssertFail
+        else .error .AssertFail
+      | .ok _, .ok _, some (.optVal none) => .error .AssertFail
+      | .error e, _, _ => .error e
+      | _, .error e, _ => .error e
+      | _, _, _ => .error .AssertFail
   | .vnew se, ρ, m, π =>
     match memEvalExpr se ρ m π with
     | .error e => .error e
@@ -640,6 +664,46 @@ theorem memEvalExpr_idxi_oob (arr : String) (ie : CExpr) (ρ : Env)
     (hval : l[i.toNat]? = none) :
     memEvalExpr (.idxi arr ie) ρ m π = evalExpr (.idxi arr ie) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval]
+
+/-- `optHas` agreement: the engaged-bit word in memory matches the
+    `optVal` flag, so both sides report the same boolean (mirrors
+    `evalExpr_optHas_some`/`evalExpr_optHas_none`; the hypothesis
+    is stated per case via the `ew` word to avoid case-splitting on
+    `v` inside the proof). -/
+theorem memEvalExpr_optHas_hit (o : String) (ρ : Env)
+    (m : Mem) (π : Layout) (v : Option (BitVec 32)) (a : Addr) (t : Nat)
+    (ew : BitVec 32)
+    (hlay : layoutLookup π o = some (a, t))
+    (ho : envLookup ρ o = some (.optVal v))
+    (hmem : memLoad m a t 1 = .ok ew)
+    (hval : ew = (if v.isSome then 1 else 0 : BitVec 32)) :
+    memEvalExpr (.optHas o) ρ m π = evalExpr (.optHas o) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, ho, hmem, hval, beq_self_eq_true,
+    ↓reduceIte]
+
+/-- `optGet` agreement on an engaged optional: both memory words
+    (payload + engaged bit) match the `optVal` word, so both sides
+    deliver it. -/
+theorem memEvalExpr_optGet_hit (o : String) (ρ : Env)
+    (m : Mem) (π : Layout) (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π o = some (a, t))
+    (ho : envLookup ρ o = some (.optVal (some x)))
+    (hmem0 : memLoad m a t 0 = .ok x)
+    (hmem1 : memLoad m a t 1 = .ok 1) :
+    memEvalExpr (.optGet o) ρ m π = evalExpr (.optGet o) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, ho, hmem0, hmem1, beq_self_eq_true,
+    ↓reduceIte]
+
+/-- `optGet` agreement on a disengaged optional: both sides fail
+    `AssertFail` loudly (the `unreachable` assert made loud). -/
+theorem memEvalExpr_optGet_oob (o : String) (ρ : Env)
+    (m : Mem) (π : Layout) (w ew : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π o = some (a, t))
+    (ho : envLookup ρ o = some (.optVal none))
+    (hmem0 : memLoad m a t 0 = .ok w)
+    (hmem1 : memLoad m a t 1 = .ok ew) :
+    memEvalExpr (.optGet o) ρ m π = evalExpr (.optGet o) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, ho, hmem0, hmem1]
 
 /-- `vget` agreement under consistency (the `vec_alloc` loop shape):
     same tag/liveness discipline as `idx`, cross-checked against
@@ -922,6 +986,13 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
           ⟨m''.next, m''.blocks,
             (a, ⟨a, !b.freed, b.val⟩) :: m''.blocks64⟩,
           (p.name, a, a) :: π)
+      | .optVal v =>
+        let words : List (BitVec 32) :=
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]
+        let (m'', a) := memAllocData m' words
+        some (((p.name, .optVal v) :: ρ), m'', (p.name, a, a) :: π)
       | _ => some (((p.name, v) :: ρ), m', π)
   | _, _, _ => none
 

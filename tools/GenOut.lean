@@ -62,6 +62,12 @@ def main : IO Unit := do
   let arrayRef ← emitOrDie arrayRefFunc
   let arrayAt ← emitOrDie arrayAtFunc
   let arraySum ← emitOrDie arraySumFunc
+  let optHas ← emitOrDie optHasFunc
+  let optHasValue ← emitOrDie optHasValueFunc
+  let optGet ← emitOrDie optGetFunc
+  let optImplGet ← emitOrDie optImplGetFunc
+  let optDerefOp ← emitOrDie optDerefOpFunc
+  let optDeref ← emitOrDie optDerefFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -104,6 +110,12 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ArrayRef.lean" (emitFileText (.ok arrayRef))
   IO.FS.writeFile "out/ArrayAt.lean" (emitFileText (.ok arrayAt))
   IO.FS.writeFile "out/ArraySum.lean" (emitFileText (.ok arraySum))
+  IO.FS.writeFile "out/OptHas.lean" (emitFileText (.ok optHas))
+  IO.FS.writeFile "out/OptHasValue.lean" (emitFileText (.ok optHasValue))
+  IO.FS.writeFile "out/OptGet.lean" (emitFileText (.ok optGet))
+  IO.FS.writeFile "out/OptImplGet.lean" (emitFileText (.ok optImplGet))
+  IO.FS.writeFile "out/OptDerefOp.lean" (emitFileText (.ok optDerefOp))
+  IO.FS.writeFile "out/OptDeref.lean" (emitFileText (.ok optDeref))
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
@@ -146,6 +158,12 @@ def main : IO Unit := do
   let arrayRefSpec ← specOrDie arrayRefFunc
   let arrayAtSpec ← specOrDie arrayAtFunc
   let arraySumSpec ← specOrDie arraySumFunc
+  let optHasSpec ← specOrDie optHasFunc
+  let optHasValueSpec ← specOrDie optHasValueFunc
+  let optGetSpec ← specOrDie optGetFunc
+  let optImplGetSpec ← specOrDie optImplGetFunc
+  let optDerefOpSpec ← specOrDie optDerefOpFunc
+  let optDerefSpec ← specOrDie optDerefFunc
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
@@ -188,6 +206,12 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ArrayRef_Spec.lean" arrayRefSpec
   IO.FS.writeFile "out/ArrayAt_Spec.lean" arrayAtSpec
   IO.FS.writeFile "out/ArraySum_Spec.lean" arraySumSpec
+  IO.FS.writeFile "out/OptHas_Spec.lean" optHasSpec
+  IO.FS.writeFile "out/OptHasValue_Spec.lean" optHasValueSpec
+  IO.FS.writeFile "out/OptGet_Spec.lean" optGetSpec
+  IO.FS.writeFile "out/OptImplGet_Spec.lean" optImplGetSpec
+  IO.FS.writeFile "out/OptDerefOp_Spec.lean" optDerefOpSpec
+  IO.FS.writeFile "out/OptDeref_Spec.lean" optDerefSpec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -243,4 +267,4 @@ def main : IO Unit := do
     throw (IO.userError "arrayAt must not have a backward definition")
   if arraySum.backward.isSome then
     throw (IO.userError "arraySum must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean + 42 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean + 48 *_Spec.lean stubs"

@@ -33,6 +33,7 @@ import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Move
 import Circe.Emit.Array
+import Circe.Emit.Optional
 import Circe.Emit.Box
 
 /-! ## All-scalar shapes: empty footprint -/
@@ -266,6 +267,128 @@ theorem oracleNoalias_arraySum (a b c d : BitVec 32) :
       [.arr32 [a, b, c, d]] emptyMem = _
     exact bindMemArgs_arraySum a b c d
   have hn : LayoutNoAlias [("a", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-! ## N4d-ii `std::optional` footprints: 2-word block (reads only) -/
+
+/-- Optional binding pins the 2-word `[payload, engaged]` block (the
+    engaged-as-`1`/`0` encoding is the bind-time modeling choice:
+    the payload word of a disengaged optional is unobservable when
+    guarded, so it binds `0`). -/
+theorem bindMemArgs_optVal (nm : String) (v : Option (BitVec 32)) :
+    bindMemArgs
+      [{ name := nm, ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem =
+      some ([(nm, .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [(nm, 0, 0)]) := by
+  rfl
+
+/-- `_M_is_engaged` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_optHas (v : Option (BitVec 32)) :
+    oracleNoalias optHasFunc [.optVal v] := by
+  have hb : bindMemArgs optHasFunc.args [.optVal v] emptyMem =
+      some ([("b", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("b", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "b", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "b" v
+  have hn : LayoutNoAlias [("b", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `has_value` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_optHasValue (v : Option (BitVec 32)) :
+    oracleNoalias optHasValueFunc [.optVal v] := by
+  have hb : bindMemArgs optHasValueFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "o", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "o" v
+  have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Payload `_M_get` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_optGet (v : Option (BitVec 32)) :
+    oracleNoalias optGetFunc [.optVal v] := by
+  have hb : bindMemArgs optGetFunc.args [.optVal v] emptyMem =
+      some ([("p", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("p", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "p", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "p" v
+  have hn : LayoutNoAlias [("p", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Impl `_M_get` footprints are a singleton (the `callRet`
+    delegation happens after entry). -/
+theorem oracleNoalias_optImplGet (v : Option (BitVec 32)) :
+    oracleNoalias optImplGetFunc [.optVal v] := by
+  have hb : bindMemArgs optImplGetFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "o", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "o" v
+  have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `operator*` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_optDerefOp (v : Option (BitVec 32)) :
+    oracleNoalias optDerefOpFunc [.optVal v] := by
+  have hb : bindMemArgs optDerefOpFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "o", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "o" v
+  have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `opt_deref` footprints are a singleton (the `callRet` delegations
+    happen after entry). -/
+theorem oracleNoalias_optDeref (v : Option (BitVec 32)) :
+    oracleNoalias optDerefFunc [.optVal v] := by
+  have hb : bindMemArgs optDerefFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "o", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "o" v
+  have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
 /-! ## Loop-free scalar shapes: empty footprint (M3c) -/

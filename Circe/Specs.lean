@@ -473,6 +473,47 @@ theorem arraySum_correct_err_c (a b c d t u : BitVec 32) (e : Panic)
     arraySumFwd a b c d = .error e := by
   simp [arraySumFwd, h1, h2, h, i32_map_error]
 
+/-! ## N4d-ii: `std::optional<int32_t>` guarded deref (one property per new shape) -/
+
+/-- The `_M_is_engaged` leaf reports the engaged bit. -/
+theorem optHas_correct (v : Option (BitVec 32)) :
+    optHasFwd v = .ok (.b v.isSome) :=
+  rfl
+
+/-- `has_value` delegates: the entry is the `_M_is_engaged` body (via
+    `optHasValueFwd_is_call`; the delegation rewrite is the spec, as
+    in `arrayAt_correct`). -/
+theorem optHasValue_correct (v : Option (BitVec 32)) :
+    optHasValueFwd v = optHasFwd v :=
+  optHasValueFwd_is_call v
+
+/-- The payload `_M_get` leaf delivers the word on engaged. -/
+theorem optGet_correct_some (x : BitVec 32) :
+    optGetFwd (some x) = .ok (.i32 x) :=
+  rfl
+
+/-- The payload `_M_get` leaf fails loudly on disengaged (the
+    `unreachable` assert made loud). -/
+theorem optGet_correct_none :
+    optGetFwd none = .error .AssertFail :=
+  rfl
+
+/-- `operator*` delegates: the fused leaf is the payload body (via
+    `optDerefOpFwd_is_call`). -/
+theorem optDerefOp_correct (v : Option (BitVec 32)) :
+    optDerefOpFwd v = optGetFwd v :=
+  optDerefOpFwd_is_call v
+
+/-- The `opt_deref` entry returns the word on engaged. -/
+theorem optDeref_correct_some (x : BitVec 32) :
+    optDerefFwd (some x) = .ok (.i32 x) :=
+  rfl
+
+/-- The `opt_deref` entry returns the `-1` sentinel on disengaged. -/
+theorem optDeref_correct_none :
+    optDerefFwd none = .ok (.i32 (-1 : BitVec 32)) :=
+  rfl
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

@@ -15,8 +15,10 @@
 --    (not 4), bare array pointer without the attr triple (alias
 --    discipline) — the first is generic, the rest hit the dedicated
 --    array wrong-shape rejection (or `alias-reject`).
--- 3. Deferral pins (N4d-ii/iii/iv, still out of subset): `optional`
---    throw lowers to `cir.trap`, `string_view::begin`/`end` return raw
+-- 3. Deferral pins (N4d-iii/iv, still out of subset; N4d-ii
+--    graduated: guarded `operator*` is admitted — see
+--    `GoldenOptional` — while `optional::value` stays out): the
+--    `value` throw lowers to `cir.trap`, `string_view::begin`/`end` return raw
 --    pointers, `vector` needs operator-`new` — each rejects with its
 --    dedicated code, documenting exactly what a future slice must gate.
 --    Mismatch policy: any in-subset divergence is P0; out-of-subset must

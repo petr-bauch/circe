@@ -306,10 +306,64 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `operator[]`, wrong site counts into the entry, bare array
     pointers without the triple) are rejected with dedicated
     messages (`callsArrayWrongShape`, or `alias-reject`).
-    Deferred with pins (`tests/lean/GoldenArray.lean`): `optional`
-    (throw lowers to `cir.trap`), `string_view` (iterators return
-    raw pointers), `vector` (operator-`new` + 60-def allocator
-    bloat), `span` (no `std::span` pre-C++20 on the pinned flags).
+    Deferred with pins (`tests/lean/GoldenArray.lean`): `string_view`
+    (iterators return raw pointers), `vector` (operator-`new` +
+    60-def allocator bloat), `span` (no `std::span` pre-C++20 on the
+    pinned flags). (`optional` graduated to item 20; only the
+    `value` throw path stays deferred.)
+20. `std::optional<int32_t>` guarded deref (N4d-ii): the depth-3
+    call chain (`opt_deref` → `operator*` → impl `_M_get` →
+    payload `_M_get`) functionalizes with fused edges (the N4d-i
+    fusion precedent):
+    `_ZNKSt19_Optional_base_implIiSt14_Optional_baseIiLb1ELb1EEE13_M_is_engagedEv`
+    engaged-bit leaf (single `const&` to the base-impl object with
+    the single-reference triple, `bool` return, the `derived [0]` +
+    `get_member [0]` (`_M_payload`) + `base [0]` + `get_member [1]`
+    (`_M_engaged`) projection chain),
+    `_ZNKSt22_Optional_payload_baseIiE6_M_getEv` leaf (single
+    `const&` to the payload-base object with the single-reference
+    triple, pointer-to-`i32` return, the `get_member [0]`
+    (`_M_payload`) + `get_member [1]` (`_M_value`) projection pair),
+    `_ZNKSt8optionalIiE9has_valueEv` entry (single `const&` to the
+    optional object with the single-reference triple, `bool`
+    return, exactly one call site to the `_M_is_engaged` leaf; the
+    `base_class_addr [0]` projection + call fuse into the `optHas`
+    read),
+    `_ZNKSt19_Optional_base_implIiSt14_Optional_baseIiLb1ELb1EEE6_M_getEv`
+    entry (single `const&` to the base-impl object with the
+    single-reference triple, pointer-to-`i32` return, exactly two
+    call sites — the live payload-`_M_get` call plus the
+    `_M_is_engaged` call in the dead assert arm; the dead
+    disabled-`__glibcxx_assert` skeleton — single `cir.ternary`
+    over a `false` const, one-sided `cir.if`, `cir.unreachable` in
+    a do-while-false scope — is dropped downstream and pinned by
+    the gate, so a live-assert variant rejects loudly),
+    `_ZNKRSt8optionalIiEdeEv` leaf (single `const&` to the optional
+    object with the single-reference triple, pointer-to-`i32`
+    return, exactly one call site to impl `_M_get`; two call edges
+    + the caller-side load fuse into the `optGet` read),
+    `_Z9opt_derefRKSt8optionalIiE` entry (single `const&` with the
+    single-reference triple, `i32` return, exactly two call sites
+    — `has_value` for the guard, `operator*` for the word — the
+    one-sided `cir.if` with the deref inside, the live `-1`
+    sentinel const plus the stray dead `1` const, dropped
+    downstream).
+    Semantics: `optHas` reads the engaged bit; `optGet` reads the
+    payload word on engaged and reports `AssertFail` on
+    disengaged (the `unreachable` assert made loud — the payload
+    word of a disengaged optional is unobservable when guarded);
+    `optDeref` returns the word on engaged and the `-1` sentinel
+    on disengaged. `optVal : Option (BitVec 32)` is the value
+    model; memory binds the 2-word `[payload, engaged-as-1/0]`
+    block at entry (reads only). `base`/`derived_class_addr` at
+    `[0]` erase. All six validate under synthetic facts
+    (single-reference params). Misshapen uses (double calls into
+    payload `_M_get`, live-assert impl variants, wrong-arity calls
+    into `has_value`, bare optional pointers without the triple)
+    are rejected with dedicated messages
+    (`callsOptWrongShape`, or `alias-reject`).
+    Still deferred: `optional::value` (throw path lowers to
+    `cir.trap`).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -332,15 +386,28 @@ shape only (1 site);
 `@_ZNSt14__array_traitsIiLm4EE6_S_refERA4_Kim` in the exact N4d-i
 `array_at` entry shape only (1 site);
 `@_ZNKSt5arrayIiLm4EEixEm` in the exact N4d-i `array_sum` entry shape
-only (4 sites)),
+only (4 sites);
+`@_ZNKSt19_Optional_base_implIiSt14_Optional_baseIiLb1ELb1EEE13_M_is_engagedEv`
+in the exact N4d-ii `opt_has_value` entry shape only (1 site) and in
+the dead assert arm of the exact N4d-ii `opt_impl_get` shape;
+`@_ZNKSt22_Optional_payload_baseIiE6_M_getEv` in the exact N4d-ii
+`opt_impl_get` entry shape only (1 site);
+`@_ZNKSt19_Optional_base_implIiSt14_Optional_baseIiLb1ELb1EEE6_M_getEv`
+in the exact N4d-ii `opt_deref_op` leaf shape only (1 site);
+`@_ZNKSt8optionalIiE9has_valueEv` / `@_ZNKRSt8optionalIiEdeEv` in the
+exact N4d-ii `opt_deref` entry shape only (1 + 1 sites)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf
 shapes only: `cxx_ctor` const-`0` init / `add` one-`nsw`-add /
 `get` identity read; M2c `box_through` entry shape only: `Box` field
 `x` write + read; N4d-i `array_at` entry shape only: one `_M_elems`
-projection beside the single `_S_ref` call; all other struct
-uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
+projection beside the single `_S_ref` call; N4d-ii `opt_has` leaf
+shape only: the `derived [0]` + `_M_payload [0]` + `base [0]` +
+`_M_engaged [1]` chain, `opt_get` leaf shape only: the
+`_M_payload [0]` + `_M_value [1]` pair, `opt_impl_get` entry shape
+only: one live `_M_payload [0]` beside the payload call; all other
+struct uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`, all other switches rejected),
 `cir.mul` (plain unsigned, S3a `nested_sum` shape only),
@@ -348,10 +415,17 @@ on pinned consts + `default`, all other switches rejected),
 `ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`
 (`cir.if` carries the M2c null guard (`cir.cmp ne` vs
-`#cir.ptr<null>`) and the N4b early return (`cir.cmp eq` on `i32`
-in the exact `scope_early` shape only),
+`#cir.ptr<null>`), the N4b early return (`cir.cmp eq` on `i32`
+in the exact `scope_early` shape only), the N4d-ii guarded deref
+(one-sided with the deref inside, exact `opt_deref` shape only),
+and the dead one-sided assert (exact `opt_impl_get` shape only);
+`cir.ternary` + `cir.unreachable` + `cir.do`/`cir.condition` in the
+exact dead-assert skeleton of `opt_impl_get` only),
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`
-(`#cir.int<4> : !u64i` pinned in the M2c shape).
+(`#cir.int<4> : !u64i` pinned in the M2c shape; the `-1` sentinel +
+stray dead `1` pinned in the exact `opt_deref` shape (2 consts);
+three `#false` consts with no `#cir.int` pinned in the exact
+`opt_impl_get` shape).
 `cir.cleanup.scope` / `cleanup normal` + `cir.trap` in the exact M2b
 `acc_two` entry shape only (single `cleanup` scope, exact 1 + 2 + 1 + 1
 call multiset, no `cir.try` / `personality` / `cleanup eh` / heap)

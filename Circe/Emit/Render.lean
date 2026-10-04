@@ -239,6 +239,71 @@ def emitArraySumText (name : String) : String :=
   ++ "     let u ← checkedAddI32 t c\n"
   ++ "     checkedAddI32 u d\n"
 
+/-- Render the `_M_is_engaged` leaf forward definition: the engaged
+    bit of the optional (the tag-erased `optHasFwd`, value tags
+    dropped). -/
+def emitOptHasText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_engaged` bit load). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Bool :=\n"
+  ++ "  o.isSome\n"
+
+/-- Render the `has_value` entry forward definition: the same bit
+    (the call edge is fused, cf. `optHasValueFwd_is_call`). -/
+def emitOptHasValueText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_M_is_engaged` bit body). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Bool :=\n"
+  ++ "  o.isSome\n"
+
+/-- Render the payload `_M_get` leaf forward definition: the payload
+    word, `AssertFail` when disengaged (the tag-erased `optGetFwd`). -/
+def emitOptGetText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_value` word load; disengaged is `AssertFail`). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .AssertFail\n"
+
+/-- Render the impl `_M_get` entry forward definition: pure
+    delegation to the payload body (the dead assert scope is
+    dropped). -/
+def emitOptImplGetText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the payload `_M_get` word body). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .AssertFail\n"
+
+/-- Render the `operator*` entry forward definition: the same word
+    (two call edges fused, cf. `optDerefOpFwd_is_call`). -/
+def emitOptDerefOpText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the fused `operator*` → impl → payload word read). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .AssertFail\n"
+
+/-- Render the `opt_deref` entry forward definition: the payload word
+    on engaged, the `-1` sentinel on disengaged (the tag-erased
+    `optDerefFwd`). -/
+def emitOptDerefText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (guarded deref: word on engaged, `-1` sentinel otherwise). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .ok (-1)\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

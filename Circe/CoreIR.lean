@@ -59,6 +59,11 @@ inductive CLit : Type
     `arr32` word list (`cir.get_element` with a `u64` index, as in
     `std::array<int32_t, N>` reads — N4d; `OOB` off the end, mirroring
     `idx`).
+    `optHas o` reads the engaged bit of `std::optional<int32_t>`
+    `o` (`_M_is_engaged` fused: `o` must be an `optVal`); `optGet o`
+    reads the payload word (`_M_get` fused: engaged `optVal` delivers
+    the word, disengaged is `AssertFail` — the `cir.unreachable`
+    assert made loud).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
@@ -78,6 +83,8 @@ inductive CExpr : Type
   | ult : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
   | idx : String → CExpr → CExpr
+  | optHas : String → CExpr
+  | optGet : String → CExpr
   | idxi : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
