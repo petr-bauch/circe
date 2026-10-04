@@ -88,6 +88,72 @@ Loop-fact side conditions discharge uniformly (`sumWhile_correct ...
 (`by cir_choose b`). No new subset: nested/skip/find keep their
 hand-rolled fuel steps and can migrate as needed.
 
+## N3c gallery: worked properties (ROADMAP.md N3 — done)
+
+Three end-to-end proofs over the existing corpus, checked into
+`Circe.Specs` (driver typecheck-gated, so they double as regression
+tests for N3a/N3b). Each shows where `cir_simp` ends and domain
+reasoning begins.
+
+Sortedness of a fill loop — `vec` writes `k` at slot `k`, so the
+filled values ascend (`ofNat` monotone below `2 ^ 32`):
+
+```lean
+theorem fillSorted_u32 (m : Nat) (hm : m ≤ 2 ^ 32) :
+    List.Pairwise (· ≤ ·) ((List.range m).map (BitVec.ofNat 32)) := by
+  rw [List.pairwise_map]
+  revert hm
+  induction m with
+  | zero => intro _; simp
+  | succ k ih =>
+    intro hm
+    rw [List.range_succ, List.pairwise_append]
+    refine ⟨ih (by omega), List.pairwise_singleton _ _, ?_⟩
+    intro a ha b hb
+    have hbk : b = k := List.mem_singleton.mp hb
+    rw [hbk]
+    have hak : a < k := List.mem_range.mp ha
+    rw [BitVec.ofNat_le_ofNat,
+      Nat.mod_eq_of_lt (show a < 2 ^ 32 by omega),
+      Nat.mod_eq_of_lt (show k < 2 ^ 32 by omega)]
+    omega
+```
+
+`find_eq` first-match minimality — every index below the hit holds a
+different value (core's `List.find?_range_eq_some` is the minimality
+fact; the `decide` bridge turns `(!·) = true` into `≠`):
+
+```lean
+theorem findEq_first_match (l : List (BitVec 32)) (n : Nat) (k : BitVec 32)
+    (j : Nat) (h : findIdxU32 l n k = some j) (i : Nat) (hij : i < j) :
+    l[i]? ≠ some k := by
+  rw [findIdxU32, List.find?_range_eq_some] at h
+  have hneg : decide (l[i]? = some k) = false := by
+    simpa using h.2.2 i hij
+  exact of_decide_eq_false hneg
+```
+
+`vec_realloc` prefix preservation at spec level — the grown program
+sums `range (n + n)`, whose length-`n` prefix is exactly the ungrown
+program's domain (the extension fills `[n, n + n)` without touching
+it; cf. `vecReallocFillSumU32_correct`):
+
+```lean
+theorem reallocPrefix_spec (n : Nat) :
+    ((List.range (n + n)).take n) = List.range n := by
+  simp
+```
+
+N3b audit result (all in `Circe.Specs`): every proof is `cir_simp`-first
+with at most two further steps, except two sanctioned exceptions —
+`translate_correct` conjoins conditional bridges that provably do not
+fire under `simp` (so `exact`, as in the `incr` precedent), and
+`cls_correct` case-splits the exhaustive dispatch (`by_cases` × 2)
+before `cir_simp` + `simp_all` closes the if-lifting. The set grew by
+`accCtorFwd`/`accCtor`/`accGetFwd`/`accDtorFwd` (each enables at least
+one proof); `vecRealloc_empty`/`vec64_empty` shortened to bare
+`cir_simp` and `sumCaller_correct` now opens with `cir_simp`.
+
 ## Spec scaffolding (ROADMAP.md S4 — done)
 
 The emitter writes `out/<name>_Spec.lean` next to each forward file

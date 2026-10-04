@@ -41,6 +41,19 @@ def addCallerFwd (x y z : BitVec 32) : Result Value :=
   | .error e => .error e
   | .ok t => .i32 <$> checkedAddI32 t z
 
+/-- Bridge: leaf ok-path is the checked add (for `cir_simp` coverage of
+    the `_as_calls` normal form; mirrors `accAddFwd_ok`). -/
+theorem addFwd_ok (a b r : BitVec 32)
+    (h : checkedAddI32 a b = .ok r) :
+    addFwd a b = .ok (.i32 r) := by
+  simp [addFwd, h, i32_map_ok]
+
+/-- Bridge: leaf error-path propagates (mirrors `accAddFwd_err`). -/
+theorem addFwd_err (a b : BitVec 32) (e : Panic)
+    (h : checkedAddI32 a b = .error e) :
+    addFwd a b = .error e := by
+  simp [addFwd, h, i32_map_error]
+
 /-- The forward is literally two `add_fwd` calls sequenced (call structure
     explicit; the second match arm is unreachable since `addFwd` only
     produces `i32` values). -/

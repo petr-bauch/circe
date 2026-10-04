@@ -11,8 +11,8 @@ memory transfer (M3d: method/acc/box shapes). Short-term S0–S5 done;
 M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
 M3d; N2a (read-only sharing discipline, model-side), N2b
 (rejection catalog), and N2c (`restrict`-recovery) are done — N2
-(viability past noalias) is complete; the active frontier is N3
-(spec + tactic support).
+(viability past noalias) is complete; N3 (spec + tactic support) is
+done — the active frontier is N4a/N4b (more real code).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -362,27 +362,28 @@ for what we do not.
 Non-goals: true mutable aliasing, raw-pointer arithmetic, lifetime
 inference — if the discipline is not visible in CIR text, it rejects.
 
-### N3. Spec + tactic support for real properties — short/mid-term
+### N3. Spec + tactic support for real properties — DONE (2026-10-04)
 
 `cir_simp` + `_Spec` stubs bootstrap the workflow, but proving
 anything beyond `List.sum` shapes is still manual. Goal: a user
 verifying an admitted function writes the statement once and the
 tactics discharge the plumbing.
 
-- N3a: spec DSL — a small, checked vocabulary for pre/post statements
-  over emitted forward functions (bounds, sums, sortedness, token
-  liveness), elaborating to plain Lean props so no new trusted code
-  is needed; `emitSpec` grows one template, old stubs still typecheck.
-- N3b: tactic automation for loop/shape plumbing — generalize `cir_fuel`
-  past `EVAL_FUEL`-shaped goals (length-pairing side conditions,
-  take-length facts like `htake` in `vec_correct`), and grow `cir_simp`
-  with each newly admitted shape's bridges at landing time (standing
-  rule, already practiced through M1/M2); each addition must shorten
-  at least one existing proof or it does not land.
-- N3c: verification gallery — 3–5 end-to-end worked proofs over
-  existing corpus (sortedness of a fill loop, `find_eq` first-match
-  minimality, `vec_realloc` prefix preservation at spec level) that
-  double as regression tests for N3a/N3b.
+- N3a: one proved property per admitted shape in `Circe.Specs`
+  (C remainder: callers, `translate`, flow, widths, `norestrict`; C++
+  lifecycle: method leaf + entry, Acc ctor/add/get/dtor/two-sequence,
+  box passthrough) — DONE. Delivered as plain-Lean equational specs
+  over the `Emit` forwards (no spec DSL was needed: the forward
+  functions already are the checked vocabulary).
+- N3b: every `Specs` proof `cir_simp`-first (≤2 further steps); set
+  grew by `accCtorFwd`/`accCtor`/`accGetFwd`/`accDtorFwd`, each enabling
+  ≥1 proof; two proofs shortened to bare `cir_simp` — DONE (two
+  sanctioned exceptions: conjoined conditional bridges in
+  `translate_correct`, `by_cases` split in `cls_correct`; see
+  `VERIFYING.md`).
+- N3c: gallery of 3 end-to-end worked proofs (`fillSorted_u32`,
+  `findEq_first_match`, `reallocPrefix_spec` in `Circe.Specs`,
+  curated in `VERIFYING.md`, driver typecheck-gated) — DONE.
 - Non-goals: a general program logic, framing automation beyond the
   admitted shapes — the shapes stay small enough that equational
   specs suffice.
@@ -415,8 +416,8 @@ length-paired discipline.
 ### Suggested order
 
 N1 (close the trust story) → N2a/N2b (wider, clearer viability) →
-N3a/N3b (cheaper proofs) → N4a/N4b (more real code) → N3c gallery →
-N4c/N4d (templates + `std::`). N2c opportunistically wherever a
+N3 (specs + cheaper proofs + gallery, done 2026-10-04) → N4a/N4b
+(more real code) → N4c/N4d (templates + `std::`). N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)

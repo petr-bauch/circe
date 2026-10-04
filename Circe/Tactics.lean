@@ -76,6 +76,7 @@ macro "cir_simp" : tactic =>
     methodSumFwd_err, pointSumRefFwd_is_call,
     accTwo, accTwo_ok, accTwo_err_a, accTwo_err_b, accAddFwd_ok,
     accAddFwd_err, accTwoFwd_is_accTwo,
+    accCtorFwd, accCtor, accGetFwd, accDtorFwd,
     boxThrough, boxThrough_ok, boxThroughFwd_is_boxThrough,
     boxNew, boxNew_ok, boxGet, boxGet_ok, boxFree, boxFree_ok,
     addCallerFwd_as_calls, sumCallerFwd_is_call,
@@ -86,4 +87,8 @@ macro "cir_simp" : tactic =>
     prefixSumU64_nil, prefixSumU64_zero, prefixSumU64_cons,
     nestedSumU32, rowU32, skipSumU32, findEqOut, findIdxU32,
     result_bind_ok, result_bind_err, result_map_ok, result_map_err,
-    result_bind_assoc, result_pure_bind])
+    result_bind_assoc, result_pure_bind,
+    i32_map_ok, i32_map_error, i64_map_ok, i64_map_error,
+    u32_map_ok, u32_map_error, u64_map_ok, u64_map_error,
+    addFwd_ok, addFwd_err, sumFwd_ok, sumFwd_oob,
+    nestedFwd, skipFwd, findEqFwd, clsFwd, add64Fwd, addu64Fwd])
