@@ -95,6 +95,27 @@ inductive FragKind : Type
   | vecSize
   | vecIndex
   | vecReadSum
+  | vecEmptyCtor
+  | vecUnit
+  | vecDtor
+  | vecDestroyNoop
+  | vecDestroyPtr
+  | vecGetTp
+  | vecDiffMax
+  | vecMax
+  | vecMin
+  | vecCheckLen
+  | vecBegin
+  | vecEnd
+  | vecBack
+  | vecIterId
+  | vecMinusEl
+  | vecMinus
+  | vecAlloc
+  | vecDealloc
+  | vecDeallocGuard
+  | vecConstruct
+  | vecReloc
   deriving DecidableEq, Repr
 
 

@@ -463,6 +463,39 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     reallocation) is OUT with a deferral pin (N4d-iv-b).
     Still deferred: `push_back`/`emplace` (growth), `reserve`,
     `insert`/`erase`, `at()`.
+23. `std::vector<int32_t>` growth leaves (N4d-iv-b1): the 21
+    call-free leaf bodies of the `vec_push_sum` frontier (53
+    defined defs; the 4 multi-call composers — entry,
+    `push_back`, `emplace_back`, `_M_realloc_insert` — stay OUT
+    with the dedicated composer pin): default ctor (empty owned
+    triple), erased no-ops (allocator ctors/dtors, destroy range /
+    element, allocator projection — all answer zero), dtor (frees
+    iff `cap > 0`, else passthrough), `max_size` chain (the
+    `S64_MAX / 4` difference bound), `max`/`min`, `check_len`
+    (fail past `max_size - size`, saturate on wrap, else the grown
+    length), `begin`/`end`/`back` (0 / length / length − 1),
+    iterator identities and differences (wrapping `usub`,
+    bit-exact `s64diff`), `_M_allocate` (zeroed storage, loud past
+    `max_size`), `_M_deallocate` + guard (consume, guarded by the
+    word count), `construct` (placement store), `_S_relocate`
+    (the `memmove` copy loop over `stdVecBlitFold`).
+    Semantics: the owned-mutable triple `(buf, len, cap)` —
+    iterators erase to `u64`, null iff `cap == 0`, `construct` is a
+    placement store, `destroy` is a no-op, over-max is a loud
+    `AssertFail`; memory binds the
+    `[len-as-u32, cap-as-u32] ++ words` block with header-shifted
+    (`+2`) loads/stores. Header-reading leaves (`end`, `back`,
+    dtor, deallocate-guard, `check_len`) carry an `hlive` gate:
+    a use-after-free header read is the one silent
+    value/memory divergence, so those transfer theorems take
+    liveness as a side condition. Relocation drops the
+    `result + count` return (b2 recomputes it). All validate
+    under per-def `.noalias` facts (erased `int*`/`s8*`/`void*`
+    params need no uniqueness inside pinned shapes).
+    Containment result: growth leaves are IN; multi-call growth
+    composition is OUT with the composer pin (N4d-iv-b2:
+    `_M_realloc_insert` / `emplace_back` / `push_back` / entry).
+    Still deferred: `reserve`, `insert`/`erase`, `at()`.
 
 ## Admitted CIR ops (raw CIRGen shape)
 

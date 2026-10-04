@@ -23,8 +23,19 @@ import Circe.Emit.Array
 import Circe.Emit.Optional
 import Circe.Emit.Span
 import Circe.Emit.VecRead
+import Circe.Emit.VecGrow
 import Circe.Emit.Box
 import Circe.Emit.Flow
+
+/-- Definition names of the vector empty-effect leaves (the allocator
+    ctors and inner dtors): the `vecUnit` / `accCtor` disambiguation
+    allowlist (see the `accCtor` arm of `matchFrag`). -/
+def isVecUnitName (fname : String) : Bool :=
+  fname == "_ZNSaIiEC2Ev" ||
+  fname == "_ZN9__gnu_cxx13new_allocatorIiEC2Ev" ||
+  fname == "_ZNSt12_Vector_baseIiSaIiEE12_Vector_implD2Ev" ||
+  fname == "_ZNSaIiED2Ev" ||
+  fname == "_ZN9__gnu_cxx13new_allocatorIiED2Ev"
 
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
     (and `emitFunc` rejects it loudly).
@@ -195,8 +206,14 @@ def matchFrag : Func → Option FragKind
     | .seq (.callRet "s" "_ZNK5Point3sumEv" ["p"])
         (.return_ (.var "s")) => some .pointSumRef
     | _ => none
-  | ⟨_, [], _, .return_ (.lit (.i32 z))⟩ =>
-    if z == 0 then some .accCtor else none
+  | ⟨fname, [], _, .return_ (.lit (.i32 z))⟩ =>
+    -- Two structurally identical fragments share this shape (nullary,
+    -- `i32 0`): the `Acc` value ctor and the vector empty-effect
+    -- leaves. The name disambiguates (the only field that differs);
+    -- semantics are identical either way, only the rendering differs.
+    if z == 0 then
+      if isVecUnitName fname then some .vecUnit else some .accCtor
+    else none
   | ⟨_, [⟨"s", .i 32, .owned⟩, ⟨"v", .i 32, .owned⟩], _,
       .return_ (.add (.var "s") (.var "v"))⟩ =>
     some .accAdd
@@ -422,6 +439,119 @@ def matchFrag : Func → Option FragKind
       if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
           one == BitVec.ofNat 64 1 then some .vecReadSum else none
     | _ => none
+  | ⟨_, [], _,
+      .return_ (.vgrowNew (.lit (.u64 zero)))⟩ =>
+    if zero == BitVec.ofNat 64 0 then some .vecEmptyCtor else none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .if_ (.ult (.lit (.u64 zero)) (.vgrowCap "t"))
+        (.seq (.vgrowFree "t") (.return_ (.var "t")))
+        (.return_ (.var "t"))⟩ =>
+    if zero == BitVec.ofNat 64 0 then some .vecDtor else none
+  | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
+      .return_ (.lit (.i32 zero))⟩ =>
+    if zero == BitVec.ofNat 32 0 then some .vecDestroyNoop else none
+  | ⟨_, [⟨"p", .u 64, .owned⟩], _,
+      .return_ (.lit (.i32 zero))⟩ =>
+    if zero == BitVec.ofNat 32 0 then some .vecDestroyPtr else none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .return_ (.lit (.i32 zero))⟩ =>
+    if zero == BitVec.ofNat 32 0 then some .vecGetTp else none
+  | ⟨_, [], _,
+      .return_ (.lit (.u64 diffmax))⟩ =>
+    if diffmax == stdVecMaxDiffBV then some .vecDiffMax else none
+  | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
+      .if_ (.ult (.var "a") (.var "b"))
+        (.return_ (.var "b"))
+        (.return_ (.var "a"))⟩ =>
+    some .vecMax
+  | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
+      .if_ (.ult (.var "b") (.var "a"))
+        (.return_ (.var "b"))
+        (.return_ (.var "a"))⟩ =>
+    some .vecMin
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"n", .u 64, .owned⟩], _,
+      .if_ (.ult (.lit (.u64 zero)) (.var "n"))
+        (.seq (.vgrowFree "t") (.return_ (.var "t")))
+        (.return_ (.var "t"))⟩ =>
+    -- Before the `check_len` arm: its `[t, n]` outer pattern would
+    -- otherwise shadow this exact arm.
+    if zero == BitVec.ofNat 64 0 then some .vecDeallocGuard else none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"n", .u 64, .owned⟩], _, body⟩ =>
+    -- `newlen` (`stdVecNewLenExpr`) inlined at all three uses (pattern
+    -- variables must be linear).
+    match body with
+    | .if_ (.ult (.usub (.lit (.u64 maxdiff)) (.vgrowLen "t"))
+              (.var "n"))
+        .fail
+        (.if_ (.ult (.uadd (.vgrowLen "t") (.tif
+                (.ult (.vgrowLen "t") (.var "n"))
+                (.var "n") (.vgrowLen "t"))) (.vgrowLen "t"))
+          (.return_ (.lit (.u64 cap1)))
+          (.if_ (.ult (.lit (.u64 cap2)) (.uadd (.vgrowLen "t") (.tif
+                  (.ult (.vgrowLen "t") (.var "n"))
+                  (.var "n") (.vgrowLen "t"))))
+            (.return_ (.lit (.u64 cap3)))
+            (.return_ (.uadd (.vgrowLen "t") (.tif
+              (.ult (.vgrowLen "t") (.var "n"))
+              (.var "n") (.vgrowLen "t")))))) =>
+      if maxdiff == stdVecMaxDiffBV &&
+          cap1 == stdVecMaxDiffBV && cap2 == stdVecMaxDiffBV &&
+          cap3 == stdVecMaxDiffBV then some .vecCheckLen else none
+    | _ => none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .return_ (.lit (.u64 zero))⟩ =>
+    if zero == BitVec.ofNat 64 0 then some .vecBegin else none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .return_ (.vgrowLen "t")⟩ =>
+    some .vecEnd
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .return_ (.usub (.vgrowLen "t") (.lit (.u64 one)))⟩ =>
+    if one == BitVec.ofNat 64 1 then some .vecBack else none
+  | ⟨_, [⟨"p", .u 64, .owned⟩], _,
+      .return_ (.var "p")⟩ =>
+    some .vecIterId
+  | ⟨_, [⟨"it", .u 64, .owned⟩, ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.usub (.var "it") (.var "n"))⟩ =>
+    some .vecMinusEl
+  | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
+      .return_ (.s64diff (.var "a") (.var "b"))⟩ =>
+    some .vecMinus
+  | ⟨_, [⟨"n", .u 64, .owned⟩], _, body⟩ =>
+    match body with
+    | .if_ (.ult (.lit (.u64 zero)) (.var "n"))
+        (.if_ (.ult (.lit (.u64 maxdiff)) (.var "n"))
+          .fail
+          (.return_ (.vgrowNew (.var "n"))))
+        (.return_ (.vgrowNew (.lit (.u64 z0)))) =>
+      if zero == BitVec.ofNat 64 0 && maxdiff == stdVecMaxDiffBV &&
+          z0 == BitVec.ofNat 64 0 then some .vecAlloc else none
+    | _ => none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .seq (.vgrowFree "t") (.return_ (.var "t"))⟩ =>
+    some .vecDealloc
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"p", .u 64, .owned⟩,
+         ⟨"v", .i 32, .owned⟩], _,
+      .seq (.vgrowSet "t" (.var "p") (.var "v"))
+        (.return_ (.var "t"))⟩ =>
+    some .vecConstruct
+  | ⟨_, [⟨"src", .vecBlock, .owned⟩, ⟨"dst", .vecBlock, .owned⟩,
+         ⟨"first", .u 64, .owned⟩, ⟨"last", .u 64, .owned⟩,
+         ⟨"result", .u 64, .owned⟩], _, body⟩ =>
+    match body with
+    | .seq (.let_ "k" (.u 64) (.lit (.u64 z0)))
+      (.seq (.let_ "n" (.u 64) (.usub (.var "last") (.var "first")))
+      (.seq (.while_ (.ult (.var "k") (.var "n")) w)
+        (.return_ (.var "dst")))) =>
+      match w with
+      | .seq (.vgrowSet "dst" (.uadd (.var "result") (.var "k"))
+                (.vgrowAt "src" (.uadd (.var "first") (.var "k"))))
+          (.assign "k" (.uadd (.var "k")
+            (.lit (.u64 one)))) =>
+        if z0 == BitVec.ofNat 64 0 && one == BitVec.ofNat 64 1 then
+          some .vecReloc
+        else none
+      | _ => none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -473,3 +603,24 @@ theorem matchFrag_spanSum : matchFrag spanSumFunc = some .spanSum := rfl
 theorem matchFrag_stdVecSize : matchFrag stdVecSizeFunc = some .vecSize := rfl
 theorem matchFrag_stdVecIndex : matchFrag stdVecIndexFunc = some .vecIndex := rfl
 theorem matchFrag_stdVecReadSum : matchFrag stdVecReadSumFunc = some .vecReadSum := rfl
+theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
+theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
+theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl
+theorem matchFrag_stdVecDestroyNoop : matchFrag stdVecDestroyNoopFunc = some .vecDestroyNoop := rfl
+theorem matchFrag_stdVecDestroyPtr : matchFrag stdVecDestroyPtrFunc = some .vecDestroyPtr := rfl
+theorem matchFrag_stdVecGetTp : matchFrag stdVecGetTpFunc = some .vecGetTp := rfl
+theorem matchFrag_stdVecDiffMax : matchFrag stdVecDiffMaxFunc = some .vecDiffMax := rfl
+theorem matchFrag_stdVecMax : matchFrag stdVecMaxFunc = some .vecMax := rfl
+theorem matchFrag_stdVecMin : matchFrag stdVecMinFunc = some .vecMin := rfl
+theorem matchFrag_stdVecCheckLen : matchFrag stdVecCheckLenFunc = some .vecCheckLen := rfl
+theorem matchFrag_stdVecBegin : matchFrag stdVecBeginFunc = some .vecBegin := rfl
+theorem matchFrag_stdVecEnd : matchFrag stdVecEndFunc = some .vecEnd := rfl
+theorem matchFrag_stdVecBack : matchFrag stdVecBackFunc = some .vecBack := rfl
+theorem matchFrag_stdVecIterId : matchFrag stdVecIterIdFunc = some .vecIterId := rfl
+theorem matchFrag_stdVecMinusEl : matchFrag stdVecMinusElFunc = some .vecMinusEl := rfl
+theorem matchFrag_stdVecMinus : matchFrag stdVecMinusFunc = some .vecMinus := rfl
+theorem matchFrag_stdVecAlloc : matchFrag stdVecAllocFunc = some .vecAlloc := rfl
+theorem matchFrag_stdVecDealloc : matchFrag stdVecDeallocFunc = some .vecDealloc := rfl
+theorem matchFrag_stdVecDeallocGuard : matchFrag stdVecDeallocGuardFunc = some .vecDeallocGuard := rfl
+theorem matchFrag_stdVecConstruct : matchFrag stdVecConstructFunc = some .vecConstruct := rfl
+theorem matchFrag_stdVecReloc : matchFrag stdVecRelocFunc = some .vecReloc := rfl

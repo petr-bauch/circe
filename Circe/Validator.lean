@@ -12,6 +12,9 @@ is rejected with a precise code + message (golden-tested in
 
 Check order (first hit wins — rejection codes are priority-ordered):
 1. oracle wiring (fact must name this function);
+1b. N4d-iv-b2 composer pin (a text calling `_M_realloc_insert` /
+   `emplace_back` / `push_back` is multi-call growth composition,
+   deferred to b2 — actionable message before any other gate);
 2. forbidden constructs (EH, int↔ptr casts, `void*`, volatile/atomics,
    float, `setjmp`/`longjmp`, globals,
    function pointers, VLAs, variadics, cleanup regions (`cir.cleanup`),
@@ -29,7 +32,11 @@ Check order (first hit wins — rejection codes are priority-ordered):
 3. pointer discipline (`aliasReject`: raw pointer without `__restrict__`
    and without the C++ single-reference triple (N2c carve-out: the single
    live array of a recovered reader shape — `recoveredNoalias` —
-   recovers noalias from construction instead of attr text), oracle
+   recovers noalias from construction instead of attr text; N4d-iv-b1
+   carve-out: borrowed erased-offset `int*`/`s8*`/`void*` params inside
+   a pinned growth-leaf shape — `isVecGrowErasedParam` — need no
+   uniqueness since the value model erases them to `u64` offsets or
+   drops them), oracle
    verdict other than `noalias` with live oracle-governed pointer params
    (same N2c carve-out), or writer+reader ambiguity — two or more live
    oracle-governed pointer params outside the `choose` borrow-return
@@ -41,13 +48,15 @@ Check order (first hit wins — rejection codes are priority-ordered):
    `ptr_stride`, `outOfSubset` otherwise, including misshapen struct
    uses outside the S2 `translate` shape, the M2a method shapes, and
    the M2b `Acc` leaf shapes, the M2b entry shape (with its
-   `cleanup`/`trap` exemption), and by-value struct params stuck in
-   the deferred `coerce` lowering).
+   `cleanup`/`trap` exemption), the N4d-iv-b1 growth-leaf shapes (with
+   the dtor `cleanup`-only exemption — no `trap`), and by-value struct
+   params stuck in the deferred `coerce` lowering).
 -/
 import Circe.CoreIR
 import Circe.Parser
 import Circe.Oracle
 import Circe.Emit
+import Circe.Emit.VecGrow
 
 /-- Machine-readable rejection codes (see docs/SUBSET.md). -/
 inductive RejectCode : Type
@@ -1101,19 +1110,909 @@ def isStdVecReadSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_stride"
   | _ => false
 
+/-! ## N4d-iv-b1: `std::vector<int>` growth leaves (no composition) -/
+
+/-- Exact-ctype single-reference param (the C++ `this` / `const&` /
+    allocator-ref triple on a pinned pointee; `isStdVectorType` covers
+    the vector object, these cover the base/impl/allocator/iterator
+    family whose rec names nest and must not prefix-match). -/
+def isVecGrowRef (want : String) (p : RawParam) : Bool :=
+  isPtrType p.ctype && p.singleRef && p.ctype == want
+
+/-- Borrowed erased-offset param: noundef-only `int*` / `s8*` / `void*`
+    (no triple, no `noalias`). The b1 value model erases these to `u64`
+    offsets (or drops them: the `check_len` message, the `allocate`
+    hint, the freed pointer via null-iff-`cap == 0`), so they need no
+    uniqueness evidence — see `isVecGrowErasedParam`. -/
+def isErasedIntPtr (p : RawParam) : Bool :=
+  (p.ctype == "!cir.ptr<!s32i>" || p.ctype == "!cir.ptr<!s8i>" ||
+    p.ctype == "!cir.ptr<!void>") && !p.singleRef && !p.noalias
+
+/-- N4d-iv-b2 composer anchor: the `_M_realloc_insert` name (own
+    signature or a call site), a call into `emplace_back`, or a call
+    into `push_back`. No b1 leaf calls these (checked against the
+    corpus inventories), so any text hitting this is multi-call growth
+    composition — deferred to N4d-iv-b2. Checked before `forbiddenOp`
+    so composers get the actionable b2 message rather than the generic
+    cleanup/call message. -/
+def isVecGrowComposerText (text : String) : Bool :=
+  containsSubstr text "_M_realloc_insert" ||
+  callsFunc text "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_" ||
+  callsFunc text "_ZNSt6vectorIiSaIiEE9push_backEOi"
+
+/-- N4d-iv-b1 dtor `cleanup` exemption: the four `cir.cleanup.scope`
+    (with `cleanup normal`, no `cir.trap`) destructor bodies whose
+    exact call multisets fuse to the dtor/consume model
+    (`vector-D2`: getTp + base-D2 + destroy range; `base-D2`: impl-D2
+    + deallocate; `impl-D2`: allocator-D2; `allocator-D2`:
+    new-allocator-D2). This is the `forbiddenOp` exemption gate (cf.
+    `isAccTwoExemptText`); full admission additionally pins the
+    signature (`isStdVecDtorShape` / `isStdVecUnitShape`). The b2 entry
+    (`cir.trap`) and non-`scope` cleanups are not exempt. -/
+def isVecDtorExemptText (text : String) : Bool :=
+  containsSubstr text "cir.cleanup.scope" &&
+  containsSubstr text "cleanup normal" &&
+  !containsSubstr text "cir.trap" &&
+  (opCount text "cir.call @" == 3 &&
+    callsFunc text stdVecGetTpName &&
+    callsFunc text stdVecBaseDtorName &&
+    callsFunc text stdVecDestroyName ||
+  opCount text "cir.call @" == 2 &&
+    callsFunc text stdVecImplDtorName &&
+    callsFunc text stdVecDeallocName ||
+  opCount text "cir.call @" == 1 &&
+    (callsFunc text stdVecAllocDtorName ||
+     callsFunc text stdVecNewAllocDtorName))
+
 /-- Known `std::vector<int32_t>` leaf callees (mangled): the `size`
-    projection leaf and the fused `operator[]` leaf. Entry gates
+    projection leaf and the fused `operator[]` leaf (N4d-iv-a), plus
+    every N4d-iv-b1 growth leaf (the ctor/dtor/consume/max/iterator/
+    allocate/deallocate/construct/relocate family). Entry gates
     admit calls into the (name, arity, site-count) pairs named in
     `validate` below; this registry names every known vector leaf
     for the wrong-shape rejection. -/
 def stdVecLeafCallees : List String :=
-  [stdVecSizeName, stdVecIndexName]
+  [stdVecSizeName, stdVecIndexName,
+   stdVecCtorName, stdVecBaseCtorName, stdVecImplCtorName,
+   stdVecImplDataCtorName, stdVecNewAllocCtorName, stdVecAllocCtorName,
+   stdVecDtorName, stdVecBaseDtorName, stdVecImplDtorName,
+   stdVecAllocDtorName, stdVecNewAllocDtorName,
+   stdVecDestroyName, stdVecDestroy2Name, stdVecDestroyAuxName,
+   stdVecTraitsDestroyName, stdVecNewAllocDestroyName,
+   stdVecGetTpName, stdVecGetTpConstName,
+   stdVecMMaxSizeName, stdVecSMaxSizeName, stdVecMaxSizeName,
+   stdVecNewAllocMaxSizeName, stdVecTraitsMaxSizeName,
+   stdVecMaxName, stdVecMinName, stdVecCheckLenName,
+   stdVecBeginName, stdVecEndName, stdVecBackName,
+   stdVecIterCtorName, stdVecNIterBaseName, stdVecIterBaseName,
+   stdVecIterDerefName, stdVecMinusElName, stdVecMinusName,
+   stdVecAllocateName, stdVecTraitsAllocName, stdVecNewAllocName,
+   stdVecDeallocName, stdVecTraitsDeallocName, stdVecNewDeallocName,
+   stdVecTraitsConstructName, stdVecNewConstructName,
+   stdVecRelocName, stdVecDoRelocName, stdVecRelocAName,
+   stdVecRelocA1Name]
 
 /-- Calls a known `std::vector` leaf but not with an admitted (name,
     arity, site-count) shape: dedicated rejection naming the
     admitted shapes. -/
 def callsStdVecWrongShape (raw : RawFunc) : Bool :=
   stdVecLeafCallees.any (callsFunc raw.text)
+
+/-- The default-ctor chain: `vector-C2` (single delegation into
+    `base-C2`), `base-C2` (into `impl-C2` over `_M_impl`),
+    `impl-C2` (into the allocator ctor + impl-data ctor), and
+    `impl-data-C2` (call-free: the three null field stores). All fuse
+    to the empty triple (`stdVecEmptyCtorFunc`). -/
+def isStdVecEmptyCtorShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this] =>
+    raw.ret == "" &&
+    (isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+      callsFunc raw.text stdVecBaseCtorName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 &&
+      !containsSubstr raw.text "cir.get_member" ||
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+      callsFunc raw.text stdVecImplCtorName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.get_member" == 1 &&
+      containsSubstr raw.text "_M_impl" ||
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E3A3A_Vector_impl>"
+      this &&
+      callsFunc raw.text stdVecAllocCtorName &&
+      callsFunc raw.text stdVecImplDataCtorName &&
+      opCount raw.text "cir.call @" == 2 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 2 ||
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E3A3A_Vector_impl_data>"
+      this &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.get_member" == 3 &&
+      opCount raw.text "cir.const" == 3) &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.cleanup"
+  | _ => false
+
+/-- The empty-effect leaves: the allocator ctors (each a single
+    delegation into the next, or call-free) and the inner dtors
+    (`impl-D2` into the allocator dtor, `allocator-D2` into the
+    new-allocator dtor — both under fused `cleanup` scopes — and the
+    call-free new-allocator dtor / ctor, which share one variant).
+    All fuse to nothing (`stdVecUnitFunc`, void as `i32 0`). -/
+def isStdVecUnitShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  !containsSubstr raw.text "cir.trap" &&
+  match raw.params with
+  | [this] =>
+    raw.ret == "" &&
+    (isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" this &&
+      callsFunc raw.text stdVecNewAllocCtorName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 &&
+      !containsSubstr raw.text "cir.cleanup" ||
+    isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" this &&
+      opCount raw.text "cir.call @" == 0 &&
+      !containsSubstr raw.text "cir.cleanup" &&
+      !containsSubstr raw.text "cir.get_member" &&
+      !containsSubstr raw.text "cir.const" &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" ||
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E3A3A_Vector_impl>"
+      this &&
+      containsSubstr raw.text "cir.cleanup.scope" &&
+      containsSubstr raw.text "cleanup normal" &&
+      callsFunc raw.text stdVecAllocDtorName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name ||
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" this &&
+      containsSubstr raw.text "cir.cleanup.scope" &&
+      containsSubstr raw.text "cleanup normal" &&
+      callsFunc raw.text stdVecNewAllocDtorName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name) &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for"
+  | _ => false
+
+/-- The destructors: `vector-D2` (getTp + base-D2 + destroy range
+    under one fused `cleanup` scope) and `base-D2` (impl-D2 +
+    deallocate with the computed size, likewise scoped). Both fuse to
+    the `0 < cap`-guarded consume (`stdVecDtorFunc`, triple
+    threading for b2). -/
+def isStdVecDtorShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  containsSubstr raw.text "cir.cleanup.scope" &&
+  containsSubstr raw.text "cleanup normal" &&
+  !containsSubstr raw.text "cir.trap" &&
+  match raw.params with
+  | [this] =>
+    raw.ret == "" &&
+    (isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+      callsFunc raw.text stdVecGetTpName &&
+      callsFunc raw.text stdVecBaseDtorName &&
+      callsFunc raw.text stdVecDestroyName &&
+      opCount raw.text "cir.call @" == 3 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.get_member" == 4 &&
+      opCount raw.text "cir.base_class_addr" == 6 &&
+      !containsSubstr raw.text "cir.cast" &&
+      !containsSubstr raw.text "cir.ptr_diff" ||
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+      callsFunc raw.text stdVecImplDtorName &&
+      callsFunc raw.text stdVecDeallocName &&
+      opCount raw.text "cir.call @" == 2 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.get_member" == 7 &&
+      opCount raw.text "cir.cast" == 1 &&
+      opCount raw.text "cir.ptr_diff" == 1) &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.for"
+  | _ => false
+
+/-- The destroy range: the 3-arg `_Destroy` (into the 2-arg one), the
+    2-arg `_Destroy` (into `_Destroy_aux`), and `_Destroy_aux`
+    (call-free twin stores — the trivial-`int` no-op). All take
+    erased `u64` offsets (`stdVecDestroyNoopFunc`). -/
+def isStdVecDestroyNoopShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [a, b, al] =>
+    raw.ret == "" && isErasedIntPtr a && isErasedIntPtr b &&
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" al &&
+    callsFunc raw.text stdVecDestroy2Name &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free("
+  | [a, b] =>
+    raw.ret == "" && isErasedIntPtr a && isErasedIntPtr b &&
+    (callsFunc raw.text stdVecDestroyAuxName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name ||
+    opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.store" == 2) &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for"
+  | _ => false
+
+/-- Element destroy: `traits::destroy` (into the new-allocator one)
+    and `new_allocator::destroy` (call-free — no-op for `int`). The
+    allocator ref drops, the offset stays (`stdVecDestroyPtrFunc`). -/
+def isStdVecDestroyPtrShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [al, p] =>
+    raw.ret == "" && isErasedIntPtr p &&
+    (isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" al &&
+      callsFunc raw.text stdVecNewAllocDestroyName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 ||
+    isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" al &&
+      opCount raw.text "cir.call @" == 0 &&
+      !containsSubstr raw.text "cir.get_member" &&
+      !containsSubstr raw.text "cir.const" &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if") &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for"
+  | _ => false
+
+/-- The allocator projection: both `_M_get_Tp_allocator` overloads
+    (call-free single `_M_impl` member access fusing to the erased
+    allocator, `i32 0`) → `stdVecGetTpFunc`. -/
+def isStdVecGetTpShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    raw.ret == "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" &&
+    opCount raw.text "cir.call @" == 0 &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_impl" &&
+    opCount raw.text "cir.base_class_addr" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- The max-size chain: `_M_max_size` (call-free `S64_MAX / 4` div),
+    the two pure delegations into it, and the `min(diffmax, allocmax)`
+    chain (`_S_max_size` with the pinned `diffmax` const, `max_size`
+    over getTp). All five fold to `maxDiff`
+    (`stdVecDiffMaxFunc`). -/
+def isStdVecDiffMaxShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  isU64 raw.ret &&
+  !containsSubstr raw.text "cir.call @malloc" &&
+  !containsSubstr raw.text "cir.call @free(" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.for" &&
+  match raw.params with
+  | [p] =>
+    (isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" p &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.div" == 1 &&
+      opCount raw.text "cir.const" == 3 &&
+      containsSubstr raw.text "9223372036854775807" ||
+    isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" p &&
+      callsFunc raw.text stdVecMMaxSizeName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name ||
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>" p &&
+      (callsFunc raw.text stdVecGetTpName ||
+        callsFunc raw.text stdVecGetTpConstName) &&
+      callsFunc raw.text stdVecSMaxSizeName &&
+      opCount raw.text "cir.call @" == 2 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 ||
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" p &&
+      callsFunc raw.text stdVecNewAllocMaxSizeName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 ||
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" p &&
+      callsFunc raw.text stdVecTraitsMaxSizeName &&
+      callsFunc raw.text stdVecMinName &&
+      opCount raw.text "cir.call @" == 2 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.const" == 1 &&
+      containsSubstr raw.text "2305843009213693951")
+  | _ => false
+
+/-- `std::max` over `u64`: the early-return-`if` form (`a < b`
+    then `b` else `a`, references loaded through the `__a`/`__b`
+    allocas). The operand order is the only max/min difference, so the
+    first comparison load is pinned (`%5` from the `__a` alloca `%0`;
+    CIRGen emission order — like every site-count pin, exact). -/
+def isStdVecMaxShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [a, b] =>
+    isVecGrowRef "!cir.ptr<!u64i>" a && isVecGrowRef "!cir.ptr<!u64i>" b &&
+    raw.ret == "!cir.ptr<!u64i>" &&
+    opCount raw.text "cir.call @" == 0 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    containsSubstr raw.text "%5 = cir.load %0" &&
+    opCount raw.text "cir.load" == 8 &&
+    opCount raw.text "cir.store" == 4 &&
+    opCount raw.text "cir.return" == 2 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `std::min` over `u64`: the mirror image (`b < a` then `b` else
+    `a`; the comparison loads `__b` first — see `isStdVecMaxShape`). -/
+def isStdVecMinShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [a, b] =>
+    isVecGrowRef "!cir.ptr<!u64i>" a && isVecGrowRef "!cir.ptr<!u64i>" b &&
+    raw.ret == "!cir.ptr<!u64i>" &&
+    opCount raw.text "cir.call @" == 0 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    containsSubstr raw.text "%5 = cir.load %1" &&
+    !containsSubstr raw.text "%5 = cir.load %0" &&
+    opCount raw.text "cir.load" == 8 &&
+    opCount raw.text "cir.store" == 4 &&
+    opCount raw.text "cir.return" == 2 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `_M_check_len`: the `length_error` throw (fused to `fail`), the
+    `size`/`max_size`/`max` call multisets, the wrapping `sub`, both
+    `cir.ternary`, the single `if`. The `s8` message param is unused
+    (dropped downstream; erased-param carve-out at the alias gate). -/
+def isStdVecCheckLenShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this, n, msg] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    isErasedIntPtr msg &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    opCount raw.text ("cir.call @" ++ stdVecSizeName ++ "(") == 4 &&
+    callsFunc raw.text stdVecMaxSizeName &&
+    opCount raw.text ("cir.call @" ++ stdVecMaxSizeName ++ "(") == 3 &&
+    callsFunc raw.text stdVecMaxName &&
+    opCount raw.text ("cir.call @" ++ stdVecMaxName ++ "(") == 1 &&
+    callsFunc raw.text "_ZSt20__throw_length_errorPKc" &&
+    opCount raw.text "cir.call @" == 9 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.ternary" == 2 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.sub" == 1 &&
+    opCount raw.text "cir.const" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- `begin` / `end`: the `_M_start` / `_M_finish` load fused with
+    the single iterator-ctor call (offsets `0` / `len`). The loaded
+    field is the only begin/end difference. -/
+def isStdVecBeginShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+    callsFunc raw.text stdVecIterCtorName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.get_member" == 2 &&
+    opCount raw.text "cir.base_class_addr" == 2 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_start" &&
+    !containsSubstr raw.text "_M_finish" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- `end`: the `_M_finish` twin of `begin`. -/
+def isStdVecEndShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+    callsFunc raw.text stdVecIterCtorName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.get_member" == 2 &&
+    opCount raw.text "cir.base_class_addr" == 2 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_finish" &&
+    !containsSubstr raw.text "_M_start" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- `back`: the `end` / `miEl` / `deref` chain fusing to `len - 1`
+    (wrapping `usub`; empty is UB) → `stdVecBackFunc`. -/
+def isStdVecBackShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    raw.ret == "!cir.ptr<!s32i>" &&
+    callsFunc raw.text stdVecEndName &&
+    callsFunc raw.text stdVecMinusElName &&
+    callsFunc raw.text stdVecIterDerefName &&
+    opCount raw.text "cir.call @" == 3 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.const" == 2 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- The iterator identities: `iterator-C2` (stores the pointed-to
+    pointer into `_M_current`), `__niter_base` (call-free identity),
+    `base` (the address-of-field collapsing to the value), and
+    `operator*` (the stored pointer is the offset). All erase to the
+    `u64` identity (`stdVecIterIdFunc`). -/
+def isStdVecIterIdShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  !containsSubstr raw.text "cir.call @malloc" &&
+  !containsSubstr raw.text "cir.call @free(" &&
+  !containsSubstr raw.text "cir.const" &&
+  !containsSubstr raw.text "cir.cmp" &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.ptr_diff" &&
+  match raw.params with
+  | [this, pp] =>
+    raw.ret == "" &&
+    isVecGrowRef
+      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+      this &&
+    isVecGrowRef "!cir.ptr<!cir.ptr<!s32i>>" pp &&
+    opCount raw.text "cir.call @" == 0 &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_current"
+  | [p] =>
+    (isErasedIntPtr p && raw.ret == "!cir.ptr<!s32i>" &&
+      opCount raw.text "cir.call @" == 0 &&
+      !containsSubstr raw.text "cir.get_member") ||
+    (isVecGrowRef
+      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+      p &&
+      (raw.ret == "!cir.ptr<!cir.ptr<!s32i>>" ||
+       raw.ret == "!cir.ptr<!s32i>") &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.get_member" == 1 &&
+      containsSubstr raw.text "_M_current")
+  | _ => false
+
+/-- `miEl`: `cir.minus` + `ptr_stride` fuse to wrapping `usub` (the
+    `s64` step arrives as the same bits) → `stdVecMinusElFunc`. -/
+def isStdVecMinusElShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [it, n] =>
+    isVecGrowRef
+      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+      it &&
+    isI64 n.ctype && !isPtrType n.ctype &&
+    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+    callsFunc raw.text stdVecIterCtorName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.get_member" == 1 &&
+    opCount raw.text "cir.minus" == 1 &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- `mi`: the double `base` + `ptr_diff` fuse to bit-exact `s64diff`
+    → `stdVecMinusFunc`. -/
+def isStdVecMinusShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [a, b] =>
+    isVecGrowRef
+      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+      a &&
+    isVecGrowRef
+      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+      b &&
+    isI64 raw.ret &&
+    callsFunc raw.text stdVecIterBaseName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterBaseName ++ "(") == 2 &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.ptr_diff" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The allocate chain: `_M_allocate` (the `n != 0` ternary kept),
+    `traits::allocate` (single delegation), and
+    `new_allocator::allocate` (the `n > maxDiff` throw pair, the dead
+    aligned-new skeleton, operator `new` as fresh storage). The
+    `this` / allocator-ref / hint params drop; `n` stays
+    (`stdVecAllocFunc`). -/
+def isStdVecAllocShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  raw.ret == "!cir.ptr<!s32i>" &&
+  !containsSubstr raw.text "cir.call @malloc" &&
+  !containsSubstr raw.text "cir.call @free(" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.ptr_diff" &&
+  match raw.params with
+  | [this, n] =>
+    isU64 n.ctype && !isPtrType n.ctype &&
+    (isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+      callsFunc raw.text stdVecTraitsAllocName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.ternary" == 1 &&
+      opCount raw.text "cir.cmp" == 1 &&
+      containsSubstr raw.text "cir.cmp ne" &&
+      opCount raw.text "cir.const" == 3 ||
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" this &&
+      callsFunc raw.text stdVecNewAllocName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.const" == 1 &&
+      opCount raw.text "cir.base_class_addr" == 1 &&
+      !containsSubstr raw.text "cir.ternary" &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if")
+  | [this, n, hint] =>
+    isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" this &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    isErasedIntPtr hint &&
+    callsFunc raw.text stdVecMMaxSizeName &&
+    callsFunc raw.text "_ZSt28__throw_bad_array_new_lengthv" &&
+    callsFunc raw.text "_ZSt17__throw_bad_allocv" &&
+    callsFunc raw.text "_Znwm" &&
+    containsSubstr raw.text "_ZnwmSt11align_val_t" &&
+    opCount raw.text "cir.call @" == 5 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.if" == 3 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.const" == 9 &&
+    opCount raw.text "cir.mul" == 2 &&
+    opCount raw.text "cir.div" == 1 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for"
+  | _ => false
+
+/-- The unconditional consume: `traits::deallocate` (single
+    delegation) and `new_allocator::deallocate` (the dead `4 > 16`
+    aligned-delete skeleton drops, both deletes consume). The
+    allocator ref and freed pointer drop (null-iff-`cap == 0`)
+    (`stdVecDeallocFunc`). -/
+def isStdVecDeallocShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [al, p, n] =>
+    raw.ret == "" && isErasedIntPtr p &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    (isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" al &&
+      callsFunc raw.text stdVecNewDeallocName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" ||
+    isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" al &&
+      callsFunc raw.text "_ZdlPvm" &&
+      containsSubstr raw.text "_ZdlPvmSt11align_val_t" &&
+      opCount raw.text "cir.call @" == 2 &&
+      opCount raw.text "cir.if" == 1 &&
+      opCount raw.text "cir.cmp" == 1 &&
+      containsSubstr raw.text "cir.cmp gt" &&
+      opCount raw.text "cir.const" == 5 &&
+      containsSubstr raw.text "#cir.int<16>" &&
+      opCount raw.text "cir.cast" == 2 &&
+      opCount raw.text "cir.mul" == 2 &&
+      opCount raw.text "cir.return" == 2) &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- `_M_deallocate`: the `ptr_to_bool` guard kept as the `n == 0`
+    test around the unconditional consume (sound by the call-site
+    invariant that a null `p` pairs with `n == 0`)
+    (`stdVecDeallocGuardFunc`). -/
+def isStdVecDeallocGuardShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this, p, n] =>
+    raw.ret == "" &&
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3A_Vector_base3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isErasedIntPtr p &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    callsFunc raw.text stdVecTraitsDeallocName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.get_member" == 1 &&
+    opCount raw.text "cir.cast" == 1 &&
+    opCount raw.text "cir.base_class_addr" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- The construct chain: `traits::construct` (single delegation) and
+    `new_allocator::construct` (call-free placement store with the
+    `&&`-arg double load). The allocator ref drops; the triple, the
+    offset, and the `i32` word stay (`stdVecConstructFunc`, returning
+    the updated triple for b2). -/
+def isStdVecConstructShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [al, p, v] =>
+    raw.ret == "" && isErasedIntPtr p &&
+    isVecGrowRef "!cir.ptr<!s32i>" v &&
+    (isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" al &&
+      callsFunc raw.text stdVecNewConstructName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.base_class_addr" == 1 ||
+    isVecGrowRef "!cir.ptr<!rec___gnu_cxx3A3Anew_allocator3Cint3E>" al &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.const" == 1 &&
+      opCount raw.text "cir.cast" == 2) &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- The relocate chain: `_S_relocate` (into `_S_do_relocate`),
+    `_S_do_relocate` (into `__relocate_a`, dropping the
+    `integral_constant` tag), `__relocate_a` (three `__niter_base`
+    projections into `__relocate_a_1`), and `__relocate_a_1` (the
+    `count > 0`-guarded `memmove`, unrolled to the copy loop). All
+    take erased offsets and fuse to the copy loop
+    (`stdVecRelocFunc`; the `result + count` return drops — b2
+    recomputes the offset). -/
+def isStdVecRelocShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  raw.ret == "!cir.ptr<!s32i>" &&
+  !containsSubstr raw.text "cir.call @malloc" &&
+  !containsSubstr raw.text "cir.call @free(" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  match raw.params with
+  | [a, b, c, al] =>
+    isErasedIntPtr a && isErasedIntPtr b && isErasedIntPtr c &&
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" al &&
+    !callsFunc raw.text raw.name &&
+    (callsFunc raw.text stdVecDoRelocName &&
+      opCount raw.text "cir.call @" == 1 &&
+      !containsSubstr raw.text "cir.cast" &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" &&
+      !containsSubstr raw.text "cir.ptr_stride" &&
+      !containsSubstr raw.text "cir.ptr_diff" ||
+    callsFunc raw.text stdVecNIterBaseName &&
+      opCount raw.text ("cir.call @" ++ stdVecNIterBaseName ++ "(") == 3 &&
+      callsFunc raw.text stdVecRelocA1Name &&
+      opCount raw.text "cir.call @" == 4 &&
+      !containsSubstr raw.text "cir.cast" &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" &&
+      !containsSubstr raw.text "cir.ptr_stride" &&
+      !containsSubstr raw.text "cir.ptr_diff" ||
+    callsFunc raw.text "memmove" &&
+      opCount raw.text "cir.call @" == 1 &&
+      opCount raw.text "cir.cmp" == 1 &&
+      opCount raw.text "cir.if" == 1 &&
+      opCount raw.text "cir.const" == 3 &&
+      opCount raw.text "cir.ptr_stride" == 1 &&
+      opCount raw.text "cir.ptr_diff" == 1 &&
+      opCount raw.text "cir.cast" == 3)
+  | [a, b, c, al, tag] =>
+    isErasedIntPtr a && isErasedIntPtr b && isErasedIntPtr c &&
+    isVecGrowRef "!cir.ptr<!rec_std3A3Aallocator3Cint3E>" al &&
+    !isPtrType tag.ctype &&
+    tag.ctype == "!rec_std3A3Aintegral_constant3Cbool2C_true3E" &&
+    callsFunc raw.text stdVecRelocAName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- Any N4d-iv-b1 growth-leaf shape (disjunction for the alias-gate
+    carve-outs: a func matching one of these has exactly the pinned
+    params, so the erased-offset params need no uniqueness). -/
+def isVecGrowShape (raw : RawFunc) : Bool :=
+  isStdVecEmptyCtorShape raw || isStdVecUnitShape raw ||
+  isStdVecDtorShape raw || isStdVecDestroyNoopShape raw ||
+  isStdVecDestroyPtrShape raw || isStdVecGetTpShape raw ||
+  isStdVecDiffMaxShape raw || isStdVecMaxShape raw ||
+  isStdVecMinShape raw || isStdVecCheckLenShape raw ||
+  isStdVecBeginShape raw || isStdVecEndShape raw ||
+  isStdVecBackShape raw || isStdVecIterIdShape raw ||
+  isStdVecMinusElShape raw || isStdVecMinusShape raw ||
+  isStdVecAllocShape raw || isStdVecDeallocShape raw ||
+  isStdVecDeallocGuardShape raw || isStdVecConstructShape raw ||
+  isStdVecRelocShape raw
+
+/-- A param whose missing `llvm.noalias` needs no recovery: a borrowed
+    erased-offset pointer inside a pinned b1 shape (cf.
+    `isRecoveredParam`: same carve-out role, value-model erasure
+    instead of reader recovery). -/
+def isVecGrowErasedParam (raw : RawFunc) (p : RawParam) : Bool :=
+  isVecGrowShape raw && isErasedIntPtr p
 
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
@@ -2079,7 +2978,7 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
-  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text && !isBoxThroughExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b shapes, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text && !isBoxThroughExemptText text && !isVecDtorExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b / N4d-iv-b1-dtor shapes, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.trap" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b shapes, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
@@ -2104,6 +3003,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
   if raw.name != oracle.funcName then
     reject raw.name .outOfSubset
       s!"out-of-subset: oracle fact is for '{oracle.funcName}', not '{raw.name}' (wiring error; refusing to translate)"
+  else if isVecGrowComposerText raw.text then
+    reject raw.name .outOfSubset
+      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (`_M_realloc_insert` / `emplace_back` / `push_back` / the `vec_push_sum` entry: multi-call growth composition — checked length, fresh storage, value relocation): growth leaves validate in N4d-iv-b1, composition is deferred to N4d-iv-b2 (see docs/ROADMAP.md N4d-iv-b)"
   else match forbiddenOp raw.text with
   | some what =>
     reject raw.name .outOfSubset
@@ -2111,7 +3013,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
   | none =>
     match raw.params.find? (fun p =>
       isPtrType p.ctype && !p.noalias && !p.singleRef &&
-      !isRecoveredParam raw p) with
+      !isRecoveredParam raw p && !isVecGrowErasedParam raw p) with
     | some p =>
       reject raw.name .aliasReject
         s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`) or the full C++ single-reference triple (`nonnull + dereferenceable + noundef`): uniqueness cannot be established (see docs/SUBSET.md rule 1)"
@@ -2124,7 +3026,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           | .noalias => "is unreachable"
         reject raw.name .aliasReject
           s!"alias-reject: function '{raw.name}': oracle {why}: live pointer params require an explicit `noalias` verdict (see docs/OWNERSHIP.md)"
-      else if 2 ≤ (oracleParams raw).length && !isChooseShape raw then
+      else if 2 ≤ (oracleParams raw).length && !isChooseShape raw &&
+          !isVecGrowShape raw then
         reject raw.name .aliasReject
           s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`) is admitted (see docs/SUBSET.md rules 2, 6; N2a admits no multi-reader `Func` yet)"
       else if isAddShape raw then
@@ -2204,9 +3107,51 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecIndexFunc with name := raw.name }
       else if isStdVecReadSumShape raw then
         .ok { stdVecReadSumFunc with name := raw.name }
+      else if isStdVecEmptyCtorShape raw then
+        .ok { stdVecEmptyCtorFunc with name := raw.name }
+      else if isStdVecUnitShape raw then
+        .ok { stdVecUnitFunc with name := raw.name }
+      else if isStdVecDtorShape raw then
+        .ok { stdVecDtorFunc with name := raw.name }
+      else if isStdVecDestroyNoopShape raw then
+        .ok { stdVecDestroyNoopFunc with name := raw.name }
+      else if isStdVecDestroyPtrShape raw then
+        .ok { stdVecDestroyPtrFunc with name := raw.name }
+      else if isStdVecGetTpShape raw then
+        .ok { stdVecGetTpFunc with name := raw.name }
+      else if isStdVecDiffMaxShape raw then
+        .ok { stdVecDiffMaxFunc with name := raw.name }
+      else if isStdVecMaxShape raw then
+        .ok { stdVecMaxFunc with name := raw.name }
+      else if isStdVecMinShape raw then
+        .ok { stdVecMinFunc with name := raw.name }
+      else if isStdVecCheckLenShape raw then
+        .ok { stdVecCheckLenFunc with name := raw.name }
+      else if isStdVecBeginShape raw then
+        .ok { stdVecBeginFunc with name := raw.name }
+      else if isStdVecEndShape raw then
+        .ok { stdVecEndFunc with name := raw.name }
+      else if isStdVecBackShape raw then
+        .ok { stdVecBackFunc with name := raw.name }
+      else if isStdVecIterIdShape raw then
+        .ok { stdVecIterIdFunc with name := raw.name }
+      else if isStdVecMinusElShape raw then
+        .ok { stdVecMinusElFunc with name := raw.name }
+      else if isStdVecMinusShape raw then
+        .ok { stdVecMinusFunc with name := raw.name }
+      else if isStdVecAllocShape raw then
+        .ok { stdVecAllocFunc with name := raw.name }
+      else if isStdVecDeallocShape raw then
+        .ok { stdVecDeallocFunc with name := raw.name }
+      else if isStdVecDeallocGuardShape raw then
+        .ok { stdVecDeallocGuardFunc with name := raw.name }
+      else if isStdVecConstructShape raw then
+        .ok { stdVecConstructFunc with name := raw.name }
+      else if isStdVecRelocShape raw then
+        .ok { stdVecRelocFunc with name := raw.name }
       else if callsStdVecWrongShape raw then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the call-free `operator[]` fused leaf (`vec_index`), and the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}`; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the call-free `operator[]` fused leaf (`vec_index`), the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`), and the N4d-iv-b1 growth leaves (ctor chain `vec_empty_ctor`, empty-effect `vec_unit`, dtor `vec_dtor`, destroy `vec_destroy_noop` / `vec_destroy_ptr`, allocator projection `vec_get_tp`, max-size `vec_diffmax`, `vec_max` / `vec_min`, `vec_check_len`, `vec_begin` / `vec_end` / `vec_back`, iterator identities `vec_iter_id`, `vec_minus_el` / `vec_minus`, allocate `vec_alloc`, deallocate `vec_dealloc` / `vec_dealloc_guard`, construct `vec_construct`, relocate `vec_reloc`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}` + the b1 registry; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then

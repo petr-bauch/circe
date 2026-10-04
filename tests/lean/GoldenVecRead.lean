@@ -115,8 +115,9 @@ def advBareVecPtr : String :=
   ++ "    %r = cir.call @" ++ vecSizeEv ++ "(%arg0) : (!cir.ptr<" ++ vecRec ++ ">) -> !u64i\n"
   ++ "    cir.return %r : !u64i\n  }\n}"
 
-/-- N4d-iv-b deferral pin (`push_back`): growth (reallocation moves
-    values) is outside the reads subset. -/
+/-- N4d-iv-b deferral pin (`push_back`): growth (reallocation
+    moves values) is outside the reads subset — since N4d-iv-b1 it
+    pins to the actionable composer message. -/
 def advPushBack : String :=
   "module {\n  cir.func @vpush(%arg0: !cir.ptr<" ++ vecRec ++ "> " ++ vecTriple ++ ", %arg1: !cir.ptr<!s32i> {llvm.align = 4 : i64, llvm.dereferenceable = 4 : i64, llvm.nonnull, llvm.noundef}) attributes {\"nothrow\"} {\n"
   ++ "    cir.call @_ZNSt6vectorIiSaIiEE9push_backEOi(%arg0, %arg1) : (!cir.ptr<" ++ vecRec ++ ">, !cir.ptr<!s32i>) -> ()\n"
@@ -142,7 +143,7 @@ def main : IO Unit := do
     "alias-reject" "single-reference triple"
   passed := passed + r5
   let d1 ← checkRejectVecRead "vpush" advPushBack .unknown
-    "out-of-subset" "outside the admitted call shapes"
+    "out-of-subset" "N4d-iv-b2 growth composer"
   passed := passed + d1
   IO.println s!"GOLDENVECREAD-OK passed={passed}"
 

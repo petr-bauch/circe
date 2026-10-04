@@ -33,6 +33,18 @@ verbatim.
 | `stdVecSize_correct` (N4d-iv-a) | leaf reports the reified length | `stdVecSizeFwd l` (length read) |
 | `stdVecIndex_correct_some/oob` (N4d-iv-a) | leaf reads the word at a live `u64` index, `OOB` off the end | `stdVecIndexFwd l n` (index read) |
 | `stdVecReadSum_correct_nil/cons/cons_err` (N4d-iv-a) | checked-add fold: nil is zero, cons threads `checkedAddI32`, error propagates | `stdVecReadSumFwd l` (fold from `0`) |
+| `stdVecEmptyCtor_correct` / `stdVecUnit_correct` (N4d-iv-b1) | empty owned triple; erased no-ops answer zero | `stdVecEmptyCtorFwd` / `stdVecUnitFwd` (const) |
+| `stdVecDtor_correct_empty/free` (N4d-iv-b1) | null passthrough; live frees storage | `stdVecDtorFwd b len cap` (cap guard + `vecFree`) |
+| `stdVecDestroyNoop_correct` / `stdVecDestroyPtr_correct` / `stdVecGetTp_correct` (N4d-iv-b1) | trivial destroys + stateless allocator answer zero | const `0` forwards |
+| `stdVecDiffMax_correct` (N4d-iv-b1) | the `S64_MAX / 4` difference bound | `stdVecDiffMaxFwd` (const) |
+| `stdVecMax_correct_right/left` / `stdVecMin_correct_right/left` (N4d-iv-b1) | arg selection on the `ult` guard | `stdVecMaxFwd a b` / `stdVecMinFwd a b` (conditional) |
+| `stdVecCheckLen_correct_fail/saturate/exact` (N4d-iv-b1) | loud past `max_size - size`; saturate on wrap; else grown length | `stdVecCheckLenFwd len n` (3-deep guard chain) |
+| `stdVecBegin_correct` / `stdVecEnd_correct` / `stdVecBack_correct` (N4d-iv-b1) | 0 / length / length − 1 | const / reified forwards |
+| `stdVecIterId_correct` / `stdVecMinusEl_correct` / `stdVecMinus_correct` (N4d-iv-b1) | identity; wrapping `usub`; bit-exact `s64diff` | `stdVecIterIdFwd` / `stdVecMinusElFwd` / `stdVecMinusFwd` |
+| `stdVecAlloc_correct_zero/ok/overmax` (N4d-iv-b1) | null shape at zero; zeroed storage; loud past `max_size` | `stdVecAllocFwd n` (count guard + `max_size` bound) |
+| `stdVecDealloc_correct_ok/err` / `stdVecDeallocGuard_correct_zero/free` (N4d-iv-b1) | consume; free failure propagates; zero-count passthrough | `stdVecDeallocFwd` / `stdVecDeallocGuardFwd` (`vecFree`) |
+| `stdVecConstruct_correct_ok/oob` (N4d-iv-b1) | placement store; loud past storage | `stdVecConstructFwd b len cap p x` (`vecSet`) |
+| `stdVecReloc_correct_nil` (N4d-iv-b1) | zero-word relocation is the identity | `stdVecRelocFwd …` (`stdVecBlitFold` nil) |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`

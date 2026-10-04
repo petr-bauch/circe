@@ -41,11 +41,14 @@ CIR text per def, see `isStdVecGrow*Shape` in `Circe.Validator`):
   no-op for `int`) → `stdVecDestroyPtrFunc`.
 - allocator projection (`_M_get_Tp_allocator` × 2 — the `_M_impl`
   member access fuses to the erased allocator) → `stdVecGetTpFunc`.
-- max-size chain (`_M_max_size` — the `u64` div folds;
-  `_S_max_size`/`max_size` — the `min` chain folds; all three are
-  `2305843009213693951`) → `stdVecDiffMaxFunc`.
-- allocator max (`new_allocator::max_size`, `traits::max_size` —
-  both `4611686018427387903`) → `stdVecAllocMaxFunc`.
+- max-size chain (`_M_max_size` — the `S64_MAX / 4` div folds;
+  `new_allocator::max_size` / `traits::max_size` — pure delegations
+  into it; `_S_max_size` / `max_size` — the `min(diffmax, allocmax)`
+  chain folds; all five are `2305843009213693951`) →
+  `stdVecDiffMaxFunc` (the `(2^64 - 1) / 4` overflow comparand inside
+  `new_allocator::allocate` is dead — it sits in the already-failing
+  `n > maxDiff` branch — so no Func returns it; the bound is recorded
+  as `stdVecAllocMax`).
 - `std::max` / `std::min` over `u64` (early-return-`if` form) →
   `stdVecMaxFunc` / `stdVecMinFunc`.
 - `_M_check_len` (the `length_error` throw fuses to `fail`, the
@@ -53,8 +56,9 @@ CIR text per def, see `isStdVecGrow*Shape` in `Circe.Validator`):
   `tif`/`if_`) → `stdVecCheckLenFunc`.
 - allocate chain (`_M_allocate` — the `n == 0` ternary is kept, both
   branches build the same value; `traits::allocate`,
-  `new_allocator::allocate` — the over-max throw pair fuses to
-  `fail`, the dead `4 > 16` aligned-new skeleton drops, operator
+  `new_allocator::allocate` — the deciding check is `n > maxDiff`
+  (the `bad_array_new_length` / `bad_alloc` pair fuses to `fail`),
+  the dead `4 > 16` aligned-new skeleton drops, operator
   `new` is fresh storage like `boxNew`) → `stdVecAllocFunc`.
 - deallocate chain (`traits::deallocate`, `new_allocator::deallocate`
   — unconditional consume; `_M_deallocate` — the `ptr_to_bool` guard
@@ -89,11 +93,13 @@ import Circe.Emit.Fragment
 /-- `_S_max_size` value: `min(diffmax, allocmax)` (`u64`). -/
 def stdVecMaxDiff : Nat := 2305843009213693951
 
-/-- `new_allocator::max_size` value: `(2^64 - 1) / 4` (`u64`). -/
+/-- Dead overflow comparand in `new_allocator::allocate`: `(2^64 - 1) / 4`
+    (`u64`). It sits inside the already-failing `n > maxDiff` branch, so
+    it never decides anything (dropped info, recorded here rather than
+    modeled). -/
 def stdVecAllocMax : Nat := 4611686018427387903
 
 def stdVecMaxDiffBV : BitVec 64 := BitVec.ofNat 64 stdVecMaxDiff
-def stdVecAllocMaxBV : BitVec 64 := BitVec.ofNat 64 stdVecAllocMax
 
 /-! ## N4d-iv-b1: default-ctor chain + empty leaves -/
 
@@ -370,16 +376,20 @@ theorem evalFuncFuel_stdVecGetTp (F : Nat) (b : Vec32) (len cap : Nat) :
       evalStmtWith, stdVecGetTpFwd, hlit]
 
 /-- Mangled names fused into the `diffmax` const
-    (`2305843009213693951`). -/
+    (`2305843009213693951`): `_M_max_size` (the `S64_MAX / 4` div),
+    the two pure delegations into it, and the `min(diffmax,
+    allocmax)` chain (`_S_max_size`, `max_size`). -/
 def stdVecMMaxSizeName : String :=
   "_ZNK9__gnu_cxx13new_allocatorIiE11_M_max_sizeEv"
 def stdVecSMaxSizeName : String :=
   "_ZNSt6vectorIiSaIiEE11_S_max_sizeERKS0_"
 def stdVecMaxSizeName : String := "_ZNKSt6vectorIiSaIiEE8max_sizeEv"
 
-/-- Canonical CoreIR for the max-size chain: the `u64` div
-    (`_M_max_size`) and the `min(diffmax, allocmax)` chain
-    (`_S_max_size`, `max_size`) all fold to the same const. -/
+/-- Canonical CoreIR for the max-size chain: the `S64_MAX / 4` div
+    (`_M_max_size`), the two pure delegations into it
+    (`new_allocator::max_size`, `traits::max_size`), and the
+    `min(diffmax, allocmax)` chain (`_S_max_size`, `max_size`) all
+    fold to the same const. -/
 def stdVecDiffMaxFunc : Func :=
   ⟨stdVecMMaxSizeName, [], .u 64,
    .return_ (.lit (.u64 stdVecMaxDiffBV))⟩
@@ -400,34 +410,13 @@ theorem evalFuncFuel_stdVecDiffMax (F : Nat) :
     simp only [evalFuncFuel, hbind, hbody, evalStmtFuel, evalStmtZero,
       evalStmtWith, stdVecDiffMaxFwd, hlit]
 
-/-- Mangled names fused into the allocator-max const
-    (`4611686018427387903`). -/
+/-- Mangled names of the pure max-size delegations (both return
+    `_M_max_size`, i.e. `maxDiff`, so both map to `stdVecDiffMaxFunc`;
+    there is no `allocmax`-valued `max_size` def). -/
 def stdVecNewAllocMaxSizeName : String :=
   "_ZNK9__gnu_cxx13new_allocatorIiE8max_sizeEv"
 def stdVecTraitsMaxSizeName : String :=
   "_ZNSt16allocator_traitsISaIiEE8max_sizeERKS0_"
-
-/-- Canonical CoreIR for the allocator max: both delegations fold to
-    `(2^64 - 1) / 4`. -/
-def stdVecAllocMaxFunc : Func :=
-  ⟨stdVecNewAllocMaxSizeName, [], .u 64,
-   .return_ (.lit (.u64 stdVecAllocMaxBV))⟩
-
-/-- Value-level forward for the allocator max. -/
-def stdVecAllocMaxFwd : Result Value := .ok (.u64 stdVecAllocMaxBV)
-
-/-- `emit_correct` for the allocator max (any fuel). -/
-theorem evalFuncFuel_stdVecAllocMax (F : Nat) :
-    evalFuncFuel F stdVecAllocMaxFunc [] = stdVecAllocMaxFwd := by
-  have hbind : bindArgs stdVecAllocMaxFunc.args [] = some [] := rfl
-  have hbody : stdVecAllocMaxFunc.body =
-      .return_ (.lit (.u64 stdVecAllocMaxBV)) := rfl
-  have hlit : evalExpr (.lit (.u64 stdVecAllocMaxBV)) [] =
-      .ok (.u64 stdVecAllocMaxBV) := by
-    simp [evalExpr, litVal]
-  cases F <;>
-    simp only [evalFuncFuel, hbind, hbody, evalStmtFuel, evalStmtZero,
-      evalStmtWith, stdVecAllocMaxFwd, hlit]
 
 /-! ## N4d-iv-b1: `std::max` / `std::min` over `u64` -/
 
@@ -1118,14 +1107,16 @@ def stdVecNewAllocName : String :=
   "_ZN9__gnu_cxx13new_allocatorIiE8allocateEmPKv"
 
 /-- Canonical CoreIR for `_M_allocate`: the `n != 0` test keeps CIR
-    branch polarity (true allocates), the over-max throw pair fuses
-    to `fail`. -/
+    branch polarity (true allocates), the deciding over-max check is
+    `n > maxDiff` (the `_M_max_size` call in `new_allocator::allocate`;
+    the `(2^64 - 1) / 4` overflow comparand is dead inside that branch)
+    fusing the throw pair to `fail`. -/
 def stdVecAllocFunc : Func :=
   ⟨stdVecAllocateName,
    [{ name := "n", ty := .u 64, role := .owned }],
    .vecBlock,
    .if_ (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.var "n"))
-     (.if_ (.ult (.lit (.u64 stdVecAllocMaxBV)) (.var "n"))
+     (.if_ (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
        .fail
        (.return_ (.vgrowNew (.var "n"))))
      (.return_ (.vgrowNew (.lit (.u64 (BitVec.ofNat 64 0)))))⟩
@@ -1134,7 +1125,7 @@ def stdVecAllocFunc : Func :=
     `BitVec`-bool level, so no `toNat` bridges are needed). -/
 def stdVecAllocFwd (n : BitVec 64) : Result Value :=
   if (BitVec.ofNat 64 0).ult n then
-    if stdVecAllocMaxBV.ult n then .error .AssertFail
+    if stdVecMaxDiffBV.ult n then .error .AssertFail
     else .ok (.stdVecOwned ⟨List.replicate n.toNat 0, false⟩ 0 n.toNat)
   else .ok (.stdVecOwned
     ⟨List.replicate (BitVec.ofNat 64 0).toNat 0, false⟩ 0
@@ -1153,7 +1144,7 @@ theorem evalFuncFuel_stdVecAlloc (F : Nat) (n : BitVec 64) :
       some [("n", .u64 n)] := rfl
   have hbody : stdVecAllocFunc.body =
       .if_ (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.var "n"))
-        (.if_ (.ult (.lit (.u64 stdVecAllocMaxBV)) (.var "n"))
+        (.if_ (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
           .fail
           (.return_ (.vgrowNew (.var "n"))))
         (.return_ (.vgrowNew (.lit (.u64 (BitVec.ofNat 64 0))))) := rfl
@@ -1166,18 +1157,18 @@ theorem evalFuncFuel_stdVecAlloc (F : Nat) (n : BitVec 64) :
       .ok (.b ((BitVec.ofNat 64 0).ult n)) :=
     evalExpr_ult_u64lit _ _ _ _ hnv
   have hom : evalExpr
-      (.ult (.lit (.u64 stdVecAllocMaxBV)) (.var "n"))
+      (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
       [("n", .u64 n)] =
-      .ok (.b (stdVecAllocMaxBV.ult n)) :=
+      .ok (.b (stdVecMaxDiffBV.ult n)) :=
     evalExpr_ult_u64lit _ _ _ _ hnv
   by_cases hz : (BitVec.ofNat 64 0).ult n
   · have hc : evalExpr
         (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.var "n"))
         [("n", .u64 n)] = .ok (.b true) := by
       simp [hzc, hz]
-    by_cases hm : stdVecAllocMaxBV.ult n
+    by_cases hm : stdVecMaxDiffBV.ult n
     · have hcm : evalExpr
-          (.ult (.lit (.u64 stdVecAllocMaxBV)) (.var "n"))
+          (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
           [("n", .u64 n)] = .ok (.b true) := by
         simp [hom, hm]
       have hfwd : stdVecAllocFwd n = .error .AssertFail := by
@@ -1189,7 +1180,7 @@ theorem evalFuncFuel_stdVecAlloc (F : Nat) (n : BitVec 64) :
         exact evalStmtFuel_fail F _
       simp [evalFuncFuel, hbind, hstmt, hfwd]
     · have hcm : evalExpr
-          (.ult (.lit (.u64 stdVecAllocMaxBV)) (.var "n"))
+          (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
           [("n", .u64 n)] = .ok (.b false) := by
         simp [hom, hm]
       have hnew : evalExpr (.vgrowNew (.var "n")) [("n", .u64 n)] =

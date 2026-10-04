@@ -9,6 +9,8 @@
 -- `tests/golden/*.lean` pins the forward bytes).
 import Circe.Emit
 
+set_option maxRecDepth 2048
+
 def emitOrDie (f : Func) : IO EmittedFunc := do
   match emitFunc f with
   | .ok e => pure e
@@ -75,6 +77,27 @@ def main : IO Unit := do
   let vecSize ← emitOrDie stdVecSizeFunc
   let vecIndex ← emitOrDie stdVecIndexFunc
   let vecReadSum ← emitOrDie stdVecReadSumFunc
+  let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
+  let vecUnit ← emitOrDie stdVecUnitFunc
+  let vecDtor ← emitOrDie stdVecDtorFunc
+  let vecDestroyNoop ← emitOrDie stdVecDestroyNoopFunc
+  let vecDestroyPtr ← emitOrDie stdVecDestroyPtrFunc
+  let vecGetTp ← emitOrDie stdVecGetTpFunc
+  let vecDiffMax ← emitOrDie stdVecDiffMaxFunc
+  let vecMax ← emitOrDie stdVecMaxFunc
+  let vecMin ← emitOrDie stdVecMinFunc
+  let vecCheckLen ← emitOrDie stdVecCheckLenFunc
+  let vecBegin ← emitOrDie stdVecBeginFunc
+  let vecEnd ← emitOrDie stdVecEndFunc
+  let vecBack ← emitOrDie stdVecBackFunc
+  let vecIterId ← emitOrDie stdVecIterIdFunc
+  let vecMinusEl ← emitOrDie stdVecMinusElFunc
+  let vecMinus ← emitOrDie stdVecMinusFunc
+  let vecAlloc ← emitOrDie stdVecAllocFunc
+  let vecDealloc ← emitOrDie stdVecDeallocFunc
+  let vecDeallocGuard ← emitOrDie stdVecDeallocGuardFunc
+  let vecConstruct ← emitOrDie stdVecConstructFunc
+  let vecReloc ← emitOrDie stdVecRelocFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -130,6 +153,27 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecSize.lean" (emitFileText (.ok vecSize))
   IO.FS.writeFile "out/VecIndex.lean" (emitFileText (.ok vecIndex))
   IO.FS.writeFile "out/VecReadSum.lean" (emitFileText (.ok vecReadSum))
+  IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
+  IO.FS.writeFile "out/VecGrowUnit.lean" (emitFileText (.ok vecUnit))
+  IO.FS.writeFile "out/VecGrowDtor.lean" (emitFileText (.ok vecDtor))
+  IO.FS.writeFile "out/VecGrowDestroyNoop.lean" (emitFileText (.ok vecDestroyNoop))
+  IO.FS.writeFile "out/VecGrowDestroyPtr.lean" (emitFileText (.ok vecDestroyPtr))
+  IO.FS.writeFile "out/VecGrowGetTp.lean" (emitFileText (.ok vecGetTp))
+  IO.FS.writeFile "out/VecGrowDiffMax.lean" (emitFileText (.ok vecDiffMax))
+  IO.FS.writeFile "out/VecGrowMax.lean" (emitFileText (.ok vecMax))
+  IO.FS.writeFile "out/VecGrowMin.lean" (emitFileText (.ok vecMin))
+  IO.FS.writeFile "out/VecGrowCheckLen.lean" (emitFileText (.ok vecCheckLen))
+  IO.FS.writeFile "out/VecGrowBegin.lean" (emitFileText (.ok vecBegin))
+  IO.FS.writeFile "out/VecGrowEnd.lean" (emitFileText (.ok vecEnd))
+  IO.FS.writeFile "out/VecGrowBack.lean" (emitFileText (.ok vecBack))
+  IO.FS.writeFile "out/VecGrowIterId.lean" (emitFileText (.ok vecIterId))
+  IO.FS.writeFile "out/VecGrowMinusEl.lean" (emitFileText (.ok vecMinusEl))
+  IO.FS.writeFile "out/VecGrowMinus.lean" (emitFileText (.ok vecMinus))
+  IO.FS.writeFile "out/VecGrowAlloc.lean" (emitFileText (.ok vecAlloc))
+  IO.FS.writeFile "out/VecGrowDealloc.lean" (emitFileText (.ok vecDealloc))
+  IO.FS.writeFile "out/VecGrowDeallocGuard.lean" (emitFileText (.ok vecDeallocGuard))
+  IO.FS.writeFile "out/VecGrowConstruct.lean" (emitFileText (.ok vecConstruct))
+  IO.FS.writeFile "out/VecGrowReloc.lean" (emitFileText (.ok vecReloc))
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
@@ -185,6 +229,27 @@ def main : IO Unit := do
   let vecSizeSpec ← specOrDie stdVecSizeFunc
   let vecIndexSpec ← specOrDie stdVecIndexFunc
   let vecReadSumSpec ← specOrDie stdVecReadSumFunc
+  let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
+  let vecUnitSpec ← specOrDie stdVecUnitFunc
+  let vecDtorSpec ← specOrDie stdVecDtorFunc
+  let vecDestroyNoopSpec ← specOrDie stdVecDestroyNoopFunc
+  let vecDestroyPtrSpec ← specOrDie stdVecDestroyPtrFunc
+  let vecGetTpSpec ← specOrDie stdVecGetTpFunc
+  let vecDiffMaxSpec ← specOrDie stdVecDiffMaxFunc
+  let vecMaxSpec ← specOrDie stdVecMaxFunc
+  let vecMinSpec ← specOrDie stdVecMinFunc
+  let vecCheckLenSpec ← specOrDie stdVecCheckLenFunc
+  let vecBeginSpec ← specOrDie stdVecBeginFunc
+  let vecEndSpec ← specOrDie stdVecEndFunc
+  let vecBackSpec ← specOrDie stdVecBackFunc
+  let vecIterIdSpec ← specOrDie stdVecIterIdFunc
+  let vecMinusElSpec ← specOrDie stdVecMinusElFunc
+  let vecMinusSpec ← specOrDie stdVecMinusFunc
+  let vecAllocSpec ← specOrDie stdVecAllocFunc
+  let vecDeallocSpec ← specOrDie stdVecDeallocFunc
+  let vecDeallocGuardSpec ← specOrDie stdVecDeallocGuardFunc
+  let vecConstructSpec ← specOrDie stdVecConstructFunc
+  let vecRelocSpec ← specOrDie stdVecRelocFunc
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
@@ -240,6 +305,27 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecSize_Spec.lean" vecSizeSpec
   IO.FS.writeFile "out/VecIndex_Spec.lean" vecIndexSpec
   IO.FS.writeFile "out/VecReadSum_Spec.lean" vecReadSumSpec
+  IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec
+  IO.FS.writeFile "out/VecGrowUnit_Spec.lean" vecUnitSpec
+  IO.FS.writeFile "out/VecGrowDtor_Spec.lean" vecDtorSpec
+  IO.FS.writeFile "out/VecGrowDestroyNoop_Spec.lean" vecDestroyNoopSpec
+  IO.FS.writeFile "out/VecGrowDestroyPtr_Spec.lean" vecDestroyPtrSpec
+  IO.FS.writeFile "out/VecGrowGetTp_Spec.lean" vecGetTpSpec
+  IO.FS.writeFile "out/VecGrowDiffMax_Spec.lean" vecDiffMaxSpec
+  IO.FS.writeFile "out/VecGrowMax_Spec.lean" vecMaxSpec
+  IO.FS.writeFile "out/VecGrowMin_Spec.lean" vecMinSpec
+  IO.FS.writeFile "out/VecGrowCheckLen_Spec.lean" vecCheckLenSpec
+  IO.FS.writeFile "out/VecGrowBegin_Spec.lean" vecBeginSpec
+  IO.FS.writeFile "out/VecGrowEnd_Spec.lean" vecEndSpec
+  IO.FS.writeFile "out/VecGrowBack_Spec.lean" vecBackSpec
+  IO.FS.writeFile "out/VecGrowIterId_Spec.lean" vecIterIdSpec
+  IO.FS.writeFile "out/VecGrowMinusEl_Spec.lean" vecMinusElSpec
+  IO.FS.writeFile "out/VecGrowMinus_Spec.lean" vecMinusSpec
+  IO.FS.writeFile "out/VecGrowAlloc_Spec.lean" vecAllocSpec
+  IO.FS.writeFile "out/VecGrowDealloc_Spec.lean" vecDeallocSpec
+  IO.FS.writeFile "out/VecGrowDeallocGuard_Spec.lean" vecDeallocGuardSpec
+  IO.FS.writeFile "out/VecGrowConstruct_Spec.lean" vecConstructSpec
+  IO.FS.writeFile "out/VecGrowReloc_Spec.lean" vecRelocSpec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -295,4 +381,46 @@ def main : IO Unit := do
     throw (IO.userError "arrayAt must not have a backward definition")
   if arraySum.backward.isSome then
     throw (IO.userError "arraySum must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean + 55 *_Spec.lean stubs"
+  if vecEmptyCtor.backward.isSome then
+    throw (IO.userError "vecEmptyCtor must not have a backward definition")
+  if vecUnit.backward.isSome then
+    throw (IO.userError "vecUnit must not have a backward definition")
+  if vecDtor.backward.isSome then
+    throw (IO.userError "vecDtor must not have a backward definition")
+  if vecDestroyNoop.backward.isSome then
+    throw (IO.userError "vecDestroyNoop must not have a backward definition")
+  if vecDestroyPtr.backward.isSome then
+    throw (IO.userError "vecDestroyPtr must not have a backward definition")
+  if vecGetTp.backward.isSome then
+    throw (IO.userError "vecGetTp must not have a backward definition")
+  if vecDiffMax.backward.isSome then
+    throw (IO.userError "vecDiffMax must not have a backward definition")
+  if vecMax.backward.isSome then
+    throw (IO.userError "vecMax must not have a backward definition")
+  if vecMin.backward.isSome then
+    throw (IO.userError "vecMin must not have a backward definition")
+  if vecCheckLen.backward.isSome then
+    throw (IO.userError "vecCheckLen must not have a backward definition")
+  if vecBegin.backward.isSome then
+    throw (IO.userError "vecBegin must not have a backward definition")
+  if vecEnd.backward.isSome then
+    throw (IO.userError "vecEnd must not have a backward definition")
+  if vecBack.backward.isSome then
+    throw (IO.userError "vecBack must not have a backward definition")
+  if vecIterId.backward.isSome then
+    throw (IO.userError "vecIterId must not have a backward definition")
+  if vecMinusEl.backward.isSome then
+    throw (IO.userError "vecMinusEl must not have a backward definition")
+  if vecMinus.backward.isSome then
+    throw (IO.userError "vecMinus must not have a backward definition")
+  if vecAlloc.backward.isSome then
+    throw (IO.userError "vecAlloc must not have a backward definition")
+  if vecDealloc.backward.isSome then
+    throw (IO.userError "vecDealloc must not have a backward definition")
+  if vecDeallocGuard.backward.isSome then
+    throw (IO.userError "vecDeallocGuard must not have a backward definition")
+  if vecConstruct.backward.isSome then
+    throw (IO.userError "vecConstruct must not have a backward definition")
+  if vecReloc.backward.isSome then
+    throw (IO.userError "vecReloc must not have a backward definition")
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean + 76 *_Spec.lean stubs"

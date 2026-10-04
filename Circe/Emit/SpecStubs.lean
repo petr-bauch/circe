@@ -734,6 +734,481 @@ def emitStdVecReadSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the default-ctor chain (N4d-iv-b1 empty triple).
+    The mirror is the tag-erased `stdVecEmptyCtorFwd`. -/
+def emitStdVecEmptyCtorSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}()` builds the empty vector.\n"
+  ++ s!"    Base body reference: the empty triple itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecEmptyCtorFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : Vec32 × Nat × Nat :=\n"
+  ++ "  (⟨[], false⟩, 0, 0)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single empty triple. -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [((), (⟨[], false⟩, 0, 0))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the empty-effect leaves (N4d-iv-b1 void as
+    `i32 0`). The mirror is the tag-erased `stdVecUnitFwd`. -/
+def emitStdVecUnitSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}()` has no observable effect.\n"
+  ++ s!"    Base body reference: void as `i32 0` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecUnitFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single void value. -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × BitVec 32) :=\n"
+  ++ "  [((), BitVec.ofNat 32 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the destructor (N4d-iv-b1 guarded consume). The
+    mirror is the tag-erased `stdVecDtorFwd`; edges carry ground
+    truth (empty, live consume, use-after-free). -/
+def emitStdVecDtorSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` consumes the triple.\n"
+  ++ s!"    Base body reference: the `0 < cap`-guarded consume itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecDtorFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  if 0 < cap then\n"
+  ++ "    match vecFree b with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b' => .ok (b', len, cap)\n"
+  ++ "  else .ok (b, len, cap)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, live consume, use-after-free. -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat) × Result (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [(((⟨[], false⟩, 0, 0)), .ok (⟨[], false⟩, 0, 0)),\n"
+  ++ "   (((⟨[7], false⟩, 1, 1)), .ok (⟨[7], true⟩, 1, 1)),\n"
+  ++ "   (((⟨[7], true⟩, 1, 1)), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the destroy range (N4d-iv-b1 trivial-`int`
+    no-op). The mirror is the tag-erased `stdVecDestroyNoopFwd`. -/
+def emitStdVecDestroyNoopSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b)` destroys nothing.\n"
+  ++ s!"    Base body reference: void as `i32 0` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecDestroyNoopFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (_a _b : BitVec 64) : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single void value. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × BitVec 32) :=\n"
+  ++ "  [((0, 0), BitVec.ofNat 32 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for element destroy (N4d-iv-b1 `int` no-op). The
+    mirror is the tag-erased `stdVecDestroyPtrFwd`. -/
+def emitStdVecDestroyPtrSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(p)` destroys nothing.\n"
+  ++ s!"    Base body reference: void as `i32 0` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecDestroyPtrFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (_p : BitVec 64) : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single void value. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64 × BitVec 32) :=\n"
+  ++ "  [(0, BitVec.ofNat 32 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the allocator projection (N4d-iv-b1 erased
+    allocator). The mirror is the tag-erased `stdVecGetTpFwd`. -/
+def emitStdVecGetTpSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` projects the allocator.\n"
+  ++ s!"    Base body reference: the erased allocator `i32 0` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecGetTpFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single erased allocator. -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × BitVec 32) :=\n"
+  ++ "  [((), BitVec.ofNat 32 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the max-size chain (N4d-iv-b1 `diffmax` const).
+    The mirror is the tag-erased `stdVecDiffMaxFwd`. -/
+def emitStdVecDiffMaxSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}()` returns the max size.\n"
+  ++ s!"    Base body reference: the `diffmax` const itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecDiffMaxFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 2305843009213693951\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single const. -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × BitVec 64) :=\n"
+  ++ "  [((), BitVec.ofNat 64 2305843009213693951)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `std::max` (N4d-iv-b1 early-return-`if`). The
+    mirror is the tag-erased `stdVecMaxFwd`; edges carry ground
+    truth (either side wins). -/
+def emitStdVecMaxSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b)` returns the larger word.\n"
+  ++ s!"    Base body reference: the early-return-`if` itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecMaxFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 64) : BitVec 64 :=\n"
+  ++ "  if a.ult b then b else a\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: either side wins. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × BitVec 64) :=\n"
+  ++ "  [((3, 5), 5), ((5, 3), 5), ((4, 4), 4)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `std::min` (N4d-iv-b1 early-return-`if`). The
+    mirror is the tag-erased `stdVecMinFwd`; edges carry ground
+    truth (either side wins). -/
+def emitStdVecMinSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b)` returns the smaller word.\n"
+  ++ s!"    Base body reference: the early-return-`if` itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecMinFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 64) : BitVec 64 :=\n"
+  ++ "  if b.ult a then b else a\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: either side wins. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × BitVec 64) :=\n"
+  ++ "  [((3, 5), 3), ((5, 3), 3), ((4, 4), 4)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `_M_check_len` (N4d-iv-b1 checked length). The
+    mirror is the tag-erased `stdVecCheckLenFwd`; edges carry ground
+    truth (exact, clamp, loud over-max). -/
+def emitStdVecCheckLenSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, n)` checks the grown length.\n"
+  ++ s!"    Base body reference: the checked length with `maxDiff` clamp itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecCheckLenFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (len : Nat) (n : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  if (BitVec.ofNat 64 2305843009213693951 - BitVec.ofNat 64 len).ult n then\n"
+  ++ "    .error .AssertFail\n"
+  ++ "  else if (BitVec.ofNat 64 len +\n"
+  ++ "      (if (BitVec.ofNat 64 len).ult n then n\n"
+  ++ "        else BitVec.ofNat 64 len)).ult (BitVec.ofNat 64 len) then\n"
+  ++ "    .ok (BitVec.ofNat 64 2305843009213693951)\n"
+  ++ "  else if (BitVec.ofNat 64 2305843009213693951).ult (BitVec.ofNat 64 len +\n"
+  ++ "      (if (BitVec.ofNat 64 len).ult n then n\n"
+  ++ "        else BitVec.ofNat 64 len)) then\n"
+  ++ "    .ok (BitVec.ofNat 64 2305843009213693951)\n"
+  ++ "  else\n"
+  ++ "    .ok (BitVec.ofNat 64 len +\n"
+  ++ "      (if (BitVec.ofNat 64 len).ult n then n\n"
+  ++ "        else BitVec.ofNat 64 len))\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: exact, clamp, loud over-max. -/\n"
+  ++ s!"def {name}_spec_edges : List ((Nat × BitVec 64) × Result (BitVec 64)) :=\n"
+  ++ "  [((0, 0), .ok 0),\n"
+  ++ "   ((0, BitVec.ofNat 64 2305843009213693951), .ok (BitVec.ofNat 64 2305843009213693951)),\n"
+  ++ "   ((0, BitVec.ofNat 64 2305843009213693952), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `begin` (N4d-iv-b1 `0` offset). The mirror is the
+    tag-erased `stdVecBeginFwd`. -/
+def emitStdVecBeginSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` returns the first offset.\n"
+  ++ s!"    Base body reference: the `0` offset itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecBeginFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single offset. -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × BitVec 64) :=\n"
+  ++ "  [((), BitVec.ofNat 64 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `end` (N4d-iv-b1 `len` offset). The mirror is the
+    tag-erased `stdVecEndFwd`; edges carry ground truth (empty,
+    longer). -/
+def emitStdVecEndSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` returns the past-the-end offset.\n"
+  ++ s!"    Base body reference: the `len` offset itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecEndFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (len : Nat) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 len\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, longer. -/\n"
+  ++ s!"def {name}_spec_edges : List (Nat × BitVec 64) :=\n"
+  ++ "  [(0, BitVec.ofNat 64 0), (3, BitVec.ofNat 64 3)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `back` (N4d-iv-b1 `len - 1` offset). The mirror is
+    the tag-erased `stdVecBackFwd`; edges carry ground truth
+    (singleton, longer). -/
+def emitStdVecBackSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` returns the last offset.\n"
+  ++ s!"    Base body reference: the `len - 1` offset itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecBackFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (len : Nat) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 len - 1\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: singleton, longer. -/\n"
+  ++ s!"def {name}_spec_edges : List (Nat × BitVec 64) :=\n"
+  ++ "  [(1, BitVec.ofNat 64 0), (3, BitVec.ofNat 64 2)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the iterator identities (N4d-iv-b1 erased
+    offsets). The mirror is the tag-erased `stdVecIterIdFwd`; edges
+    carry ground truth (zero, nonzero). -/
+def emitStdVecIterIdSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(p)` returns the offset itself.\n"
+  ++ s!"    Base body reference: the identity itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecIterIdFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (x : BitVec 64) : BitVec 64 :=\n"
+  ++ "  x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, nonzero. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64 × BitVec 64) :=\n"
+  ++ "  [(0, 0), (9, 9)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `miEl` (N4d-iv-b1 wrapping `usub`). The mirror is
+    the tag-erased `stdVecMinusElFwd`; edges carry ground truth
+    (exact, wrap). -/
+def emitStdVecMinusElSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(it, n)` steps the offset back.\n"
+  ++ s!"    Base body reference: wrapping `usub` itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecMinusElFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (it n : BitVec 64) : BitVec 64 :=\n"
+  ++ "  it - n\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: exact, wrap. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × BitVec 64) :=\n"
+  ++ "  [((10, 3), 7), ((3, 10), 18446744073709551609)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `mi` (N4d-iv-b1 bit-exact `s64diff`, `s64` erased
+    to the 64-bit word). The mirror is the tag-erased
+    `stdVecMinusFwd`; edges carry ground truth (exact, wrap). -/
+def emitStdVecMinusSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b)` differences the offsets.\n"
+  ++ s!"    Base body reference: bit-exact `s64diff` itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecMinusFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 64) : BitVec 64 :=\n"
+  ++ "  a - b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: exact, wrap. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × BitVec 64) :=\n"
+  ++ "  [((10, 3), 7), ((3, 10), 18446744073709551609)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for allocate (N4d-iv-b1 fresh storage). The mirror is
+    the tag-erased `stdVecAllocFwd`; edges carry ground truth
+    (empty, fresh, loud over-max). -/
+def emitStdVecAllocSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(n)` allocates `n` words.\n"
+  ++ s!"    Base body reference: fresh storage itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecAllocFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (n : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  if (BitVec.ofNat 64 0).ult n then\n"
+  ++ "    if (BitVec.ofNat 64 2305843009213693951).ult n then .error .AssertFail\n"
+  ++ "    else .ok (⟨List.replicate n.toNat 0, false⟩, 0, n.toNat)\n"
+  ++ "  else .ok (⟨[], false⟩, 0, 0)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, fresh, loud over-max. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64 × Result (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [(0, .ok (⟨[], false⟩, 0, 0)),\n"
+  ++ "   (1, .ok (⟨[0], false⟩, 0, 1)),\n"
+  ++ "   (BitVec.ofNat 64 2305843009213693952, .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for deallocate (N4d-iv-b1 unconditional consume). The
+    mirror is the tag-erased `stdVecDeallocFwd`; edges carry ground
+    truth (live consume, double-free). -/
+def emitStdVecDeallocSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` consumes the triple.\n"
+  ++ s!"    Base body reference: the unconditional consume itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecDeallocFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  match vecFree b with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok b' => .ok (b', len, cap)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: live consume, double-free. -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat) × Result (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [(((⟨[1, 2], false⟩, 2, 2)), .ok (⟨[1, 2], true⟩, 2, 2)),\n"
+  ++ "   (((⟨[1], true⟩, 1, 1)), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `_M_deallocate` (N4d-iv-b1 guarded consume). The
+    mirror is the tag-erased `stdVecDeallocGuardFwd`; edges carry
+    ground truth (null kept, live consume). -/
+def emitStdVecDeallocGuardSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, n)` consumes the triple unless `n == 0`.\n"
+  ++ s!"    Base body reference: the `n == 0` test around the consume itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecDeallocGuardFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (n : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  if (BitVec.ofNat 64 0).ult n then\n"
+  ++ "    match vecFree b with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b' => .ok (b', len, cap)\n"
+  ++ "  else .ok (b, len, cap)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: null kept, live consume. -/\n"
+  ++ s!"def {name}_spec_edges : List (((Vec32 × Nat × Nat) × BitVec 64) × Result (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [((((⟨[1], false⟩, 1, 1), 0)), .ok (⟨[1], false⟩, 1, 1)),\n"
+  ++ "   ((((⟨[1], false⟩, 1, 1), 5)), .ok (⟨[1], true⟩, 1, 1))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2.1 t.1.1.2.2 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for `construct` (N4d-iv-b1 placement store). The
+    mirror is the tag-erased `stdVecConstructFwd`; edges carry ground
+    truth (store, `OOB` past the storage words). -/
+def emitStdVecConstructSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, p, v)` stores the word.\n"
+  ++ s!"    Base body reference: the placement store itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecConstructFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (p : BitVec 64) (x : BitVec 32) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  match vecSet b p.toNat x with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok b' => .ok (b', len, cap)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: store, `OOB` past the storage words. -/\n"
+  ++ s!"def {name}_spec_edges : List ((((Vec32 × Nat × Nat) × BitVec 64) × BitVec 32) × Result (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [(((((⟨[1, 2], false⟩, 2, 2), 0), 9)), .ok (⟨[9, 2], false⟩, 2, 2)),\n"
+  ++ "   (((((⟨[1], false⟩, 1, 1), 5), 9)), .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1.1.1 t.1.1.1.2.1 t.1.1.1.2.2 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for relocate (N4d-iv-b1 bulk copy). The mirror is the
+    tag-erased `stdVecRelocFwd`; edges carry ground truth (empty
+    trip, copy, consumed source). -/
+def emitStdVecRelocSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(src, dst, first, last, result)` copies the range.\n"
+  ++ s!"    Base body reference: the copy loop itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecRelocFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (bS : Vec32) (lenS : Nat) (_capS : Nat) (bD : Vec32) (lenD capD : Nat) (first last result : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  match stdVecBlitFold bS.val lenS bS.freed bD result.toNat first.toNat (last.toNat - first.toNat) with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok bD' => .ok (bD', lenD, capD)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty trip, copy, consumed source. -/\n"
+  ++ s!"def {name}_spec_edges : List (((Vec32 × Nat × Nat × Vec32 × Nat × Nat × BitVec 64 × BitVec 64 × BitVec 64)) × Result (Vec32 × Nat × Nat)) :=\n"
+  ++ "  [(((⟨[], false⟩, 0, 0, ⟨[9], false⟩, 1, 1, 0, 0, 0)), .ok (⟨[9], false⟩, 1, 1)),\n"
+  ++ "   (((⟨[5, 6], false⟩, 2, 2, ⟨[0, 0, 0], false⟩, 0, 3, 0, 2, 1)), .ok (⟨[0, 5, 6], false⟩, 0, 3)),\n"
+  ++ "   (((⟨[5], true⟩, 1, 1, ⟨[0], false⟩, 0, 1, 0, 1, 0)), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2.1 t.1.2.2.2.1 t.1.2.2.2.2.1 t.1.2.2.2.2.2.1 t.1.2.2.2.2.2.2.1 t.1.2.2.2.2.2.2.2.1 t.1.2.2.2.2.2.2.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

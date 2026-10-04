@@ -3,7 +3,7 @@ Circe.Emit — verified emitter `CoreIR → Lean` (facade).
 
 Fragment definitions and proofs live in `Circe.Emit.*` (`Fragment`, `Add`,
 `Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `VecRealloc`, `Calls`, `Struct`,
-`Method`, `Acc`, `Move`, `Flow`); shape
+`Method`, `Acc`, `Move`, `Flow`, `VecGrow`); shape
 recognition in `Circe.Emit.Match`; file-text and spec-stub rendering in
 `Circe.Emit.Render` / `Circe.Emit.SpecStubs`. This module wires them
 together (`emitSpec`, `emitFunc`, `emitFunc_rejects`) and holds the golden
@@ -59,6 +59,27 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .vecSize => .ok (emitStdVecSizeSpecText f.name)
   | some .vecIndex => .ok (emitStdVecIndexSpecText f.name)
   | some .vecReadSum => .ok (emitStdVecReadSumSpecText f.name)
+  | some .vecEmptyCtor => .ok (emitStdVecEmptyCtorSpecText f.name)
+  | some .vecUnit => .ok (emitStdVecUnitSpecText f.name)
+  | some .vecDtor => .ok (emitStdVecDtorSpecText f.name)
+  | some .vecDestroyNoop => .ok (emitStdVecDestroyNoopSpecText f.name)
+  | some .vecDestroyPtr => .ok (emitStdVecDestroyPtrSpecText f.name)
+  | some .vecGetTp => .ok (emitStdVecGetTpSpecText f.name)
+  | some .vecDiffMax => .ok (emitStdVecDiffMaxSpecText f.name)
+  | some .vecMax => .ok (emitStdVecMaxSpecText f.name)
+  | some .vecMin => .ok (emitStdVecMinSpecText f.name)
+  | some .vecCheckLen => .ok (emitStdVecCheckLenSpecText f.name)
+  | some .vecBegin => .ok (emitStdVecBeginSpecText f.name)
+  | some .vecEnd => .ok (emitStdVecEndSpecText f.name)
+  | some .vecBack => .ok (emitStdVecBackSpecText f.name)
+  | some .vecIterId => .ok (emitStdVecIterIdSpecText f.name)
+  | some .vecMinusEl => .ok (emitStdVecMinusElSpecText f.name)
+  | some .vecMinus => .ok (emitStdVecMinusSpecText f.name)
+  | some .vecAlloc => .ok (emitStdVecAllocSpecText f.name)
+  | some .vecDealloc => .ok (emitStdVecDeallocSpecText f.name)
+  | some .vecDeallocGuard => .ok (emitStdVecDeallocGuardSpecText f.name)
+  | some .vecConstruct => .ok (emitStdVecConstructSpecText f.name)
+  | some .vecReloc => .ok (emitStdVecRelocSpecText f.name)
   | some .sumCall => .ok (emitSumCallerSpecText f.name)
   | some .translate => .ok (emitTranslateSpecText f.name)
   | some .methodSum => .ok (emitMethodSumSpecText f.name)
@@ -115,6 +136,27 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .vecSize => .ok ⟨emitStdVecSizeText f.name, none⟩
   | some .vecIndex => .ok ⟨emitStdVecIndexText f.name, none⟩
   | some .vecReadSum => .ok ⟨emitStdVecReadSumText f.name, none⟩
+  | some .vecEmptyCtor => .ok ⟨emitStdVecEmptyCtorText f.name, none⟩
+  | some .vecUnit => .ok ⟨emitStdVecUnitText f.name, none⟩
+  | some .vecDtor => .ok ⟨emitStdVecDtorText f.name, none⟩
+  | some .vecDestroyNoop => .ok ⟨emitStdVecDestroyNoopText f.name, none⟩
+  | some .vecDestroyPtr => .ok ⟨emitStdVecDestroyPtrText f.name, none⟩
+  | some .vecGetTp => .ok ⟨emitStdVecGetTpText f.name, none⟩
+  | some .vecDiffMax => .ok ⟨emitStdVecDiffMaxText f.name, none⟩
+  | some .vecMax => .ok ⟨emitStdVecMaxText f.name, none⟩
+  | some .vecMin => .ok ⟨emitStdVecMinText f.name, none⟩
+  | some .vecCheckLen => .ok ⟨emitStdVecCheckLenText f.name, none⟩
+  | some .vecBegin => .ok ⟨emitStdVecBeginText f.name, none⟩
+  | some .vecEnd => .ok ⟨emitStdVecEndText f.name, none⟩
+  | some .vecBack => .ok ⟨emitStdVecBackText f.name, none⟩
+  | some .vecIterId => .ok ⟨emitStdVecIterIdText f.name, none⟩
+  | some .vecMinusEl => .ok ⟨emitStdVecMinusElText f.name, none⟩
+  | some .vecMinus => .ok ⟨emitStdVecMinusText f.name, none⟩
+  | some .vecAlloc => .ok ⟨emitStdVecAllocText f.name, none⟩
+  | some .vecDealloc => .ok ⟨emitStdVecDeallocText f.name, none⟩
+  | some .vecDeallocGuard => .ok ⟨emitStdVecDeallocGuardText f.name, none⟩
+  | some .vecConstruct => .ok ⟨emitStdVecConstructText f.name, none⟩
+  | some .vecReloc => .ok ⟨emitStdVecRelocText f.name, none⟩
   | some .sumCall => .ok ⟨emitSumCallerText f.name, none⟩
   | some .translate => .ok ⟨emitTranslateText f.name, none⟩
   | some .methodSum => .ok ⟨emitMethodSumText f.name, none⟩

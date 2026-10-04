@@ -947,6 +947,580 @@ theorem oracleNoalias_boxThrough (x : BitVec 32) :
     rfl
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-! ## N4d-iv-b1 growth leaves: owned-triple bindings -/
+
+/-- Default-ctor binding pins nothing (no params). -/
+theorem bindMemArgs_stdVecEmptyCtor :
+    bindMemArgs stdVecEmptyCtorFunc.args [] emptyMem =
+      some ([], emptyMem, []) := by
+  rfl
+
+/-- Default-ctor footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecEmptyCtor :
+    oracleNoalias stdVecEmptyCtorFunc [] := by
+  have hb : bindMemArgs stdVecEmptyCtorFunc.args [] emptyMem =
+      some ([], emptyMem, []) := bindMemArgs_stdVecEmptyCtor
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Empty-effect binding pins nothing (no params). -/
+theorem bindMemArgs_stdVecUnit :
+    bindMemArgs stdVecUnitFunc.args [] emptyMem =
+      some ([], emptyMem, []) := by
+  rfl
+
+/-- Empty-effect footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecUnit :
+    oracleNoalias stdVecUnitFunc [] := by
+  have hb : bindMemArgs stdVecUnitFunc.args [] emptyMem =
+      some ([], emptyMem, []) := bindMemArgs_stdVecUnit
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Destructor binding pins the two-word header plus the storage
+    words (the owned triple). -/
+theorem bindMemArgs_stdVecDtor (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Destructor footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_stdVecDtor (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecDtorFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecDtorFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecDtor b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Destroy-range binding pins nothing (two owned offsets). -/
+theorem bindMemArgs_stdVecDestroyNoop (a b : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+  rfl
+
+/-- Destroy-range footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecDestroyNoop (a b : BitVec 64) :
+    oracleNoalias stdVecDestroyNoopFunc [.u64 a, .u64 b] := by
+  have hb : bindMemArgs stdVecDestroyNoopFunc.args [.u64 a, .u64 b]
+      emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem = _
+    exact bindMemArgs_stdVecDestroyNoop a b
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Element-destroy binding pins nothing (one owned offset). -/
+theorem bindMemArgs_stdVecDestroyPtr (p : BitVec 64) :
+    bindMemArgs
+      [{ name := "p", ty := .u 64, role := .owned }]
+      [.u64 p] emptyMem =
+      some ([("p", .u64 p)], emptyMem, []) := by
+  rfl
+
+/-- Element-destroy footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecDestroyPtr (p : BitVec 64) :
+    oracleNoalias stdVecDestroyPtrFunc [.u64 p] := by
+  have hb : bindMemArgs stdVecDestroyPtrFunc.args [.u64 p] emptyMem =
+      some ([("p", .u64 p)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "p", ty := .u 64, role := .owned }]
+      [.u64 p] emptyMem = _
+    exact bindMemArgs_stdVecDestroyPtr p
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Allocator-projection binding pins the owned triple (ignored by
+    the body, like the value side). -/
+theorem bindMemArgs_stdVecGetTp (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Allocator-projection footprints are a singleton. -/
+theorem oracleNoalias_stdVecGetTp (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecGetTpFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecGetTpFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecGetTp b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Max-size binding pins nothing (no params). -/
+theorem bindMemArgs_stdVecDiffMax :
+    bindMemArgs stdVecDiffMaxFunc.args [] emptyMem =
+      some ([], emptyMem, []) := by
+  rfl
+
+/-- Max-size footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecDiffMax :
+    oracleNoalias stdVecDiffMaxFunc [] := by
+  have hb : bindMemArgs stdVecDiffMaxFunc.args [] emptyMem =
+      some ([], emptyMem, []) := bindMemArgs_stdVecDiffMax
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `max` binding pins nothing (two owned words). -/
+theorem bindMemArgs_stdVecMax (a b : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+  rfl
+
+/-- `max` footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecMax (a b : BitVec 64) :
+    oracleNoalias stdVecMaxFunc [.u64 a, .u64 b] := by
+  have hb : bindMemArgs stdVecMaxFunc.args [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem = _
+    exact bindMemArgs_stdVecMax a b
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `min` binding pins nothing (two owned words). -/
+theorem bindMemArgs_stdVecMin (a b : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+  rfl
+
+/-- `min` footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecMin (a b : BitVec 64) :
+    oracleNoalias stdVecMinFunc [.u64 a, .u64 b] := by
+  have hb : bindMemArgs stdVecMinFunc.args [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem = _
+    exact bindMemArgs_stdVecMin a b
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `check_len` binding pins the triple plus the owned request word. -/
+theorem bindMemArgs_stdVecCheckLen (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 n] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- `check_len` footprints are a singleton (the request is owned). -/
+theorem oracleNoalias_stdVecCheckLen (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) :
+    oracleNoalias stdVecCheckLenFunc
+      [.stdVecOwned b len cap, .u64 n] := by
+  have hb : bindMemArgs stdVecCheckLenFunc.args
+      [.stdVecOwned b len cap, .u64 n] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecCheckLen b len cap n
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `begin` binding pins the owned triple. -/
+theorem bindMemArgs_stdVecBegin (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- `begin` footprints are a singleton. -/
+theorem oracleNoalias_stdVecBegin (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecBeginFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecBeginFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecBegin b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `end` binding pins the owned triple. -/
+theorem bindMemArgs_stdVecEnd (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- `end` footprints are a singleton. -/
+theorem oracleNoalias_stdVecEnd (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecEndFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecEndFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecEnd b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `back` binding pins the owned triple. -/
+theorem bindMemArgs_stdVecBack (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- `back` footprints are a singleton. -/
+theorem oracleNoalias_stdVecBack (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecBackFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecBackFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecBack b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Iterator-identity binding pins nothing (one owned offset). -/
+theorem bindMemArgs_stdVecIterId (x : BitVec 64) :
+    bindMemArgs
+      [{ name := "p", ty := .u 64, role := .owned }]
+      [.u64 x] emptyMem =
+      some ([("p", .u64 x)], emptyMem, []) := by
+  rfl
+
+/-- Iterator-identity footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecIterId (x : BitVec 64) :
+    oracleNoalias stdVecIterIdFunc [.u64 x] := by
+  have hb : bindMemArgs stdVecIterIdFunc.args [.u64 x] emptyMem =
+      some ([("p", .u64 x)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "p", ty := .u 64, role := .owned }]
+      [.u64 x] emptyMem = _
+    exact bindMemArgs_stdVecIterId x
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `miEl` binding pins nothing (two owned offsets). -/
+theorem bindMemArgs_stdVecMinusEl (it n : BitVec 64) :
+    bindMemArgs
+      [{ name := "it", ty := .u 64, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.u64 it, .u64 n] emptyMem =
+      some ([("it", .u64 it), ("n", .u64 n)], emptyMem, []) := by
+  rfl
+
+/-- `miEl` footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecMinusEl (it n : BitVec 64) :
+    oracleNoalias stdVecMinusElFunc [.u64 it, .u64 n] := by
+  have hb : bindMemArgs stdVecMinusElFunc.args [.u64 it, .u64 n] emptyMem =
+      some ([("it", .u64 it), ("n", .u64 n)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "it", ty := .u 64, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.u64 it, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecMinusEl it n
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `mi` binding pins nothing (two owned offsets). -/
+theorem bindMemArgs_stdVecMinus (a b : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+  rfl
+
+/-- `mi` footprints are trivially disjoint. -/
+theorem oracleNoalias_stdVecMinus (a b : BitVec 64) :
+    oracleNoalias stdVecMinusFunc [.u64 a, .u64 b] := by
+  have hb : bindMemArgs stdVecMinusFunc.args [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem = _
+    exact bindMemArgs_stdVecMinus a b
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Allocate binding pins nothing (one owned request word). -/
+theorem bindMemArgs_stdVecAlloc (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "n", ty := .u 64, role := .owned }]
+      [.u64 n] emptyMem =
+      some ([("n", .u64 n)], emptyMem, []) := by
+  rfl
+
+/-- Allocate footprints are trivially disjoint (fresh storage pins
+    after the call, not at entry). -/
+theorem oracleNoalias_stdVecAlloc (n : BitVec 64) :
+    oracleNoalias stdVecAllocFunc [.u64 n] := by
+  have hb : bindMemArgs stdVecAllocFunc.args [.u64 n] emptyMem =
+      some ([("n", .u64 n)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "n", ty := .u 64, role := .owned }]
+      [.u64 n] emptyMem = _
+    exact bindMemArgs_stdVecAlloc n
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Deallocate binding pins the owned triple. -/
+theorem bindMemArgs_stdVecDealloc (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Deallocate footprints are a singleton. -/
+theorem oracleNoalias_stdVecDealloc (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecDeallocFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecDeallocFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecDealloc b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Guarded-deallocate binding pins the triple plus the owned count. -/
+theorem bindMemArgs_stdVecDeallocGuard (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 n] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Guarded-deallocate footprints are a singleton (the count is
+    owned). -/
+theorem oracleNoalias_stdVecDeallocGuard (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) :
+    oracleNoalias stdVecDeallocGuardFunc
+      [.stdVecOwned b len cap, .u64 n] := by
+  have hb : bindMemArgs stdVecDeallocGuardFunc.args
+      [.stdVecOwned b len cap, .u64 n] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecDeallocGuard b len cap n
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Construct binding pins the triple plus the owned offset/word. -/
+theorem bindMemArgs_stdVecConstruct (b : Vec32) (len cap : Nat)
+    (p : BitVec 64) (x : BitVec 32) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "p", ty := .u 64, role := .owned },
+       { name := "v", ty := .i 32, role := .owned }]
+      [.stdVecOwned b len cap, .u64 p, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("p", .u64 p),
+        ("v", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Construct footprints are a singleton (offset and word are
+    owned). -/
+theorem oracleNoalias_stdVecConstruct (b : Vec32) (len cap : Nat)
+    (p : BitVec 64) (x : BitVec 32) :
+    oracleNoalias stdVecConstructFunc
+      [.stdVecOwned b len cap, .u64 p, .i32 x] := by
+  have hb : bindMemArgs stdVecConstructFunc.args
+      [.stdVecOwned b len cap, .u64 p, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("p", .u64 p),
+        ("v", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "p", ty := .u 64, role := .owned },
+       { name := "v", ty := .i 32, role := .owned }]
+      [.stdVecOwned b len cap, .u64 p, .i32 x] emptyMem = _
+    exact bindMemArgs_stdVecConstruct b len cap p x
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Relocate binding pins both triples (unwind order: `dst` takes
+    address `0`, `src` takes address `1`); the three offsets are
+    owned. -/
+theorem bindMemArgs_stdVecReloc (bS : Vec32) (lenS capS : Nat)
+    (bD : Vec32) (lenD capD : Nat)
+    (first last result : BitVec 64) :
+    bindMemArgs
+      [{ name := "src", ty := .vecBlock, role := .owned },
+       { name := "dst", ty := .vecBlock, role := .owned },
+       { name := "first", ty := .u 64, role := .owned },
+       { name := "last", ty := .u 64, role := .owned },
+       { name := "result", ty := .u 64, role := .owned }]
+      [.stdVecOwned bS lenS capS, .stdVecOwned bD lenD capD,
+        .u64 first, .u64 last, .u64 result] emptyMem =
+      some ([("src", .stdVecOwned bS lenS capS),
+        ("dst", .stdVecOwned bD lenD capD),
+        ("first", .u64 first), ("last", .u64 last),
+        ("result", .u64 result)],
+        ⟨2, [(1, ⟨1, !bS.freed, (BitVec.ofNat 32 lenS) ::
+          (BitVec.ofNat 32 capS) :: bS.val⟩),
+          (1, ⟨1, true, (BitVec.ofNat 32 lenS) ::
+          (BitVec.ofNat 32 capS) :: bS.val⟩),
+          (0, ⟨0, !bD.freed, (BitVec.ofNat 32 lenD) ::
+          (BitVec.ofNat 32 capD) :: bD.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 lenD) ::
+          (BitVec.ofNat 32 capD) :: bD.val⟩)], []⟩,
+        [("src", 1, 1), ("dst", 0, 0)]) := by
+  rfl
+
+/-- Relocate footprints are two disjoint singletons (source and
+    destination buffers never alias at entry). -/
+theorem oracleNoalias_stdVecReloc (bS : Vec32) (lenS capS : Nat)
+    (bD : Vec32) (lenD capD : Nat)
+    (first last result : BitVec 64) :
+    oracleNoalias stdVecRelocFunc
+      [.stdVecOwned bS lenS capS, .stdVecOwned bD lenD capD,
+        .u64 first, .u64 last, .u64 result] := by
+  have hb : bindMemArgs stdVecRelocFunc.args
+      [.stdVecOwned bS lenS capS, .stdVecOwned bD lenD capD,
+        .u64 first, .u64 last, .u64 result] emptyMem =
+      some ([("src", .stdVecOwned bS lenS capS),
+        ("dst", .stdVecOwned bD lenD capD),
+        ("first", .u64 first), ("last", .u64 last),
+        ("result", .u64 result)],
+        ⟨2, [(1, ⟨1, !bS.freed, (BitVec.ofNat 32 lenS) ::
+          (BitVec.ofNat 32 capS) :: bS.val⟩),
+          (1, ⟨1, true, (BitVec.ofNat 32 lenS) ::
+          (BitVec.ofNat 32 capS) :: bS.val⟩),
+          (0, ⟨0, !bD.freed, (BitVec.ofNat 32 lenD) ::
+          (BitVec.ofNat 32 capD) :: bD.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 lenD) ::
+          (BitVec.ofNat 32 capD) :: bD.val⟩)], []⟩,
+        [("src", 1, 1), ("dst", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "src", ty := .vecBlock, role := .owned },
+       { name := "dst", ty := .vecBlock, role := .owned },
+       { name := "first", ty := .u 64, role := .owned },
+       { name := "last", ty := .u 64, role := .owned },
+       { name := "result", ty := .u 64, role := .owned }]
+      [.stdVecOwned bS lenS capS, .stdVecOwned bD lenD capD,
+        .u64 first, .u64 last, .u64 result] emptyMem = _
+    exact bindMemArgs_stdVecReloc bS lenS capS bD lenD capD
+      first last result
+  have hn : LayoutNoAlias [("src", 1, 1), ("dst", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## Cache bridge (discharged by the executable check) -/
 
 /-- Bridge: on a `noalias` verdict the gate admits. The premise

@@ -57,6 +57,7 @@ import GoldenVec2
 import GoldenVec64
 import GoldenVecRead
 import GoldenVecRealloc
+import GoldenVecGrow
 import GoldenWidth
 import ScopeReport
 import Circe.Parser
@@ -218,7 +219,49 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecIndex.lean", "out/VecIndex.lean"),
    ("tests/golden/VecIndex_Spec.lean", "out/VecIndex_Spec.lean"),
    ("tests/golden/VecReadSum.lean", "out/VecReadSum.lean"),
-   ("tests/golden/VecReadSum_Spec.lean", "out/VecReadSum_Spec.lean")]
+   ("tests/golden/VecReadSum_Spec.lean", "out/VecReadSum_Spec.lean"),
+   ("tests/golden/VecGrowAlloc.lean", "out/VecGrowAlloc.lean"),
+   ("tests/golden/VecGrowAlloc_Spec.lean", "out/VecGrowAlloc_Spec.lean"),
+   ("tests/golden/VecGrowBack.lean", "out/VecGrowBack.lean"),
+   ("tests/golden/VecGrowBack_Spec.lean", "out/VecGrowBack_Spec.lean"),
+   ("tests/golden/VecGrowBegin.lean", "out/VecGrowBegin.lean"),
+   ("tests/golden/VecGrowBegin_Spec.lean", "out/VecGrowBegin_Spec.lean"),
+   ("tests/golden/VecGrowCheckLen.lean", "out/VecGrowCheckLen.lean"),
+   ("tests/golden/VecGrowCheckLen_Spec.lean", "out/VecGrowCheckLen_Spec.lean"),
+   ("tests/golden/VecGrowConstruct.lean", "out/VecGrowConstruct.lean"),
+   ("tests/golden/VecGrowConstruct_Spec.lean", "out/VecGrowConstruct_Spec.lean"),
+   ("tests/golden/VecGrowDealloc.lean", "out/VecGrowDealloc.lean"),
+   ("tests/golden/VecGrowDealloc_Spec.lean", "out/VecGrowDealloc_Spec.lean"),
+   ("tests/golden/VecGrowDeallocGuard.lean", "out/VecGrowDeallocGuard.lean"),
+   ("tests/golden/VecGrowDeallocGuard_Spec.lean", "out/VecGrowDeallocGuard_Spec.lean"),
+   ("tests/golden/VecGrowDestroyNoop.lean", "out/VecGrowDestroyNoop.lean"),
+   ("tests/golden/VecGrowDestroyNoop_Spec.lean", "out/VecGrowDestroyNoop_Spec.lean"),
+   ("tests/golden/VecGrowDestroyPtr.lean", "out/VecGrowDestroyPtr.lean"),
+   ("tests/golden/VecGrowDestroyPtr_Spec.lean", "out/VecGrowDestroyPtr_Spec.lean"),
+   ("tests/golden/VecGrowDiffMax.lean", "out/VecGrowDiffMax.lean"),
+   ("tests/golden/VecGrowDiffMax_Spec.lean", "out/VecGrowDiffMax_Spec.lean"),
+   ("tests/golden/VecGrowDtor.lean", "out/VecGrowDtor.lean"),
+   ("tests/golden/VecGrowDtor_Spec.lean", "out/VecGrowDtor_Spec.lean"),
+   ("tests/golden/VecGrowEmptyCtor.lean", "out/VecGrowEmptyCtor.lean"),
+   ("tests/golden/VecGrowEmptyCtor_Spec.lean", "out/VecGrowEmptyCtor_Spec.lean"),
+   ("tests/golden/VecGrowEnd.lean", "out/VecGrowEnd.lean"),
+   ("tests/golden/VecGrowEnd_Spec.lean", "out/VecGrowEnd_Spec.lean"),
+   ("tests/golden/VecGrowGetTp.lean", "out/VecGrowGetTp.lean"),
+   ("tests/golden/VecGrowGetTp_Spec.lean", "out/VecGrowGetTp_Spec.lean"),
+   ("tests/golden/VecGrowIterId.lean", "out/VecGrowIterId.lean"),
+   ("tests/golden/VecGrowIterId_Spec.lean", "out/VecGrowIterId_Spec.lean"),
+   ("tests/golden/VecGrowMax.lean", "out/VecGrowMax.lean"),
+   ("tests/golden/VecGrowMax_Spec.lean", "out/VecGrowMax_Spec.lean"),
+   ("tests/golden/VecGrowMin.lean", "out/VecGrowMin.lean"),
+   ("tests/golden/VecGrowMin_Spec.lean", "out/VecGrowMin_Spec.lean"),
+   ("tests/golden/VecGrowMinus.lean", "out/VecGrowMinus.lean"),
+   ("tests/golden/VecGrowMinus_Spec.lean", "out/VecGrowMinus_Spec.lean"),
+   ("tests/golden/VecGrowMinusEl.lean", "out/VecGrowMinusEl.lean"),
+   ("tests/golden/VecGrowMinusEl_Spec.lean", "out/VecGrowMinusEl_Spec.lean"),
+   ("tests/golden/VecGrowReloc.lean", "out/VecGrowReloc.lean"),
+   ("tests/golden/VecGrowReloc_Spec.lean", "out/VecGrowReloc_Spec.lean"),
+   ("tests/golden/VecGrowUnit.lean", "out/VecGrowUnit.lean"),
+   ("tests/golden/VecGrowUnit_Spec.lean", "out/VecGrowUnit_Spec.lean"),]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -267,7 +310,28 @@ def emittedTypechecks : List String :=
    "out/SpanSum.lean", "out/SpanSum_Spec.lean",
    "out/VecSize.lean", "out/VecSize_Spec.lean",
    "out/VecIndex.lean", "out/VecIndex_Spec.lean",
-   "out/VecReadSum.lean", "out/VecReadSum_Spec.lean"]
+   "out/VecReadSum.lean", "out/VecReadSum_Spec.lean",
+   "out/VecGrowAlloc.lean", "out/VecGrowAlloc_Spec.lean",
+   "out/VecGrowBack.lean", "out/VecGrowBack_Spec.lean",
+   "out/VecGrowBegin.lean", "out/VecGrowBegin_Spec.lean",
+   "out/VecGrowCheckLen.lean", "out/VecGrowCheckLen_Spec.lean",
+   "out/VecGrowConstruct.lean", "out/VecGrowConstruct_Spec.lean",
+   "out/VecGrowDealloc.lean", "out/VecGrowDealloc_Spec.lean",
+   "out/VecGrowDeallocGuard.lean", "out/VecGrowDeallocGuard_Spec.lean",
+   "out/VecGrowDestroyNoop.lean", "out/VecGrowDestroyNoop_Spec.lean",
+   "out/VecGrowDestroyPtr.lean", "out/VecGrowDestroyPtr_Spec.lean",
+   "out/VecGrowDiffMax.lean", "out/VecGrowDiffMax_Spec.lean",
+   "out/VecGrowDtor.lean", "out/VecGrowDtor_Spec.lean",
+   "out/VecGrowEmptyCtor.lean", "out/VecGrowEmptyCtor_Spec.lean",
+   "out/VecGrowEnd.lean", "out/VecGrowEnd_Spec.lean",
+   "out/VecGrowGetTp.lean", "out/VecGrowGetTp_Spec.lean",
+   "out/VecGrowIterId.lean", "out/VecGrowIterId_Spec.lean",
+   "out/VecGrowMax.lean", "out/VecGrowMax_Spec.lean",
+   "out/VecGrowMin.lean", "out/VecGrowMin_Spec.lean",
+   "out/VecGrowMinus.lean", "out/VecGrowMinus_Spec.lean",
+   "out/VecGrowMinusEl.lean", "out/VecGrowMinusEl_Spec.lean",
+   "out/VecGrowReloc.lean", "out/VecGrowReloc_Spec.lean",
+   "out/VecGrowUnit.lean", "out/VecGrowUnit_Spec.lean",]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -629,7 +693,21 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Mem.lean", "theorem memEvalExpr_stdVecAt_oob"),
      ("Circe/Eval.lean", "theorem evalExpr_stdVecAt_oob"),
      ("out/VecReadSum.lean", "_Z12vec_read_sumRKSt6vectorIiSaIiEE_fwd"),
-     ("tests/golden/VecSize.lean", "_ZNKSt6vectorIiSaIiEE4sizeEv_fwd")])]
+     ("tests/golden/VecSize.lean", "_ZNKSt6vectorIiSaIiEE4sizeEv_fwd")]),
+   ("n4d-vecgrow",
+    [("Circe/Validator.lean", "def isVecGrowComposerText"),
+     ("Circe/Validator.lean", "N4d-iv-b2 growth composer"),
+     ("Circe/Emit/VecGrow.lean", "theorem evalFuncFuel_stdVecReloc"),
+     ("Circe/Emit/VecGrow.lean", "theorem stdVecRelocWhile_correct"),
+     ("Circe/Transfer.lean", "theorem memStdVecRelocWhile_correct"),
+     ("Circe/Transfer.lean", "theorem memTransfer_stdVecReloc"),
+     ("Circe/Derived.lean", "theorem bindMemArgs_stdVecReloc"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_stdVecReloc"),
+     ("Circe/Specs.lean", "theorem stdVecReloc_correct_nil"),
+     ("Circe/Specs.lean", "theorem stdVecCheckLen_correct_fail"),
+     ("Circe/Mem.lean", "theorem vgrowSet_lockstep"),
+     ("out/VecGrowReloc.lean", "_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0__fwd"),
+     ("tests/golden/VecGrowCheckLen.lean", "_ZNKSt6vectorIiSaIiEE12_M_check_lenEmPKc_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -679,8 +757,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 55 then
-    throw (IO.userError s!"expected 55 spec stubs, found {stubs.length}")
+  if stubs.length != 76 then
+    throw (IO.userError s!"expected 76 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -743,6 +821,7 @@ def checkSuites : List Job :=
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
    ("golden-vecread", GoldenVecRead.main),
+   ("golden-vecgrow", GoldenVecGrow.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -759,7 +838,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead",
+   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=

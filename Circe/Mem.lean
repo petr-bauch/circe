@@ -921,6 +921,36 @@ theorem memEvalExpr_s64diff_agree (a b : CExpr) (ρ : Env) (m : Mem)
   simp only [memEvalExpr, evalExpr, ha, hb]
   rfl
 
+/-- `ult` agreement: both sides compare the same words
+    (N4d-iv-b1; mirrors `memEvalExpr_usub_agree`). -/
+theorem memEvalExpr_ult_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.ult a b) ρ m π = evalExpr (.ult a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `uadd` agreement: both sides add the same words
+    (N4d-iv-b1; mirrors `memEvalExpr_usub_agree`). -/
+theorem memEvalExpr_uadd_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.uadd a b) ρ m π = evalExpr (.uadd a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `vgrowNew` agreement: the capacity expression agrees, and
+    `vecNew` runs purely on both sides (no memory interaction;
+    N4d-iv-b1). -/
+theorem memEvalExpr_vgrowNew_agree (ce : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (h : memEvalExpr ce ρ m π = evalExpr ce ρ) :
+    memEvalExpr (.vgrowNew ce) ρ m π = evalExpr (.vgrowNew ce) ρ := by
+  simp only [memEvalExpr, evalExpr, h]
+  rfl
+
 /-- `tif` agreement on a true condition: both sides take the
     then-branch. -/
 theorem memEvalExpr_tif_true (c t e : CExpr) (ρ : Env) (m : Mem)
@@ -2051,6 +2081,16 @@ theorem header_set_succ (l c : BitVec 32) (w : List (BitVec 32))
   have e : i + 2 = (i + 1) + 1 := by omega
   rw [e, List.set_cons_succ, List.set_cons_succ]
 
+/-- Reading past the two header words lands in the storage suffix
+    exactly where the buffer list is read (N4d-iv-b1; the `get?`
+    sibling of `header_set_succ`). -/
+theorem header_get_succ (l c : BitVec 32) (w : List (BitVec 32))
+    (i : Nat) :
+    (l :: c :: w)[i + 2]? = w[i]? := by
+  cases i with
+  | zero => rfl
+  | succ _ => rfl
+
 /-- `vgrowSet` lockstep: under the triple pin invariant (matching tag,
     live block, header words plus exactly the buffer words), `vecSet`
     and the header-shifted `memStore` update together (N4d-iv-b1;
@@ -2208,6 +2248,99 @@ theorem memEvalStmtFuel_vrealloc (f : Nat) (x : String) (se : CExpr)
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
       hse, harr, hlay, hre, hmre, hup]
+
+/-! ## N4d-iv-b1 statement agreement (`if_` / `fail` / `vgrowSet` / `vgrowFree`) -/
+
+/-- `if_` on `true` takes the then-branch (any fuel; mirrors
+    `evalStmtFuel_if_true`). -/
+theorem memEvalStmtFuel_if_true (f : Nat) (c : CExpr) (t e : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b true)) :
+    memEvalStmtFuel f (.if_ c t e) ρ m π =
+      memEvalStmtFuel f t ρ m π := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
+
+/-- `if_` on `false` takes the else-branch (any fuel; mirrors
+    `evalStmtFuel_if_false`). -/
+theorem memEvalStmtFuel_if_false (f : Nat) (c : CExpr) (t e : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b false)) :
+    memEvalStmtFuel f (.if_ c t e) ρ m π =
+      memEvalStmtFuel f e ρ m π := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
+
+/-- `fail` aborts loudly at any fuel (mirrors `evalStmtFuel_fail`). -/
+theorem memEvalStmtFuel_fail (f : Nat) (ρ : Env) (m : Mem) (π : Layout) :
+    memEvalStmtFuel f .fail ρ m π = .error .AssertFail := by
+  cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
+
+/-- `vgrowSet` statement on memory (any fuel): the index/value
+    expressions run on memory, the value side stores via `vecSet`, the
+    memory side via the header-shifted `memStore` in lockstep (mirrors
+    `evalStmtFuel_vgrowSet`; the `+ 2` skips the length/capacity
+    header words). -/
+theorem memEvalStmtFuel_vgrowSet (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (i : BitVec 64) (xv : BitVec 32)
+    (a t : Nat) (b b' : Vec32) (len cap : Nat) (m' : Mem) (ρ' : Env)
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 xv))
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hlay : layoutLookup π x = some (a, t))
+    (hset : vecSet b i.toNat xv = .ok b')
+    (hmstore : memStore m a t (i.toNat + 2) xv = .ok m')
+    (hup : envUpdate ρ x (.stdVecOwned b' len cap) = some ρ') :
+    memEvalStmtFuel f (.vgrowSet x ie ve) ρ m π =
+      .ok ((ρ', m', π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hi, hv, harr, hlay, hset, hmstore, hup]
+
+/-- `vgrowSet` errors propagate (any fuel; mirrors
+    `evalStmtFuel_vgrowSet_err`). -/
+theorem memEvalStmtFuel_vgrowSet_err (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (i : BitVec 64) (xv : BitVec 32)
+    (a t : Nat) (b : Vec32) (len cap : Nat) (e : Panic)
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 xv))
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hlay : layoutLookup π x = some (a, t))
+    (hset : vecSet b i.toNat xv = .error e) :
+    memEvalStmtFuel f (.vgrowSet x ie ve) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hi, hv, harr, hlay, hset]
+
+/-- `vgrowFree` statement on memory (any fuel): the value side consumes
+    via `vecFree`, the memory side via `memFree` in lockstep (mirrors
+    `evalStmtFuel_vgrowFree`). -/
+theorem memEvalStmtFuel_vgrowFree (f : Nat) (x : String)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a t : Nat) (b b' : Vec32) (len cap : Nat) (m' : Mem) (ρ' : Env)
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hlay : layoutLookup π x = some (a, t))
+    (hfree : vecFree b = .ok b')
+    (hmfree : memFree m a t = .ok m')
+    (hup : envUpdate ρ x (.stdVecOwned b' len cap) = some ρ') :
+    memEvalStmtFuel f (.vgrowFree x) ρ m π =
+      .ok ((ρ', m', π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      harr, hlay, hfree, hmfree, hup]
+
+/-- `vgrowFree` errors (double-free) propagate (any fuel; mirrors
+    `evalStmtFuel_vgrowFree_err`). -/
+theorem memEvalStmtFuel_vgrowFree_err (f : Nat) (x : String)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a t : Nat) (b : Vec32) (len cap : Nat) (e : Panic)
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hlay : layoutLookup π x = some (a, t))
+    (hfree : vecFree b = .error e) :
+    memEvalStmtFuel f (.vgrowFree x) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      harr, hlay, hfree]
 
 /-- A successful `vecGet` carries its list read + liveness, so the
     mirrored memory load agrees. -/

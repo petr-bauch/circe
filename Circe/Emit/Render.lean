@@ -387,6 +387,227 @@ def emitStdVecReadSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the default-ctor forward definition: the empty triple
+    (the tag-erased `stdVecEmptyCtorFwd`). -/
+def emitStdVecEmptyCtorText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the default-ctor chain fuses to the empty triple). -/\n"
+  ++ s!"def {name}_fwd : Vec32 × Nat × Nat :=\n"
+  ++ "  (⟨[], false⟩, 0, 0)\n"
+
+/-- Render the empty-effect forward definition: void as `i32 0`
+    (the tag-erased `stdVecUnitFwd`). -/
+def emitStdVecUnitText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (empty effect: void as `i32 0`). -/\n"
+  ++ s!"def {name}_fwd : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+
+/-- Render the destructor forward definition: the `0 < cap`-guarded
+    consume (the tag-erased `stdVecDtorFwd`, triple threading). -/
+def emitStdVecDtorText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `0 < cap`-guarded consume; the destroy range is a no-op for `int`). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  if 0 < cap then\n"
+  ++ "    match vecFree b with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b' => .ok (b', len, cap)\n"
+  ++ "  else .ok (b, len, cap)\n"
+
+/-- Render the destroy-range forward definition (the tag-erased
+    `stdVecDestroyNoopFwd`). -/
+def emitStdVecDestroyNoopText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the trivial-`int` destroy range: nothing destroyed). -/\n"
+  ++ s!"def {name}_fwd (_a _b : BitVec 64) : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+
+/-- Render the element-destroy forward definition (the tag-erased
+    `stdVecDestroyPtrFwd`). -/
+def emitStdVecDestroyPtrText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (element destroy: no-op for `int`). -/\n"
+  ++ s!"def {name}_fwd (_p : BitVec 64) : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+
+/-- Render the allocator-projection forward definition (the
+    tag-erased `stdVecGetTpFwd`). -/
+def emitStdVecGetTpText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_impl` access fuses to the erased allocator). -/\n"
+  ++ s!"def {name}_fwd : BitVec 32 :=\n"
+  ++ "  BitVec.ofNat 32 0\n"
+
+/-- Render the max-size forward definition: the `diffmax` const
+    (the tag-erased `stdVecDiffMaxFwd`). -/
+def emitStdVecDiffMaxText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the max-size chain folds to `diffmax`). -/\n"
+  ++ s!"def {name}_fwd : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 2305843009213693951\n"
+
+/-- Render the `std::max` forward definition (the tag-erased
+    `stdVecMaxFwd`). -/
+def emitStdVecMaxText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the early-return-`if` max over `u64`). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 64) : BitVec 64 :=\n"
+  ++ "  if a.ult b then b else a\n"
+
+/-- Render the `std::min` forward definition (the tag-erased
+    `stdVecMinFwd`). -/
+def emitStdVecMinText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the early-return-`if` min over `u64`). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 64) : BitVec 64 :=\n"
+  ++ "  if b.ult a then b else a\n"
+
+/-- Render the `_M_check_len` forward definition (the tag-erased
+    `stdVecCheckLenFwd`: `length_error` is loud, over-`maxDiff`
+    clamps to `maxDiff`). -/
+def emitStdVecCheckLenText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (checked length with `maxDiff` clamp; the throw fuses to `fail`). -/\n"
+  ++ s!"def {name}_fwd (len : Nat) (n : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ "  if (BitVec.ofNat 64 2305843009213693951 - BitVec.ofNat 64 len).ult n then\n"
+  ++ "    .error .AssertFail\n"
+  ++ "  else if (BitVec.ofNat 64 len +\n"
+  ++ "      (if (BitVec.ofNat 64 len).ult n then n\n"
+  ++ "        else BitVec.ofNat 64 len)).ult (BitVec.ofNat 64 len) then\n"
+  ++ "    .ok (BitVec.ofNat 64 2305843009213693951)\n"
+  ++ "  else if (BitVec.ofNat 64 2305843009213693951).ult (BitVec.ofNat 64 len +\n"
+  ++ "      (if (BitVec.ofNat 64 len).ult n then n\n"
+  ++ "        else BitVec.ofNat 64 len)) then\n"
+  ++ "    .ok (BitVec.ofNat 64 2305843009213693951)\n"
+  ++ "  else\n"
+  ++ "    .ok (BitVec.ofNat 64 len +\n"
+  ++ "      (if (BitVec.ofNat 64 len).ult n then n\n"
+  ++ "        else BitVec.ofNat 64 len))\n"
+
+/-- Render the `begin` forward definition (the tag-erased
+    `stdVecBeginFwd`). -/
+def emitStdVecBeginText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_start` load fuses to the `0` offset). -/\n"
+  ++ s!"def {name}_fwd : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 0\n"
+
+/-- Render the `end` forward definition (the tag-erased
+    `stdVecEndFwd`). -/
+def emitStdVecEndText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_finish` load fuses to the `len` offset). -/\n"
+  ++ s!"def {name}_fwd (len : Nat) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 len\n"
+
+/-- Render the `back` forward definition (the tag-erased
+    `stdVecBackFwd`). -/
+def emitStdVecBackText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `end` / `miEl` / `deref` chain fuses to `len - 1`). -/\n"
+  ++ s!"def {name}_fwd (len : Nat) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 len - 1\n"
+
+/-- Render the iterator-identity forward definition (the tag-erased
+    `stdVecIterIdFwd`). -/
+def emitStdVecIterIdText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the stored pointer is the offset). -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 64) : BitVec 64 :=\n"
+  ++ "  x\n"
+
+/-- Render the `miEl` forward definition (the tag-erased
+    `stdVecMinusElFwd`). -/
+def emitStdVecMinusElText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`cir.minus` + `ptr_stride` fuse to wrapping `usub`). -/\n"
+  ++ s!"def {name}_fwd (it n : BitVec 64) : BitVec 64 :=\n"
+  ++ "  it - n\n"
+
+/-- Render the `mi` forward definition (the tag-erased
+    `stdVecMinusFwd`; `s64` erases to the 64-bit word). -/
+def emitStdVecMinusText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the double `base` + `ptr_diff` fuse to bit-exact `s64diff`). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 64) : BitVec 64 :=\n"
+  ++ "  a - b\n"
+
+/-- Render the allocate forward definition (the tag-erased
+    `stdVecAllocFwd`: `n > maxDiff` is loud, `n == 0` is the empty
+    triple, else fresh storage). -/
+def emitStdVecAllocText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (fresh storage like `boxNew`; the over-max throw pair fuses to `fail`). -/\n"
+  ++ s!"def {name}_fwd (n : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  if (BitVec.ofNat 64 0).ult n then\n"
+  ++ "    if (BitVec.ofNat 64 2305843009213693951).ult n then .error .AssertFail\n"
+  ++ "    else .ok (⟨List.replicate n.toNat 0, false⟩, 0, n.toNat)\n"
+  ++ "  else .ok (⟨[], false⟩, 0, 0)\n"
+
+/-- Render the deallocate forward definition (the tag-erased
+    `stdVecDeallocFwd`: unconditional consume). -/
+def emitStdVecDeallocText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (unconditional consume; operator `delete` consumes the token). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  match vecFree b with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok b' => .ok (b', len, cap)\n"
+
+/-- Render the `_M_deallocate` forward definition (the tag-erased
+    `stdVecDeallocGuardFwd`: the `n == 0` test around the consume). -/
+def emitStdVecDeallocGuardText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `ptr_to_bool` guard as the `n == 0` test). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (n : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  if (BitVec.ofNat 64 0).ult n then\n"
+  ++ "    match vecFree b with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b' => .ok (b', len, cap)\n"
+  ++ "  else .ok (b, len, cap)\n"
+
+/-- Render the `construct` forward definition (the tag-erased
+    `stdVecConstructFwd`: placement store, updated triple). -/
+def emitStdVecConstructText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (placement store of the `i32` word at the `u64` offset). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (p : BitVec 64) (x : BitVec 32) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  match vecSet b p.toNat x with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok b' => .ok (b', len, cap)\n"
+
+/-- Render the relocate forward definition (the tag-erased
+    `stdVecRelocFwd`: the `memmove`-fused bulk copy). -/
+def emitStdVecRelocText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the copy loop over the destination triple; the source triple is unchanged). -/\n"
+  ++ s!"def {name}_fwd (bS : Vec32) (lenS : Nat) (_capS : Nat) (bD : Vec32) (lenD capD : Nat) (first last result : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
+  ++ "  match stdVecBlitFold bS.val lenS bS.freed bD result.toNat first.toNat (last.toNat - first.toNat) with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok bD' => .ok (bD', lenD, capD)\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

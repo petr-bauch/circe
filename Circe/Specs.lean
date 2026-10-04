@@ -662,6 +662,209 @@ theorem scopeEarly_correct_err_b (a b s1 : BitVec 32) (e : Panic)
   simp only [scopeEarlyFwd_is_scopeEarly,
     scopeEarly_err_b a b s1 e h1 hne h2] <;> cir_simp
 
+/-! ## N4d-iv-b1: `std::vector<int32_t>` growth leaves (one property per new shape) -/
+
+/-- The default ctor delivers the empty owned triple. -/
+theorem stdVecEmptyCtor_correct :
+    stdVecEmptyCtorFwd = .ok (.stdVecOwned ⟨[], false⟩ 0 0) :=
+  rfl
+
+/-- The unit leaf answers zero (erased-iterator no-ops). -/
+theorem stdVecUnit_correct :
+    stdVecUnitFwd = .ok (.i32 (BitVec.ofNat 32 0)) :=
+  rfl
+
+/-- The dtor on a null triple is a passthrough. -/
+theorem stdVecDtor_correct_empty (b : Vec32) (len : Nat) :
+    stdVecDtorFwd b len 0 = .ok (.stdVecOwned b len 0) := by
+  simp [stdVecDtorFwd]
+
+/-- The dtor on a live triple frees the storage. -/
+theorem stdVecDtor_correct_free (b b' : Vec32) (len cap : Nat)
+    (hcap : 0 < cap) (hfree : vecFree b = .ok b') :
+    stdVecDtorFwd b len cap = .ok (.stdVecOwned b' len cap) := by
+  simp [stdVecDtorFwd, hcap, hfree]
+
+/-- Destroying a range is a no-op (trivial element type). -/
+theorem stdVecDestroyNoop_correct :
+    stdVecDestroyNoopFwd = .ok (.i32 (BitVec.ofNat 32 0)) :=
+  rfl
+
+/-- Destroying one element is a no-op. -/
+theorem stdVecDestroyPtr_correct :
+    stdVecDestroyPtrFwd = .ok (.i32 (BitVec.ofNat 32 0)) :=
+  rfl
+
+/-- The allocator projection answers zero (stateless allocator). -/
+theorem stdVecGetTp_correct :
+    stdVecGetTpFwd = .ok (.i32 (BitVec.ofNat 32 0)) :=
+  rfl
+
+/-- `max_size` is the `S64_MAX / 4` difference bound. -/
+theorem stdVecDiffMax_correct :
+    stdVecDiffMaxFwd = .ok (.u64 stdVecMaxDiffBV) :=
+  rfl
+
+/-- `max` takes the right arg when it is larger. -/
+theorem stdVecMax_correct_right (a b : BitVec 64)
+    (h : a.ult b = true) :
+    stdVecMaxFwd a b = .ok (.u64 b) := by
+  simp [stdVecMaxFwd, h]
+
+/-- `max` takes the left arg otherwise. -/
+theorem stdVecMax_correct_left (a b : BitVec 64)
+    (h : a.ult b = false) :
+    stdVecMaxFwd a b = .ok (.u64 a) := by
+  simp [stdVecMaxFwd, h]
+
+/-- `min` takes the right arg when it is smaller. -/
+theorem stdVecMin_correct_right (a b : BitVec 64)
+    (h : b.ult a = true) :
+    stdVecMinFwd a b = .ok (.u64 b) := by
+  simp [stdVecMinFwd, h]
+
+/-- `min` takes the left arg otherwise. -/
+theorem stdVecMin_correct_left (a b : BitVec 64)
+    (h : b.ult a = false) :
+    stdVecMinFwd a b = .ok (.u64 a) := by
+  simp [stdVecMinFwd, h]
+
+/-- `check_len` fails loudly past `max_size - size`. -/
+theorem stdVecCheckLen_correct_fail (len : Nat) (n : BitVec 64)
+    (h : (stdVecMaxDiffBV - BitVec.ofNat 64 len).ult n = true) :
+    stdVecCheckLenFwd len n = .error .AssertFail := by
+  simp [stdVecCheckLenFwd, h]
+
+/-- `check_len` saturates at `max_size` on wrapping growth. -/
+theorem stdVecCheckLen_correct_saturate (len : Nat) (n : BitVec 64)
+    (h1 : (stdVecMaxDiffBV - BitVec.ofNat 64 len).ult n = false)
+    (h2 : (BitVec.ofNat 64 len +
+      (if (BitVec.ofNat 64 len).ult n then n
+        else BitVec.ofNat 64 len)).ult (BitVec.ofNat 64 len) =
+      true) :
+    stdVecCheckLenFwd len n = .ok (.u64 stdVecMaxDiffBV) := by
+  simp [stdVecCheckLenFwd, h1, h2]
+
+/-- `check_len` otherwise returns the grown length. -/
+theorem stdVecCheckLen_correct_exact (len : Nat) (n : BitVec 64)
+    (h1 : (stdVecMaxDiffBV - BitVec.ofNat 64 len).ult n = false)
+    (h2 : (BitVec.ofNat 64 len +
+      (if (BitVec.ofNat 64 len).ult n then n
+        else BitVec.ofNat 64 len)).ult (BitVec.ofNat 64 len) =
+      false)
+    (h3 : stdVecMaxDiffBV.ult (BitVec.ofNat 64 len +
+      (if (BitVec.ofNat 64 len).ult n then n
+        else BitVec.ofNat 64 len)) = false) :
+    stdVecCheckLenFwd len n = .ok (.u64 (BitVec.ofNat 64 len +
+      (if (BitVec.ofNat 64 len).ult n then n
+        else BitVec.ofNat 64 len))) := by
+  simp [stdVecCheckLenFwd, h1, h2, h3]
+
+/-- `begin` is the zero offset. -/
+theorem stdVecBegin_correct :
+    stdVecBeginFwd = .ok (.u64 (BitVec.ofNat 64 0)) :=
+  rfl
+
+/-- `end` is the reified length. -/
+theorem stdVecEnd_correct (len : Nat) :
+    stdVecEndFwd len = .ok (.u64 (BitVec.ofNat 64 len)) :=
+  rfl
+
+/-- `back` is one before the length. -/
+theorem stdVecBack_correct (len : Nat) :
+    stdVecBackFwd len = .ok (.u64 (BitVec.ofNat 64 len - 1)) :=
+  rfl
+
+/-- Iterator conversion is the identity. -/
+theorem stdVecIterId_correct (x : BitVec 64) :
+    stdVecIterIdFwd x = .ok (.u64 x) :=
+  rfl
+
+/-- Iterator difference is word subtraction. -/
+theorem stdVecMinusEl_correct (it n : BitVec 64) :
+    stdVecMinusElFwd it n = .ok (.u64 (it - n)) :=
+  rfl
+
+/-- Signed iterator difference is word subtraction. -/
+theorem stdVecMinus_correct (a b : BitVec 64) :
+    stdVecMinusFwd a b = .ok (.i64 (a - b)) :=
+  rfl
+
+/-- `_M_allocate` of zero words keeps the null triple shape. -/
+theorem stdVecAlloc_correct_zero (n : BitVec 64)
+    (h : (BitVec.ofNat 64 0).ult n = false) :
+    stdVecAllocFwd n = .ok (.stdVecOwned
+      ⟨List.replicate (BitVec.ofNat 64 0).toNat 0, false⟩ 0
+      (BitVec.ofNat 64 0).toNat) := by
+  simp [stdVecAllocFwd, h]
+
+/-- `_M_allocate` of `n` words delivers zeroed storage. -/
+theorem stdVecAlloc_correct_ok (n : BitVec 64)
+    (h1 : (BitVec.ofNat 64 0).ult n = true)
+    (h2 : stdVecMaxDiffBV.ult n = false) :
+    stdVecAllocFwd n = .ok (.stdVecOwned
+      ⟨List.replicate n.toNat 0, false⟩ 0 n.toNat) := by
+  simp [stdVecAllocFwd, h1, h2]
+
+/-- `_M_allocate` past `max_size` fails loudly. -/
+theorem stdVecAlloc_correct_overmax (n : BitVec 64)
+    (h1 : (BitVec.ofNat 64 0).ult n = true)
+    (h2 : stdVecMaxDiffBV.ult n = true) :
+    stdVecAllocFwd n = .error .AssertFail := by
+  simp [stdVecAllocFwd, h1, h2]
+
+/-- `_M_deallocate` consumes the storage. -/
+theorem stdVecDealloc_correct_ok (b b' : Vec32) (len cap : Nat)
+    (h : vecFree b = .ok b') :
+    stdVecDeallocFwd b len cap = .ok (.stdVecOwned b' len cap) := by
+  simp [stdVecDeallocFwd, h]
+
+/-- `_M_deallocate` propagates a free failure. -/
+theorem stdVecDealloc_correct_err (b : Vec32) (len cap : Nat)
+    (e : Panic) (h : vecFree b = .error e) :
+    stdVecDeallocFwd b len cap = .error e := by
+  simp [stdVecDeallocFwd, h]
+
+/-- The deallocate guard on zero words is a passthrough. -/
+theorem stdVecDeallocGuard_correct_zero (b : Vec32) (len cap : Nat)
+    (n : BitVec 64)
+    (h : (BitVec.ofNat 64 0).ult n = false) :
+    stdVecDeallocGuardFwd b len cap n =
+      .ok (.stdVecOwned b len cap) := by
+  simp [stdVecDeallocGuardFwd, h]
+
+/-- The deallocate guard otherwise frees the storage. -/
+theorem stdVecDeallocGuard_correct_free (b b' : Vec32) (len cap : Nat)
+    (n : BitVec 64)
+    (h1 : (BitVec.ofNat 64 0).ult n = true)
+    (h2 : vecFree b = .ok b') :
+    stdVecDeallocGuardFwd b len cap n =
+      .ok (.stdVecOwned b' len cap) := by
+  simp [stdVecDeallocGuardFwd, h1, h2]
+
+/-- `construct` places the word. -/
+theorem stdVecConstruct_correct_ok (b b' : Vec32) (len cap : Nat)
+    (p : BitVec 64) (x : BitVec 32)
+    (h : vecSet b p.toNat x = .ok b') :
+    stdVecConstructFwd b len cap p x =
+      .ok (.stdVecOwned b' len cap) := by
+  simp [stdVecConstructFwd, h]
+
+/-- `construct` past the storage fails loudly. -/
+theorem stdVecConstruct_correct_oob (b : Vec32) (len cap : Nat)
+    (p : BitVec 64) (x : BitVec 32) (e : Panic)
+    (h : vecSet b p.toNat x = .error e) :
+    stdVecConstructFwd b len cap p x = .error e := by
+  simp [stdVecConstructFwd, h]
+
+/-- Relocating zero words leaves the destination buffer in place. -/
+theorem stdVecReloc_correct_nil (bS : Vec32) (lenS capS : Nat)
+    (bD : Vec32) (lenD capD : Nat) (first last result : BitVec 64)
+    (h : last.toNat - first.toNat = 0) :
+    stdVecRelocFwd bS lenS capS bD lenD capD first last result =
+      .ok (.stdVecOwned bD lenD capD) := by
+  simp [stdVecRelocFwd, h, stdVecBlitFold]
+
 /-! ## N3c gallery: worked properties beyond the admitted-shape specs -/
 
 /-- The index fill is sorted: `vec` writes `k` at slot `k`, so the
