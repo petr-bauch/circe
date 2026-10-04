@@ -633,6 +633,21 @@ theorem evalExpr_usub_u64 (x y : BitVec 64) (e : CExpr) (ρ : Env)
     evalExpr (.usub (.lit (.u64 x)) e) ρ = .ok (.u64 (x - y)) := by
   simp [evalExpr, litVal, h]
 
+/-- `usub` on two `u64`-valued expressions (N4d-iv-b1: `miEl` fused
+    `cir.minus` + `ptr_stride` over erased element indices). -/
+theorem evalExpr_usub_u64u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.usub e₁ e₂) ρ = .ok (.u64 (x - y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `usub` with a `u64`-valued LHS and a `u64` literal RHS
+    (N4d-iv-b1: `back` fused `len - 1`, wrapping on empty). -/
+theorem evalExpr_u64_usub (x y : BitVec 64) (e : CExpr) (ρ : Env)
+    (h : evalExpr e ρ = .ok (.u64 x)) :
+    evalExpr (.usub e (.lit (.u64 y))) ρ = .ok (.u64 (x - y)) := by
+  simp [evalExpr, litVal, h]
+
 /-- `usub` on two `u32` literals wraps (N4d-iv-b1). -/
 theorem evalExpr_usub_lit (x y : BitVec 32) (ρ : Env) :
     evalExpr (.usub (.lit (.u32 x)) (.lit (.u32 y))) ρ =
@@ -651,6 +666,15 @@ theorem evalExpr_s64diff_lit (x y : BitVec 64) (ρ : Env) :
     evalExpr (.s64diff (.lit (.u64 x)) (.lit (.u64 y))) ρ =
       .ok (.i64 (x - y)) := by
   simp [evalExpr, litVal]
+
+/-- `s64diff` on two `u64`-valued expressions (N4d-iv-b1: `mi` fused
+    double-`base` + `ptr_diff` over erased element indices). -/
+theorem evalExpr_s64diff_u64u64 (e₁ e₂ : CExpr) (ρ : Env)
+    (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.s64diff e₁ e₂) ρ = .ok (.i64 (x - y)) := by
+  simp [evalExpr, h₁, h₂]
 
 /-- `s64diff` type mismatches are rejected. -/
 theorem evalExpr_s64diff_mismatch (ρ : Env) :
@@ -1026,6 +1050,14 @@ theorem evalExpr_vgrowNew_lit (n : BitVec 64) (ρ : Env) :
     evalExpr (.vgrowNew (.lit (.u64 n))) ρ =
       .ok (.stdVecOwned ⟨List.replicate n.toNat 0, false⟩ 0 n.toNat) := by
   simp [evalExpr, litVal, vecNew]
+
+/-- `vgrowNew` on a `u64`-valued capacity expression (`vecNew` is total,
+    so no side conditions; N4d-iv-b1: `_M_allocate` fused). -/
+theorem evalExpr_vgrowNew_u64 (e : CExpr) (ρ : Env) (n : BitVec 64)
+    (h : evalExpr e ρ = .ok (.u64 n)) :
+    evalExpr (.vgrowNew e) ρ =
+      .ok (.stdVecOwned ⟨List.replicate n.toNat 0, false⟩ 0 n.toNat) := by
+  simp [evalExpr, h, vecNew]
 
 /-- `vgrowNew` on a non-`u64` capacity is rejected. -/
 theorem evalExpr_vgrowNew_mismatch (ρ : Env) :
