@@ -449,6 +449,25 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .usub a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x - y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.u64 (x - y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .s64diff a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.i64 (x - y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .tif c t e, ρ, m, π =>
+    match memEvalExpr c ρ m π with
+    | .error err => .error err
+    | .ok (.b true) => memEvalExpr t ρ m π
+    | .ok (.b false) => memEvalExpr e ρ m π
+    | .ok _ => .error .AssertFail
   | .umul a b, ρ, m, π =>
     match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x * y))
@@ -566,6 +585,51 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | _, _ => .error .AssertFail
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
+  | .vgrowLen s, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memLoad m a t 0, envLookup ρ s with
+      | .ok w, some (.stdVecOwned _ len _) =>
+        if w == BitVec.ofNat 32 len then
+          .ok (.u64 (BitVec.ofNat 64 len))
+        else .error .AssertFail
+      | .error e, _ => .error e
+      | _, _ => .error .AssertFail
+  | .vgrowCap s, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memLoad m a t 1, envLookup ρ s with
+      | .ok w, some (.stdVecOwned _ _ cap) =>
+        if w == BitVec.ofNat 32 cap then
+          .ok (.u64 (BitVec.ofNat 64 cap))
+        else .error .AssertFail
+      | .error e, _ => .error e
+      | _, _ => .error .AssertFail
+  | .vgrowAt s ie, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memEvalExpr ie ρ m π, envLookup ρ s with
+      | .ok (.u64 i), some (.stdVecOwned b len _) =>
+        match memLoad m a t (i.toNat + 2), b.val[i.toNat]? with
+        | .ok w, some v =>
+          if w == v then
+            if i.toNat < len then .ok (.i32 v) else .error .OOB
+          else .error .AssertFail
+        | .error e, _ => .error e
+        | _, _ => .error .AssertFail
+      | .ok _, _ => .error .AssertFail
+      | .error e, _ => .error e
+  | .vgrowNew ce, ρ, m, π =>
+    match memEvalExpr ce ρ m π with
+    | .error e => .error e
+    | .ok (.u64 n) =>
+      match vecNew n.toNat with
+      | .error e => .error e
+      | .ok v => .ok (.stdVecOwned v 0 n.toNat)
+    | .ok _ => .error .AssertFail
   | .vnew se, ρ, m, π =>
     match memEvalExpr se ρ m π with
     | .error e => .error e
@@ -837,6 +901,138 @@ theorem memEvalExpr_stdVecAt_oob (s : String) (ie : CExpr) (ρ : Env)
     memEvalExpr (.stdVecAt s ie) ρ m π = evalExpr (.stdVecAt s ie) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval]
 
+/-- `usub` agreement: both sides evaluate the operands the same way,
+    so the wrapping subtraction agrees (N4d-iv-b1). -/
+theorem memEvalExpr_usub_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.usub a b) ρ m π = evalExpr (.usub a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `s64diff` agreement: both sides evaluate the offsets the same way,
+    so the bit-exact difference agrees (N4d-iv-b1). -/
+theorem memEvalExpr_s64diff_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.s64diff a b) ρ m π = evalExpr (.s64diff a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `tif` agreement on a true condition: both sides take the
+    then-branch. -/
+theorem memEvalExpr_tif_true (c t e : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (hc : memEvalExpr c ρ m π = evalExpr c ρ)
+    (hvc : evalExpr c ρ = .ok (.b true))
+    (ht : memEvalExpr t ρ m π = evalExpr t ρ) :
+    memEvalExpr (.tif c t e) ρ m π = evalExpr (.tif c t e) ρ := by
+  simp only [memEvalExpr, evalExpr, hc, hvc, ht,
+    evalExpr_tif_true c t e ρ hvc]
+
+/-- `tif` agreement on a false condition: both sides take the
+    else-branch. -/
+theorem memEvalExpr_tif_false (c t e : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (hc : memEvalExpr c ρ m π = evalExpr c ρ)
+    (hvc : evalExpr c ρ = .ok (.b false))
+    (he : memEvalExpr e ρ m π = evalExpr e ρ) :
+    memEvalExpr (.tif c t e) ρ m π = evalExpr (.tif c t e) ρ := by
+  simp only [memEvalExpr, evalExpr, hc, hvc, he,
+    evalExpr_tif_false c t e ρ hvc]
+
+/-- `vgrowLen` agreement: the length header word in memory matches the
+    triple length, so both sides report the same `u64` word
+    (N4d-iv-b1; mirrors `memEvalExpr_stdVecLen_hit`). -/
+theorem memEvalExpr_vgrowLen_hit (s : String) (ρ : Env)
+    (m : Mem) (π : Layout) (b : Vec32) (len cap : Nat)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hmem : memLoad m a t 0 = .ok (BitVec.ofNat 32 len)) :
+    memEvalExpr (.vgrowLen s) ρ m π = evalExpr (.vgrowLen s) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hs, hmem, beq_self_eq_true,
+    ↓reduceIte]
+
+/-- `vgrowCap` agreement: the capacity header word in memory matches
+    the triple capacity (N4d-iv-b1). -/
+theorem memEvalExpr_vgrowCap_hit (s : String) (ρ : Env)
+    (m : Mem) (π : Layout) (b : Vec32) (len cap : Nat)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hmem : memLoad m a t 1 = .ok (BitVec.ofNat 32 cap)) :
+    memEvalExpr (.vgrowCap s) ρ m π = evalExpr (.vgrowCap s) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hs, hmem, beq_self_eq_true,
+    ↓reduceIte]
+
+/-- `vgrowAt` agreement on an in-bounds offset: the stored word in
+    memory matches the buffer word, so both sides deliver it
+    (N4d-iv-b1; the two-word header shifts memory offsets by two). -/
+theorem memEvalExpr_vgrowAt_hit (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (b : Vec32) (len cap : Nat)
+    (i : BitVec 64) (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hlive : b.freed = false)
+    (hmem : memLoad m a t (i.toNat + 2) = .ok x)
+    (hval : b.val[i.toNat]? = some x)
+    (hlt : i.toNat < len) :
+    memEvalExpr (.vgrowAt s ie) ρ m π = evalExpr (.vgrowAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval,
+    hlive, hlt, beq_self_eq_true, Bool.false_eq_true, ↓reduceIte]
+
+/-- `vgrowAt` agreement past the length: the slot is live storage but
+    uninitialized, so both sides fail `OOB`. -/
+theorem memEvalExpr_vgrowAt_oob_len (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (b : Vec32) (len cap : Nat)
+    (i : BitVec 64) (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hlive : b.freed = false)
+    (hmem : memLoad m a t (i.toNat + 2) = .ok x)
+    (hval : b.val[i.toNat]? = some x)
+    (hlt : ¬ i.toNat < len) :
+    memEvalExpr (.vgrowAt s ie) ρ m π = evalExpr (.vgrowAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval,
+    hlive, hlt, beq_self_eq_true, Bool.false_eq_true, ↓reduceIte]
+
+/-- `vgrowAt` agreement past the storage words: both sides fail `OOB`. -/
+theorem memEvalExpr_vgrowAt_oob_miss (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (b : Vec32) (len cap : Nat)
+    (i : BitVec 64) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hlive : b.freed = false)
+    (hmem : memLoad m a t (i.toNat + 2) = .error .OOB)
+    (hval : b.val[i.toNat]? = none) :
+    memEvalExpr (.vgrowAt s ie) ρ m π = evalExpr (.vgrowAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval,
+    hlive, Bool.false_eq_true, if_false]
+
+/-- `vgrowAt` agreement on a consumed buffer: the dead block loads
+    `AssertFail`, matching the value-side use-after-free. -/
+theorem memEvalExpr_vgrowAt_freed (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (b : Vec32) (len cap : Nat)
+    (i : BitVec 64) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hfree : b.freed = true)
+    (hmem : memLoad m a t (i.toNat + 2) = .error .AssertFail) :
+    memEvalExpr (.vgrowAt s ie) ρ m π = evalExpr (.vgrowAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hfree,
+    ↓reduceIte]
+
 /-- `vget` agreement under consistency (the `vec_alloc` loop shape):
     same tag/liveness discipline as `idx`, cross-checked against
     `vecGet` on the value side. -/
@@ -927,6 +1123,18 @@ def memEvalStmtWith
         let (m', a) := memAllocData m [b.val]
         .ok (((x, .boxVal b) :: ρ, m', (x, a, a) :: π), .fellThrough)
     | .ok _ => .error .AssertFail
+  | .let_ x _ (.vgrowNew ce), ρ, m, π =>
+    match memEvalExpr ce ρ m π with
+    | .error err => .error err
+    | .ok (.u64 n) =>
+      match vecNew n.toNat with
+      | .error e => .error e
+      | .ok v =>
+        let (m', a) := memAllocData m
+          ((BitVec.ofNat 32 0) :: (BitVec.ofNat 32 n.toNat) :: v.val)
+        .ok (((x, .stdVecOwned v 0 n.toNat) :: ρ, m', (x, a, a) :: π),
+          .fellThrough)
+    | .ok _ => .error .AssertFail
   | .let_ x _ e, ρ, m, π =>
     match memEvalExpr e ρ m π with
     | .error err => .error err
@@ -1002,6 +1210,33 @@ def memEvalStmtWith
       | .error e, _ => .error e
       | _, .error e => .error e
     | _, _ => .error .AssertFail
+  | .vgrowSet x ie ve, ρ, m, π =>
+    match memEvalExpr ie ρ m π, memEvalExpr ve ρ m π,
+        envLookup ρ x, layoutLookup π x with
+    | .ok (.u64 i), .ok (.i32 xv), some (.stdVecOwned b len cap),
+        some (a, t) =>
+      match vecSet b i.toNat xv, memStore m a t (i.toNat + 2) xv with
+      | .ok b', .ok m' =>
+        match envUpdate ρ x (.stdVecOwned b' len cap) with
+        | none => .error .Uninit
+        | some ρ' => .ok ((ρ', m', π), .fellThrough)
+      | .error e, _ => .error e
+      | _, .error e => .error e
+    | .ok _, .ok _, _, _ => .error .AssertFail
+    | .error e, _, _, _ => .error e
+    | _, .error e, _, _ => .error e
+  | .vgrowFree x, ρ, m, π =>
+    match envLookup ρ x, layoutLookup π x with
+    | some (.stdVecOwned b len cap), some (a, t) =>
+      match vecFree b, memFree m a t with
+      | .ok b', .ok m' =>
+        match envUpdate ρ x (.stdVecOwned b' len cap) with
+        | none => .error .Uninit
+        | some ρ' => .ok ((ρ', m', π), .fellThrough)
+      | .error e, _ => .error e
+      | _, .error e => .error e
+    | _, _ => .error .AssertFail
+  | .fail, _, _, _ => .error .AssertFail
   | .if_ c t e, ρ, m, π =>
     match memEvalExpr c ρ m π with
     | .error err => .error err
@@ -1137,6 +1372,17 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
         -- words `1+i` are the elements; N4d-iv-a, reads only).
         let (m'', a) := memAllocData m' ((BitVec.ofNat 32 l.length) :: l)
         some (((p.name, .stdVecVal l) :: ρ), m'', (p.name, a, a) :: π)
+      | .stdVecOwned b len cap =>
+        -- The owned triple pins the two-word header plus the storage
+        -- words (word 0 is the length, word 1 the capacity, words
+        -- `2+i` the elements; N4d-iv-b1, growth leaves). Lifting a
+        -- freed buffer keeps it dead, like `vecVal`.
+        let (m'', a) := memAllocData m'
+          ((BitVec.ofNat 32 len) :: (BitVec.ofNat 32 cap) :: b.val)
+        some (((p.name, .stdVecOwned b len cap) :: ρ),
+          ⟨m''.next, (a, ⟨a, !b.freed, (BitVec.ofNat 32 len) ::
+            (BitVec.ofNat 32 cap) :: b.val⟩) :: m''.blocks, m''.blocks64⟩,
+          (p.name, a, a) :: π)
       | _ => some (((p.name, v) :: ρ), m', π)
   | _, _, _ => none
 
@@ -1449,6 +1695,7 @@ theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
     (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (v : Value)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
+    (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
     (h : memEvalExpr e ρ m π = evalExpr e ρ)
     (hv : evalExpr e ρ = .ok v) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π =
@@ -1456,6 +1703,7 @@ theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
   match e with
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
+  | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv]
 
@@ -1466,11 +1714,13 @@ theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
     (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (err : Panic)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
+    (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
     (h : memEvalExpr e ρ m π = .error err) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π = .error err := by
   match e with
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
+  | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
 
@@ -1517,6 +1767,24 @@ theorem memEvalStmtFuel_let_boxNew (f : Nat) (x : String) (ty : CType)
       .ok (((x, .boxVal b) :: ρ, m', (x, a, a) :: π), .fellThrough) := by
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse, hnew]
+
+/-- Allocating `let_` (`vgrowNew` over a `u64` capacity): the value
+    side builds the empty triple over fresh zeroed storage, the memory
+    side pins a fresh block holding the two header words plus the
+    storage words (N4d-iv-b1). -/
+theorem memEvalStmtFuel_let_vgrowNew (f : Nat) (x : String) (ty : CType)
+    (ce : CExpr) (ρ : Env) (m : Mem) (π : Layout) (n : BitVec 64)
+    (v : Vec32)
+    (h : memEvalExpr ce ρ m π = evalExpr ce ρ)
+    (hce : evalExpr ce ρ = .ok (.u64 n))
+    (hnew : vecNew n.toNat = .ok v) :
+    memEvalStmtFuel f (.let_ x ty (.vgrowNew ce)) ρ m π =
+      let (m', a) := memAllocData m
+        ((BitVec.ofNat 32 0) :: (BitVec.ofNat 32 n.toNat) :: v.val)
+      .ok (((x, .stdVecOwned v 0 n.toNat) :: ρ, m', (x, a, a) :: π),
+        .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hce, hnew]
 
 /-! ## Lockstep bridges (value op ⟺ memory op under the pin invariant) -/
 
@@ -1765,6 +2033,81 @@ theorem vfree_lockstep (m : Mem) (a t : Nat) (b : Vec32) (blk : Block)
   subst hfree'
   show ∃ m', memFree m a t = .ok m' ∧
     memFind m' a = some ⟨t, false, b.val⟩
+  have hmfree : memFree m a t =
+      .ok ⟨m.next, (a, ⟨blk.tag, false, blk.data⟩) :: m.blocks,
+        m.blocks64⟩ := by
+    simp [memFree, hfind, htag, hlive]
+  refine ⟨_, hmfree, ?_⟩
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
+    ⟨blk.tag, false, blk.data⟩
+  simpa only [htag, hdata] using hhit
+
+/-- Setting past the two header words preserves them: the store lands
+    in the storage suffix exactly where `vecSet` lands in `b.val`
+    (N4d-iv-b1). -/
+theorem header_set_succ (l c : BitVec 32) (w : List (BitVec 32))
+    (i : Nat) (x : BitVec 32) :
+    (l :: c :: w).set (i + 2) x = l :: c :: (w.set i x) := by
+  have e : i + 2 = (i + 1) + 1 := by omega
+  rw [e, List.set_cons_succ, List.set_cons_succ]
+
+/-- `vgrowSet` lockstep: under the triple pin invariant (matching tag,
+    live block, header words plus exactly the buffer words), `vecSet`
+    and the header-shifted `memStore` update together (N4d-iv-b1;
+    mirrors `vset_lockstep`). -/
+theorem vgrowSet_lockstep (m : Mem) (a t : Nat) (b : Vec32)
+    (len cap i : Nat) (x : BitVec 32) (blk : Block) (b' : Vec32)
+    (hfind : memFind m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true)
+    (hdata : blk.data = (BitVec.ofNat 32 len) ::
+      (BitVec.ofNat 32 cap) :: b.val)
+    (hunfreed : b.freed = false)
+    (hset : vecSet b i x = .ok b') :
+    ∃ m', memStore m a t (i + 2) x = .ok m' ∧
+      memFind m' a = some ⟨t, true, (BitVec.ofNat 32 len) ::
+        (BitVec.ofNat 32 cap) :: b'.val⟩ := by
+  obtain ⟨hb, _⟩ := vecSet_ok_bound b i x b' hset
+  have hset' : vecSet b i x = .ok ⟨b.val.set i x, false⟩ :=
+    vecSet_ok b i x hunfreed hb
+  rw [hset'] at hset
+  cases hset
+  show ∃ m', memStore m a t (i + 2) x = .ok m' ∧
+    memFind m' a = some ⟨t, true, (BitVec.ofNat 32 len) ::
+      (BitVec.ofNat 32 cap) :: (b.val.set i x)⟩
+  have hblen : i + 2 < blk.data.length := by rw [hdata]; simp; omega
+  have hstore : memStore m a t (i + 2) x =
+      .ok ⟨m.next, (a, ⟨blk.tag, blk.live, blk.data.set (i + 2) x⟩) ::
+        m.blocks, m.blocks64⟩ := by
+    simp [memStore, hfind, htag, hlive, hblen]
+  rw [hdata, header_set_succ] at hstore
+  refine ⟨_, hstore, ?_⟩
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
+    ⟨blk.tag, blk.live, blk.data.set (i + 2) x⟩
+  rw [hdata, header_set_succ] at hhit
+  simpa only [htag, hlive] using hhit
+
+/-- `vgrowFree` lockstep: under the triple pin invariant, `vecFree`
+    and `memFree` consume their tokens together, keeping the header
+    words (N4d-iv-b1; mirrors `vfree_lockstep`). -/
+theorem vgrowFree_lockstep (m : Mem) (a t : Nat) (b : Vec32)
+    (len cap : Nat) (blk : Block) (b' : Vec32)
+    (hfind : memFind m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true)
+    (hdata : blk.data = (BitVec.ofNat 32 len) ::
+      (BitVec.ofNat 32 cap) :: b.val)
+    (hunfreed : b.freed = false)
+    (hfree : vecFree b = .ok b') :
+    ∃ m', memFree m a t = .ok m' ∧
+      memFind m' a = some ⟨t, false, (BitVec.ofNat 32 len) ::
+        (BitVec.ofNat 32 cap) :: b.val⟩ := by
+  have hfree' : b' = ⟨b.val, true⟩ := by
+    rw [vecFree_ok b hunfreed] at hfree
+    cases hfree
+    rfl
+  subst hfree'
+  show ∃ m', memFree m a t = .ok m' ∧
+    memFind m' a = some ⟨t, false, (BitVec.ofNat 32 len) ::
+      (BitVec.ofNat 32 cap) :: b.val⟩
   have hmfree : memFree m a t =
       .ok ⟨m.next, (a, ⟨blk.tag, false, blk.data⟩) :: m.blocks,
         m.blocks64⟩ := by

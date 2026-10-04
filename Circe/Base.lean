@@ -1792,6 +1792,29 @@ def vecReallocFillSumU32 (n : Nat) : Result (BitVec 32) :=
             | .error e => .error e
             | .ok _ => .ok s
 
+/-- Bulk word copy (`memmove` fused, N4d-iv-b1 `__relocate_a_1`): copy
+    `n` words from `src` at `soff` to `dst` at `doff`. Reads go
+    through the `vgrowAt` discipline (`freeS` is the source token:
+    consumed source is `AssertFail`; `soff` at or past `lenS` is `OOB`,
+    as is a short source list); writes go through `vecSet` (consumed
+    or short destination propagates its error). Read-then-write per
+    step, so overlapping ranges copy correctly. -/
+def stdVecBlitFold (src : List (BitVec 32)) (lenS : Nat) (freeS : Bool)
+    (dst : Vec32) (doff soff n : Nat) : Result Vec32 :=
+  match n with
+  | 0 => .ok dst
+  | k + 1 =>
+    if freeS then .error .AssertFail
+    else if soff < lenS then
+      match src[soff]? with
+      | none => .error .OOB
+      | some x =>
+        match vecSet dst doff x with
+        | .error e => .error e
+        | .ok dst' =>
+          stdVecBlitFold src lenS freeS dst' (doff + 1) (soff + 1) k
+    else .error .OOB
+
 /-- Whole-program bridge: allocate/fill/realloc/fill-extension/sum/free
     equals the `range (n + n)` prefix sum (the spec world). -/
 theorem vecReallocFillSumU32_correct (n : Nat) :

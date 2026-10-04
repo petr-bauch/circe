@@ -48,7 +48,14 @@ inductive CLit : Type
     addition (`cir.add nsw`, width-polymorphic over the `Value` tags:
     `i32` via `checkedAddI32`, `i64` via `checkedAddI64` — S3b);
     `uadd` is wrapping unsigned addition (plain `cir.add`, over
-    `u32`/`u64`); `umul` is wrapping unsigned multiplication (plain
+    `u32`/`u64`); `usub` is wrapping unsigned subtraction (plain
+    `cir.sub` on unsigned, over `u32`/`u64` — N4d-iv-b1: `_M_check_len`
+    length arithmetic, iterator `miEl`, `back`); `s64diff` is the fused
+    `cir.ptr_diff` over `s32` (bit-exact `u64` subtraction delivered as
+    `i64` — N4d-iv-b1: iterator `mi`, whose `s64` result the caller
+    casts back to `u64`); `tif c t e` is the pure ternary
+    (`cir.ternary`: `c` must evaluate to a `b`, otherwise `AssertFail`
+    — N4d-iv-b1: `_M_check_len` length pick); `umul` is wrapping unsigned multiplication (plain
     `cir.mul` on unsigned: C unsigned arithmetic wraps, never fails);
     `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
     `ueq` is width-polymorphic bit equality (`cir.cmp eq` compares
@@ -75,6 +82,17 @@ inductive CLit : Type
     as a `u64` word); `stdVecAt s ie` is bounded indexing over the
     reified words (`operator[]` fused: `ie` must be a `u64`, `OOB`
     off the end, mirroring `spanAt`).
+    Owned-triple operations (N4d-iv-b1: `std::vector<int32_t>` growth
+    leaves over `stdVecOwned` — the uniquely-owned heap triple
+    `(buf, len, cap)` with `buf` a live-or-consumed `Vec32` block):
+    `vgrowLen s` / `vgrowCap s` project the length / capacity as a
+    `u64` word (`s` must be a `stdVecOwned`); `vgrowAt s ie` reads
+    the word at `u64` offset `ie` (`OOB` at or past the length);
+    `vgrowNew ce` allocates a fresh zeroed `cap`-word buffer with
+    length `0` (`ce` must be a `u64`; `_M_allocate` fused — the
+    `n == 0` null branch coincides with the empty triple under the
+    null-iff-`cap == 0` convention, so both branches build the same
+    value).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
@@ -90,6 +108,9 @@ inductive CExpr : Type
   | var : String → CExpr
   | add : CExpr → CExpr → CExpr
   | uadd : CExpr → CExpr → CExpr
+  | usub : CExpr → CExpr → CExpr
+  | s64diff : CExpr → CExpr → CExpr
+  | tif : CExpr → CExpr → CExpr → CExpr
   | umul : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
@@ -100,6 +121,10 @@ inductive CExpr : Type
   | spanAt : String → CExpr → CExpr
   | stdVecLen : String → CExpr
   | stdVecAt : String → CExpr → CExpr
+  | vgrowLen : String → CExpr
+  | vgrowCap : String → CExpr
+  | vgrowAt : String → CExpr → CExpr
+  | vgrowNew : CExpr → CExpr
   | idxi : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
@@ -130,7 +155,18 @@ inductive CExpr : Type
     destructor-guarded scope: the body runs, then the `cleanup normal`
     region (a trivial-dtor call, a no-op at validation, so `cleanup`
     evaluates exactly its body; the trailing `cir.trap` marks the
-    unreachable exceptional path and has no model). -/
+    unreachable exceptional path and has no model).
+    Owned-triple statements (N4d-iv-b1): `vgrowSet t ie ve` stores
+    the `i32` word `ve` at `u64` offset `ie` of the `stdVecOwned`
+    triple `t` (`construct` fused: use-after-free is `AssertFail`,
+    offset at or past the capacity is `OOB` — the slot must be live
+    storage, mirroring `vset`); `vgrowFree t` consumes the triple's
+    buffer (`_M_deallocate` / dtor fused: double-`free` is
+    `AssertFail`, mirroring `vfree`); `fail` is the loud abort
+    (noreturn-throw call sites fused: `_M_check_len`'s
+    `length_error`, `new_allocator::allocate`'s `bad_alloc` /
+    `bad_array_new_length` — hitting it is `AssertFail`, never a
+    silent model). -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
@@ -141,6 +177,9 @@ inductive CStmt : Type
   | vrealloc (vec : String) (newSize : CExpr)
   | vfree (vec : String)
   | boxFree (box : String)
+  | vgrowSet (t : String) (idx val : CExpr)
+  | vgrowFree (t : String)
+  | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)
   | break_

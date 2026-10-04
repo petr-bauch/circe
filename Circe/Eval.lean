@@ -36,7 +36,17 @@ import Circe.CoreIR
     `std::vector<int32_t>` reads are `stdVecVal` (the reified element
     words; same `sharedBorrow` snapshot story over the heap triple —
     the `_M_start` load path fuses into the read, so the triple
-    itself never materializes; N4d-iv-a, reads only). -/
+    itself never materializes; N4d-iv-a, reads only).
+    `std::vector<int32_t>` growth leaves are `stdVecOwned` (the
+    uniquely-owned heap triple: `buf` is the `Vec32` storage block
+    with its affine token, `len` / `cap` are the reified
+    `_M_finish - _M_start` / `_M_end_of_storage - _M_start` element
+    counts; N4d-iv-b1). Iterators over the triple erase to `u64`
+    offsets into `buf` (`_M_start` is `0`, `_M_finish` is `len`,
+    `_M_end_of_storage` is `cap`); a null buffer is the
+    `len = cap = 0` triple (empty storage — the `_M_allocate(0)`
+    null and the default-ctor null coincide, so the `n == 0` branch
+    builds the same value as fresh storage). -/
 inductive Value : Type
   | i32 : BitVec 32 → Value
   | u32 : BitVec 32 → Value
@@ -52,6 +62,7 @@ inductive Value : Type
   | optVal : Option (BitVec 32) → Value
   | spanVal : List (BitVec 32) → Value
   | stdVecVal : List (BitVec 32) → Value
+  | stdVecOwned : Vec32 → Nat → Nat → Value
   deriving DecidableEq, Repr
 
 /-- Evaluation environment: variables to values. Loan/borrow bookkeeping
@@ -328,6 +339,25 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .usub a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x - y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.u64 (x - y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .s64diff a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.i64 (x - y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .tif c t e, ρ =>
+    match evalExpr c ρ with
+    | .error err => .error err
+    | .ok (.b true) => evalExpr t ρ
+    | .ok (.b false) => evalExpr e ρ
+    | .ok _ => .error .AssertFail
   | .umul a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x * y))
@@ -422,6 +452,37 @@ def evalExpr : CExpr → Env → Result Value
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
+  | .vgrowLen s, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecOwned _ len _) => .ok (.u64 (BitVec.ofNat 64 len))
+    | some _ => .error .AssertFail
+  | .vgrowCap s, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecOwned _ _ cap) => .ok (.u64 (BitVec.ofNat 64 cap))
+    | some _ => .error .AssertFail
+  | .vgrowAt s ie, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecOwned b len _) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        if b.freed then .error .AssertFail
+        else match b.val[i.toNat]? with
+        | some x => if i.toNat < len then .ok (.i32 x) else .error .OOB
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .vgrowNew ce, ρ =>
+    match evalExpr ce ρ with
+    | .error e => .error e
+    | .ok (.u64 n) =>
+      match vecNew n.toNat with
+      | .error e => .error e
+      | .ok v => .ok (.stdVecOwned v 0 n.toNat)
+    | .ok _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
     | .error e => .error e
@@ -545,11 +606,81 @@ theorem evalExpr_uadd_lit (x y : BitVec 32) (ρ : Env) :
       .ok (.u32 (x + y)) := by
   simp [evalExpr, litVal]
 
+/-- `uadd` on two `u64`-valued expressions (N4d-iv-b1: `_M_check_len`
+    `__len + max(__len, __n)` shape). -/
+theorem evalExpr_uadd_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.uadd e₁ e₂) ρ = .ok (.u64 (x + y)) := by
+  simp [evalExpr, h₁, h₂]
+
 /-- `uadd` type mismatches are rejected. -/
 theorem evalExpr_uadd_mismatch (ρ : Env) :
     evalExpr (.uadd (.lit (.u32 0)) (.lit (.b true))) ρ =
       .error .AssertFail := by
   simp [evalExpr, litVal]
+
+/-- `usub` on two `u64` literals wraps (N4d-iv-b1). -/
+theorem evalExpr_usub64_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.usub (.lit (.u64 x)) (.lit (.u64 y))) ρ =
+      .ok (.u64 (x - y)) := by
+  simp [evalExpr, litVal]
+
+/-- `usub` with a `u64` literal LHS and a `u64`-valued RHS expression
+    (N4d-iv-b1: `_M_check_len` / `_M_allocate` shapes). -/
+theorem evalExpr_usub_u64 (x y : BitVec 64) (e : CExpr) (ρ : Env)
+    (h : evalExpr e ρ = .ok (.u64 y)) :
+    evalExpr (.usub (.lit (.u64 x)) e) ρ = .ok (.u64 (x - y)) := by
+  simp [evalExpr, litVal, h]
+
+/-- `usub` on two `u32` literals wraps (N4d-iv-b1). -/
+theorem evalExpr_usub_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.usub (.lit (.u32 x)) (.lit (.u32 y))) ρ =
+      .ok (.u32 (x - y)) := by
+  simp [evalExpr, litVal]
+
+/-- `usub` type mismatches are rejected. -/
+theorem evalExpr_usub_mismatch (ρ : Env) :
+    evalExpr (.usub (.lit (.u32 0)) (.lit (.b true))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `s64diff` on two `u64` offsets delivers the bit-exact difference
+    as `s64` (N4d-iv-b1: fused `cir.ptr_diff`). -/
+theorem evalExpr_s64diff_lit (x y : BitVec 64) (ρ : Env) :
+    evalExpr (.s64diff (.lit (.u64 x)) (.lit (.u64 y))) ρ =
+      .ok (.i64 (x - y)) := by
+  simp [evalExpr, litVal]
+
+/-- `s64diff` type mismatches are rejected. -/
+theorem evalExpr_s64diff_mismatch (ρ : Env) :
+    evalExpr (.s64diff (.lit (.u64 0)) (.lit (.b true))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `tif` on a true condition evaluates the then-branch. -/
+theorem evalExpr_tif_true (c t e : CExpr) (ρ : Env)
+    (hc : evalExpr c ρ = .ok (.b true)) :
+    evalExpr (.tif c t e) ρ = evalExpr t ρ := by
+  simp [evalExpr, hc]
+
+/-- `tif` on a false condition evaluates the else-branch. -/
+theorem evalExpr_tif_false (c t e : CExpr) (ρ : Env)
+    (hc : evalExpr c ρ = .ok (.b false)) :
+    evalExpr (.tif c t e) ρ = evalExpr e ρ := by
+  simp [evalExpr, hc]
+
+/-- `tif` on a non-boolean condition is rejected. -/
+theorem evalExpr_tif_nonbool (c t e : CExpr) (ρ : Env) (x : BitVec 32)
+    (hc : evalExpr c ρ = .ok (.i32 x)) :
+    evalExpr (.tif c t e) ρ = .error .AssertFail := by
+  simp [evalExpr, hc]
+
+/-- `tif` propagates condition errors. -/
+theorem evalExpr_tif_err (c t e : CExpr) (ρ : Env) (err : Panic)
+    (hc : evalExpr c ρ = .error err) :
+    evalExpr (.tif c t e) ρ = .error err := by
+  simp [evalExpr, hc]
 
 /-- `umul` on two `u32` literals wraps. -/
 theorem evalExpr_umul_lit (x y : BitVec 32) (ρ : Env) :
@@ -605,6 +736,21 @@ theorem evalExpr_ult64_lit (x y : BitVec 64) (ρ : Env) :
     evalExpr (.ult (.lit (.u64 x)) (.lit (.u64 y))) ρ =
       .ok (.b (x.ult y)) := by
   simp [evalExpr, litVal]
+
+/-- `ult` on two `u64`-valued expressions (N4d-iv-b1: `_M_check_len` /
+    `_M_allocate` shapes). -/
+theorem evalExpr_ult_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.ult e₁ e₂) ρ = .ok (.b (x.ult y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `ult` with a `u64` literal LHS and a `u64`-valued RHS expression
+    (N4d-iv-b1: `_M_check_len` second-guard shape). -/
+theorem evalExpr_ult_u64lit (x y : BitVec 64) (e : CExpr) (ρ : Env)
+    (h : evalExpr e ρ = .ok (.u64 y)) :
+    evalExpr (.ult (.lit (.u64 x)) e) ρ = .ok (.b (x.ult y)) := by
+  simp [evalExpr, litVal, h]
 
 /-- `ueq` on two `u64` literals is unsigned equality. -/
 theorem evalExpr_ueq64_lit (x y : BitVec 64) (ρ : Env) :
@@ -787,6 +933,104 @@ theorem evalExpr_stdVecAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
     (hs : envLookup ρ s = some (.i32 v)) :
     evalExpr (.stdVecAt s ie) ρ = .error .AssertFail := by
   simp [evalExpr, hs]
+
+/-- `vgrowLen` of an owned triple delivers its length as a `u64` word
+    (N4d-iv-b1). -/
+theorem evalExpr_vgrowLen_some (s : String) (ρ : Env)
+    (b : Vec32) (len cap : Nat)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap)) :
+    evalExpr (.vgrowLen s) ρ = .ok (.u64 (BitVec.ofNat 64 len)) := by
+  simp [evalExpr, hs]
+
+/-- `vgrowLen` of a non-triple is rejected, never silently modeled. -/
+theorem evalExpr_vgrowLen_notval (s : String) (v : BitVec 32) (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.vgrowLen s) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `vgrowCap` of an owned triple delivers its capacity as a `u64` word
+    (N4d-iv-b1). -/
+theorem evalExpr_vgrowCap_some (s : String) (ρ : Env)
+    (b : Vec32) (len cap : Nat)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap)) :
+    evalExpr (.vgrowCap s) ρ = .ok (.u64 (BitVec.ofNat 64 cap)) := by
+  simp [evalExpr, hs]
+
+/-- `vgrowCap` of a non-triple is rejected, never silently modeled. -/
+theorem evalExpr_vgrowCap_notval (s : String) (v : BitVec 32) (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.vgrowCap s) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `vgrowAt` in bounds delivers the word (N4d-iv-b1). -/
+theorem evalExpr_vgrowAt_some (s : String) (ie : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (i : BitVec 64) (x : BitVec 32)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hlive : b.freed = false)
+    (hget : b.val[i.toNat]? = some x)
+    (hlt : i.toNat < len) :
+    evalExpr (.vgrowAt s ie) ρ = .ok (.i32 x) := by
+  simp [evalExpr, hs, hi, hlive, hget, hlt]
+
+/-- `vgrowAt` at or past the length is `OOB` (uninitialized slots are
+    not readable, even when the storage is live). -/
+theorem evalExpr_vgrowAt_oob_len (s : String) (ie : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (i : BitVec 64) (x : BitVec 32)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hlive : b.freed = false)
+    (hget : b.val[i.toNat]? = some x)
+    (hlt : ¬ i.toNat < len) :
+    evalExpr (.vgrowAt s ie) ρ = .error .OOB := by
+  simp [evalExpr, hs, hi, hlive, hget, hlt]
+
+/-- `vgrowAt` past the storage words is `OOB`. -/
+theorem evalExpr_vgrowAt_oob_miss (s : String) (ie : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (i : BitVec 64)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hlive : b.freed = false)
+    (hget : b.val[i.toNat]? = none) :
+    evalExpr (.vgrowAt s ie) ρ = .error .OOB := by
+  simp [evalExpr, hs, hi, hlive, hget]
+
+/-- `vgrowAt` on a consumed buffer is `AssertFail` (use-after-free is
+    never a silent read). -/
+theorem evalExpr_vgrowAt_freed (s : String) (ie : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (i : BitVec 64)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hfree : b.freed = true) :
+    evalExpr (.vgrowAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs, hi, hfree]
+
+/-- `vgrowAt` with a non-`u64` index is rejected. -/
+theorem evalExpr_vgrowAt_nonu64 (s : String) (ie : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (v : BitVec 32)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (hi : evalExpr ie ρ = .ok (.i32 v)) :
+    evalExpr (.vgrowAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs, hi]
+
+/-- `vgrowAt` of a non-triple is rejected, never silently modeled. -/
+theorem evalExpr_vgrowAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
+    (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.vgrowAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `vgrowNew` on a `u64` capacity allocates a zeroed live buffer with
+    length `0` (N4d-iv-b1: `_M_allocate` fused). -/
+theorem evalExpr_vgrowNew_lit (n : BitVec 64) (ρ : Env) :
+    evalExpr (.vgrowNew (.lit (.u64 n))) ρ =
+      .ok (.stdVecOwned ⟨List.replicate n.toNat 0, false⟩ 0 n.toNat) := by
+  simp [evalExpr, litVal, vecNew]
+
+/-- `vgrowNew` on a non-`u64` capacity is rejected. -/
+theorem evalExpr_vgrowNew_mismatch (ρ : Env) :
+    evalExpr (.vgrowNew (.lit (.i32 0))) ρ = .error .AssertFail := by
+  simp [evalExpr, litVal]
 
 /-- `vnew` on a `u32` size allocates a zeroed live block. -/
 theorem evalExpr_vnew_lit (n : BitVec 32) (ρ : Env) :
@@ -1096,6 +1340,34 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
         | none => .error .Uninit
         | some ρ' => .ok (ρ', .fellThrough)
     | some _ => .error .AssertFail
+  | .vgrowSet x ie ve, ρ =>
+    match evalExpr ie ρ, evalExpr ve ρ with
+    | .ok (.u64 i), .ok (.i32 xv) =>
+      match envLookup ρ x with
+      | none => .error .Uninit
+      | some (.stdVecOwned b len cap) =>
+        match vecSet b i.toNat xv with
+        | .error e => .error e
+        | .ok b' =>
+          match envUpdate ρ x (.stdVecOwned b' len cap) with
+          | none => .error .Uninit
+          | some ρ' => .ok (ρ', .fellThrough)
+      | some _ => .error .AssertFail
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .vgrowFree x, ρ =>
+    match envLookup ρ x with
+    | none => .error .Uninit
+    | some (.stdVecOwned b len cap) =>
+      match vecFree b with
+      | .error e => .error e
+      | .ok b' =>
+        match envUpdate ρ x (.stdVecOwned b' len cap) with
+        | none => .error .Uninit
+        | some ρ' => .ok (ρ', .fellThrough)
+    | some _ => .error .AssertFail
+  | .fail, _ => .error .AssertFail
   | .if_ c t e, ρ =>
     match evalExpr c ρ with
     | .error err => .error err
@@ -1250,6 +1522,59 @@ theorem evalStmtFuel_vfree (f : Nat) (x : String) (ρ : Env)
     (hu : envUpdate ρ x (.vecVal b') = some ρ') :
     evalStmtFuel f (.vfree x) ρ = .ok (ρ', .fellThrough) := by
   cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
+
+/-- `vgrowSet` stores through a live owned triple and updates the
+    binding, keeping `len`/`cap` (any fuel; N4d-iv-b1: `construct`
+    fused). -/
+theorem evalStmtFuel_vgrowSet (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (b b' : Vec32) (len cap : Nat) (ρ' : Env)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.i32 xv))
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hset : vecSet b i.toNat xv = .ok b')
+    (hu : envUpdate ρ x (.stdVecOwned b' len cap) = some ρ') :
+    evalStmtFuel f (.vgrowSet x ie ve) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset, hu]
+
+/-- `vgrowSet` errors (OOB/use-after-free) propagate (any fuel). -/
+theorem evalStmtFuel_vgrowSet_err (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (b : Vec32) (len cap : Nat) (e : Panic)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.i32 xv))
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hset : vecSet b i.toNat xv = .error e) :
+    evalStmtFuel f (.vgrowSet x ie ve) ρ = .error e := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset]
+
+/-- `vgrowFree` consumes the triple's buffer token and updates the
+    binding, keeping `len`/`cap` (any fuel; N4d-iv-b1:
+    `_M_deallocate` / dtor fused). -/
+theorem evalStmtFuel_vgrowFree (f : Nat) (x : String) (ρ : Env)
+    (b b' : Vec32) (len cap : Nat) (ρ' : Env)
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hfree : vecFree b = .ok b')
+    (hu : envUpdate ρ x (.stdVecOwned b' len cap) = some ρ') :
+    evalStmtFuel f (.vgrowFree x) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree, hu]
+
+/-- `vgrowFree` errors (double-free) propagate (any fuel). -/
+theorem evalStmtFuel_vgrowFree_err (f : Nat) (x : String) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (e : Panic)
+    (harr : envLookup ρ x = some (.stdVecOwned b len cap))
+    (hfree : vecFree b = .error e) :
+    evalStmtFuel f (.vgrowFree x) ρ = .error e := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, harr, hfree]
+
+/-- `fail` aborts loudly at any fuel (noreturn-throw fusion). -/
+theorem evalStmtFuel_fail (f : Nat) (ρ : Env) :
+    evalStmtFuel f .fail ρ = .error .AssertFail := by
+  cases f <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith]
 
 /-- `vset` stores through a live `u64` block (M1b mirror, any fuel). -/
 theorem evalStmtFuel_vset64 (f : Nat) (x : String) (ie ve : CExpr) (ρ : Env)

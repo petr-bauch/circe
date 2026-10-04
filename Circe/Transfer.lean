@@ -4048,7 +4048,8 @@ theorem memEvalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
     have hlet := memEvalStmtFuel_let_err F "t" (.i 32)
       (.add (.var "a") (.var "b"))
       [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] e
-      (by intro se h; cases h) (by intro se h; cases h) hmemv1
+      (by intro se h; cases h) (by intro se h; cases h)
+      (by intro ce h; cases h) hmemv1
     have hseq := memEvalStmtFuel_seq_err F
       (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
       (.return_ (.add (.var "t") (.var "c")))
@@ -4063,7 +4064,8 @@ theorem memEvalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
     have hlet := memEvalStmtFuel_let_pure F "t" (.i 32)
       (.add (.var "a") (.var "b"))
       [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] (.i32 t)
-      (by intro se h; cases h) (by intro se h; cases h) hmem1 hv1
+      (by intro se h; cases h) (by intro se h; cases h)
+      (by intro ce h; cases h) hmem1 hv1
     have ht : envLookup (envExtend [("a", .i32 x), ("b", .i32 y),
         ("c", .i32 z)] "t" (.i32 t)) "t" = some (.i32 t) :=
       envExtend_hit _ _ _
@@ -4834,7 +4836,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i0" (.u 64) _ _ _ _
-      (.u64 (0 : BitVec 64)) (by simp) (by simp) rfl
+      (.u64 (0 : BitVec 64)) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs0 : lookupArgs (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0))
       ["a", "i0"] = some [.arr32 [a, b, c, d], .u64 0] := by
@@ -4857,7 +4859,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i1" (.u 64) _ _ _ _
-      (.u64 (1 : BitVec 64)) (by simp) (by simp) rfl
+      (.u64 (1 : BitVec 64)) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs1 : lookupArgs (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1))
       ["a", "i1"] = some [.arr32 [a, b, c, d], .u64 1] := by
@@ -4880,7 +4882,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i2" (.u 64) _ _ _ _
-      (.u64 (2 : BitVec 64)) (by simp) (by simp) rfl
+      (.u64 (2 : BitVec 64)) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs2 : lookupArgs (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2))
       ["a", "i2"] = some [.arr32 [a, b, c, d], .u64 2] := by
@@ -4903,7 +4905,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i3" (.u 64) _ _ _ _
-      (.u64 (3 : BitVec 64)) (by simp) (by simp) rfl
+      (.u64 (3 : BitVec 64)) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs3 : lookupArgs (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3))
       ["a", "i3"] = some [.arr32 [a, b, c, d], .u64 3] := by
@@ -7463,7 +7465,8 @@ theorem memEvalFuncFuel_boxThrough (F : Nat) (x : BitVec 32) :
         (⟨1, [(0, ⟨0, true, [x]⟩)], []⟩ : Mem), [("p", 0, 0)])),
         .fellThrough) :=
     memEvalStmtFuel_let_pure F "r" _ _ _ _ _ _
-      (by intro se h; cases h) (by intro se h; cases h) hagree hgetEval
+      (by intro se h; cases h) (by intro se h; cases h)
+      (by intro ce h; cases h) hagree hgetEval
   have hfree0 : boxFree (⟨x, false⟩ : Box32) = .ok ⟨x, true⟩ :=
     boxFree_ok _ rfl
   obtain ⟨mFree, hmfree, _hfindFree⟩ := vboxFree_lockstep

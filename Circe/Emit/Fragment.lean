@@ -137,6 +137,16 @@ theorem ofNat64_ult (k : Nat) (n : BitVec 64) (h : k < 2 ^ 64) :
     (BitVec.ofNat 64 k).ult n = decide (k < n.toNat) := by
   rw [BitVec.ult_eq_decide, ofNat64_toNat k h]
 
+/-- Wrapping 64-bit subtraction is exact when the subtrahend fits
+    (N4d-iv-b1: `_M_check_len` length arithmetic, relocate counts). -/
+theorem u64sub_toNat_exact (x y : BitVec 64)
+    (hle : y.toNat ≤ x.toNat) :
+    (x - y).toNat = x.toNat - y.toNat := by
+  rw [BitVec.toNat_sub]
+  have hx : x.toNat < 2 ^ 64 := x.isLt
+  have hy : y.toNat < 2 ^ 64 := y.isLt
+  omega
+
 /-- `(<$>)` on `Result` computes on both constructors (for the corollaries).
     Proved by `rfl` (needs default transparency to see through the
     `Functor` instance, so later proofs use `exact`, not `simp`). -/
