@@ -51,7 +51,9 @@ inductive CLit : Type
     `u32`/`u64`); `umul` is wrapping unsigned multiplication (plain
     `cir.mul` on unsigned: C unsigned arithmetic wraps, never fails);
     `ult` is unsigned comparison (`cir.cmp lt` on unsigned);
-    `ueq` is unsigned equality (`cir.cmp eq` on unsigned);
+    `ueq` is width-polymorphic bit equality (`cir.cmp eq` compares
+    bits regardless of signedness, so `u32`/`u64`/`i32`/`i64` pairs
+    are all defined; mixed widths are `AssertFail`);
     `idx a i` is bounded indexing (`cir.ptr_stride` + `cir.load`).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`

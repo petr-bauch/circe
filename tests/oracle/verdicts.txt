@@ -27,6 +27,9 @@ cls unknown
 add64 unknown
 addu64 unknown
 sum_norestrict unknown
+_Z8move_intii unknown
+_Z8move_accii unknown
+_Z11scope_earlyii unknown
 _Z3addii unknown
 _Z3addiii unknown
 _Z7use_addii unknown

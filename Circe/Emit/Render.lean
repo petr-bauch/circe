@@ -262,6 +262,36 @@ def emitAccTwoText (name : String) : String :=
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accTwo a b\n"
 
+/-- Render the `_ZN3AccC2EOS_` move-ctor-leaf forward definition:
+    destination takes the source word (`accMoveCtorFwd_is_ok`
+    certifies it; the source-zeroing store is entry-level). -/
+def emitAccMoveCtorText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (move ctor: dst takes src word). -/\n"
+  ++ s!"def {name}_fwd (d s : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accMoveCtor d s\n"
+
+/-- Render the `_Z8move_accii` entry forward definition: direct
+    delegation to `moveAcc` (ctor + `add` + move + zeroing `assign` +
+    `add` + `get`, dtors no-op; see `evalProgFunc_moveAcc`). -/
+def emitMoveAccText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (move + two `add` + `get`, dtors no-op). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  moveAcc a b\n"
+
+/-- Render the `_Z11scope_earlyii` entry forward definition: direct
+    delegation to `scopeEarly` (early `get` on `a == b`, else second
+    `add` + `get`, dtors no-op; see `evalProgFunc_scopeEarly`). -/
+def emitScopeEarlyText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (early return + `add` + `get`, dtors no-op). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  scopeEarly a b\n"
+
 /-- Render the `_Z11box_throughi` entry forward definition: direct
     delegation to `boxThrough` (`new` → read → `delete` passthrough;
     see `evalFuncFuel_boxThrough`). -/

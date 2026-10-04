@@ -350,6 +350,87 @@ theorem accTwo_err_b (a b s1 : BitVec 32) (e : Panic)
     accTwo a b = .error e := by
   simp only [accTwo, h1, h2]
 
+/-- N4b move ctor (`_ZN3AccC2EOS_`): the destination takes the source
+    word (`s(o.s)` member-init); the destination's old storage is never
+    read, so the `d` arg is ignored. (The source-zeroing store
+    `o.s = 0` is entry-level: `moveAccFunc` threads it as an `assign`,
+    where the C++ sequence point lives.) -/
+def accMoveCtor (_d s : BitVec 32) : Result (BitVec 32) :=
+  .ok s
+
+/-- N4b `move_acc`: `src` ctor-init `0`, `src += a`, move (`dst` takes
+    `src`, `src` zeroed), `dst += b`, get (identity). Computationally
+    the `accTwo` delegation chain; the move itself is value-preserving. -/
+def moveAcc (a b : BitVec 32) : Result (BitVec 32) :=
+  match checkedAddI32 0 a with
+  | .error e => .error e
+  | .ok s1 => checkedAddI32 s1 b
+
+/-- `moveAcc` succeeds exactly when both adds succeed. -/
+theorem moveAcc_ok (a b s1 s2 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (h2 : checkedAddI32 s1 b = .ok s2) :
+    moveAcc a b = .ok s2 := by
+  simp only [moveAcc, h1, h2]
+
+/-- A failing first add propagates (and determines the error). -/
+theorem moveAcc_err_a (a b : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .error e) :
+    moveAcc a b = .error e := by
+  simp only [moveAcc, h1]
+
+/-- A failing second add propagates once the first succeeds. -/
+theorem moveAcc_err_b (a b s1 : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (h2 : checkedAddI32 s1 b = .error e) :
+    moveAcc a b = .error e := by
+  simp only [moveAcc, h1, h2]
+
+/-- N4b `scope_early`: `src` ctor-init `0`, `src += a`, early `get` when
+    `a == b`, else `src += b` + `get` (identity). The scope-exit dtor is
+    a no-op on every path, so both returns are direct. -/
+def scopeEarly (a b : BitVec 32) : Result (BitVec 32) :=
+  match checkedAddI32 0 a with
+  | .error e => .error e
+  | .ok s1 => if a == b then .ok s1 else checkedAddI32 s1 b
+
+/-- `scopeEarly` takes the early path exactly when the first add
+    succeeds and the args are equal. -/
+theorem scopeEarly_ok_eq (a b s1 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (heq : a == b) :
+    scopeEarly a b = .ok s1 := by
+  unfold scopeEarly
+  rw [h1]
+  simp [heq]
+
+/-- `scopeEarly` takes the fallthrough path on unequal args. -/
+theorem scopeEarly_ok_ne (a b s1 s2 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (hne : (a == b) = false)
+    (h2 : checkedAddI32 s1 b = .ok s2) :
+    scopeEarly a b = .ok s2 := by
+  unfold scopeEarly
+  rw [h1]
+  simp [hne, h2]
+
+/-- A failing first add propagates (and determines the error). -/
+theorem scopeEarly_err_a (a b : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .error e) :
+    scopeEarly a b = .error e := by
+  unfold scopeEarly
+  rw [h1]
+
+/-- A failing second add propagates on the fallthrough path. -/
+theorem scopeEarly_err_b (a b s1 : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (hne : (a == b) = false)
+    (h2 : checkedAddI32 s1 b = .error e) :
+    scopeEarly a b = .error e := by
+  unfold scopeEarly
+  rw [h1]
+  simp [hne, h2]
+
 /-! ## M2c: uniquely-owned heap box `Box32` (`new` / `delete`) -/
 
 /-- A uniquely-owned single-`i32` heap box (`new Box{x}` / `delete`

@@ -3,7 +3,7 @@ Circe.Emit — verified emitter `CoreIR → Lean` (facade).
 
 Fragment definitions and proofs live in `Circe.Emit.*` (`Fragment`, `Add`,
 `Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `VecRealloc`, `Calls`, `Struct`,
-`Method`, `Acc`, `Flow`); shape
+`Method`, `Acc`, `Move`, `Flow`); shape
 recognition in `Circe.Emit.Match`; file-text and spec-stub rendering in
 `Circe.Emit.Render` / `Circe.Emit.SpecStubs`. This module wires them
 together (`emitSpec`, `emitFunc`, `emitFunc_rejects`) and holds the golden
@@ -50,6 +50,9 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .accGet => .ok (emitAccGetSpecText f.name)
   | some .accDtor => .ok (emitAccDtorSpecText f.name)
   | some .accTwo => .ok (emitAccTwoSpecText f.name)
+  | some .accMoveCtor => .ok (emitAccMoveCtorSpecText f.name)
+  | some .moveAcc => .ok (emitMoveAccSpecText f.name)
+  | some .scopeEarly => .ok (emitScopeEarlySpecText f.name)
   | some .boxThrough => .ok (emitBoxThroughSpecText f.name)
   | some .nested => .ok (emitNestedSpecText f.name)
   | some .skip => .ok (emitSkipSpecText f.name)
@@ -85,6 +88,9 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .accGet => .ok ⟨emitAccGetText f.name, none⟩
   | some .accDtor => .ok ⟨emitAccDtorText f.name, none⟩
   | some .accTwo => .ok ⟨emitAccTwoText f.name, none⟩
+  | some .accMoveCtor => .ok ⟨emitAccMoveCtorText f.name, none⟩
+  | some .moveAcc => .ok ⟨emitMoveAccText f.name, none⟩
+  | some .scopeEarly => .ok ⟨emitScopeEarlyText f.name, none⟩
   | some .boxThrough => .ok ⟨emitBoxThroughText f.name, none⟩
   | some .nested => .ok ⟨emitNestedText f.name, none⟩
   | some .skip => .ok ⟨emitSkipText f.name, none⟩
@@ -216,6 +222,21 @@ example : emitFileText (emitFunc accDtorFunc) =
     checked-in golden. -/
 example : emitFileText (emitFunc accTwoFunc) =
     include_str "../tests/golden/AccTwo.lean" := by native_decide
+
+/-- The emitter output for `accMoveCtorFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc accMoveCtorFunc) =
+    include_str "../tests/golden/MoveCtor.lean" := by native_decide
+
+/-- The emitter output for `moveAccFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc moveAccFunc) =
+    include_str "../tests/golden/MoveAcc.lean" := by native_decide
+
+/-- The emitter output for `scopeEarlyFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc scopeEarlyFunc) =
+    include_str "../tests/golden/ScopeEarly.lean" := by native_decide
 
 /-- The emitter output for `boxThroughFunc` is byte-identical to the
     checked-in golden. -/

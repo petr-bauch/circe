@@ -1098,6 +1098,143 @@ def isAccDtorShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_stride"
   | _ => false
 
+/-- The N4b move-ctor leaf (`_ZN3AccC2EOS_`): two single-reference
+    `this`-style params (destination + source, both `!cir.ptr<!rec_Acc>`
+    with the triple), void return, the `cxx_ctor<…, move>` marker,
+    `get_member` reads/writes + the `cir.const 0` source-zeroing store,
+    no arithmetic. No calls, control flow, heap, or indexing. (The
+    default-ctor shape takes exactly one param, so the two never
+    overlap.) -/
+def isAccMoveCtorShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [dst, src] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType dst.ctype && dst.singleRef &&
+    (match ptrInner dst.ctype with | some inner => isAccType inner | none => false) &&
+    isPtrType src.ctype && src.singleRef &&
+    (match ptrInner src.ctype with | some inner => isAccType inner | none => false) &&
+    raw.ret == "" &&
+    containsSubstr raw.text "cxx_ctor" &&
+    containsSubstr raw.text ", move>" &&
+    containsSubstr raw.text "cir.get_member" &&
+    containsSubstr raw.text "cir.const" &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Text-level exemption check for the N4b `move_acc` entry: nested
+    `cleanup.scope` / `cleanup normal` regions (one per live `Acc`:
+    `dst`'s scope nests inside `src`'s) closed by the unreachable
+    `cir.trap`, with exactly the `move_acc` call multiset (1 default
+    ctor + 1 move ctor + 2 `add` + 1 `get` + 2 dtors, 7 `cir.call`
+    sites total) and no EH (`cir.try` / `personality` / `cleanup eh`)
+    or heap. Same exemption role as `isAccTwoExemptText`; full
+    admission additionally pins the signature (`isMoveAccShape`). -/
+def isMoveAccExemptText (text : String) : Bool :=
+  containsSubstr text "cir.cleanup.scope" &&
+  containsSubstr text "cleanup normal" &&
+  containsSubstr text "cir.trap" &&
+  callsFunc text "_ZN3AccC2Ev" &&
+  callsFunc text "_ZN3AccC2EOS_" &&
+  callsFunc text "_ZN3Acc3addEi" &&
+  callsFunc text "_ZNK3Acc3getEv" &&
+  callsFunc text "_ZN3AccD2Ev" &&
+  opCount text "cir.call @" == 7 &&
+  opCount text "cir.call @_ZN3AccC2Ev(" == 1 &&
+  opCount text "cir.call @_ZN3AccC2EOS_(" == 1 &&
+  opCount text "cir.call @_ZN3Acc3addEi(" == 2 &&
+  opCount text "cir.call @_ZNK3Acc3getEv(" == 1 &&
+  opCount text "cir.call @_ZN3AccD2Ev(" == 2 &&
+  !containsSubstr text "cir.try" &&
+  !containsSubstr text "personality" &&
+  !containsSubstr text "cleanup eh" &&
+  !containsSubstr text "cir.call @malloc" &&
+  !containsSubstr text "cir.call @free("
+
+/-- The N4b `move_acc` entry: two by-value `i32`s, `i32` return, the
+    exempt nested-`cleanup` / `trap` scope (see `isMoveAccExemptText`;
+    the arithmetic lives in the callees, so no local `nsw` /
+    `get_member`), no other control flow, heap, or indexing.
+    Post-move reads of the source evaluate to the zeroed word in the
+    model (the move ctor's `o.s = 0` store is threaded as an `assign`),
+    so no textual no-read pin is needed. -/
+def isMoveAccShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    noBreakContinueSwitch raw.text &&
+    isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
+    isMoveAccExemptText raw.text &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Text-level exemption check for the N4b `scope_early` entry: a
+    `cleanup.scope` / `cleanup normal` region (the single local `Acc`)
+    closed by the unreachable `cir.trap`, with exactly the
+    `scope_early` call multiset (1 default ctor + 2 `add` + 2 `get` +
+    1 dtor, 6 `cir.call` sites total), the early-return `cir.if` over
+    `cir.cmp eq`, and no EH (`cir.try` / `personality` / `cleanup eh`)
+    or heap. Same exemption role as `isAccTwoExemptText`; full
+    admission additionally pins the signature (`isScopeEarlyShape`). -/
+def isScopeEarlyExemptText (text : String) : Bool :=
+  containsSubstr text "cir.cleanup.scope" &&
+  containsSubstr text "cleanup normal" &&
+  containsSubstr text "cir.trap" &&
+  callsFunc text "_ZN3AccC2Ev" &&
+  callsFunc text "_ZN3Acc3addEi" &&
+  callsFunc text "_ZNK3Acc3getEv" &&
+  callsFunc text "_ZN3AccD2Ev" &&
+  opCount text "cir.call @" == 6 &&
+  opCount text "cir.call @_ZN3AccC2Ev(" == 1 &&
+  opCount text "cir.call @_ZN3Acc3addEi(" == 2 &&
+  opCount text "cir.call @_ZNK3Acc3getEv(" == 2 &&
+  opCount text "cir.call @_ZN3AccD2Ev(" == 1 &&
+  !containsSubstr text "cir.try" &&
+  !containsSubstr text "personality" &&
+  !containsSubstr text "cleanup eh" &&
+  !containsSubstr text "cir.call @malloc" &&
+  !containsSubstr text "cir.call @free("
+
+/-- The N4b `scope_early` entry: two by-value `i32`s, `i32` return,
+    the exempt `cleanup` / `trap` scope (see
+    `isScopeEarlyExemptText`), one `cir.cmp eq` + `cir.if`
+    early-return inside the scope (the dtor runs on all paths in C++;
+    both dtors are no-ops so the model returns directly), no local
+    `nsw` / `get_member`, no other control flow, heap, or indexing. -/
+def isScopeEarlyShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    noBreakContinueSwitch raw.text &&
+    isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
+    isScopeEarlyExemptText raw.text &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    containsSubstr raw.text "cir.if" &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
 /-- The M2b entry: two by-value `i32`s, `i32` return, the exempt
     `cleanup` / `trap` scope (see `isAccTwoExemptText`; the arithmetic
     lives in the callees, so no local `nsw` / `get_member`), no other
@@ -1233,8 +1370,8 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
-  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isBoxThroughExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
-  else if containsSubstr text "cir.trap" && !isAccTwoExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b shape, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text && !isBoxThroughExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b shapes, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.trap" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b shapes, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
@@ -1248,6 +1385,8 @@ def forbiddenOp (text : String) : Option String :=
     `vec_alloc`, `vec_alloc_u64` (M1b), `vec_realloc` (M1c), S1 DAG
     callers, S2 `translate`, M2a const-methods, M2b `Acc` ctor/add/get/
     dtor leaves + `acc_two` entry (the `cleanup`/`trap` exemption),
+    N4b move-ctor leaf + `move_acc` entry (nested-`cleanup` exemption,
+    source-zeroing `assign`),
     M2c `box_through` entry (the `cleanup`-scoped-delete exemption),
     S3a control flow, S3b 64-bit loop-free `add64`/`addu64`); everything
     else is rejected with a precise code (see the module docstring for
@@ -1324,6 +1463,12 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { accDtorFunc with name := raw.name }
       else if isAccTwoShape raw then
         .ok { accTwoFunc with name := raw.name }
+      else if isAccMoveCtorShape raw then
+        .ok { accMoveCtorFunc with name := raw.name }
+      else if isMoveAccShape raw then
+        .ok { moveAccFunc with name := raw.name }
+      else if isScopeEarlyShape raw then
+        .ok { scopeEarlyFunc with name := raw.name }
       else if isBoxThroughShape raw then
         .ok { boxThroughFunc with name := raw.name }
       else if isNestedShape raw then
@@ -1347,7 +1492,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if hasNonHeapCall raw.text &&
           !containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only), outside the Ownable-C subset (see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only; M2b/N4b: the exact `Acc` leaf/entry call multisets only), outside the Ownable-C subset (see docs/SUBSET.md)"
       else if 1 < freeCallCount raw.text &&
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset

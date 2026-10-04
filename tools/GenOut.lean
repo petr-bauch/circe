@@ -51,6 +51,10 @@ def main : IO Unit := do
   let useAdd ← emitOrDie useAddFunc
   let nsAdd ← emitOrDie { addFunc with name := "_ZN2ns3addEii" }
   let useNsAdd ← emitOrDie useNsAddFunc
+  let moveInt ← emitOrDie { addFunc with name := "_Z8move_intii" }
+  let moveCtor ← emitOrDie accMoveCtorFunc
+  let moveAcc ← emitOrDie moveAccFunc
+  let scopeEarly ← emitOrDie scopeEarlyFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -82,6 +86,10 @@ def main : IO Unit := do
   IO.FS.writeFile "out/UseAdd.lean" (emitFileText (.ok useAdd))
   IO.FS.writeFile "out/NsAdd.lean" (emitFileText (.ok nsAdd))
   IO.FS.writeFile "out/UseNsAdd.lean" (emitFileText (.ok useNsAdd))
+  IO.FS.writeFile "out/MoveInt.lean" (emitFileText (.ok moveInt))
+  IO.FS.writeFile "out/MoveCtor.lean" (emitFileText (.ok moveCtor))
+  IO.FS.writeFile "out/MoveAcc.lean" (emitFileText (.ok moveAcc))
+  IO.FS.writeFile "out/ScopeEarly.lean" (emitFileText (.ok scopeEarly))
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
@@ -113,6 +121,10 @@ def main : IO Unit := do
   let useAddSpec ← specOrDie useAddFunc
   let nsAddSpec ← specOrDie { addFunc with name := "_ZN2ns3addEii" }
   let useNsAddSpec ← specOrDie useNsAddFunc
+  let moveIntSpec ← specOrDie { addFunc with name := "_Z8move_intii" }
+  let moveCtorSpec ← specOrDie accMoveCtorFunc
+  let moveAccSpec ← specOrDie moveAccFunc
+  let scopeEarlySpec ← specOrDie scopeEarlyFunc
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
@@ -144,6 +156,10 @@ def main : IO Unit := do
   IO.FS.writeFile "out/UseAdd_Spec.lean" useAddSpec
   IO.FS.writeFile "out/NsAdd_Spec.lean" nsAddSpec
   IO.FS.writeFile "out/UseNsAdd_Spec.lean" useNsAddSpec
+  IO.FS.writeFile "out/MoveInt_Spec.lean" moveIntSpec
+  IO.FS.writeFile "out/MoveCtor_Spec.lean" moveCtorSpec
+  IO.FS.writeFile "out/MoveAcc_Spec.lean" moveAccSpec
+  IO.FS.writeFile "out/ScopeEarly_Spec.lean" scopeEarlySpec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -193,4 +209,4 @@ def main : IO Unit := do
     throw (IO.userError "add64 must not have a backward definition")
   if addu64.backward.isSome then
     throw (IO.userError "addu64 must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean + 31 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean + 35 *_Spec.lean stubs"

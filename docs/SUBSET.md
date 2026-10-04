@@ -135,8 +135,10 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 12. Widths (S3b): loop-free 64-bit adds only —
     `add64` (`!s64i` params/return, `cir.add nsw`, checked via
     `checkedAddI64`) and `addu64` (`!u64i`, plain wrapping `cir.add`).
-    Semantics: `add`/`uadd`/`umul`/`ult`/`ueq` dispatch on the `Value`
-    tags (`i32`/`i64`, `u32`/`u64`); mixed widths are `AssertFail`.
+    Semantics: `add`/`uadd`/`umul`/`ult` dispatch on the `Value`
+    tags (`i32`/`i64`, `u32`/`u64`); `ueq` is width-polymorphic bit
+    equality (same-width pairs always defined, N4b); mixed widths
+    are `AssertFail`.
     Misshapen uses (width-mixed adds, `nsw`-less signed-64 arithmetic,
     8/16-bit promotion shapes) are rejected with dedicated messages.
 13. Methods (M2a): exact shapes only —
@@ -227,6 +229,33 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     calls into known leaves, double calls, local arithmetic beside
     the call) are rejected with dedicated messages
     (`callsOverloadWrongShape`).
+17. Move + RAII (N4b): exact shapes only —
+    `_Z8move_intii` (trivial move: `std::move` on `int` erases to a
+    copy, body-identical to `add`; the source stays live),
+    `_ZN3AccC2EOS_` move-ctor leaf (two single-reference params,
+    `cxx_ctor<…, move>` marker, `get_member` + `cir.const 0`
+    source-zeroing store, void return; destination takes the source
+    word, destination storage never read),
+    `_Z8move_accii` entry (two `i32`, nested `cleanup` scopes closed
+    by `cir.trap`, exact call multiset 1 default ctor + 1 move ctor
+    + 2 `add` + 1 `get` + 2 dtors; the move-ctor `o.s = 0` store is
+    threaded as an `assign`, so post-move reads see the zeroed word
+    and no textual no-read pin is needed),
+    `_Z11scope_earlyii` entry (two `i32`, `cleanup`/`trap` scope,
+    exact call multiset 1 ctor + 2 `add` + 2 `get` + 1 dtor, one
+    `cir.cmp eq` + `cir.if` early return; both scope-exit dtors are
+    no-ops so both returns are direct).
+    Semantics: `accMoveCtor` is the source word; `moveAcc` threads
+    ctor-init + two checked adds with the zeroing `assign`;
+    `scopeEarly` takes the early `get` on `a == b` else the second
+    checked add + `get`; errors propagate. `ueq` is
+    width-polymorphic bit equality (`cir.cmp eq` is signedness-blind;
+    mixed widths are still `AssertFail`). The int-only entries need
+    explicit oracle facts; the move-ctor leaf validates under a
+    synthetic fact (single-reference params). Misshapen uses (wrong
+    call multisets, `cir.cmp` other than `eq`, `if` outside the
+    exact early-return shape, move-assign `aSEOS_`, copy
+    ctor/assign) are rejected with dedicated messages.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -241,7 +270,8 @@ only; `@_ZN3AccC2Ev` / `@_ZN3Acc3addEi` / `@_ZNK3Acc3getEv` /
 `@_Znwm` / `@_ZdlPvm` in the exact M2c entry shape only (1 + at most 1
 sites: leak allowed, double-`delete` rejected);
 `@_Z3addii` in the exact N4a `use_add` entry shape only (1 site);
-`@_ZN2ns3addEii` in the exact N4a `use_ns_add` entry shape only (1 site)),
+`@_ZN2ns3addEii` in the exact N4a `use_ns_add` entry shape only (1 site);
+`@_ZN3AccC2EOS_` in the exact N4b `move_acc` entry shape only (1 site)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf
@@ -254,13 +284,17 @@ on pinned consts + `default`, all other switches rejected),
 `cir.mul` (plain unsigned, S3a `nested_sum` shape only),
 `get_element`/`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`
-(`cir.if` carries the M2c null guard: `cir.cmp ne` vs
-`#cir.ptr<null>`),
+(`cir.if` carries the M2c null guard (`cir.cmp ne` vs
+`#cir.ptr<null>`) and the N4b early return (`cir.cmp eq` on `i32`
+in the exact `scope_early` shape only),
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`
 (`#cir.int<4> : !u64i` pinned in the M2c shape).
 `cir.cleanup.scope` / `cleanup normal` + `cir.trap` in the exact M2b
 `acc_two` entry shape only (single `cleanup` scope, exact 1 + 2 + 1 + 1
-call multiset, no `cir.try` / `personality` / `cleanup eh` / heap);
+call multiset, no `cir.try` / `personality` / `cleanup eh` / heap)
+and in the exact N4b `move_acc` (nested scopes, exact
+1 + 1 + 2 + 1 + 2 call multiset) and `scope_early` (exact
+1 + 2 + 2 + 1 call multiset + `cir.cmp eq`/`cir.if`) entry shapes;
 `cir.cleanup.scope` / `cleanup normal` (no `cir.trap`) in the exact M2c
 `box_through` entry shape only (null-guarded, exact 1 + 1 call
 multiset, 4-byte size const, no `cir.try` / `personality` /

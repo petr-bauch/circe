@@ -91,7 +91,7 @@ compat) delegates to the parallel Lean driver (`lake exe circe-test`,
 (`tools/GenOut.lean`, single source of truth) → native drivers →
 golden `diff`s (`tests/golden/*.lean`) → `lake env lean` typecheck →
 `Diff*` fuzz vs native → `Golden*` pipeline + rejection suites →
-emitted-body correspondence → specs typecheck (31/31) → `TEST-OK`
+emitted-body correspondence → specs typecheck (35/35) → `TEST-OK`
 (`CHECK-OK` at the shell entry). Suites run as parallel `IO` tasks,
 run-all-and-report (every failure prints, nonzero exit at the end).
 `lake` does not track `include_str` deps, so `diff` enforces drift.

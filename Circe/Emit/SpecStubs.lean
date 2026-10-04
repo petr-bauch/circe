@@ -502,6 +502,68 @@ def emitAccTwoSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
   ++ s!"      == (repr (accTwo t.1 t.2)).pretty\n"
 
+/-- Spec stub for the move-ctor leaf (N4b `_ZN3AccC2EOS_`). -/
+def emitAccMoveCtorSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(dst, src)` move ctor (dst takes src word; `o.s = 0` is entry-level).\n"
+  ++ s!"    Base body reference: `accMoveCtor` (cf. emitted `{name}_fwd`, `accMoveCtorFwd_is_ok`). -/\n"
+  ++ s!"def {name}_spec_fwd (d s : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  accMoveCtor d s\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, max word (move never fails). -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (0, 1), (1, 0x7FFFFFFF), (0xFFFFFFFF, 0xFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `accMoveCtor` on every edge.\n"
+  ++ "    TODO (user): strengthen to `accMoveCtorFwd_is_ok`. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (accMoveCtor t.1 t.2)).pretty\n"
+
+/-- Spec stub for the `move_acc` entry (N4b). -/
+def emitMoveAccSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t {name}(int32_t a, int32_t b)` (move + two `add` + `get`, dtors no-op).\n"
+  ++ s!"    Base body reference: `moveAcc` (cf. emitted `{name}_fwd`, `evalProgFunc_moveAcc`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  moveAcc a b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, first-add overflow, second-add overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 0), (0x7FFFFFFF, 1), (1, 0x7FFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `moveAcc` on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err bridges (`moveAcc_ok/err_a/err_b`,\n"
+  ++ "    `moveAccFwd_is_moveAcc` — all four fire in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (moveAcc t.1 t.2)).pretty\n"
+
+/-- Spec stub for the `scope_early` entry (N4b). -/
+def emitScopeEarlySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `int32_t {name}(int32_t a, int32_t b)` (early `get` on `a == b`, else `add` + `get`, dtors no-op).\n"
+  ++ s!"    Base body reference: `scopeEarly` (cf. emitted `{name}_fwd`, `evalProgFunc_scopeEarly`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  scopeEarly a b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: equal args (early path), zero, unit, first-add overflow, second-add overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 1), (1, 2), (0x7FFFFFFF, 0), (0x7FFFFFFF, 1), (1, 0x7FFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `scopeEarly` on every edge.\n"
+  ++ "    TODO (user): strengthen to the ok/err bridges (`scopeEarly_ok_eq/ok_ne/err_a/err_b`,\n"
+  ++ "    `scopeEarlyFwd_is_scopeEarly` — all five fire in `cir_simp`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (scopeEarly t.1 t.2)).pretty\n"
+
 /-- Spec stub for the `boxThrough` shape (M2c entry). -/
 def emitBoxThroughSpecText (name : String) : String :=
   emitSpecHeader

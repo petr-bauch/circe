@@ -466,6 +466,8 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x == y))
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x == y))
+    | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x == y))
+    | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x == y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -923,6 +925,11 @@ def memEvalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Mem → Layou
     | .ok ((ρ', m', π'), .fellThrough) =>
       memEvalProgStmt prog fuel b ρ' m' π'
   | .cleanup body, ρ, m, π => memEvalProgStmt prog fuel body ρ m π
+  | .if_ c t e, ρ, m, π =>
+    match memEvalExpr c ρ m π with
+    | .ok (.b true) => memEvalProgStmt prog fuel t ρ m π
+    | .ok (.b false) => memEvalProgStmt prog fuel e ρ m π
+    | _ => .error .AssertFail
   | s, ρ, m, π => memEvalStmtFuel fuel s ρ m π
 
 /-- `cleanup` scopes sequence on the memory program layer too (the M2b
@@ -1001,6 +1008,33 @@ theorem memEvalProgStmt_seq_fallthrough (prog : Prog) (fuel : Nat)
       .ok ((ρ', m', π'), .fellThrough)) :
     memEvalProgStmt prog fuel (.seq a b) ρ m π =
       memEvalProgStmt prog fuel b ρ' m' π' := by
+  simp only [memEvalProgStmt, h]
+
+/-- `seq` short-circuits on `returned` in the first component (N4b: the
+    early-return branch of `scope_early`). -/
+theorem memEvalProgStmt_seq_returned (prog : Prog) (fuel : Nat)
+    (a b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (ρ' : Env) (m' : Mem) (π' : Layout) (v : Value)
+    (h : memEvalProgStmt prog fuel a ρ m π =
+      .ok ((ρ', m', π'), .returned v)) :
+    memEvalProgStmt prog fuel (.seq a b) ρ m π =
+      .ok ((ρ', m', π'), .returned v) := by
+  simp only [memEvalProgStmt, h]
+
+/-- `if_` on `true` runs the branch at memory-program level (N4b). -/
+theorem memEvalProgStmt_if_true (prog : Prog) (fuel : Nat)
+    (c : CExpr) (t e : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b true)) :
+    memEvalProgStmt prog fuel (.if_ c t e) ρ m π =
+      memEvalProgStmt prog fuel t ρ m π := by
+  simp only [memEvalProgStmt, h]
+
+/-- `if_` on `false` runs the else-branch at memory-program level. -/
+theorem memEvalProgStmt_if_false (prog : Prog) (fuel : Nat)
+    (c : CExpr) (t e : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b false)) :
+    memEvalProgStmt prog fuel (.if_ c t e) ρ m π =
+      memEvalProgStmt prog fuel e ρ m π := by
   simp only [memEvalProgStmt, h]
 
 /-- `return_` under a program delegates to the memory evaluator. -/

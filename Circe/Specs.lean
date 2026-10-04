@@ -408,6 +408,69 @@ theorem useNsAdd_correct (x y : BitVec 32) :
     useNsAddFwd x y = addFwd x y := by
   cir_simp
 
+/-- Move ctor: the destination takes the source word (the `o.s = 0`
+    store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
+theorem accMoveCtor_correct (d s : BitVec 32) :
+    accMoveCtorFwd d s = .ok (.i32 s) := by
+  cir_simp
+
+/-- `move_acc` ok path: both threaded adds succeed. The move itself is
+    invisible at spec level (value-preserving + zeroing, both
+    discharged inside `evalProgFunc_moveAcc`). -/
+theorem moveAcc_correct_ok (a b s1 s2 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (h2 : checkedAddI32 s1 b = .ok s2) :
+    moveAccFwd a b = .ok (.i32 s2) := by
+  simp only [moveAccFwd_is_moveAcc, moveAcc_ok a b s1 s2 h1 h2] <;> cir_simp
+
+/-- `move_acc` first-add failure propagates. -/
+theorem moveAcc_correct_err_a (a b : BitVec 32) (e : Panic)
+    (h : checkedAddI32 0 a = .error e) :
+    moveAccFwd a b = .error e := by
+  simp only [moveAccFwd_is_moveAcc, moveAcc_err_a a b e h] <;> cir_simp
+
+/-- `move_acc` second-add failure propagates once the first succeeds. -/
+theorem moveAcc_correct_err_b (a b s1 : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (h2 : checkedAddI32 s1 b = .error e) :
+    moveAccFwd a b = .error e := by
+  simp only [moveAccFwd_is_moveAcc, moveAcc_err_b a b s1 e h1 h2] <;> cir_simp
+
+/-- `scope_early` takes the early path when the first add succeeds and
+    the args are equal (the scope-exit dtor is a no-op, so the first
+    `get` is the answer). -/
+theorem scopeEarly_correct_eq (a b s1 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (heq : a == b) :
+    scopeEarlyFwd a b = .ok (.i32 s1) := by
+  simp only [scopeEarlyFwd_is_scopeEarly,
+    scopeEarly_ok_eq a b s1 h1 heq] <;> cir_simp
+
+/-- `scope_early` takes the fallthrough path on unequal args. -/
+theorem scopeEarly_correct_ne (a b s1 s2 : BitVec 32)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (hne : (a == b) = false)
+    (h2 : checkedAddI32 s1 b = .ok s2) :
+    scopeEarlyFwd a b = .ok (.i32 s2) := by
+  simp only [scopeEarlyFwd_is_scopeEarly,
+    scopeEarly_ok_ne a b s1 s2 h1 hne h2] <;> cir_simp
+
+/-- `scope_early` first-add failure propagates. -/
+theorem scopeEarly_correct_err_a (a b : BitVec 32) (e : Panic)
+    (h : checkedAddI32 0 a = .error e) :
+    scopeEarlyFwd a b = .error e := by
+  simp only [scopeEarlyFwd_is_scopeEarly,
+    scopeEarly_err_a a b e h] <;> cir_simp
+
+/-- `scope_early` second-add failure propagates on the fallthrough. -/
+theorem scopeEarly_correct_err_b (a b s1 : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 0 a = .ok s1)
+    (hne : (a == b) = false)
+    (h2 : checkedAddI32 s1 b = .error e) :
+    scopeEarlyFwd a b = .error e := by
+  simp only [scopeEarlyFwd_is_scopeEarly,
+    scopeEarly_err_b a b s1 e h1 hne h2] <;> cir_simp
+
 /-! ## N3c gallery: worked properties beyond the admitted-shape specs -/
 
 /-- The index fill is sorted: `vec` writes `k` at slot `k`, so the

@@ -12,7 +12,7 @@ M1 (heap generics) done; M2 done; M3 done. Next: N1 is complete as
 M3d; N2a (read-only sharing discipline, model-side), N2b
 (rejection catalog), and N2c (`restrict`-recovery) are done — N2
 (viability past noalias) is complete; N3 (spec + tactic support) is
-done — the active frontier is N4b (more real code).
+done — the active frontier is N4c (templates).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -401,7 +401,12 @@ is not value-faithful):
   golden/diff/spec green).
 - N4b: move semantics + RAII on owned values (move = rebind + source
   invalidation, the affine-token story we already tell for
-  `free`/`delete`; dtor-runs-on-scope-exit generalizes M2b `cleanup`).
+  `free`/`delete`; dtor-runs-on-scope-exit generalizes M2b `cleanup`)
+  — DONE (2026-10-04: trivial `move_int` erases to `add`; `_ZN3AccC2EOS_`
+  move-ctor leaf + nested-`cleanup` `move_acc` entry with the zeroing
+  `assign`; `cir.cmp eq` early-return `scope_early` entry; `ueq`
+  widened to width-polymorphic bit equality; program-level `if_`;
+  gate + emit + transfer + golden/diff/spec green).
 - N4c: monomorphized templates on value types (each instantiation is
   its own shape; no generic reasoning, mirroring the `Vec32`/`Vec64`
   monomorphization precedent).
@@ -420,8 +425,8 @@ length-paired discipline.
 
 N1 (close the trust story) → N2a/N2b (wider, clearer viability) →
 N3 (specs + cheaper proofs + gallery, done 2026-10-04) → N4a
-(overloads + namespaces, done 2026-10-04) → N4b (move + RAII) →
-N4c/N4d (templates + `std::`). N2c opportunistically wherever a
+(overloads + namespaces, done 2026-10-04) → N4b (move + RAII, done
+2026-10-04) → N4c (templates) → N4d (`std::`). N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)

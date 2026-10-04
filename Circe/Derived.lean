@@ -31,6 +31,7 @@ import Circe.Emit.VecRealloc
 import Circe.Emit.Vec64
 import Circe.Emit.Method
 import Circe.Emit.Acc
+import Circe.Emit.Move
 import Circe.Emit.Box
 
 /-! ## All-scalar shapes: empty footprint -/
@@ -479,6 +480,40 @@ theorem oracleNoalias_accDtor (t : BitVec 32) :
 theorem oracleNoalias_accTwo (a b : BitVec 32) :
     oracleNoalias accTwoFunc [.i32 a, .i32 b] := by
   have hb : bindMemArgs accTwoFunc.args [.i32 a, .i32 b] emptyMem =
+      some ([("a", .i32 a), ("b", .i32 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }]
+      [.i32 a, .i32 b] emptyMem = _
+    rfl
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Move-ctor leaf footprints are trivially disjoint (two owned
+    scalars; the destination storage is modeled, not aliased). -/
+theorem oracleNoalias_accMoveCtor (d s : BitVec 32) :
+    oracleNoalias accMoveCtorFunc [.i32 d, .i32 s] := by
+  exact ⟨_, _, _, rfl, layoutNoAlias_nil⟩
+
+/-- `move_acc` entry footprints are trivially disjoint (two owned
+    scalars; both `Acc` states are threaded as scalars after entry,
+    exactly like `acc_two`). -/
+theorem oracleNoalias_moveAcc (a b : BitVec 32) :
+    oracleNoalias moveAccFunc [.i32 a, .i32 b] := by
+  have hb : bindMemArgs moveAccFunc.args [.i32 a, .i32 b] emptyMem =
+      some ([("a", .i32 a), ("b", .i32 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }]
+      [.i32 a, .i32 b] emptyMem = _
+    rfl
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `scope_early` entry footprints are trivially disjoint (two owned
+    scalars; the single `Acc` state is threaded as a scalar after
+    entry, on both the early and fallthrough paths). -/
+theorem oracleNoalias_scopeEarly (a b : BitVec 32) :
+    oracleNoalias scopeEarlyFunc [.i32 a, .i32 b] := by
+  have hb : bindMemArgs scopeEarlyFunc.args [.i32 a, .i32 b] emptyMem =
       some ([("a", .i32 a), ("b", .i32 b)], emptyMem, []) := by
     show bindMemArgs
       [{ name := "a", ty := .i 32, role := .owned },

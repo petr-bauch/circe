@@ -6,8 +6,9 @@ Environments map variables to *values with loan/borrow bookkeeping*;
 there is no heap and no addresses (Aeneas-style, see docs/PIPELINE.md).
 Phase 4: `evalExpr` covers `lit`/`var`/`add` (signed `nsw`-checked,
 over `i32`/`i64` — S3b) plus
-`uadd`/`umul` (wrapping unsigned, over `u32`/`u64`), `ult`/`ueq` (unsigned
-comparison/equality, over `u32`/`u64`), and `idx`
+`uadd`/`umul` (wrapping unsigned, over `u32`/`u64`), `ult` (unsigned
+comparison, over `u32`/`u64`), `ueq` (bit equality, over
+`u32`/`u64`/`i32`/`i64` — N4b: `cir.cmp eq` is signedness-blind), and `idx`
 (bounded indexing, `OOB` on violation); `evalStmt` covers the full
 loop-free fragment (`skip`/`seq`/`let_`/`assign`/`if_`/`return_`) plus
 fuel-bounded `while_` (`EVAL_FUEL`; exhaustion is `AssertFail`, and
@@ -277,8 +278,11 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
       `AssertFail`;
     - `uadd`/`umul` on `u32`/`u64` wrap (plain `cir.add`/`cir.mul`;
       never fail); mixed widths are `AssertFail`;
-    - `ult`/`ueq` on `u32`/`u64` are unsigned comparison/equality;
-      mixed widths are `AssertFail`;
+    - `ult` on `u32`/`u64` is unsigned comparison (mixed widths are
+      `AssertFail`); `ueq` is width-polymorphic bit equality
+      (`u32`/`u64`/`i32`/`i64` pairs; `cir.cmp eq` compares bits
+      regardless of signedness, so same-width pairs are always
+      defined; mixed widths are `AssertFail`);
     - `idx a i` looks up `arr32` array `a` at `u32` index `i`
       (`OOB` off the end, mirroring `bget`);
     - `fget o f` projects field `f` from `structVal` `o` (missing
@@ -323,6 +327,8 @@ def evalExpr : CExpr → Env → Result Value
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x == y))
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x == y))
+    | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x == y))
+    | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x == y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -497,9 +503,16 @@ theorem evalExpr_ueq_lit (x y : BitVec 32) (ρ : Env) :
       .ok (.b (x == y)) := by
   simp [evalExpr, litVal]
 
-/-- `ueq` type mismatches are rejected. -/
+/-- `ueq` on two `i32` literals is bit equality (N4b: `cir.cmp eq`
+    on signed words; signedness never affects `==` on bits). -/
+theorem evalExpr_ueq_i32_lit (x y : BitVec 32) (ρ : Env) :
+    evalExpr (.ueq (.lit (.i32 x)) (.lit (.i32 y))) ρ =
+      .ok (.b (x == y)) := by
+  simp [evalExpr, litVal]
+
+/-- `ueq` mixed-width pairs are still rejected. -/
 theorem evalExpr_ueq_mismatch (ρ : Env) :
-    evalExpr (.ueq (.lit (.i32 0)) (.lit (.i32 1))) ρ =
+    evalExpr (.ueq (.lit (.u32 0)) (.lit (.i32 1))) ρ =
       .error .AssertFail := by
   simp [evalExpr, litVal]
 
@@ -1207,6 +1220,11 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
     | .ok (ρ', .continued) => .ok (ρ', .continued)
     | .ok (ρ', .fellThrough) => evalProgStmt prog fuel b ρ'
   | .cleanup body, ρ => evalProgStmt prog fuel body ρ
+  | .if_ c t e, ρ =>
+    match evalExpr c ρ with
+    | .ok (.b true) => evalProgStmt prog fuel t ρ
+    | .ok (.b false) => evalProgStmt prog fuel e ρ
+    | _ => .error .AssertFail
   | s, ρ => evalStmtFuel fuel s ρ
 
 /-- `callRet` with resolved actuals + callee runs the callee. -/
@@ -1356,6 +1374,34 @@ theorem evalProgStmt_seq_fallthrough (prog : Prog) (fuel : Nat) (a b : CStmt)
     (h : evalProgStmt prog fuel a ρ = .ok (ρ', .fellThrough)) :
     evalProgStmt prog fuel (.seq a b) ρ =
       evalProgStmt prog fuel b ρ' := by
+  simp only [evalProgStmt, h]
+
+/-- `seq` short-circuits on `returned` in the first component (N4b: the
+    early-return branch of `scope_early`; the trailing statements never
+    run, exactly like the C++ early `return`). -/
+theorem evalProgStmt_seq_returned (prog : Prog) (fuel : Nat) (a b : CStmt)
+    (ρ ρ' : Env) (v : Value)
+    (h : evalProgStmt prog fuel a ρ = .ok (ρ', .returned v)) :
+    evalProgStmt prog fuel (.seq a b) ρ = .ok (ρ', .returned v) := by
+  simp only [evalProgStmt, h]
+
+/-- `if_` on `true` runs the branch at program level (N4b: the
+    `scope_early` early-return branch contains a `callRet`, so the
+    branch must evaluate with `evalProgStmt` — the statement-level
+    `call` stub would be unsound here). -/
+theorem evalProgStmt_if_true (prog : Prog) (fuel : Nat)
+    (c : CExpr) (t e : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b true)) :
+    evalProgStmt prog fuel (.if_ c t e) ρ =
+      evalProgStmt prog fuel t ρ := by
+  simp only [evalProgStmt, h]
+
+/-- `if_` on `false` runs the else-branch at program level. -/
+theorem evalProgStmt_if_false (prog : Prog) (fuel : Nat)
+    (c : CExpr) (t e : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b false)) :
+    evalProgStmt prog fuel (.if_ c t e) ρ =
+      evalProgStmt prog fuel e ρ := by
   simp only [evalProgStmt, h]
 
 /-- `return_` under a program delegates to the old evaluator. -/

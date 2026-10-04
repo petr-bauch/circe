@@ -28,6 +28,9 @@ import Circe.Eval
     field-init leaf, `accAdd` = the `_ZN3Acc3addEi` checked-add leaf,
     `accGet` = the `_ZNK3Acc3getEv` identity leaf, `accDtor` = the
     `_ZN3AccD2Ev` no-op leaf, `accTwo` = the `cleanup`-scoped entry),
+    in N4b with move semantics (`accMoveCtor` = the `_ZN3AccC2EOS_`
+    move-ctor leaf, `moveAcc` = the nested-`cleanup` entry with the
+    source-zeroing `assign`, `scopeEarly` = the early-return entry),
     and in N4a with overloads + namespaces (`add3` = the 3-`i32`
     overload leaf, `useAdd`/`useNsAdd` = single-delegation entries
     resolving to a mangled `add` leaf). -/
@@ -55,6 +58,9 @@ inductive FragKind : Type
   | accGet
   | accDtor
   | accTwo
+  | accMoveCtor
+  | moveAcc
+  | scopeEarly
   | boxThrough
   | nested
   | skip
