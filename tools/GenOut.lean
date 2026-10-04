@@ -68,6 +68,10 @@ def main : IO Unit := do
   let optImplGet ← emitOrDie optImplGetFunc
   let optDerefOp ← emitOrDie optDerefOpFunc
   let optDeref ← emitOrDie optDerefFunc
+  let spanExtent ← emitOrDie spanExtentFunc
+  let spanSize ← emitOrDie spanSizeFunc
+  let spanIndex ← emitOrDie spanIndexFunc
+  let spanSum ← emitOrDie spanSumFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -116,6 +120,10 @@ def main : IO Unit := do
   IO.FS.writeFile "out/OptImplGet.lean" (emitFileText (.ok optImplGet))
   IO.FS.writeFile "out/OptDerefOp.lean" (emitFileText (.ok optDerefOp))
   IO.FS.writeFile "out/OptDeref.lean" (emitFileText (.ok optDeref))
+  IO.FS.writeFile "out/SpanExtent.lean" (emitFileText (.ok spanExtent))
+  IO.FS.writeFile "out/SpanSize.lean" (emitFileText (.ok spanSize))
+  IO.FS.writeFile "out/SpanIndex.lean" (emitFileText (.ok spanIndex))
+  IO.FS.writeFile "out/SpanSum.lean" (emitFileText (.ok spanSum))
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
@@ -164,6 +172,10 @@ def main : IO Unit := do
   let optImplGetSpec ← specOrDie optImplGetFunc
   let optDerefOpSpec ← specOrDie optDerefOpFunc
   let optDerefSpec ← specOrDie optDerefFunc
+  let spanExtentSpec ← specOrDie spanExtentFunc
+  let spanSizeSpec ← specOrDie spanSizeFunc
+  let spanIndexSpec ← specOrDie spanIndexFunc
+  let spanSumSpec ← specOrDie spanSumFunc
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
@@ -212,6 +224,10 @@ def main : IO Unit := do
   IO.FS.writeFile "out/OptImplGet_Spec.lean" optImplGetSpec
   IO.FS.writeFile "out/OptDerefOp_Spec.lean" optDerefOpSpec
   IO.FS.writeFile "out/OptDeref_Spec.lean" optDerefSpec
+  IO.FS.writeFile "out/SpanExtent_Spec.lean" spanExtentSpec
+  IO.FS.writeFile "out/SpanSize_Spec.lean" spanSizeSpec
+  IO.FS.writeFile "out/SpanIndex_Spec.lean" spanIndexSpec
+  IO.FS.writeFile "out/SpanSum_Spec.lean" spanSumSpec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -267,4 +283,4 @@ def main : IO Unit := do
     throw (IO.userError "arrayAt must not have a backward definition")
   if arraySum.backward.isSome then
     throw (IO.userError "arraySum must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean + 48 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean + 52 *_Spec.lean stubs"

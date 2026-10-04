@@ -520,6 +520,29 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       | .error e, _, _ => .error e
       | _, .error e, _ => .error e
       | _, _, _ => .error .AssertFail
+  | .spanLen s, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memLoad m a t 0, envLookup ρ s with
+      | .ok w, some (.spanVal l) =>
+        if w == BitVec.ofNat 32 l.length then
+          .ok (.u64 (BitVec.ofNat 64 l.length))
+        else .error .AssertFail
+      | .error e, _ => .error e
+      | _, _ => .error .AssertFail
+  | .spanAt s ie, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memEvalExpr ie ρ m π, envLookup ρ s with
+      | .ok (.u64 i), some (.spanVal l) =>
+        match memLoad m a t (i.toNat + 1), l[i.toNat]? with
+        | .ok w, some v => if w == v then .ok (.i32 v) else .error .AssertFail
+        | .error e, _ => .error e
+        | _, _ => .error .AssertFail
+      | .ok _, _ => .error .AssertFail
+      | .error e, _ => .error e
   | .vnew se, ρ, m, π =>
     match memEvalExpr se ρ m π with
     | .error e => .error e
@@ -704,6 +727,49 @@ theorem memEvalExpr_optGet_oob (o : String) (ρ : Env)
     (hmem1 : memLoad m a t 1 = .ok ew) :
     memEvalExpr (.optGet o) ρ m π = evalExpr (.optGet o) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, ho, hmem0, hmem1]
+
+/-- `spanLen` agreement: the extent word in memory matches the
+    `spanVal` length, so both sides report the same `u64` word. -/
+theorem memEvalExpr_spanLen_hit (s : String) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.spanVal l))
+    (hmem : memLoad m a t 0 = .ok (BitVec.ofNat 32 l.length)) :
+    memEvalExpr (.spanLen s) ρ m π = evalExpr (.spanLen s) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hs, hmem, beq_self_eq_true,
+    ↓reduceIte]
+
+/-- `spanAt` agreement on an in-bounds index: the reified word in
+    memory matches the `spanVal` word, so both sides deliver it
+    (mirrors `memEvalExpr_idxi_hit`; the extent word shifts memory
+    offsets by one). -/
+theorem memEvalExpr_spanAt_hit (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (i : BitVec 64)
+    (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.spanVal l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t (i.toNat + 1) = .ok x)
+    (hval : l[i.toNat]? = some x) :
+    memEvalExpr (.spanAt s ie) ρ m π = evalExpr (.spanAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval,
+    beq_self_eq_true, ↓reduceIte]
+
+/-- `spanAt` OOB agreement: the memory load itself fails `OOB`
+    past the reified words, so both sides fail `OOB` loudly
+    (mirrors `memEvalExpr_idxi_oob`). -/
+theorem memEvalExpr_spanAt_oob (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (i : BitVec 64)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.spanVal l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t (i.toNat + 1) = .error .OOB)
+    (hval : l[i.toNat]? = none) :
+    memEvalExpr (.spanAt s ie) ρ m π = evalExpr (.spanAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval]
 
 /-- `vget` agreement under consistency (the `vec_alloc` loop shape):
     same tag/liveness discipline as `idx`, cross-checked against
@@ -993,6 +1059,12 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
           | none => [0, 0]
         let (m'', a) := memAllocData m' words
         some (((p.name, .optVal v) :: ρ), m'', (p.name, a, a) :: π)
+      | .spanVal l =>
+        -- The reified view plus the 32-bit extent word up front
+        -- (the `{ptr, extent}` object model: word 0 is the extent,
+        -- words `1+i` are the viewed elements; N4d-iii).
+        let (m'', a) := memAllocData m' ((BitVec.ofNat 32 l.length) :: l)
+        some (((p.name, .spanVal l) :: ρ), m'', (p.name, a, a) :: π)
       | _ => some (((p.name, v) :: ρ), m', π)
   | _, _, _ => none
 

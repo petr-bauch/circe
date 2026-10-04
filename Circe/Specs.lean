@@ -514,6 +514,52 @@ theorem optDeref_correct_none :
     optDerefFwd none = .ok (.i32 (-1 : BitVec 32)) :=
   rfl
 
+/-! ## N4d-iii: `std::span<const int32_t>` index-sum (one property per new shape) -/
+
+/-- The `_M_extent` leaf reports the reified length. -/
+theorem spanExtent_correct (l : List (BitVec 32)) :
+    spanExtentFwd l = .ok (.u64 (BitVec.ofNat 64 l.length)) :=
+  rfl
+
+/-- `size` delegates: the entry is the `_M_extent` body (via
+    `spanSizeFwd_is_call`; the delegation rewrite is the spec, as
+    in `arrayAt_correct`). -/
+theorem spanSize_correct (l : List (BitVec 32)) :
+    spanSizeFwd l = spanExtentFwd l :=
+  spanSizeFwd_is_call l
+
+/-- The `operator[]` leaf delivers the word on a hit. -/
+theorem spanIndex_correct_some (l : List (BitVec 32)) (n : BitVec 64)
+    (x : BitVec 32) (hget : l[n.toNat]? = some x) :
+    spanIndexFwd l n = .ok (.i32 x) := by
+  simp [spanIndexFwd, hget]
+
+/-- The `operator[]` leaf fails `OOB` loudly past the end. -/
+theorem spanIndex_correct_oob (l : List (BitVec 32)) (n : BitVec 64)
+    (hget : l[n.toNat]? = none) :
+    spanIndexFwd l n = .error .OOB := by
+  simp [spanIndexFwd, hget]
+
+/-- The `span_sum` entry sums the empty view to zero. -/
+theorem spanSum_correct_nil :
+    spanSumFwd [] = .ok (.i32 (BitVec.ofNat 32 0)) := by
+  simp [spanSumFwd, spanFold, i32_map_ok]
+
+/-- The `span_sum` entry threads the head word through the
+    checked add (cf. `arraySum_correct_ok`). -/
+theorem spanSum_correct_cons (x : BitVec 32) (xs : List (BitVec 32))
+    (a : BitVec 32)
+    (h : checkedAddI32 (BitVec.ofNat 32 0) x = .ok a) :
+    spanSumFwd (x :: xs) = .i32 <$> spanFold xs a := by
+  simp [spanSumFwd, spanFold, h]
+
+/-- The `span_sum` entry reports a head-word overflow loudly. -/
+theorem spanSum_correct_cons_err (x : BitVec 32) (xs : List (BitVec 32))
+    (e : Panic)
+    (h : checkedAddI32 (BitVec.ofNat 32 0) x = .error e) :
+    spanSumFwd (x :: xs) = .error e := by
+  simp [spanSumFwd, spanFold, h, i32_map_error]
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

@@ -21,6 +21,7 @@ import Circe.Emit.Acc
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.Optional
+import Circe.Emit.Span
 import Circe.Emit.Box
 import Circe.Emit.Flow
 
@@ -367,6 +368,36 @@ def matchFrag : Func → Option FragKind
           (.return_ (.lit (.i32 neg1)))) =>
       if neg1 == (-1 : BitVec 32) then some .optDeref else none
     | _ => none
+  | ⟨_, [⟨"e", .struct "std::__detail::__extent_storage" [.u 64],
+         .sharedBorrow⟩], _,
+      .return_ (.spanLen "e")⟩ =>
+    some .spanExtent
+  | ⟨_, [⟨"s", .struct "std::span<const int>" [.u 64, .u 64],
+         .sharedBorrow⟩], _,
+      .return_ (.spanLen "s")⟩ =>
+    some .spanSize
+  | ⟨_, [⟨"s", .struct "std::span<const int>" [.u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.spanAt "s" (.var "n"))⟩ =>
+    some .spanIndex
+  | ⟨_, [⟨"s", .struct "std::span<const int>" [.u 64, .u 64],
+         .sharedBorrow⟩], _, body⟩ =>
+    -- The entry body nests three `.seq` plus the `while_` loop:
+    -- matched on the body outside `⟨⟩` (cf. the `optDeref` quirk
+    -- note above).
+    match body with
+    | .seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
+      (.seq (.while_ (.ult (.var "i") (.spanLen "s"))
+              (.seq (.assign "t"
+                      (.add (.var "t") (.spanAt "s" (.var "i"))))
+                (.assign "i"
+                  (.uadd (.var "i") (.lit (.u64 one))))))
+            (.return_ (.var "t")))) =>
+      if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
+          one == BitVec.ofNat 64 1 then some .spanSum else none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -411,3 +442,7 @@ theorem matchFrag_optGet : matchFrag optGetFunc = some .optGet := rfl
 theorem matchFrag_optDerefOp : matchFrag optDerefOpFunc = some .optDerefOp := rfl
 theorem matchFrag_optImplGet : matchFrag optImplGetFunc = some .optImplGet := rfl
 theorem matchFrag_optDeref : matchFrag optDerefFunc = some .optDeref := rfl
+theorem matchFrag_spanExtent : matchFrag spanExtentFunc = some .spanExtent := rfl
+theorem matchFrag_spanSize : matchFrag spanSizeFunc = some .spanSize := rfl
+theorem matchFrag_spanIndex : matchFrag spanIndexFunc = some .spanIndex := rfl
+theorem matchFrag_spanSum : matchFrag spanSumFunc = some .spanSum := rfl

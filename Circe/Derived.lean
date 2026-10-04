@@ -391,6 +391,102 @@ theorem oracleNoalias_optDeref (v : Option (BitVec 32)) :
   have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-! ## N4d-iii `std::span` footprints: extent word + reified view (reads only) -/
+
+/-- Span binding pins the `(1 + length)`-word
+    `[(BitVec.ofNat 32 length)] ++ l` block (the `{ptr, extent}`
+    object model: word `0` is the 32-bit extent, words `1+i` are
+    the reified viewed elements). Stated over a general object
+    type: `bindMemArgs` dispatches on the value alone, and the two
+    span receivers (`spanObjTy`, `spanExtentObjTy`) share the
+    `spanVal` value story. -/
+theorem bindMemArgs_spanVal (nm : String) (ty : CType)
+    (l : List (BitVec 32)) :
+    bindMemArgs
+      [{ name := nm, ty := ty, role := .sharedBorrow }]
+      [.spanVal l] emptyMem =
+      some ([(nm, .spanVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [(nm, 0, 0)]) := by
+  rfl
+
+/-- `_M_extent` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_spanExtent (l : List (BitVec 32)) :
+    oracleNoalias spanExtentFunc [.spanVal l] := by
+  have hb : bindMemArgs spanExtentFunc.args [.spanVal l] emptyMem =
+      some ([("e", .spanVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("e", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "e", ty := spanExtentObjTy, role := .sharedBorrow }]
+      [.spanVal l] emptyMem = _
+    exact bindMemArgs_spanVal "e" spanExtentObjTy l
+  have hn : LayoutNoAlias [("e", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `size` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_spanSize (l : List (BitVec 32)) :
+    oracleNoalias spanSizeFunc [.spanVal l] := by
+  have hb : bindMemArgs spanSizeFunc.args [.spanVal l] emptyMem =
+      some ([("s", .spanVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := spanObjTy, role := .sharedBorrow }]
+      [.spanVal l] emptyMem = _
+    exact bindMemArgs_spanVal "s" spanObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `operator[]` binding pins the `(1 + length)`-word block plus
+    the owned index word (cf. `bindMemArgs_arrayAt`). -/
+theorem bindMemArgs_spanIndex (l : List (BitVec 32)) (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "s", ty := spanObjTy, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.spanVal l, .u64 n] emptyMem =
+      some ([("s", .spanVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+  rfl
+
+/-- `operator[]` footprints are a singleton (the index is owned;
+    the view is read-only). -/
+theorem oracleNoalias_spanIndex (l : List (BitVec 32)) (n : BitVec 64) :
+    oracleNoalias spanIndexFunc [.spanVal l, .u64 n] := by
+  have hb : bindMemArgs spanIndexFunc.args [.spanVal l, .u64 n] emptyMem =
+      some ([("s", .spanVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := spanObjTy, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.spanVal l, .u64 n] emptyMem = _
+    exact bindMemArgs_spanIndex l n
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `span_sum` footprints are a singleton (the loop runs after
+    entry over the read-only view). -/
+theorem oracleNoalias_spanSum (l : List (BitVec 32)) :
+    oracleNoalias spanSumFunc [.spanVal l] := by
+  have hb : bindMemArgs spanSumFunc.args [.spanVal l] emptyMem =
+      some ([("s", .spanVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := spanObjTy, role := .sharedBorrow }]
+      [.spanVal l] emptyMem = _
+    exact bindMemArgs_spanVal "s" spanObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## Loop-free scalar shapes: empty footprint (M3c) -/
 
 /-- `add64` binding pins nothing (two owned 64-bit scalars). -/

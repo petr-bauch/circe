@@ -24,6 +24,7 @@ import DiffOptional
 import DiffOverload
 import DiffPhase3
 import DiffPhase4
+import DiffSpan
 import DiffStruct
 import DiffTadd
 import DiffVec
@@ -48,6 +49,7 @@ import GoldenPhase6
 import GoldenPhase7
 import GoldenReadOnly
 import GoldenRejectCatalog
+import GoldenSpan
 import GoldenStruct
 import GoldenTadd
 import GoldenVec2
@@ -147,6 +149,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/tadd.cpp", "tests/diff/driver_tadd.cpp"], bin "circe_tadd_native"),
    ("c++", ["tests/cpp/array_sum.cpp", "tests/diff/driver_array_sum.cpp"], bin "circe_array_sum_native"),
    ("c++", ["tests/cpp/opt_deref.cpp", "tests/diff/driver_opt_deref.cpp"], bin "circe_opt_deref_native"),
+   ("c++", ["-std=c++20", "tests/cpp/span_sum.cpp", "tests/diff/driver_span_sum.cpp"], bin "circe_span_sum_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
@@ -198,7 +201,15 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/OptGet.lean", "out/OptGet.lean"),
    ("tests/golden/OptImplGet.lean", "out/OptImplGet.lean"),
    ("tests/golden/OptDerefOp.lean", "out/OptDerefOp.lean"),
-   ("tests/golden/OptDeref.lean", "out/OptDeref.lean")]
+   ("tests/golden/OptDeref.lean", "out/OptDeref.lean"),
+   ("tests/golden/SpanExtent.lean", "out/SpanExtent.lean"),
+   ("tests/golden/SpanExtent_Spec.lean", "out/SpanExtent_Spec.lean"),
+   ("tests/golden/SpanSize.lean", "out/SpanSize.lean"),
+   ("tests/golden/SpanSize_Spec.lean", "out/SpanSize_Spec.lean"),
+   ("tests/golden/SpanIndex.lean", "out/SpanIndex.lean"),
+   ("tests/golden/SpanIndex_Spec.lean", "out/SpanIndex_Spec.lean"),
+   ("tests/golden/SpanSum.lean", "out/SpanSum.lean"),
+   ("tests/golden/SpanSum_Spec.lean", "out/SpanSum_Spec.lean")]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -240,7 +251,11 @@ def emittedTypechecks : List String :=
    "out/OptGet.lean", "out/OptGet_Spec.lean",
    "out/OptImplGet.lean", "out/OptImplGet_Spec.lean",
    "out/OptDerefOp.lean", "out/OptDerefOp_Spec.lean",
-   "out/OptDeref.lean", "out/OptDeref_Spec.lean"]
+   "out/OptDeref.lean", "out/OptDeref_Spec.lean",
+   "out/SpanExtent.lean", "out/SpanExtent_Spec.lean",
+   "out/SpanSize.lean", "out/SpanSize_Spec.lean",
+   "out/SpanIndex.lean", "out/SpanIndex_Spec.lean",
+   "out/SpanSum.lean", "out/SpanSum_Spec.lean"]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -550,7 +565,34 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Eval.lean", "theorem evalExpr_optHas_some"),
      ("Circe/Eval.lean", "theorem evalExpr_optGet_none"),
      ("out/OptDeref.lean", "_Z9opt_derefRKSt8optionalIiE_fwd"),
-     ("tests/golden/OptHas.lean", "_M_is_engagedEv_fwd")])]
+     ("tests/golden/OptHas.lean", "_M_is_engagedEv_fwd")]),
+   ("n4d-span",
+    [("Circe/Validator.lean", "def isSpanExtentShape"),
+     ("Circe/Validator.lean", "def isSpanSizeShape"),
+     ("Circe/Validator.lean", "def isSpanIndexShape"),
+     ("Circe/Validator.lean", "def isSpanSumShape"),
+     ("Circe/Validator.lean", "def spanLeafCallees"),
+     ("Circe/Validator.lean", "calls a known `std::span` leaf"),
+     ("Circe/Emit/Match.lean", "some .spanExtent"),
+     ("Circe/Emit/Match.lean", "some .spanSize"),
+     ("Circe/Emit/Match.lean", "some .spanIndex"),
+     ("Circe/Emit/Match.lean", "some .spanSum"),
+     ("Circe/Emit/Span.lean", "theorem evalFuncFuel_spanSum"),
+     ("Circe/Emit/Span.lean", "theorem spanWhile_correct"),
+     ("Circe/Emit/Span.lean", "theorem evalFuncFuel_spanIndex"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_spanSum"),
+     ("Circe/Transfer.lean", "theorem memSpanWhile_correct"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_spanIndex_hit"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_spanIndex_oob"),
+     ("Circe/Derived.lean", "theorem bindMemArgs_spanVal"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_spanSum"),
+     ("Circe/Specs.lean", "theorem spanSum_correct_cons"),
+     ("Circe/Specs.lean", "theorem spanSum_correct_cons_err"),
+     ("Circe/Specs.lean", "theorem spanIndex_correct_oob"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_spanAt_oob"),
+     ("Circe/Eval.lean", "theorem evalExpr_spanAt_oob"),
+     ("out/SpanSum.lean", "_Z8span_sumSt4spanIKiLm18446744073709551615EE_fwd"),
+     ("tests/golden/SpanExtent.lean", "_M_extentEv_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -600,8 +642,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 48 then
-    throw (IO.userError s!"expected 48 spec stubs, found {stubs.length}")
+  if stubs.length != 52 then
+    throw (IO.userError s!"expected 52 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -637,7 +679,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-tadd", DiffTadd.main [bin "circe_tadd_native", trials]),
    ("diff-array", DiffArray.main [bin "circe_array_sum_native", trials]),
    ("diff-optional", DiffOptional.main [bin "circe_opt_deref_native", trials]),
-   ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials])]
+   ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials]),
+   ("diff-span", DiffSpan.main [bin "circe_span_sum_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -660,6 +703,7 @@ def checkSuites : List Job :=
    ("golden-tadd", GoldenTadd.main),
    ("golden-array", GoldenArray.main),
    ("golden-optional", GoldenOptional.main),
+   ("golden-span", GoldenSpan.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -669,14 +713,14 @@ def checkSuites : List Job :=
     `tests/lean` runner without registration fails loudly here). -/
 def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffBox", "DiffCalls", "DiffFlow",
-   "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffStruct",
+   "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc",
    "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
+   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=

@@ -30,7 +30,9 @@ import Circe.CoreIR
     64-bit arrays/loops are future work (S3b admits loop-free 64-bit
     adds only); a `u64` index into a 32-bit array is `AssertFail`.
     `std::optional<int32_t>` is `optVal` (the engaged word or
-    `none`; N4d-ii). -/
+    `none`; N4d-ii). `std::span<const int32_t>` is `spanVal` (the
+    reified viewed words; `sharedBorrow` pure-copy snapshot semantics,
+    the S1 `sum_array` precedent bundled into one value; N4d-iii). -/
 inductive Value : Type
   | i32 : BitVec 32 → Value
   | u32 : BitVec 32 → Value
@@ -44,6 +46,7 @@ inductive Value : Type
   | boxVal : Box32 → Value
   | structVal : String → List (String × BitVec 32) → Value
   | optVal : Option (BitVec 32) → Value
+  | spanVal : List (BitVec 32) → Value
   deriving DecidableEq, Repr
 
 /-- Evaluation environment: variables to values. Loan/borrow bookkeeping
@@ -380,6 +383,23 @@ def evalExpr : CExpr → Env → Result Value
       | some x => .ok (.i32 x)
       | none => .error .AssertFail
     | some _ => .error .AssertFail
+  | .spanLen s, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.spanVal l) => .ok (.u64 (BitVec.ofNat 64 l.length))
+    | some _ => .error .AssertFail
+  | .spanAt s ie, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.spanVal l) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        match l[i.toNat]? with
+        | some x => .ok (.i32 x)
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
     | .error e => .error e
@@ -653,6 +673,52 @@ theorem evalExpr_optGet_notval (o : String) (v : BitVec 32) (ρ : Env)
     (ho : envLookup ρ o = some (.i32 v)) :
     evalExpr (.optGet o) ρ = .error .AssertFail := by
   simp [evalExpr, ho]
+
+/-- `spanLen` of a span delivers its length as a `u64` word. -/
+theorem evalExpr_spanLen_some (s : String) (ρ : Env)
+    (l : List (BitVec 32))
+    (hs : envLookup ρ s = some (.spanVal l)) :
+    evalExpr (.spanLen s) ρ = .ok (.u64 (BitVec.ofNat 64 l.length)) := by
+  simp [evalExpr, hs]
+
+/-- `spanLen` of a non-span is rejected, never silently modeled. -/
+theorem evalExpr_spanLen_notval (s : String) (v : BitVec 32) (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.spanLen s) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `spanAt` in bounds delivers the word. -/
+theorem evalExpr_spanAt_some (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 32)) (i : BitVec 64) (x : BitVec 32)
+    (hs : envLookup ρ s = some (.spanVal l))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hget : l[i.toNat]? = some x) :
+    evalExpr (.spanAt s ie) ρ = .ok (.i32 x) := by
+  simp [evalExpr, hs, hi, hget]
+
+/-- `spanAt` off the end is `OOB` (mirrors `idx`). -/
+theorem evalExpr_spanAt_oob (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 32)) (i : BitVec 64)
+    (hs : envLookup ρ s = some (.spanVal l))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hget : l[i.toNat]? = none) :
+    evalExpr (.spanAt s ie) ρ = .error .OOB := by
+  simp [evalExpr, hs, hi, hget]
+
+/-- `spanAt` with a non-`u64` index is rejected. -/
+theorem evalExpr_spanAt_nonu64 (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 32)) (v : BitVec 32)
+    (hs : envLookup ρ s = some (.spanVal l))
+    (hi : evalExpr ie ρ = .ok (.i32 v)) :
+    evalExpr (.spanAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs, hi]
+
+/-- `spanAt` of a non-span is rejected, never silently modeled. -/
+theorem evalExpr_spanAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
+    (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.spanAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
 
 /-- `vnew` on a `u32` size allocates a zeroed live block. -/
 theorem evalExpr_vnew_lit (n : BitVec 32) (ρ : Env) :

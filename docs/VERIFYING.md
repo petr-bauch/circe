@@ -27,6 +27,9 @@ verbatim.
 | `optHasValue_correct` / `optDerefOp_correct` (N4d-ii) | entry forwards = leaf bodies (call edges fused, resolution is identity at spec level) | `optHasValueFwd` / `optDerefOpFwd` |
 | `optGet_correct_some/none` (N4d-ii) | word on engaged, `AssertFail` on disengaged (unreachable made loud) | `optGetFwd v` (payload match) |
 | `optDeref_correct_some/none` (N4d-ii) | word on engaged, `-1` sentinel on disengaged | `optDerefFwd v` (guarded match) |
+| `spanExtent_correct` / `spanSize_correct` (N4d-iii) | leaves report the reified length | `spanExtentFwd l` / `spanSizeFwd l` (length read) |
+| `spanIndex_correct_some/oob` (N4d-iii) | leaf reads the word at a live `u64` index, `OOB` off the end | `spanIndexFwd l n` (index read) |
+| `spanSum_correct_nil/cons/cons_err` (N4d-iii) | checked-add fold: nil is zero, cons threads `checkedAddI32`, error propagates | `spanSumFwd l` (fold from `0`) |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`

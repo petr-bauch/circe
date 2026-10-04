@@ -308,9 +308,10 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     messages (`callsArrayWrongShape`, or `alias-reject`).
     Deferred with pins (`tests/lean/GoldenArray.lean`): `string_view`
     (iterators return raw pointers), `vector` (operator-`new` +
-    60-def allocator bloat), `span` (no `std::span` pre-C++20 on the
-    pinned flags). (`optional` graduated to item 20; only the
-    `value` throw path stays deferred.)
+    60-def allocator bloat). (`optional` graduated to item 20;
+    only the `value` throw path stays deferred. `span` index-sum
+    graduated to item 21 — `-std=c++20` scoped to `span_*` in
+    `tools/emit-cir.sh`; only range-for stays out.)
 20. `std::optional<int32_t>` guarded deref (N4d-ii): the depth-3
     call chain (`opt_deref` → `operator*` → impl `_M_get` →
     payload `_M_get`) functionalizes with fused edges (the N4d-i
@@ -364,6 +365,59 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     (`callsOptWrongShape`, or `alias-reject`).
     Still deferred: `optional::value` (throw path lowers to
     `cir.trap`).
+21. `std::span<const int32_t>` index-sum (N4d-iii): the depth-2
+    call chain (`span_sum` → `size` → `_M_extent` →
+    the `_M_extent_value` load; `span_sum` → `operator[]` → the live
+    `size` call in the dead assert arm) functionalizes with fused
+    edges (the N4d-ii fusion precedent), captured with `-std=c++20`
+    scoped to `span_*` in `tools/emit-cir.sh`:
+    `_ZNKSt8__detail16__extent_storageILm18446744073709551615EE9_M_extentEv`
+    extent leaf (single `const&` to the extent-storage object with
+    the single-reference triple, `u64` return, the single
+    `get_member [0]` (`_M_extent_value`) projection with the value
+    load, no calls, no control flow),
+    `_ZNKSt4spanIKiLm18446744073709551615EE4sizeEv` entry (single
+    `const&` to the span object with the single-reference triple,
+    `u64` return, exactly one call site to the `_M_extent` leaf;
+    the `get_member [1]` (`_M_extent`) projection + call fuse into
+    the `spanLen` read),
+    `_ZNKSt4spanIKiLm18446744073709551615EEixEm` leaf (the span
+    `const&` with the single-reference triple plus the `u64` index,
+    pointer-to-`i32` return, exactly one call site — the live
+    `size()` call in the dead assert arm — with the dead
+    disabled-assert skeleton pinned exactly: single `cir.ternary`
+    over three `#false` consts, one `cir.cmp lt`, one `cir.not`,
+    one-sided `cir.if`, `cir.unreachable`, `cir.do`/`cir.condition`;
+    a variant with the assert enabled, or without it, rejects
+    loudly; the live tail — `get_member [0]` (`_M_ptr`) +
+    `ptr_stride` + both loads — fuses into the `spanAt` read),
+    `_Z8span_sumSt4spanIKiLm18446744073709551615EE` entry (the span
+    **by value** — no pointer, no aliasing question on the object
+    itself — `i32` return, exactly two call sites: `size` in `cond`,
+    `operator[]` in `body`; the single `cir.for` with the `lt`
+    comparison, the `u64` increment, and the one `nsw` accumulation
+    add; three `cir.const` — the two live `0` inits plus one stray
+    dead `i32` `0`, the clang init quirk, dropped downstream).
+    Semantics: `spanVal : List (BitVec 32)` is the reified viewed
+    words (`sharedBorrow` snapshot, the S1 `sum_array` precedent);
+    `spanLen` reads the length, `spanAt` the word at a live `u64`
+    index (`OOB` off the end — unchecked indexing is UB, so the
+    model reports it); `spanSum` is the checked-add fold from `0`
+    over the words (loud err-propagation); memory binds the
+    `[len-as-u64] ++ words` block (word0 extent, words 1+i
+    elements). The entry validates under ONE explicit oracle fact
+    (by value, so no synthetic-fact triple — the M2b int-only-entry
+    precedent). Misshapen uses (double calls into `size`,
+    live-assert `operator[]` variants, wrong-arity calls into
+    `size`, bare span pointers without the triple) are rejected
+    with dedicated messages (`callsSpanWrongShape`, or
+    `alias-reject`).
+    Containment result: index-based `size()`/`operator[]` is IN;
+    the range-for form is OUT (it lowers to `begin`/`end`
+    iterator calls plus pointer-chasing, outside the admitted call
+    shapes — pinned in `tests/lean/GoldenSpan.lean`).
+    Still deferred: `string_view` range-for (same iterator reason),
+    `vector`.
 
 ## Admitted CIR ops (raw CIRGen shape)
 

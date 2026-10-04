@@ -88,6 +88,10 @@ inductive FragKind : Type
   | optImplGet
   | optDerefOp
   | optDeref
+  | spanExtent
+  | spanSize
+  | spanIndex
+  | spanSum
   deriving DecidableEq, Repr
 
 

@@ -5542,6 +5542,451 @@ theorem memTransferProg_optDeref (F : Nat) (v : Option (BitVec 32))
       evalProgFunc optDerefProg F optDerefFunc [.optVal v] := by
   rw [memEvalProgFunc_optDeref, evalProgFunc_optDeref]
 
+/-! ## N4d-iii `std::span` transfers: extent and words agree -/
+
+/-- `memEval` for `_M_extent`: the extent word in memory matches the
+    `spanVal` length (mirrors `evalFuncFuel_spanExtent`). -/
+theorem memEvalFuncFuel_spanExtent (F : Nat) (l : List (BitVec 32)) :
+    memEvalFuncFuel F spanExtentFunc [.spanVal l] = spanExtentFwd l := by
+  have hb : bindMemArgs spanExtentFunc.args [.spanVal l] emptyMem =
+      some ([("e", .spanVal l)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("e", 0, 0)]) :=
+    bindMemArgs_spanVal "e" spanExtentObjTy l
+  have hbody : spanExtentFunc.body = .return_ (.spanLen "e") := rfl
+  have ho : envLookup [("e", .spanVal l)] "e" =
+      some (.spanVal l) := by
+    simp [envLookup]
+  have hlay : layoutLookup [("e", 0, 0)] "e" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ 0 0 0 =
+      .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hagree := memEvalExpr_spanLen_hit "e" _ _ _ l 0 0 hlay ho hmem
+  have heval : evalExpr (.spanLen "e") [("e", .spanVal l)] =
+      .ok (.u64 (BitVec.ofNat 64 l.length)) :=
+    evalExpr_spanLen_some "e" _ l ho
+  have hret := memEvalStmtFuel_return F (.spanLen "e") _ _ _ _
+    hagree heval
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [spanExtentFwd]
+
+/-- Transfer for `_M_extent`. -/
+theorem memTransfer_spanExtent (F : Nat) (l : List (BitVec 32))
+    (_h : oracleNoalias spanExtentFunc [.spanVal l]) :
+    memEvalFuncFuel F spanExtentFunc [.spanVal l] =
+      evalFuncFuel F spanExtentFunc [.spanVal l] := by
+  rw [memEvalFuncFuel_spanExtent, evalFuncFuel_spanExtent]
+
+/-- `memEval` for `size` (fused call edge). -/
+theorem memEvalFuncFuel_spanSize (F : Nat) (l : List (BitVec 32)) :
+    memEvalFuncFuel F spanSizeFunc [.spanVal l] = spanSizeFwd l := by
+  have hb : bindMemArgs spanSizeFunc.args [.spanVal l] emptyMem =
+      some ([("s", .spanVal l)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_spanVal "s" spanObjTy l
+  have hbody : spanSizeFunc.body = .return_ (.spanLen "s") := rfl
+  have ho : envLookup [("s", .spanVal l)] "s" =
+      some (.spanVal l) := by
+    simp [envLookup]
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ 0 0 0 =
+      .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hagree := memEvalExpr_spanLen_hit "s" _ _ _ l 0 0 hlay ho hmem
+  have heval : evalExpr (.spanLen "s") [("s", .spanVal l)] =
+      .ok (.u64 (BitVec.ofNat 64 l.length)) :=
+    evalExpr_spanLen_some "s" _ l ho
+  have hret := memEvalStmtFuel_return F (.spanLen "s") _ _ _ _
+    hagree heval
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [spanSizeFwd, spanExtentFwd]
+
+/-- Transfer for `size`. -/
+theorem memTransfer_spanSize (F : Nat) (l : List (BitVec 32))
+    (_h : oracleNoalias spanSizeFunc [.spanVal l]) :
+    memEvalFuncFuel F spanSizeFunc [.spanVal l] =
+      evalFuncFuel F spanSizeFunc [.spanVal l] := by
+  rw [memEvalFuncFuel_spanSize, evalFuncFuel_spanSize]
+
+/-- `memEval` for `operator[]` (hit): the reified word in memory
+    matches the `spanVal` word (mirrors `evalFuncFuel_spanIndex`,
+    cf. `memEvalExpr_idxi_hit`). -/
+theorem memEvalFuncFuel_spanIndex_hit (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (x : BitVec 32)
+    (hget : l[n.toNat]? = some x) :
+    memEvalFuncFuel F spanIndexFunc [.spanVal l, .u64 n] =
+      spanIndexFwd l n := by
+  have hb : bindMemArgs spanIndexFunc.args [.spanVal l, .u64 n] emptyMem =
+      some ([("s", .spanVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_spanIndex l n
+  have hbody : spanIndexFunc.body =
+      .return_ (.spanAt "s" (.var "n")) := rfl
+  have hs : envLookup [("s", .spanVal l), ("n", .u64 n)] "s" =
+      some (.spanVal l) := by
+    simp [envLookup]
+  have hn : envLookup [("s", .spanVal l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "s" by decide]
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hie : memEvalExpr (.var "n") [("s", .spanVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] =
+      evalExpr (.var "n") [("s", .spanVal l), ("n", .u64 n)] := by
+    simp [memEvalExpr, evalExpr, hn]
+  have hieval : evalExpr (.var "n") [("s", .spanVal l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 (n.toNat + 1) = .ok x := by
+    simp [memLoad, memFind, hget]
+  have hagree := memEvalExpr_spanAt_hit "s" (.var "n") _ _ _
+    l n x 0 0 hlay hs hie hieval hmem hget
+  have heval : evalExpr (.spanAt "s" (.var "n"))
+      [("s", .spanVal l), ("n", .u64 n)] = .ok (.i32 x) :=
+    evalExpr_spanAt_some "s" _ _ _ _ _ hs hieval hget
+  have hret := memEvalStmtFuel_return F (.spanAt "s" (.var "n")) _ _ _ _
+    hagree heval
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [spanIndexFwd, hget]
+
+/-- `memEval` for `operator[]` (`OOB`): the memory load itself
+    fails past the reified words. -/
+theorem memEvalFuncFuel_spanIndex_oob (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64)
+    (hget : l[n.toNat]? = none) :
+    memEvalFuncFuel F spanIndexFunc [.spanVal l, .u64 n] =
+      spanIndexFwd l n := by
+  have hb : bindMemArgs spanIndexFunc.args [.spanVal l, .u64 n] emptyMem =
+      some ([("s", .spanVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_spanIndex l n
+  have hbody : spanIndexFunc.body =
+      .return_ (.spanAt "s" (.var "n")) := rfl
+  have hs : envLookup [("s", .spanVal l), ("n", .u64 n)] "s" =
+      some (.spanVal l) := by
+    simp [envLookup]
+  have hn : envLookup [("s", .spanVal l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "s" by decide]
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hie : memEvalExpr (.var "n") [("s", .spanVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] =
+      evalExpr (.var "n") [("s", .spanVal l), ("n", .u64 n)] := by
+    simp [memEvalExpr, evalExpr, hn]
+  have hieval : evalExpr (.var "n") [("s", .spanVal l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 (n.toNat + 1) = .error .OOB := by
+    simp [memLoad, memFind, hget]
+  have hagree := memEvalExpr_spanAt_oob "s" (.var "n") _ _ _
+    l n 0 0 hlay hs hie hieval hmem hget
+  have heval : evalExpr (.spanAt "s" (.var "n"))
+      [("s", .spanVal l), ("n", .u64 n)] = .error .OOB := by
+    simp [evalExpr, hs, hn, hget]
+  have hmemerr : memEvalExpr (.spanAt "s" (.var "n"))
+      [("s", .spanVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] = .error .OOB := by
+    rw [hagree, heval]
+  have hret := memEvalStmtFuel_return_err F (.spanAt "s" (.var "n"))
+    _ _ _ _ hmemerr
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [spanIndexFwd, hget]
+
+/-- Transfer for `operator[]` (both paths). -/
+theorem memTransfer_spanIndex_hit (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (x : BitVec 32)
+    (hget : l[n.toNat]? = some x)
+    (_h : oracleNoalias spanIndexFunc [.spanVal l, .u64 n]) :
+    memEvalFuncFuel F spanIndexFunc [.spanVal l, .u64 n] =
+      evalFuncFuel F spanIndexFunc [.spanVal l, .u64 n] := by
+  rw [memEvalFuncFuel_spanIndex_hit F l n x hget, evalFuncFuel_spanIndex]
+
+/-- Transfer for `operator[]` (`OOB` path). -/
+theorem memTransfer_spanIndex_oob (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64)
+    (hget : l[n.toNat]? = none)
+    (_h : oracleNoalias spanIndexFunc [.spanVal l, .u64 n]) :
+    memEvalFuncFuel F spanIndexFunc [.spanVal l, .u64 n] =
+      evalFuncFuel F spanIndexFunc [.spanVal l, .u64 n] := by
+  rw [memEvalFuncFuel_spanIndex_oob F l n hget, evalFuncFuel_spanIndex]
+
+/-- Memory loop condition reads the `u64` index against the reified
+    extent (pure — mirrors `spanCond_eval`). -/
+theorem memSpanCond_eval (l : List (BitVec 32)) (k : Nat)
+    (acc : BitVec 32) (m : Mem) (π : Layout) (a : Addr) (t : Nat)
+    (hk64 : k < 2 ^ 64) (hl64 : l.length < 2 ^ 64)
+    (hlay : layoutLookup π "s" = some (a, t))
+    (hmemlen : memLoad m a t 0 = .ok (BitVec.ofNat 32 l.length)) :
+    memEvalExpr (.ult (.var "i") (.spanLen "s")) (mkSpanEnv l k acc)
+      m π = .ok (.b (decide (k < l.length))) := by
+  have hi := mkSpanEnv_i l k acc
+  have hs := mkSpanEnv_s l k acc
+  have hlen : (BitVec.ofNat 64 l.length).toNat = l.length :=
+    ofNat64_toNat _ hl64
+  simp only [memEvalExpr, hi, hs, hlay, hmemlen, hlen,
+    ofNat64_ult k _ hk64, beq_self_eq_true, ↓reduceIte]
+
+/-- Memory body with a successful add: accumulate and step, memory
+    untouched (any fuel) — mirrors `spanBody_step_ok`. -/
+theorem memSpanBody_step_ok (F : Nat) (l : List (BitVec 32)) (k : Nat)
+    (acc x a : BitVec 32) (m : Mem) (π : Layout) (ad : Addr) (t : Nat)
+    (_hk : k < l.length) (hk64 : k < 2 ^ 64) (_hl64 : l.length < 2 ^ 64)
+    (hget : l[k]? = some x)
+    (hc : checkedAddI32 acc x = .ok a)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (_hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 32),
+      l[j]? = some y → memLoad m ad t (j + 1) = .ok y) :
+    memEvalStmtFuel F spanBody (mkSpanEnv l k acc) m π =
+      .ok (((mkSpanEnv l (k + 1) a, m, π)), .fellThrough) := by
+  have hi := mkSpanEnv_i l k acc
+  have ht := mkSpanEnv_t l k acc
+  have hs := mkSpanEnv_s l k acc
+  have htn : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk64
+  have hadd : memEvalExpr
+      (.add (.var "t") (.spanAt "s" (.var "i")))
+        (mkSpanEnv l k acc) m π = .ok (.i32 a) := by
+    simp only [memEvalExpr, ht, hi, hs, hlay, htn, hget,
+      hmemall k x hget, hc, Except.map, beq_self_eq_true, ↓reduceIte]
+  have hincr : memEvalExpr
+      (.uadd (.var "i") (.lit (.u64 (BitVec.ofNat 64 1))))
+        (mkSpanEnv l k a) m π =
+        .ok (.u64 (BitVec.ofNat 64 (k + 1))) := by
+    simp only [memEvalExpr, litVal, mkSpanEnv_i l k a, ofNat64_add_one]
+  have up1 := spanEnv_update_t l k acc a
+  have up2 := spanEnv_update_i l k (k + 1) a
+  cases F <;>
+    simp [spanBody, memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hadd, hincr, up1, up2]
+
+/-- Memory body with an overflowing add: the `nsw` error is loud
+    (any fuel) — mirrors `spanBody_step_err`. -/
+theorem memSpanBody_step_err (F : Nat) (l : List (BitVec 32)) (k : Nat)
+    (acc x : BitVec 32) (e : Panic) (m : Mem) (π : Layout)
+    (ad : Addr) (t : Nat)
+    (_hk : k < l.length) (hk64 : k < 2 ^ 64) (_hl64 : l.length < 2 ^ 64)
+    (hget : l[k]? = some x)
+    (hc : checkedAddI32 acc x = .error e)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (_hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 32),
+      l[j]? = some y → memLoad m ad t (j + 1) = .ok y) :
+    memEvalStmtFuel F spanBody (mkSpanEnv l k acc) m π = .error e := by
+  have hi := mkSpanEnv_i l k acc
+  have ht := mkSpanEnv_t l k acc
+  have hs := mkSpanEnv_s l k acc
+  have htn : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk64
+  have hadd : memEvalExpr
+      (.add (.var "t") (.spanAt "s" (.var "i")))
+        (mkSpanEnv l k acc) m π = .error e := by
+    simp only [memEvalExpr, ht, hi, hs, hlay, htn, hget,
+      hmemall k x hget, hc, Except.map, beq_self_eq_true, ↓reduceIte]
+  cases F <;>
+    simp [spanBody, memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hadd]
+
+/-- Memory loop correctness: folds the checked-add suffix with the
+    memory cross-checked at every step, exits with `i = length`
+    (fuel-generalized — the S3a `memSkipWhile_correct` shape). -/
+theorem memSpanWhile_correct (l : List (BitVec 32))
+    (F k : Nat) (acc : BitVec 32) (m : Mem) (π : Layout)
+    (ad : Addr) (t : Nat)
+    (hk : k ≤ l.length) (hl64 : l.length < 2 ^ 64)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (x : BitVec 32),
+      l[j]? = some x → memLoad m ad t (j + 1) = .ok x)
+    (hF : l.length - k + 1 ≤ F) :
+    memEvalStmtFuel F spanWhile (mkSpanEnv l k acc) m π =
+      match spanFold (l.drop k) acc with
+      | .error e => .error e
+      | .ok acc' => .ok (((mkSpanEnv l l.length acc', m, π)),
+        .fellThrough) := by
+  induction F generalizing k acc with
+  | zero => omega
+  | succ F ih =>
+    by_cases hlt : k < l.length
+    · have hk64 : k < 2 ^ 64 := by omega
+      have hget : l[k]? = some l[k] := List.getElem?_eq_getElem hlt
+      have hcond : memEvalExpr (.ult (.var "i") (.spanLen "s"))
+            (mkSpanEnv l k acc) m π = .ok (.b true) := by
+        simpa [hlt] using
+          (memSpanCond_eval l k acc m π ad t hk64 hl64 hlay hmemlen)
+      have hunfold := spanFold_step l k acc l[k] hget
+      cases hc : checkedAddI32 acc l[k] with
+      | error e =>
+        have hbody := memSpanBody_step_err F l k acc l[k] e m π ad t
+          hlt hk64 hl64 hget hc hlay hmemlen hmemall
+        have hstep :
+            memEvalStmtFuel (F + 1) spanWhile (mkSpanEnv l k acc) m π
+            = .error e := by
+          simp [spanWhile, memEvalStmtFuel, memEvalSuccHandler,
+            memEvalStmtWith, hcond, hbody]
+        rw [hstep, hunfold, hc]
+      | ok a =>
+        have hbody := memSpanBody_step_ok F l k acc l[k] a m π ad t
+          hlt hk64 hl64 hget hc hlay hmemlen hmemall
+        have hstep :
+            memEvalStmtFuel (F + 1) spanWhile (mkSpanEnv l k acc) m π
+            = memEvalStmtFuel F spanWhile (mkSpanEnv l (k + 1) a) m π := by
+          simp [spanWhile, memEvalStmtFuel, memEvalSuccHandler,
+            memEvalStmtWith, hcond, hbody]
+        rw [hstep, hunfold, hc]
+        exact ih (k + 1) a (by omega) (by omega)
+    · have hkk : k = l.length := by omega
+      subst hkk
+      have hcond : memEvalExpr (.ult (.var "i") (.spanLen "s"))
+            (mkSpanEnv l l.length acc) m π = .ok (.b false) := by
+        have hfalse : (decide (l.length < l.length)) = false := by
+          simp
+        have hk64 : l.length < 2 ^ 64 := hl64
+        have h := memSpanCond_eval l l.length acc m π ad t hk64 hl64
+          hlay hmemlen
+        rwa [hfalse] at h
+      have hnil : spanFold [] acc = .ok acc := rfl
+      simp [spanWhile, memEvalStmtFuel, memEvalSuccHandler,
+        memEvalStmtWith, hcond, hnil]
+
+/-- `memEval` for `span_sum`, fuel-generalized — mirrors
+    `evalFuncFuel_spanSum` (cf. `memEvalFuncFuel_skip`). -/
+theorem memEvalFuncFuel_spanSum (F : Nat) (l : List (BitVec 32))
+    (hl64 : l.length < 2 ^ 64) (hF : l.length + 1 ≤ F) :
+    memEvalFuncFuel F spanSumFunc [.spanVal l] = spanSumFwd l := by
+  have hbf : spanSumFunc.args =
+      [{ name := "s", ty := spanObjTy, role := .sharedBorrow }] := rfl
+  have hbody : spanSumFunc.body =
+      .seq (.let_ "t" (.i 32) (.lit (.i32 (BitVec.ofNat 32 0))))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      (.seq spanWhile
+            (.return_ (.var "t")))) := rfl
+  have hb : bindMemArgs
+      [{ name := "s", ty := spanObjTy, role := .sharedBorrow }]
+      [.spanVal l] emptyMem =
+      some ([("s", .spanVal l)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_spanVal "s" spanObjTy l
+  have henv : [("i", .u64 (BitVec.ofNat 64 0)),
+        ("t", .i32 (BitVec.ofNat 32 0)),
+        ("s", .spanVal l)]
+      = mkSpanEnv l 0 (BitVec.ofNat 32 0) := rfl
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmemlen : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmemall : ∀ (j : Nat) (x : BitVec 32),
+      l[j]? = some x →
+      memLoad ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        0 0 (j + 1) = .ok x := by
+    intro j x hget
+    simp [memLoad, memFind, hget]
+  have hsret : ∀ acc' : BitVec 32,
+      envLookup (mkSpanEnv l l.length acc') "t" = some (.i32 acc') :=
+    fun acc' => mkSpanEnv_t l l.length acc'
+  cases hfold : spanFold l (BitVec.ofNat 32 0) with
+  | error e =>
+    have hsum0 : spanSumFwd l = .error e := spanSumFwd_err l e hfold
+    cases F with
+    | zero =>
+      have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
+            spanWhile (mkSpanEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] = .error e := by
+        have h := memSpanWhile_correct l 0 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopH0, hsum0]
+    | succ F =>
+      have hloopS :
+          memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+            spanWhile (mkSpanEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] = .error e := by
+        have h := memSpanWhile_correct l (F + 1) 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopS, hsum0]
+  | ok acc' =>
+    have hsum' : spanSumFwd l = .ok (.i32 acc') :=
+      spanSumFwd_ok l acc' hfold
+    cases F with
+    | zero =>
+      have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
+            spanWhile (mkSpanEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] =
+            .ok ((((mkSpanEnv l l.length acc',
+              ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+              [("s", 0, 0)]))), .fellThrough) := by
+        have h := memSpanWhile_correct l 0 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      have hsret' := hsret acc'
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopH0, hsret', hsum']
+    | succ F =>
+      have hloopS :
+          memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+            spanWhile (mkSpanEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] =
+            .ok ((((mkSpanEnv l l.length acc',
+              ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+              [("s", 0, 0)]))), .fellThrough) := by
+        have h := memSpanWhile_correct l (F + 1) 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      have hsret' := hsret acc'
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopS, hsret', hsum']
+
+/-- Transfer for `span_sum`: both sides equal `spanSumFwd`. -/
+theorem memTransfer_spanSum (F : Nat) (l : List (BitVec 32))
+    (hl64 : l.length < 2 ^ 64) (hF : l.length + 1 ≤ F)
+    (_h : oracleNoalias spanSumFunc [.spanVal l]) :
+    memEvalFuncFuel F spanSumFunc [.spanVal l] =
+      evalFuncFuel F spanSumFunc [.spanVal l] := by
+  rw [memEvalFuncFuel_spanSum F l hl64 hF, evalFuncFuel_spanSum F l hl64 hF]
+
 
 /-! ## M3d C++ transfers: `methodSum` leaf + `pointSumRef` entry (N1a) -/
 

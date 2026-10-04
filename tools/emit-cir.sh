@@ -33,8 +33,12 @@ shopt -s nullglob
 for src in tests/cpp/*.cpp; do
   base="$(basename "$src" .cpp)"
   echo "== $base =="
+  # N4d-iii: `std::span` needs `-std=c++20` (the only C++20 corpus
+  # file; every other TU captures with the default std, byte-stable).
+  stdflag=""
+  case "$base" in span_*) stdflag="-std=c++20";; esac
   "$CLANG" -fclangir -Xclang -emit-cir -Xclang -clangir-disable-passes -fno-exceptions \
-    "$src" -S -o "$OUTDIR/$base.cir"
+    $stdflag "$src" -S -o "$OUTDIR/$base.cir"
 done
 shopt -u nullglob
 echo "Wrote $OUTDIR/*.cir"

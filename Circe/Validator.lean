@@ -802,6 +802,184 @@ def optLeafCallees : List String :=
 def callsOptWrongShape (raw : RawFunc) : Bool :=
   optLeafCallees.any (callsFunc raw.text)
 
+/-! ## N4d-iii: `std::span<const int32_t>` index-sum shapes -/
+
+/-- The `std::span<const int, …>` object type (CIRGen's
+    `!rec_std3A3Aspan…` alias; the element type and dynamic extent
+    are part of the admitted monomorph — each instantiation is its
+    own shape, the N4c monomorphization precedent). -/
+def isStdSpanType (t : String) : Bool :=
+  containsSubstr t "rec_std3A3Aspan"
+
+/-- The `__extent_storage<…>` inner type (the `_M_extent` receiver). -/
+def isSpanExtentStorageType (t : String) : Bool :=
+  containsSubstr t "__extent_storage"
+
+/-- The `_M_extent` extent leaf: single `const&` to the
+    extent-storage object with the single-reference triple, `u64`
+    return, the single `get_member [0]` (`_M_extent_value`)
+    projection with the value load, no calls, no control flow. -/
+def isSpanExtentShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef &&
+    (match ptrInner this.ctype with
+     | some inner => isSpanExtentStorageType inner
+     | none => false) &&
+    isU64 raw.ret &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_extent_value" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `size` single-delegation entry: single `const&` to the
+    `std::span` object with the single-reference triple, `u64`
+    return, exactly one call site to the `_M_extent` leaf (the
+    `get_member [1]` (`_M_extent`) projection is fused into the
+    `spanLen` read downstream, cf. `spanSizeFunc`), no local
+    control flow. -/
+def isSpanSizeShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdSpanType s.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text spanExtentName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_extent" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr"
+  | _ => false
+
+/-- The `operator[]` fused leaf: the span `const&` (with the
+    single-reference triple) plus the `u64` index, pointer-to-`i32`
+    return, exactly one call site — the live `size()` call in the
+    dead assert arm — with the dead disabled-assert skeleton pinned
+    exactly (single `cir.ternary` over three `#false` consts, one
+    `cir.cmp lt`, one `cir.not`, one-sided `cir.if`,
+    `cir.unreachable`, `cir.do`/`cir.condition`; a variant with the
+    assert enabled, or without it, rejects loudly). The live tail
+    (`get_member [0]` (`_M_ptr`) + `ptr_stride` + both loads) is
+    fused into the `spanAt` read downstream
+    (cf. `spanIndexFunc`). -/
+def isSpanIndexShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this, idx] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef && isStdSpanType this.ctype &&
+    isU64 idx.ctype &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    callsFunc raw.text spanSizeName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.not" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    containsSubstr raw.text "cir.unreachable" &&
+    containsSubstr raw.text "cir.do" &&
+    containsSubstr raw.text "cir.condition" &&
+    opCount raw.text "cir.const" == 3 &&
+    containsSubstr raw.text "cir.const #false" &&
+    !containsSubstr raw.text "cir.const #cir.int" &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_ptr" &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr"
+  | _ => false
+
+/-- The `span_sum` index-loop entry: the span **by value** (no
+    pointer, no aliasing question on the object itself — the viewed
+    words are a `sharedBorrow` snapshot downstream), `i32` return,
+    exactly two call sites (`size` in `cond`, `operator[]` in
+    `body`), the single `cir.for` with the `lt` comparison, the
+    `u64` increment, and the one `nsw` accumulation add. Three
+    `cir.const` (the two live `0` inits plus one stray dead `i32`
+    `0`, the clang init quirk — dropped downstream, cf. the N4d-ii
+    stray `const 1`), no projections of its own. -/
+def isSpanSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s] =>
+    noBreakContinueSwitch raw.text &&
+    !isPtrType s.ctype && isStdSpanType s.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text spanSizeName &&
+    callsFunc raw.text spanIndexName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.inc" == 1 &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 3 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Known `std::span<const int32_t>` leaf callees (mangled): the
+    `_M_extent` extent leaf, the `size` delegation entry, and the
+    fused `operator[]` leaf. Entry gates admit calls into the
+    (name, arity, site-count) pairs named in `validate` below; this
+    registry names every known span leaf for the wrong-shape
+    rejection. -/
+def spanLeafCallees : List String :=
+  [spanExtentName, spanSizeName, spanIndexName]
+
+/-- Calls a known `std::span` leaf but not with an admitted (name,
+    arity, site-count) shape: dedicated rejection naming the
+    admitted shapes. -/
+def callsSpanWrongShape (raw : RawFunc) : Bool :=
+  spanLeafCallees.any (callsFunc raw.text)
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -1874,6 +2052,17 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsOptWrongShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls a known `std::optional` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_is_engaged` engaged-bit leaf (`opt_has`), the payload `_M_get` leaf (`opt_get`), the single-site `has_value` delegation (`opt_has_value`), the impl `_M_get` delegation with the dead assert skeleton (`opt_impl_get`), the single-site `operator*` fused leaf (`opt_deref_op`), and the 2-site `opt_deref` guarded entry (`opt_deref`) only (known optional leaves `{optHasName}` / `{optGetName}` / `{optImplGetName}` / `{optHasValueName}` / `{optDerefOpName}`; see docs/SUBSET.md)"
+      else if isSpanExtentShape raw then
+        .ok { spanExtentFunc with name := raw.name }
+      else if isSpanSizeShape raw then
+        .ok { spanSizeFunc with name := raw.name }
+      else if isSpanIndexShape raw then
+        .ok { spanIndexFunc with name := raw.name }
+      else if isSpanSumShape raw then
+        .ok { spanSumFunc with name := raw.name }
+      else if callsSpanWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known `std::span` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_extent` extent leaf (`span_extent`), the single-site `size` delegation (`span_size`), the single-site `operator[]` fused leaf with the dead assert skeleton (`span_index`), and the 2-site `span_sum` index-loop entry (`span_sum`) only (known span leaves `{spanExtentName}` / `{spanSizeName}` / `{spanIndexName}`; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then

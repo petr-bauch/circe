@@ -64,6 +64,11 @@ inductive CLit : Type
     reads the payload word (`_M_get` fused: engaged `optVal` delivers
     the word, disengaged is `AssertFail` — the `cir.unreachable`
     assert made loud).
+    `spanLen s` reads the extent of `std::span<const int32_t>` `s`
+    (`size` / `_M_extent` fused: `s` must be a `spanVal`, delivered
+    as a `u64` word); `spanAt s ie` is bounded indexing over the
+    reified words (`operator[]` fused: `ie` must be a `u64`, `OOB`
+    off the end, mirroring `idx`).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
@@ -85,6 +90,8 @@ inductive CExpr : Type
   | idx : String → CExpr → CExpr
   | optHas : String → CExpr
   | optGet : String → CExpr
+  | spanLen : String → CExpr
+  | spanAt : String → CExpr → CExpr
   | idxi : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr

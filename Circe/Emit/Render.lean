@@ -304,6 +304,52 @@ def emitOptDerefText (name : String) : String :=
   ++ "  | some x => .ok x\n"
   ++ "  | none => .ok (-1)\n"
 
+/-- Render the `_M_extent` leaf forward definition: the reified
+    length as a `u64` word (the tag-erased `spanExtentFwd`). -/
+def emitSpanExtentText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_extent_value` word load). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 l.length\n"
+
+/-- Render the `size` entry forward definition: the same read (the
+    call edge is fused, cf. `spanSizeFwd_is_call`). -/
+def emitSpanSizeText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_M_extent` length body). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 l.length\n"
+
+/-- Render the `operator[]` leaf forward definition: the word at
+    the `u64` index, `OOB` off the end (the tag-erased
+    `spanIndexFwd`). -/
+def emitSpanIndexText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the fused `operator[]` word read; `OOB` off the end). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match l[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+
+/-- Render the `span_sum` entry forward definition: the
+    checked-add fold over the reified words (the tag-erased
+    `spanSumFwd`; the local `go` mirrors `spanFold` arm for arm,
+    `nsw` errors short-circuit through the `do`). -/
+def emitSpanSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (index-sum over the reified words; `nsw` overflow is loud). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  go l 0\n"
+  ++ "where go : List (BitVec 32) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | [], acc => .ok acc\n"
+  ++ "  | x :: xs, acc => do\n"
+  ++ "      let a ← checkedAddI32 acc x\n"
+  ++ "      go xs a\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

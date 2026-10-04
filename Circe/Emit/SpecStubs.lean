@@ -572,6 +572,98 @@ def emitOptDerefSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `_M_extent` shape (N4d-iii extent leaf). The
+    mirror is the tag-erased `spanExtentFwd`; edges carry ground
+    truth (empty, singleton, longer views). -/
+def emitSpanExtentSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(e)` reads the `_M_extent_value` word.\n"
+  ++ s!"    Base body reference: the reified length itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `spanExtentFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 l.length\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, singleton, longer views. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 64) :=\n"
+  ++ "  [([], 0), ([7], 1), ([1, 2, 3], 3)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the `size` shape (N4d-iii single-delegation
+    entry). Same mirror as `_M_extent` (the call edge is fused,
+    cf. `spanSizeFwd_is_call`); edges carry ground truth
+    likewise. -/
+def emitSpanSizeSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s)` delegates to the `_M_extent` length body.\n"
+  ++ s!"    Base body reference: the reified length itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `spanSizeFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 l.length\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, singleton, longer views. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 64) :=\n"
+  ++ "  [([], 0), ([7], 1), ([1, 2, 3], 3)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the `operator[]` shape (N4d-iii fused leaf). The
+    mirror is the tag-erased `spanIndexFwd`; edges carry ground
+    truth (hits, `OOB` past the end). -/
+def emitSpanIndexSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s, n)` reads the word at index `n`.\n"
+  ++ s!"    Base body reference: the bounded read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `spanIndexFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match l[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: first/last hits, `OOB` past the end. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64) × Result (BitVec 32)) :=\n"
+  ++ "  [(([1, 2, 3], 0), .ok 1), (([1, 2, 3], 2), .ok 3), (([1, 2, 3], 3), .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the `span_sum` shape (N4d-iii index-loop entry).
+    The mirror is the tag-erased `spanSumFwd`; edges carry ground
+    truth (empty sum, small sums, `nsw` overflow). -/
+def emitSpanSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s)` sums the viewed words.\n"
+  ++ s!"    Base body reference: the checked-add fold itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `spanSumFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  go l 0\n"
+  ++ "where go : List (BitVec 32) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | [], acc => .ok acc\n"
+  ++ "  | x :: xs, acc => do\n"
+  ++ "      let a ← checkedAddI32 acc x\n"
+  ++ "      go xs a\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty sum, small sums, `nsw` overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [([], .ok 0), ([1, 2, 3], .ok 6), ([0x7FFFFFFF, 1], .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader
