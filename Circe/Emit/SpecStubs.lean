@@ -362,6 +362,80 @@ def emitUseTadd64SpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
   ++ s!"      == (repr (checkedAddI64 t.1 t.2)).pretty\n"
 
+/-- Spec stub for the `_S_ref` shape (N4d-i unchecked-index leaf). The
+    mirror is the tag-erased `arrayRefFwd`; with no deeper `Base` op
+    to compare against, edges carry ground truth (hits at every
+    index, `OOB` off the end). -/
+def emitArrayRefSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, n)` reads the word at `u64` index `n`.\n"
+  ++ s!"    Base body reference: the index read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `arrayRefFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (t : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match t[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hits at every index, `OOB` off the end. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 64 × Result (BitVec 32)) :=\n"
+  ++ "  [([10, 20, 30, 40], 0, .ok 10), ([10, 20, 30, 40], 3, .ok 40),\n"
+  ++ "   ([10, 20, 30, 40], 4, .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1)).pretty == (repr t.2.2).pretty\n"
+
+/-- Spec stub for the `operator[]` shape (N4d-i single-delegation
+    entry). Same mirror as `_S_ref` (the call edge is fused, cf.
+    `arrayAtFwd_is_call`); edges carry ground truth likewise. -/
+def emitArrayAtSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, n)` delegates to the `_S_ref` unchecked-index body.\n"
+  ++ s!"    Base body reference: the index read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `arrayAtFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (a : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match a[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hits at every index, `OOB` off the end. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 64 × Result (BitVec 32)) :=\n"
+  ++ "  [([10, 20, 30, 40], 1, .ok 20), ([10, 20, 30, 40], 2, .ok 30),\n"
+  ++ "   ([10, 20, 30, 40], 7, .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1)).pretty == (repr t.2.2).pretty\n"
+
+/-- Spec stub for the `array_sum` shape (N4d-i 4-call entry). The
+    mirror threads the three `nsw` adds (the tag-erased `arraySumFwd`);
+    edges carry ground truth (zero, unit, overflow at each site). -/
+def emitArraySumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a)` reads all four words through `operator[]`.\n"
+  ++ s!"    Base body reference: three threaded `checkedAddI32` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `arraySumFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b c d : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  do let t ← checkedAddI32 a b\n"
+  ++ "     let u ← checkedAddI32 t c\n"
+  ++ "     checkedAddI32 u d\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, overflow at each add site. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32 × BitVec 32 × BitVec 32 × Result (BitVec 32)) :=\n"
+  ++ "  [(0, 0, 0, 0, .ok 0), (1, 2, 3, 4, .ok 10),\n"
+  ++ "   (0x7FFFFFFF, 1, 0, 0, .error .Overflow), (1, 0x7FFFFFFF, 1, 0, .error .Overflow),\n"
+  ++ "   (1, 1, 1, 0x7FFFFFFF, .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2.1 t.2.2.2.1)).pretty == (repr t.2.2.2.2).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

@@ -277,6 +277,39 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     calls, local arithmetic beside the call, 64-bit monomorph called
     at 32-bit width) are rejected with dedicated messages
     (`callsTemplateWrongShape`).
+19. `std::array<int, 4>` reads (N4d-i): each monomorph is its own
+    shape (the N4c precedent); the depth-2 call chain
+    (`array_sum` → `operator[]` → `_S_ref`) functionalizes with one
+    fused edge (the M2b leaf-fusion precedent):
+    `_ZNSt14__array_traitsIiLm4EE6_S_refERA4_Kim` unchecked-index
+    leaf (single `const&` to the raw 4-word `i32` array with the
+    single-reference triple, `u64` index, pointer-to-`i32` return,
+    one `cir.get_element`),
+    `_ZNKSt5arrayIiLm4EEixEm` entry (single `const&` to the array
+    object with the single-reference triple, `u64` index,
+    pointer-to-`i32` return, one `_M_elems` `cir.get_member` +
+    exactly one call site to the `_S_ref` leaf; the projection +
+    call fuse into the `idxi` read),
+    `_Z9array_sumRKSt5arrayIiLm4EE` entry (single `const&` with the
+    single-reference triple, `i32` return, exactly four call sites
+    to `operator[]` at const `u64` indices 0–3 functionalized as
+    `let_`-bound words, three threaded `nsw` adds).
+    Semantics: `arrayRef`/`arrayAt` read the word at a live `u64`
+    index (`OOB` off the end — unchecked indexing is UB, so the
+    model reports it); `arraySum` threads three `checkedAddI32`
+    (ok needs all three certs, each-site error propagates).
+    `idxi` is the `i32`-flavored bounded index (`cir.get_element`
+    with a `u64` index over an `arr32` word list, mirroring `idx`).
+    All three validate under synthetic facts (single-reference
+    params). Misshapen uses (double calls into `_S_ref`, extra
+    indexing ops beside the call, wrong-arity calls into
+    `operator[]`, wrong site counts into the entry, bare array
+    pointers without the triple) are rejected with dedicated
+    messages (`callsArrayWrongShape`, or `alias-reject`).
+    Deferred with pins (`tests/lean/GoldenArray.lean`): `optional`
+    (throw lowers to `cir.trap`), `string_view` (iterators return
+    raw pointers), `vector` (operator-`new` + 60-def allocator
+    bloat), `span` (no `std::span` pre-C++20 on the pinned flags).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -295,18 +328,24 @@ sites: leak allowed, double-`delete` rejected);
 `@_ZN3AccC2EOS_` in the exact N4b `move_acc` entry shape only (1 site);
 `@_Z4taddIiET_S0_S0_` in the exact N4c `use_tadd32` entry shape only
 (1 site); `@_Z4taddIlET_S0_S0_` in the exact N4c `use_tadd64` entry
-shape only (1 site)),
+shape only (1 site);
+`@_ZNSt14__array_traitsIiLm4EE6_S_refERA4_Kim` in the exact N4d-i
+`array_at` entry shape only (1 site);
+`@_ZNKSt5arrayIiLm4EEixEm` in the exact N4d-i `array_sum` entry shape
+only (4 sites)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf
 shapes only: `cxx_ctor` const-`0` init / `add` one-`nsw`-add /
 `get` identity read; M2c `box_through` entry shape only: `Box` field
-`x` write + read; all other struct
+`x` write + read; N4d-i `array_at` entry shape only: one `_M_elems`
+projection beside the single `_S_ref` call; all other struct
 uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`, all other switches rejected),
 `cir.mul` (plain unsigned, S3a `nested_sum` shape only),
-`get_element`/`ptr_stride` (bounded),
+`get_element` (bounded: the N4d-i `_S_ref` leaf shape only) /
+`ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`
 (`cir.if` carries the M2c null guard (`cir.cmp ne` vs
 `#cir.ptr<null>`) and the N4b early return (`cir.cmp eq` on `i32`

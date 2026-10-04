@@ -20,6 +20,9 @@ verbatim.
 | `moveAcc_correct_ok/err_a/err_b` (N4b) | threaded adds with zeroing `assign`; move invisible at spec level | `moveAccFwd a b` |
 | `scopeEarly_correct_eq/ne/err_a/err_b` (N4b) | early `get` on `a == b`, else second add + `get` | `scopeEarlyFwd a b` |
 | `useTadd32_correct` / `useTadd64_correct` (N4c) | entry forward = `addFwd` / `add64Fwd` (monomorph resolution is identity at spec level) | `useTadd32Fwd` / `useTadd64Fwd` |
+| `arrayRef_correct_hit/oob` (N4d-i) | leaf reads the word at a live index, `OOB` off the end | `arrayRefFwd l n` (index read) |
+| `arrayAt_correct` (N4d-i) | entry forward = `_S_ref` body (call edge fused, resolution is identity at spec level) | `arrayAtFwd` / `arrayRefFwd` |
+| `arraySum_correct_ok/err_a/err_b/err_c` (N4d-i) | threaded three-add: ok needs all three `checkedAddI32` certs, each-site error propagates | `arraySumFwd a b c d` (three sequenced binds) |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`

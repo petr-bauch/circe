@@ -424,10 +424,11 @@ theorem memConsistent_nil (ρ : Env) (m : Mem) : MemConsistent ρ m [] := by
 /-! ## `memEval`: `Eval` mirrored over memory -/
 
 /-- Memory-level expression evaluation. Pure constructors delegate to
-    `evalExpr` with memory untouched; `idx` / `vget` resolve the layout,
-    run the tag/liveness/bounds check in `memLoad`, and cross-check the
-    memory word against the value-level read (disagreement is
-    `AssertFail`: memory and values can never silently diverge). -/
+    `evalExpr` with memory untouched; `idx` / `idxi` / `vget` resolve
+    the layout, run the tag/liveness/bounds check in `memLoad`, and
+    cross-check the memory word against the value-level read
+    (disagreement is `AssertFail`: memory and values can never silently
+    diverge). -/
 def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
   | .lit l, _, _, _ => .ok (litVal l)
   | .var x, ρ, _, _ =>
@@ -479,6 +480,18 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       | .ok (.u32 i), some (.arr32 l) =>
         match memLoad m a t i.toNat, l[i.toNat]? with
         | .ok w, some v => if w == v then .ok (.u32 v) else .error .AssertFail
+        | .error e, _ => .error e
+        | _, _ => .error .AssertFail
+      | .ok _, _ => .error .AssertFail
+      | .error e, _ => .error e
+  | .idxi arr ie, ρ, m, π =>
+    match layoutLookup π arr with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memEvalExpr ie ρ m π, envLookup ρ arr with
+      | .ok (.u64 i), some (.arr32 l) =>
+        match memLoad m a t i.toNat, l[i.toNat]? with
+        | .ok w, some v => if w == v then .ok (.i32 v) else .error .AssertFail
         | .error e, _ => .error e
         | _, _ => .error .AssertFail
       | .ok _, _ => .error .AssertFail
@@ -595,6 +608,38 @@ theorem memEvalExpr_idx_hit (arr : String) (ie : CExpr) (ρ : Env)
     memEvalExpr (.idx arr ie) ρ m π = evalExpr (.idx arr ie) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval,
     beq_self_eq_true, ↓reduceIte]
+
+/-- `idxi` agreement under consistency (the `std::array` read
+    shape): same tag/liveness discipline as `idx`, at a `u64` index
+    with the word delivered as `i32` — so the cross-check succeeds and
+    both sides read the same word. -/
+theorem memEvalExpr_idxi_hit (arr : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (i : BitVec 64)
+    (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π arr = some (a, t))
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t i.toNat = .ok x)
+    (hval : l[i.toNat]? = some x) :
+    memEvalExpr (.idxi arr ie) ρ m π = evalExpr (.idxi arr ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval,
+    beq_self_eq_true, ↓reduceIte]
+
+/-- `idxi` OOB agreement: when both the memory load and the value
+    read fail `OOB` off the end, both sides fail loudly together
+    (mirrors `evalExpr_idxi_oob`). -/
+theorem memEvalExpr_idxi_oob (arr : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (i : BitVec 64)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π arr = some (a, t))
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t i.toNat = .error .OOB)
+    (hval : l[i.toNat]? = none) :
+    memEvalExpr (.idxi arr ie) ρ m π = evalExpr (.idxi arr ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval]
 
 /-- `vget` agreement under consistency (the `vec_alloc` loop shape):
     same tag/liveness discipline as `idx`, cross-checked against

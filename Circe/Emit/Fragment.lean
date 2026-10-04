@@ -35,7 +35,10 @@ import Circe.Eval
     overload leaf, `useAdd`/`useNsAdd` = single-delegation entries
     resolving to a mangled `add` leaf), and in N4c with template
     instantiations (`useTadd32`/`useTadd64` = single-delegation entries
-    resolving to a mangled instantiation leaf). -/
+    resolving to a mangled instantiation leaf), and in N4d-i with
+    `std::array<int, 4>` reads (`arrayRef` = the `_S_ref`
+    unchecked-index leaf, `arrayAt` = the `operator[]`
+    single-delegation entry, `arraySum` = the 4-call entry). -/
 inductive FragKind : Type
   | add
   | add3
@@ -70,6 +73,9 @@ inductive FragKind : Type
   | skip
   | findEq
   | cls
+  | arrayRef
+  | arrayAt
+  | arraySum
   deriving DecidableEq, Repr
 
 

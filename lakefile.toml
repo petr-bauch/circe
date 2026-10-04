@@ -20,7 +20,7 @@ name = "Circe"
 [[lean_lib]]
 name = "Suites"
 srcDir = "tests/lean"
-roots = ["DerivedNoalias","DiffAcc","DiffBox","DiffCalls","DiffFlow","DiffMethod","DiffMove","DiffNorestrict","DiffOverload","DiffPhase3","DiffPhase4","DiffStruct","DiffTadd","DiffVec","DiffVec2","DiffVec64","DiffVecLeak","DiffVecRealloc","DiffWidth","GoldenAcc","GoldenBox","GoldenCalls","GoldenFlow","GoldenFreeDiscipline","GoldenM2Setup","GoldenMethod","GoldenMove","GoldenOverload","GoldenPhase4","GoldenPhase6","GoldenPhase7","GoldenReadOnly","GoldenRejectCatalog","GoldenStruct","GoldenTadd","GoldenVec2","GoldenVec64","GoldenVecRealloc","GoldenWidth","ScopeReport"]
+roots = ["DerivedNoalias","DiffAcc","DiffArray","DiffBox","DiffCalls","DiffFlow","DiffMethod","DiffMove","DiffNorestrict","DiffOverload","DiffPhase3","DiffPhase4","DiffStruct","DiffTadd","DiffVec","DiffVec2","DiffVec64","DiffVecLeak","DiffVecRealloc","DiffWidth","GoldenAcc","GoldenArray","GoldenBox","GoldenCalls","GoldenFlow","GoldenFreeDiscipline","GoldenM2Setup","GoldenMethod","GoldenMove","GoldenOverload","GoldenPhase4","GoldenPhase6","GoldenPhase7","GoldenReadOnly","GoldenRejectCatalog","GoldenStruct","GoldenTadd","GoldenVec2","GoldenVec64","GoldenVecRealloc","GoldenWidth","ScopeReport"]
 
 [[lean_exe]]
 name = "circe-test"

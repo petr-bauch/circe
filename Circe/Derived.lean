@@ -32,6 +32,7 @@ import Circe.Emit.Vec64
 import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Move
+import Circe.Emit.Array
 import Circe.Emit.Box
 
 /-! ## All-scalar shapes: empty footprint -/
@@ -191,6 +192,81 @@ theorem oracleNoalias_useTadd64 (x y : BitVec 64) :
       [.i64 x, .i64 y] emptyMem = _
     exact bindMemArgs_useTadd64 x y
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-! ## N4d-i `std::array` footprints: singleton block (reads only) -/
+
+/-- `_S_ref` binding pins the 4-word array (single block) plus the
+    owned index word. -/
+theorem bindMemArgs_arrayRef (l : List (BitVec 32)) (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "t", ty := .array (.i 32) 4, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.arr32 l, .u64 n] emptyMem =
+      some ([("t", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("t", 0, 0)]) := by
+  rfl
+
+/-- `_S_ref` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_arrayRef (l : List (BitVec 32)) (n : BitVec 64) :
+    oracleNoalias arrayRefFunc [.arr32 l, .u64 n] := by
+  have hb : bindMemArgs arrayRefFunc.args [.arr32 l, .u64 n] emptyMem =
+      some ([("t", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .array (.i 32) 4, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.arr32 l, .u64 n] emptyMem = _
+    exact bindMemArgs_arrayRef l n
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `operator[]` binding pins the 4-word array (single block) plus the
+    owned index word. -/
+theorem bindMemArgs_arrayAt (l : List (BitVec 32)) (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "a", ty := .array (.i 32) 4, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.arr32 l, .u64 n] emptyMem =
+      some ([("a", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
+  rfl
+
+/-- `operator[]` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_arrayAt (l : List (BitVec 32)) (n : BitVec 64) :
+    oracleNoalias arrayAtFunc [.arr32 l, .u64 n] := by
+  have hb : bindMemArgs arrayAtFunc.args [.arr32 l, .u64 n] emptyMem =
+      some ([("a", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "a", ty := .array (.i 32) 4, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.arr32 l, .u64 n] emptyMem = _
+    exact bindMemArgs_arrayAt l n
+  have hn : LayoutNoAlias [("a", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `array_sum` binding pins the 4-word array (single block; the
+    `callRet` delegations happen after entry). -/
+theorem bindMemArgs_arraySum (a b c d : BitVec 32) :
+    bindMemArgs
+      [{ name := "a", ty := .array (.i 32) 4, role := .sharedBorrow }]
+      [.arr32 [a, b, c, d]] emptyMem =
+      some ([("a", .arr32 [a, b, c, d])],
+        ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]) := by
+  rfl
+
+/-- `array_sum` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_arraySum (a b c d : BitVec 32) :
+    oracleNoalias arraySumFunc [.arr32 [a, b, c, d]] := by
+  have hb : bindMemArgs arraySumFunc.args [.arr32 [a, b, c, d]] emptyMem =
+      some ([("a", .arr32 [a, b, c, d])],
+        ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "a", ty := .array (.i 32) 4, role := .sharedBorrow }]
+      [.arr32 [a, b, c, d]] emptyMem = _
+    exact bindMemArgs_arraySum a b c d
+  have hn : LayoutNoAlias [("a", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
 
 /-! ## Loop-free scalar shapes: empty footprint (M3c) -/
 

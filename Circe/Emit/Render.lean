@@ -204,6 +204,41 @@ def emitUseTadd64Text (name : String) : String :=
   ++ s!"def {name}_fwd (x y : BitVec 64) : Result (BitVec 64) :=\n"
   ++ "  checkedAddI64 x y\n"
 
+/-- Render the `_S_ref` leaf forward definition: the word at `u64`
+    index `n` of the word list, `OOB` off the end (the tag-erased
+    `arrayRefFwd`). -/
+def emitArrayRefText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (unchecked `u64` index into the 4-word `i32` array). -/\n"
+  ++ s!"def {name}_fwd (t : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match t[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+
+/-- Render the `operator[]` entry forward definition: the same read
+    (the call edge is fused, so the rendering is the leaf rendering
+    by definition, cf. `arrayAtFwd_is_call`). -/
+def emitArrayAtText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_S_ref` unchecked-index body). -/\n"
+  ++ s!"def {name}_fwd (a : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match a[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+
+/-- Render the `array_sum` entry forward definition: three threaded
+    `nsw` adds over the four words (the tag-erased `arraySumFwd`). -/
+def emitArraySumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (4 reads through `operator[]`, three threaded `nsw` adds). -/\n"
+  ++ s!"def {name}_fwd (a b c d : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  do let t ← checkedAddI32 a b\n"
+  ++ "     let u ← checkedAddI32 t c\n"
+  ++ "     checkedAddI32 u d\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

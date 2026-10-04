@@ -4597,6 +4597,430 @@ theorem memTransferProg_useTadd64 (F : Nat) (x y : BitVec 64)
         useTadd64Func [.i64 x, .i64 y] := by
   rw [memEvalProgFunc_useTadd64, evalProgFunc_useTadd64]
 
+/-! ## N4d-i `std::array` transfers: reads agree, hit and `OOB` -/
+
+/-- `memEval` for `_S_ref` (hit): the memory load agrees with the
+    value read (mirrors `evalFuncFuel_arrayRef`). -/
+theorem memEvalFuncFuel_arrayRef (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (x : BitVec 32)
+    (hidx : l[n.toNat]? = some x) :
+    memEvalFuncFuel F arrayRefFunc [.arr32 l, .u64 n] =
+      arrayRefFwd l n := by
+  have hb : bindMemArgs arrayRefFunc.args [.arr32 l, .u64 n] emptyMem =
+      some ([("t", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("t", 0, 0)]) :=
+    bindMemArgs_arrayRef l n
+  have hbody : arrayRefFunc.body =
+      .return_ (.idxi "t" (.var "n")) := rfl
+  have harr : envLookup [("t", .arr32 l), ("n", .u64 n)] "t" =
+      some (.arr32 l) := by
+    simp [envLookup]
+  have hn : envLookup [("t", .arr32 l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "t" by decide]
+  have hlay : layoutLookup [("t", 0, 0)] "t" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 0 n.toNat =
+      .ok x := by
+    simp [memLoad, memFind, hidx]
+  have hie : memEvalExpr (.var "n") [("t", .arr32 l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("t", 0, 0)] =
+      evalExpr (.var "n") [("t", .arr32 l), ("n", .u64 n)] := rfl
+  have hieval : evalExpr (.var "n") [("t", .arr32 l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hagree := memEvalExpr_idxi_hit "t" (.var "n") _ _ _ l n x 0 0
+    hlay harr hie hieval hmem hidx
+  have heval : evalExpr (.idxi "t" (.var "n"))
+      [("t", .arr32 l), ("n", .u64 n)] = .ok (.i32 x) := by
+    simp [evalExpr, harr, hn, hidx]
+  have hret := memEvalStmtFuel_return F (.idxi "t" (.var "n")) _ _ _
+    (.i32 x) hagree heval
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [arrayRefFwd, hidx]
+
+/-- `memEval` for `_S_ref` (`OOB`): both sides fail loudly together
+    (mirrors `evalFuncFuel_arrayRef` on the miss path). -/
+theorem memEvalFuncFuel_arrayRef_oob (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64)
+    (hidx : l[n.toNat]? = none) :
+    memEvalFuncFuel F arrayRefFunc [.arr32 l, .u64 n] =
+      .error .OOB := by
+  have hb : bindMemArgs arrayRefFunc.args [.arr32 l, .u64 n] emptyMem =
+      some ([("t", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("t", 0, 0)]) :=
+    bindMemArgs_arrayRef l n
+  have hbody : arrayRefFunc.body =
+      .return_ (.idxi "t" (.var "n")) := rfl
+  have harr : envLookup [("t", .arr32 l), ("n", .u64 n)] "t" =
+      some (.arr32 l) := by
+    simp [envLookup]
+  have hn : envLookup [("t", .arr32 l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "t" by decide]
+  have hlay : layoutLookup [("t", 0, 0)] "t" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 0 n.toNat =
+      .error .OOB := by
+    simp [memLoad, memFind, hidx]
+  have hie : memEvalExpr (.var "n") [("t", .arr32 l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("t", 0, 0)] =
+      evalExpr (.var "n") [("t", .arr32 l), ("n", .u64 n)] := rfl
+  have hieval : evalExpr (.var "n") [("t", .arr32 l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hagree := memEvalExpr_idxi_oob "t" (.var "n") _ _ _ l n 0 0
+    hlay harr hie hieval hmem hidx
+  have heval : evalExpr (.idxi "t" (.var "n"))
+      [("t", .arr32 l), ("n", .u64 n)] = .error .OOB := by
+    simp [evalExpr, harr, hn, hidx]
+  have herr : memEvalExpr (.idxi "t" (.var "n"))
+      [("t", .arr32 l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("t", 0, 0)] = .error .OOB :=
+    hagree.trans heval
+  have hret := memEvalStmtFuel_return_err F (.idxi "t" (.var "n")) _ _ _
+    .OOB herr
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+
+/-- Transfer for `_S_ref` (hit): both sides equal `arrayRefFwd`. -/
+theorem memTransfer_arrayRef (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (x : BitVec 32)
+    (hidx : l[n.toNat]? = some x)
+    (_h : oracleNoalias arrayRefFunc [.arr32 l, .u64 n]) :
+    memEvalFuncFuel F arrayRefFunc [.arr32 l, .u64 n] =
+      evalFuncFuel F arrayRefFunc [.arr32 l, .u64 n] := by
+  rw [memEvalFuncFuel_arrayRef F l n x hidx, evalFuncFuel_arrayRef]
+
+/-- Transfer for `_S_ref` (`OOB`): both sides fail loudly. -/
+theorem memTransfer_arrayRef_oob (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64)
+    (hidx : l[n.toNat]? = none)
+    (_h : oracleNoalias arrayRefFunc [.arr32 l, .u64 n]) :
+    memEvalFuncFuel F arrayRefFunc [.arr32 l, .u64 n] =
+      evalFuncFuel F arrayRefFunc [.arr32 l, .u64 n] := by
+  rw [memEvalFuncFuel_arrayRef_oob F l n hidx, evalFuncFuel_arrayRef,
+    arrayRefFwd, hidx]
+
+/-- `memEval` for `operator[]` (hit): same read through the fused
+    edge (mirrors `evalFuncFuel_arrayAt`). -/
+theorem memEvalFuncFuel_arrayAt (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (x : BitVec 32)
+    (hidx : l[n.toNat]? = some x) :
+    memEvalFuncFuel F arrayAtFunc [.arr32 l, .u64 n] =
+      arrayAtFwd l n := by
+  have hb : bindMemArgs arrayAtFunc.args [.arr32 l, .u64 n] emptyMem =
+      some ([("a", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) :=
+    bindMemArgs_arrayAt l n
+  have hbody : arrayAtFunc.body =
+      .return_ (.idxi "a" (.var "n")) := rfl
+  have harr : envLookup [("a", .arr32 l), ("n", .u64 n)] "a" =
+      some (.arr32 l) := by
+    simp [envLookup]
+  have hn : envLookup [("a", .arr32 l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "a" by decide]
+  have hlay : layoutLookup [("a", 0, 0)] "a" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 0 n.toNat =
+      .ok x := by
+    simp [memLoad, memFind, hidx]
+  have hie : memEvalExpr (.var "n") [("a", .arr32 l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+      evalExpr (.var "n") [("a", .arr32 l), ("n", .u64 n)] := rfl
+  have hieval : evalExpr (.var "n") [("a", .arr32 l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hagree := memEvalExpr_idxi_hit "a" (.var "n") _ _ _ l n x 0 0
+    hlay harr hie hieval hmem hidx
+  have heval : evalExpr (.idxi "a" (.var "n"))
+      [("a", .arr32 l), ("n", .u64 n)] = .ok (.i32 x) := by
+    simp [evalExpr, harr, hn, hidx]
+  have hret := memEvalStmtFuel_return F (.idxi "a" (.var "n")) _ _ _
+    (.i32 x) hagree heval
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [arrayAtFwd, arrayRefFwd, hidx]
+
+/-- `memEval` for `operator[]` (`OOB`): both sides fail loudly. -/
+theorem memEvalFuncFuel_arrayAt_oob (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64)
+    (hidx : l[n.toNat]? = none) :
+    memEvalFuncFuel F arrayAtFunc [.arr32 l, .u64 n] =
+      .error .OOB := by
+  have hb : bindMemArgs arrayAtFunc.args [.arr32 l, .u64 n] emptyMem =
+      some ([("a", .arr32 l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) :=
+    bindMemArgs_arrayAt l n
+  have hbody : arrayAtFunc.body =
+      .return_ (.idxi "a" (.var "n")) := rfl
+  have harr : envLookup [("a", .arr32 l), ("n", .u64 n)] "a" =
+      some (.arr32 l) := by
+    simp [envLookup]
+  have hn : envLookup [("a", .arr32 l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "a" by decide]
+  have hlay : layoutLookup [("a", 0, 0)] "a" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 0 n.toNat =
+      .error .OOB := by
+    simp [memLoad, memFind, hidx]
+  have hie : memEvalExpr (.var "n") [("a", .arr32 l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
+      evalExpr (.var "n") [("a", .arr32 l), ("n", .u64 n)] := rfl
+  have hieval : evalExpr (.var "n") [("a", .arr32 l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hagree := memEvalExpr_idxi_oob "a" (.var "n") _ _ _ l n 0 0
+    hlay harr hie hieval hmem hidx
+  have heval : evalExpr (.idxi "a" (.var "n"))
+      [("a", .arr32 l), ("n", .u64 n)] = .error .OOB := by
+    simp [evalExpr, harr, hn, hidx]
+  have herr : memEvalExpr (.idxi "a" (.var "n"))
+      [("a", .arr32 l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] = .error .OOB :=
+    hagree.trans heval
+  have hret := memEvalStmtFuel_return_err F (.idxi "a" (.var "n")) _ _ _
+    .OOB herr
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+
+/-- Transfer for `operator[]` (hit): both sides equal `arrayAtFwd`. -/
+theorem memTransfer_arrayAt (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (x : BitVec 32)
+    (hidx : l[n.toNat]? = some x)
+    (_h : oracleNoalias arrayAtFunc [.arr32 l, .u64 n]) :
+    memEvalFuncFuel F arrayAtFunc [.arr32 l, .u64 n] =
+      evalFuncFuel F arrayAtFunc [.arr32 l, .u64 n] := by
+  rw [memEvalFuncFuel_arrayAt F l n x hidx, evalFuncFuel_arrayAt]
+
+/-- Transfer for `operator[]` (`OOB`): both sides fail loudly. -/
+theorem memTransfer_arrayAt_oob (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64)
+    (hidx : l[n.toNat]? = none)
+    (_h : oracleNoalias arrayAtFunc [.arr32 l, .u64 n]) :
+    memEvalFuncFuel F arrayAtFunc [.arr32 l, .u64 n] =
+      evalFuncFuel F arrayAtFunc [.arr32 l, .u64 n] := by
+  rw [memEvalFuncFuel_arrayAt_oob F l n hidx, evalFuncFuel_arrayAt,
+    arrayAtFwd, arrayRefFwd, hidx]
+
+/-- `memEval` for `array_sum`: program evaluation over
+    `[arrayAtFunc]` agrees with the threaded-add forward (mirrors
+    `evalProgFunc_arraySum`; memory rides alongside, untouched). -/
+theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
+    memEvalProgFunc [arrayAtFunc] F arraySumFunc [.arr32 [a, b, c, d]] =
+      arraySumFwd a b c d := by
+  have hbind : bindMemArgs arraySumFunc.args [.arr32 [a, b, c, d]] emptyMem =
+      some ([("a", .arr32 [a, b, c, d])], ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]) :=
+    bindMemArgs_arraySum a b c d
+  have hbody : arraySumFunc.body =
+      .seq (.let_ "i0" (.u 64) (.lit (.u64 0)))
+      (.seq (.callRet "e0" arrayAtName ["a", "i0"])
+      (.seq (.let_ "i1" (.u 64) (.lit (.u64 1)))
+      (.seq (.callRet "e1" arrayAtName ["a", "i1"])
+      (.seq (.let_ "i2" (.u 64) (.lit (.u64 2)))
+      (.seq (.callRet "e2" arrayAtName ["a", "i2"])
+      (.seq (.let_ "i3" (.u 64) (.lit (.u64 3)))
+      (.seq (.callRet "e3" arrayAtName ["a", "i3"])
+             (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
+               (.var "e2")) (.var "e3")))))))))) := rfl
+  have hfind : findFunc [arrayAtFunc] arrayAtName = some arrayAtFunc :=
+    findFunc_hit arrayAtFunc []
+  have hlet0 : memEvalProgStmt [arrayAtFunc] F
+      (.let_ "i0" (.u 64) (.lit (.u64 0)))
+      [("a", .arr32 [a, b, c, d])] ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] =
+      .ok (((envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
+    simp only [memEvalProgStmt]
+    exact memEvalStmtFuel_let_pure F "i0" (.u 64) _ _ _ _
+      (.u64 (0 : BitVec 64)) (by simp) (by simp) rfl
+      (by simp [evalExpr, litVal])
+  have hargs0 : lookupArgs (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0))
+      ["a", "i0"] = some [.arr32 [a, b, c, d], .u64 0] := by
+    simp [lookupArgs, envExtend, envLookup]
+  have hcall0 : memEvalFuncFuel F arrayAtFunc
+      [.arr32 [a, b, c, d], .u64 0] = .ok (.i32 a) := by
+    have hidx0 : [a, b, c, d][(0 : BitVec 64).toNat]? =
+        some (a : BitVec 32) := by
+      rfl
+    rw [memEvalFuncFuel_arrayAt F [a, b, c, d] 0 a hidx0]
+    rfl
+  have hstep0 := memEvalProgStmt_callRet_ok [arrayAtFunc]
+    F "e0" arrayAtName ["a", "i0"]
+    (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)]
+    [.arr32 [a, b, c, d], .u64 0] arrayAtFunc (.i32 a)
+    hargs0 hfind hcall0
+  have hlet1 : memEvalProgStmt [arrayAtFunc] F
+      (.let_ "i1" (.u 64) (.lit (.u64 1)))
+      (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] =
+      .ok (((envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
+    simp only [memEvalProgStmt]
+    exact memEvalStmtFuel_let_pure F "i1" (.u 64) _ _ _ _
+      (.u64 (1 : BitVec 64)) (by simp) (by simp) rfl
+      (by simp [evalExpr, litVal])
+  have hargs1 : lookupArgs (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1))
+      ["a", "i1"] = some [.arr32 [a, b, c, d], .u64 1] := by
+    simp [lookupArgs, envExtend, envLookup]
+  have hcall1 : memEvalFuncFuel F arrayAtFunc
+      [.arr32 [a, b, c, d], .u64 1] = .ok (.i32 b) := by
+    have hidx1 : [a, b, c, d][(1 : BitVec 64).toNat]? =
+        some (b : BitVec 32) := by
+      rfl
+    rw [memEvalFuncFuel_arrayAt F [a, b, c, d] 1 b hidx1]
+    rfl
+  have hstep1 := memEvalProgStmt_callRet_ok [arrayAtFunc]
+    F "e1" arrayAtName ["a", "i1"]
+    (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)]
+    [.arr32 [a, b, c, d], .u64 1] arrayAtFunc (.i32 b)
+    hargs1 hfind hcall1
+  have hlet2 : memEvalProgStmt [arrayAtFunc] F
+      (.let_ "i2" (.u 64) (.lit (.u64 2)))
+      (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] =
+      .ok (((envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
+    simp only [memEvalProgStmt]
+    exact memEvalStmtFuel_let_pure F "i2" (.u 64) _ _ _ _
+      (.u64 (2 : BitVec 64)) (by simp) (by simp) rfl
+      (by simp [evalExpr, litVal])
+  have hargs2 : lookupArgs (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2))
+      ["a", "i2"] = some [.arr32 [a, b, c, d], .u64 2] := by
+    simp [lookupArgs, envExtend, envLookup]
+  have hcall2 : memEvalFuncFuel F arrayAtFunc
+      [.arr32 [a, b, c, d], .u64 2] = .ok (.i32 c) := by
+    have hidx2 : [a, b, c, d][(2 : BitVec 64).toNat]? =
+        some (c : BitVec 32) := by
+      rfl
+    rw [memEvalFuncFuel_arrayAt F [a, b, c, d] 2 c hidx2]
+    rfl
+  have hstep2 := memEvalProgStmt_callRet_ok [arrayAtFunc]
+    F "e2" arrayAtName ["a", "i2"]
+    (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)]
+    [.arr32 [a, b, c, d], .u64 2] arrayAtFunc (.i32 c)
+    hargs2 hfind hcall2
+  have hlet3 : memEvalProgStmt [arrayAtFunc] F
+      (.let_ "i3" (.u 64) (.lit (.u64 3)))
+      (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] =
+      .ok (((envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
+    simp only [memEvalProgStmt]
+    exact memEvalStmtFuel_let_pure F "i3" (.u 64) _ _ _ _
+      (.u64 (3 : BitVec 64)) (by simp) (by simp) rfl
+      (by simp [evalExpr, litVal])
+  have hargs3 : lookupArgs (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3))
+      ["a", "i3"] = some [.arr32 [a, b, c, d], .u64 3] := by
+    simp [lookupArgs, envExtend, envLookup]
+  have hcall3 : memEvalFuncFuel F arrayAtFunc
+      [.arr32 [a, b, c, d], .u64 3] = .ok (.i32 d) := by
+    have hidx3 : [a, b, c, d][(3 : BitVec 64).toNat]? =
+        some (d : BitVec 32) := by
+      rfl
+    rw [memEvalFuncFuel_arrayAt F [a, b, c, d] 3 d hidx3]
+    rfl
+  have hstep3 := memEvalProgStmt_callRet_ok [arrayAtFunc]
+    F "e3" arrayAtName ["a", "i3"]
+    (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)]
+    [.arr32 [a, b, c, d], .u64 3] arrayAtFunc (.i32 d)
+    hargs3 hfind hcall3
+  cases h1 : checkedAddI32 a b with
+  | error e =>
+    have hexpr : memEvalExpr
+        (.add (.add (.add (.var "e0") (.var "e1")) (.var "e2"))
+          (.var "e3"))
+        (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .error e := by
+      simp [memEvalExpr, envExtend, envLookup, h1, Except.map]
+    have hret : memEvalProgStmt [arrayAtFunc] F
+        (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
+          (.var "e2")) (.var "e3")))
+        (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .error e :=
+      memEvalStmtFuel_return_err F _ _ _ _ e hexpr
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet0,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep0,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet1,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep1,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet2,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep2,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet3,
+      memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep3, hret]
+    simp [arraySumFwd, h1]
+  | ok t =>
+    cases h2 : checkedAddI32 t c with
+    | error e =>
+      have hexpr : memEvalExpr
+          (.add (.add (.add (.var "e0") (.var "e1")) (.var "e2"))
+          (.var "e3"))
+          (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .error e := by
+        simp [memEvalExpr, envExtend, envLookup, h1, h2, Except.map]
+      have hret : memEvalProgStmt [arrayAtFunc] F
+          (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
+          (.var "e2")) (.var "e3")))
+          (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .error e :=
+        memEvalStmtFuel_return_err F _ _ _ _ e hexpr
+      simp only [memEvalProgFunc, hbind, hbody]
+      rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet0,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep0,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet1,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep1,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet2,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep2,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet3,
+        memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep3, hret]
+      simp [arraySumFwd, h1, h2]
+    | ok u =>
+      cases h3 : checkedAddI32 u d with
+      | error e =>
+        have hexpr : memEvalExpr
+            (.add (.add (.add (.var "e0") (.var "e1")) (.var "e2"))
+          (.var "e3"))
+            (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .error e := by
+          simp [memEvalExpr, envExtend, envLookup, h1, h2, h3, Except.map]
+        have hret : memEvalProgStmt [arrayAtFunc] F
+            (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
+          (.var "e2")) (.var "e3")))
+            (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .error e :=
+          memEvalStmtFuel_return_err F _ _ _ _ e hexpr
+        simp only [memEvalProgFunc, hbind, hbody]
+        rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet0,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep0,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet1,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep1,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet2,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep2,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet3,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep3, hret]
+        simp [arraySumFwd, h1, h2, h3, i32_map_error]
+      | ok r =>
+        have hexpr : memEvalExpr
+            (.add (.add (.add (.var "e0") (.var "e1")) (.var "e2"))
+          (.var "e3"))
+            (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] = .ok (.i32 r) := by
+          simp [memEvalExpr, envExtend, envLookup, h1, h2, h3, Except.map]
+        have hret : memEvalProgStmt [arrayAtFunc] F
+            (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
+          (.var "e2")) (.var "e3")))
+            (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩ [("a", 0, 0)] =
+            .ok ((((envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)])), .returned (.i32 r)) :=
+          memEvalProgStmt_return [arrayAtFunc] F _ _ _ _
+            (.i32 r) hexpr
+        simp only [memEvalProgFunc, hbind, hbody]
+        rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet0,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep0,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet1,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep1,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet2,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep2,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hlet3,
+          memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep3, hret]
+        simp [arraySumFwd, h1, h2, h3, i32_map_ok]
+
+/-- Transfer for `array_sum` (program level): both sides equal
+    `arraySumFwd`. -/
+theorem memTransferProg_arraySum (F : Nat) (a b c d : BitVec 32)
+    (_h : oracleNoalias arraySumFunc [.arr32 [a, b, c, d]]) :
+    memEvalProgFunc [arrayAtFunc] F arraySumFunc [.arr32 [a, b, c, d]] =
+      evalProgFunc [arrayAtFunc] F arraySumFunc [.arr32 [a, b, c, d]] := by
+  rw [memEvalProgFunc_arraySum, evalProgFunc_arraySum]
+
+
 /-! ## M3d C++ transfers: `methodSum` leaf + `pointSumRef` entry (N1a) -/
 
 /-- `add` of two projected fields agrees on the memory side (the

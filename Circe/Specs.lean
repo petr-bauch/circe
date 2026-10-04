@@ -422,6 +422,57 @@ theorem useTadd64_correct (x y : BitVec 64) :
     useTadd64Fwd x y = add64Fwd x y := by
   cir_simp
 
+/-! ## N4d-i: `std::array<int, 4>` reads (one property per new shape) -/
+
+/-- The `_S_ref` leaf reads the word at a live index. -/
+theorem arrayRef_correct_hit (l : List (BitVec 32)) (n : BitVec 64)
+    (x : BitVec 32) (h : l[n.toNat]? = some x) :
+    arrayRefFwd l n = .ok (.i32 x) := by
+  simp [arrayRefFwd, h]
+
+/-- The `_S_ref` leaf reports `OOB` off the end. -/
+theorem arrayRef_correct_oob (l : List (BitVec 32)) (n : BitVec 64)
+    (h : l[n.toNat]? = none) :
+    arrayRefFwd l n = .error .OOB := by
+  simp [arrayRefFwd, h]
+
+/-- `operator[]` delegates: the entry is the `_S_ref` body (via
+    `arrayAtFwd_is_call`; the delegation rewrite is the spec, as in
+    `useAdd_correct`). -/
+theorem arrayAt_correct (l : List (BitVec 32)) (n : BitVec 64) :
+    arrayAtFwd l n = arrayRefFwd l n :=
+  arrayAtFwd_is_call l n
+
+/-- The `array_sum` entry threads all three adds, mirroring
+    `add3_correct_ok` (three certs, left-associated). -/
+theorem arraySum_correct_ok (a b c d t u r : BitVec 32)
+    (h1 : checkedAddI32 a b = .ok t)
+    (h2 : checkedAddI32 t c = .ok u)
+    (h3 : checkedAddI32 u d = .ok r) :
+    arraySumFwd a b c d = .ok (.i32 r) := by
+  simp only [arraySumFwd, h1, h2, h3, i32_map_ok]
+
+/-- First-add failure propagates out of the entry. -/
+theorem arraySum_correct_err_a (a b c d : BitVec 32) (e : Panic)
+    (h : checkedAddI32 a b = .error e) :
+    arraySumFwd a b c d = .error e := by
+  simp [arraySumFwd, h]
+
+/-- Second-add failure propagates out of the entry. -/
+theorem arraySum_correct_err_b (a b c d t : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 a b = .ok t)
+    (h : checkedAddI32 t c = .error e) :
+    arraySumFwd a b c d = .error e := by
+  simp [arraySumFwd, h1, h]
+
+/-- Third-add failure propagates out of the entry. -/
+theorem arraySum_correct_err_c (a b c d t u : BitVec 32) (e : Panic)
+    (h1 : checkedAddI32 a b = .ok t)
+    (h2 : checkedAddI32 t c = .ok u)
+    (h : checkedAddI32 u d = .error e) :
+    arraySumFwd a b c d = .error e := by
+  simp [arraySumFwd, h1, h2, h, i32_map_error]
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

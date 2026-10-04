@@ -13,6 +13,7 @@ for compat.
 -/
 import DerivedNoalias
 import DiffAcc
+import DiffArray
 import DiffBox
 import DiffCalls
 import DiffFlow
@@ -31,6 +32,7 @@ import DiffVecLeak
 import DiffVecRealloc
 import DiffWidth
 import GoldenAcc
+import GoldenArray
 import GoldenBox
 import GoldenCalls
 import GoldenFlow
@@ -141,6 +143,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/move_acc.cpp", "tests/diff/driver_move_acc.cpp"], bin "circe_move_acc_native"),
    ("c++", ["tests/cpp/scope_early.cpp", "tests/diff/driver_scope_early.cpp"], bin "circe_scope_early_native"),
    ("c++", ["tests/cpp/tadd.cpp", "tests/diff/driver_tadd.cpp"], bin "circe_tadd_native"),
+   ("c++", ["tests/cpp/array_sum.cpp", "tests/diff/driver_array_sum.cpp"], bin "circe_array_sum_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
@@ -183,7 +186,10 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/Tadd32.lean", "out/Tadd32.lean"),
    ("tests/golden/Tadd64.lean", "out/Tadd64.lean"),
    ("tests/golden/UseTadd32.lean", "out/UseTadd32.lean"),
-   ("tests/golden/UseTadd64.lean", "out/UseTadd64.lean")]
+   ("tests/golden/UseTadd64.lean", "out/UseTadd64.lean"),
+   ("tests/golden/ArrayRef.lean", "out/ArrayRef.lean"),
+   ("tests/golden/ArrayAt.lean", "out/ArrayAt.lean"),
+   ("tests/golden/ArraySum.lean", "out/ArraySum.lean")]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -216,7 +222,10 @@ def emittedTypechecks : List String :=
    "out/Tadd32.lean", "out/Tadd32_Spec.lean",
    "out/Tadd64.lean", "out/Tadd64_Spec.lean",
    "out/UseTadd32.lean", "out/UseTadd32_Spec.lean",
-   "out/UseTadd64.lean", "out/UseTadd64_Spec.lean"]
+   "out/UseTadd64.lean", "out/UseTadd64_Spec.lean",
+   "out/ArrayRef.lean", "out/ArrayRef_Spec.lean",
+   "out/ArrayAt.lean", "out/ArrayAt_Spec.lean",
+   "out/ArraySum.lean", "out/ArraySum_Spec.lean"]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -454,14 +463,41 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer.lean", "theorem memTransferProg_useTadd32"),
      ("Circe/Derived.lean", "theorem oracleNoalias_useTadd64"),
      ("out/UseTadd32.lean", "_Z10use_tadd32ii_fwd"),
-     ("tests/golden/UseTadd64.lean", "_Z10use_tadd64ll_fwd")])]
+     ("tests/golden/UseTadd64.lean", "_Z10use_tadd64ll_fwd")]),
+   ("n4d-array",
+    [("Circe/Validator.lean", "def isArrayRefShape"),
+     ("Circe/Validator.lean", "def isArrayAtShape"),
+     ("Circe/Validator.lean", "def isArraySumShape"),
+     ("Circe/Validator.lean", "def arrayLeafCallees"),
+     ("Circe/Validator.lean", "calls a known `std::array` leaf"),
+     ("Circe/Emit/Match.lean", "some .arrayRef"),
+     ("Circe/Emit/Match.lean", "some .arrayAt"),
+     ("Circe/Emit/Match.lean", "some .arraySum"),
+     ("Circe/Emit/Array.lean", "theorem evalFuncFuel_arrayRef"),
+     ("Circe/Emit/Array.lean", "theorem evalFuncFuel_arrayAt"),
+     ("Circe/Emit/Array.lean", "theorem evalProgFunc_arraySum"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_arrayRef"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_arrayAt"),
+     ("Circe/Transfer.lean", "theorem memEvalProgFunc_arraySum"),
+     ("Circe/Transfer.lean", "theorem memTransferProg_arraySum"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_arrayRef"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_arraySum"),
+     ("Circe/Specs.lean", "theorem arrayRef_correct_hit"),
+     ("Circe/Specs.lean", "theorem arrayAt_correct"),
+     ("Circe/Specs.lean", "theorem arraySum_correct_ok"),
+     ("Circe/Specs.lean", "theorem arraySum_correct_err_c"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_idxi_hit"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_idxi_oob"),
+     ("out/ArraySum.lean", "_Z9array_sumRKSt5arrayIiLm4EE_fwd"),
+     ("tests/golden/ArrayRef.lean", "_S_refERA4_Kim_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
 /-- `Circe/Emit` files: the S5 `by cir_fuel` adoption check
     (`grep -qr "by cir_fuel" Circe/Emit/`). -/
 def emitFiles : List String :=
-  ["Circe/Emit/Acc.lean", "Circe/Emit/Add.lean", "Circe/Emit/Box.lean",
+  ["Circe/Emit/Acc.lean", "Circe/Emit/Add.lean", "Circe/Emit/Array.lean",
+   "Circe/Emit/Box.lean",
    "Circe/Emit/Calls.lean", "Circe/Emit/Choose.lean", "Circe/Emit/Flow.lean",
    "Circe/Emit/Fragment.lean", "Circe/Emit/Match.lean",
    "Circe/Emit/Method.lean", "Circe/Emit/Render.lean",
@@ -503,8 +539,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 39 then
-    throw (IO.userError s!"expected 39 spec stubs, found {stubs.length}")
+  if stubs.length != 42 then
+    throw (IO.userError s!"expected 42 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -538,6 +574,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-overload", DiffOverload.main [bin "circe_overload_native", bin "circe_ns_add_native", trials]),
    ("diff-move", DiffMove.main [bin "circe_move_int_native", bin "circe_move_acc_native", bin "circe_scope_early_native", trials]),
    ("diff-tadd", DiffTadd.main [bin "circe_tadd_native", trials]),
+   ("diff-array", DiffArray.main [bin "circe_array_sum_native", trials]),
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials])]
 
 def checkSuites : List Job :=
@@ -559,6 +596,7 @@ def checkSuites : List Job :=
    ("golden-overload", GoldenOverload.main),
    ("golden-move", GoldenMove.main),
    ("golden-tadd", GoldenTadd.main),
+   ("golden-array", GoldenArray.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -571,11 +609,11 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc",
-   "DiffWidth", "DiffOverload",
+   "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenStruct", "GoldenTadd", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
+   "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=

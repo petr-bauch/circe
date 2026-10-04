@@ -285,6 +285,9 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
       defined; mixed widths are `AssertFail`);
     - `idx a i` looks up `arr32` array `a` at `u32` index `i`
       (`OOB` off the end, mirroring `bget`);
+    - `idxi a i` looks up `arr32` array `a` at `u64` index `i` and
+      delivers the word as `i32` (`cir.get_element` over a static
+      `i32` array, N4d; `OOB` off the end, mirroring `idx`);
     - `fget o f` projects field `f` from `structVal` `o` (missing
       field / non-struct is `AssertFail`);
     - `pmk x y` builds the S2 `Point` `structVal` from two `i32`s;
@@ -341,6 +344,18 @@ def evalExpr : CExpr → Env → Result Value
       | .ok (.u32 i) =>
         match l[i.toNat]? with
         | some x => .ok (.u32 x)
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .idxi arr ie, ρ =>
+    match envLookup ρ arr with
+    | none => .error .Uninit
+    | some (.arr32 l) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        match l[i.toNat]? with
+        | some x => .ok (.i32 x)
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
@@ -555,6 +570,30 @@ theorem evalExpr_idx_notarray (arr : String) (v : BitVec 32) (i : BitVec 32)
     (ρ : Env)
     (harr : envLookup ρ arr = some (.i32 v)) :
     evalExpr (.idx arr (.lit (.u32 i))) ρ = .error .AssertFail := by
+  simp [evalExpr, harr]
+
+/-- In-bounds `i32`-flavored indexing succeeds. -/
+theorem evalExpr_idxi_hit (arr : String) (l : List (BitVec 32)) (i : BitVec 64)
+    (ρ : Env) (x : BitVec 32)
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hidx : l[i.toNat]? = some x) :
+    evalExpr (.idxi arr (.lit (.u64 i))) ρ = .ok (.i32 x) := by
+  simp [evalExpr, litVal, harr, hidx]
+
+/-- Out-of-bounds `i32`-flavored indexing reports `OOB`. -/
+theorem evalExpr_idxi_oob (arr : String) (l : List (BitVec 32)) (i : BitVec 64)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hidx : l[i.toNat]? = none) :
+    evalExpr (.idxi arr (.lit (.u64 i))) ρ = .error .OOB := by
+  simp [evalExpr, litVal, harr, hidx]
+
+/-- `i32`-flavored indexing of a non-array is rejected, never silently
+    modeled. -/
+theorem evalExpr_idxi_notarray (arr : String) (v : BitVec 32) (i : BitVec 64)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.i32 v)) :
+    evalExpr (.idxi arr (.lit (.u64 i))) ρ = .error .AssertFail := by
   simp [evalExpr, harr]
 
 /-- `vnew` on a `u32` size allocates a zeroed live block. -/

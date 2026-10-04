@@ -59,6 +59,9 @@ def main : IO Unit := do
   let tadd64 ← emitOrDie { add64Func with name := "_Z4taddIlET_S0_S0_" }
   let useTadd32 ← emitOrDie useTadd32Func
   let useTadd64 ← emitOrDie useTadd64Func
+  let arrayRef ← emitOrDie arrayRefFunc
+  let arrayAt ← emitOrDie arrayAtFunc
+  let arraySum ← emitOrDie arraySumFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -98,6 +101,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Tadd64.lean" (emitFileText (.ok tadd64))
   IO.FS.writeFile "out/UseTadd32.lean" (emitFileText (.ok useTadd32))
   IO.FS.writeFile "out/UseTadd64.lean" (emitFileText (.ok useTadd64))
+  IO.FS.writeFile "out/ArrayRef.lean" (emitFileText (.ok arrayRef))
+  IO.FS.writeFile "out/ArrayAt.lean" (emitFileText (.ok arrayAt))
+  IO.FS.writeFile "out/ArraySum.lean" (emitFileText (.ok arraySum))
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
@@ -137,6 +143,9 @@ def main : IO Unit := do
   let tadd64Spec ← specOrDie { add64Func with name := "_Z4taddIlET_S0_S0_" }
   let useTadd32Spec ← specOrDie useTadd32Func
   let useTadd64Spec ← specOrDie useTadd64Func
+  let arrayRefSpec ← specOrDie arrayRefFunc
+  let arrayAtSpec ← specOrDie arrayAtFunc
+  let arraySumSpec ← specOrDie arraySumFunc
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
@@ -176,6 +185,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Tadd64_Spec.lean" tadd64Spec
   IO.FS.writeFile "out/UseTadd32_Spec.lean" useTadd32Spec
   IO.FS.writeFile "out/UseTadd64_Spec.lean" useTadd64Spec
+  IO.FS.writeFile "out/ArrayRef_Spec.lean" arrayRefSpec
+  IO.FS.writeFile "out/ArrayAt_Spec.lean" arrayAtSpec
+  IO.FS.writeFile "out/ArraySum_Spec.lean" arraySumSpec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -225,4 +237,10 @@ def main : IO Unit := do
     throw (IO.userError "add64 must not have a backward definition")
   if addu64.backward.isSome then
     throw (IO.userError "addu64 must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean + 39 *_Spec.lean stubs"
+  if arrayRef.backward.isSome then
+    throw (IO.userError "arrayRef must not have a backward definition")
+  if arrayAt.backward.isSome then
+    throw (IO.userError "arrayAt must not have a backward definition")
+  if arraySum.backward.isSome then
+    throw (IO.userError "arraySum must not have a backward definition")
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean + 42 *_Spec.lean stubs"

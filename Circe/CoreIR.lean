@@ -55,6 +55,10 @@ inductive CLit : Type
     bits regardless of signedness, so `u32`/`u64`/`i32`/`i64` pairs
     are all defined; mixed widths are `AssertFail`);
     `idx a i` is bounded indexing (`cir.ptr_stride` + `cir.load`).
+    `idxi a i` is `i32`-flavored bounded indexing over the same
+    `arr32` word list (`cir.get_element` with a `u64` index, as in
+    `std::array<int32_t, N>` reads — N4d; `OOB` off the end, mirroring
+    `idx`).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
@@ -74,6 +78,7 @@ inductive CExpr : Type
   | ult : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
   | idx : String → CExpr → CExpr
+  | idxi : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
   | boxNew : CExpr → CExpr

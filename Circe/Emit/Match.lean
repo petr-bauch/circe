@@ -19,6 +19,7 @@ import Circe.Emit.Struct
 import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Move
+import Circe.Emit.Array
 import Circe.Emit.Box
 import Circe.Emit.Flow
 
@@ -306,6 +307,32 @@ def matchFrag : Func → Option FragKind
         some .cls
       else none
     | _ => none
+  | ⟨_, [⟨"t", .array (.i 32) 4, .sharedBorrow⟩,
+         ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.idxi "t" (.var "n"))⟩ =>
+    some .arrayRef
+  | ⟨_, [⟨"a", .array (.i 32) 4, .sharedBorrow⟩,
+         ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.idxi "a" (.var "n"))⟩ =>
+    some .arrayAt
+  | ⟨_, [⟨"a", .array (.i 32) 4, .sharedBorrow⟩], _, body⟩ =>
+    -- 8-deep `.seq` chain: body matched separately (nested `.seq`
+    -- patterns inside `⟨⟩` hit the parser quirk, cf. `addCall` note).
+    match body with
+    | .seq (.let_ "i0" _ (.lit (.u64 l0)))
+      (.seq (.callRet "e0" "_ZNKSt5arrayIiLm4EEixEm" ["a", "i0"])
+      (.seq (.let_ "i1" _ (.lit (.u64 l1)))
+      (.seq (.callRet "e1" "_ZNKSt5arrayIiLm4EEixEm" ["a", "i1"])
+      (.seq (.let_ "i2" _ (.lit (.u64 l2)))
+      (.seq (.callRet "e2" "_ZNKSt5arrayIiLm4EEixEm" ["a", "i2"])
+      (.seq (.let_ "i3" _ (.lit (.u64 l3)))
+      (.seq (.callRet "e3" "_ZNKSt5arrayIiLm4EEixEm" ["a", "i3"])
+             (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
+               (.var "e2")) (.var "e3")))))))))) =>
+      if l0 == 0 && l1 == 1 && l2 == 2 && l3 == 3 then
+        some .arraySum
+      else none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -341,3 +368,6 @@ theorem matchFrag_nested : matchFrag nestedFunc = some .nested := rfl
 theorem matchFrag_skip : matchFrag skipFunc = some .skip := rfl
 theorem matchFrag_findEq : matchFrag findEqFunc = some .findEq := rfl
 theorem matchFrag_cls : matchFrag clsFunc = some .cls := rfl
+theorem matchFrag_arrayRef : matchFrag arrayRefFunc = some .arrayRef := rfl
+theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
+theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl

@@ -447,6 +447,115 @@ def isOverloadCaller64Shape (raw : RawFunc) (callee : String) : Bool :=
 def callsTemplateWrongShape (raw : RawFunc) : Bool :=
   templateLeafCallees.any (callsFunc raw.text)
 
+/-! ## N4d-i: `std::array<int, 4>` read shapes -/
+
+/-- The N4d-i `std::array<int32_t, 4>` object type (CIRGen's
+    `!rec_std3A3Aarray3Cint2C_4UL3E` alias; the `4UL` extent is part of
+    the admitted monomorph — each instantiation is its own shape, the
+    N4c monomorphization precedent). -/
+def isStdArray4Type (t : String) : Bool :=
+  containsSubstr t "array" && containsSubstr t "4UL"
+
+/-- The `_S_ref` unchecked-index leaf: single `const&` to the raw
+    4-word `i32` array (`!cir.ptr<!cir.array<!s32i …>>`, truncated by
+    the extractor at the first space — hence the prefix pin) with the
+    single-reference triple, `u64` index, pointer-to-`i32` return, one
+    `cir.get_element`, no calls, no arithmetic, no control flow. -/
+def isArrayRefShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [t, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType t.ctype && t.singleRef &&
+    isPrefixOfList "!cir.ptr<!cir.array<!s32i".toList t.ctype.toList &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    containsSubstr raw.text "cir.get_element" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- The `operator[]` single-delegation entry: single `const&` to the
+    `std::array<int, 4>` object with the single-reference triple,
+    `u64` index, pointer-to-`i32` return, exactly one call site to the
+    `_S_ref` leaf (the `_M_elems` projection + call are fused into the
+    `idxi` read downstream, cf. `arrayAtFunc`), one `cir.get_member`,
+    no local indexing or arithmetic. -/
+def isArrayAtShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdArray4Type a.ctype &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    callsFunc raw.text arrayRefName &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `array_sum` 4-call entry: single `const&` to the
+    `std::array<int, 4>` object with the single-reference triple,
+    `i32` return, exactly four call sites to `operator[]` (const
+    `u64` indices 0–3 functionalized as `let_`-bound words downstream,
+    since `callRet` args are environment names), three threaded `nsw`
+    adds over eight `cir.const` index spellings (4 `s32i` + 4 `u64i`),
+    no projection/indexing ops of its own. -/
+def isArraySumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdArray4Type a.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text arrayAtName &&
+    opCount raw.text "cir.call @" == 4 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.add nsw" == 3 &&
+    opCount raw.text "cir.const" == 8 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Known `std::array` leaf callees (mangled): the `_S_ref`
+    unchecked-index leaf and the `operator[]` delegation entry. Entry
+    gates admit calls into the (name, arity, site-count) pairs named in
+    `validate` below; this registry names every known array leaf for
+    the wrong-shape rejection. -/
+def arrayLeafCallees : List String :=
+  [arrayRefName, arrayAtName]
+
+/-- Calls a known `std::array` leaf but not with an admitted (name,
+    arity, site-count) shape: dedicated rejection naming the admitted
+    triples. -/
+def callsArrayWrongShape (raw : RawFunc) : Bool :=
+  arrayLeafCallees.any (callsFunc raw.text)
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -1495,6 +1604,15 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsTemplateWrongShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls a known template-instantiation leaf but not with an admitted (name, arity, single-site) shape: admitted callers are single-site 2-`i32` delegations into `_Z4taddIiET_S0_S0_` (`use_tadd32` shape) and single-site 2-`i64` delegations into `_Z4taddIlET_S0_S0_` (`use_tadd64` shape) only (known instantiation leaves `_Z4taddIiET_S0_S0_` / `_Z4taddIlET_S0_S0_`; see docs/SUBSET.md)"
+      else if isArrayRefShape raw then
+        .ok { arrayRefFunc with name := raw.name }
+      else if isArrayAtShape raw then
+        .ok { arrayAtFunc with name := raw.name }
+      else if isArraySumShape raw then
+        .ok { arraySumFunc with name := raw.name }
+      else if callsArrayWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known `std::array` leaf but not with an admitted (name, arity, site-count) shape: admitted callers are the single-site `operator[]` delegation into `{arrayRefName}` (`array_at` shape) and the 4-site `array_sum` entry into `{arrayAtName}` (`array_sum` shape) only (known array leaves `{arrayRefName}` / `{arrayAtName}`; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then
@@ -1540,7 +1658,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if hasNonHeapCall raw.text &&
           !containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only; N4c: single-site 2-`i32` / 2-`i64` calls into the known template-instantiation leaves `_Z4taddIiET_S0_S0_` / `_Z4taddIlET_S0_S0_` only; M2b/N4b: the exact `Acc` leaf/entry call multisets only), outside the Ownable-C subset (see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only; N4c: single-site 2-`i32` / 2-`i64` calls into the known template-instantiation leaves `_Z4taddIiET_S0_S0_` / `_Z4taddIlET_S0_S0_` only; N4d-i: the single-site `operator[]` call into the `_S_ref` leaf and the 4-site `array_sum` entry into `operator[]` only; M2b/N4b: the exact `Acc` leaf/entry call multisets only), outside the Ownable-C subset (see docs/SUBSET.md)"
       else if 1 < freeCallCount raw.text &&
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset
@@ -1575,7 +1693,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"oob-possible: function '{raw.name}' indexes via `cir.ptr_stride` without the length-paired bound form (`(ptr, n)` params + `cir.for`): unbounded indexing cannot be functionalized (see docs/SUBSET.md rule 4)"
       else if containsSubstr raw.text "cir.get_member" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity), and the admitted M2c `box_through` entry shape (M2c: `new` + `Box.x` field write/read + at most one sized `delete`; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity), the admitted N4d-i `operator[]` shape (N4d-i: single `const&` to `std::array<int, 4>` with the single-reference triple, one `_M_elems` `get_member` + exactly one call into the `_S_ref` leaf), and the admitted M2c `box_through` entry shape (M2c: `new` + `Box.x` field write/read + at most one sized `delete`; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.switch" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape (S3a: equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30`; see docs/SUBSET.md)"
