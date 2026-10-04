@@ -38,6 +38,9 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .vec2 => .ok (emitVec2SpecText f.name)
   | some .vecRealloc => .ok (emitVecReallocSpecText f.name)
   | some .addCall => .ok (emitAddCallerSpecText f.name)
+  | some .add3 => .ok (emitAdd3SpecText f.name)
+  | some .useAdd => .ok (emitUseAddSpecText f.name)
+  | some .useNsAdd => .ok (emitUseNsAddSpecText f.name)
   | some .sumCall => .ok (emitSumCallerSpecText f.name)
   | some .translate => .ok (emitTranslateSpecText f.name)
   | some .methodSum => .ok (emitMethodSumSpecText f.name)
@@ -70,6 +73,9 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .vec2 => .ok ⟨emitVec2Text f.name, none⟩
   | some .vecRealloc => .ok ⟨emitVecReallocText f.name, none⟩
   | some .addCall => .ok ⟨emitAddCallerText f.name, none⟩
+  | some .add3 => .ok ⟨emitAdd3Text f.name, none⟩
+  | some .useAdd => .ok ⟨emitUseAddText f.name, none⟩
+  | some .useNsAdd => .ok ⟨emitUseNsAddText f.name, none⟩
   | some .sumCall => .ok ⟨emitSumCallerText f.name, none⟩
   | some .translate => .ok ⟨emitTranslateText f.name, none⟩
   | some .methodSum => .ok ⟨emitMethodSumText f.name, none⟩
@@ -144,6 +150,32 @@ example : emitFileText (emitFunc addCallerFunc) =
     checked-in golden. -/
 example : emitFileText (emitFunc sumCallerFunc) =
     include_str "../tests/golden/SumCaller.lean" := by native_decide
+
+/-- The emitter output for the renamed `add` leaf is byte-identical to
+    the checked-in overload golden (same body as `Add.lean`, mangled
+    name). -/
+example : emitFileText (emitFunc { addFunc with name := "_Z3addii" }) =
+    include_str "../tests/golden/OverloadAdd.lean" := by native_decide
+
+/-- The emitter output for `add3Func` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc add3Func) =
+    include_str "../tests/golden/Add3.lean" := by native_decide
+
+/-- The emitter output for `useAddFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc useAddFunc) =
+    include_str "../tests/golden/UseAdd.lean" := by native_decide
+
+/-- The emitter output for the namespaced `add` leaf is byte-identical
+    to the checked-in golden. -/
+example : emitFileText (emitFunc { addFunc with name := "_ZN2ns3addEii" }) =
+    include_str "../tests/golden/NsAdd.lean" := by native_decide
+
+/-- The emitter output for `useNsAddFunc` is byte-identical to the
+    checked-in golden. -/
+example : emitFileText (emitFunc useNsAddFunc) =
+    include_str "../tests/golden/UseNsAdd.lean" := by native_decide
 
 /-- The emitter output for `translateFunc` is byte-identical to the
     checked-in golden. -/

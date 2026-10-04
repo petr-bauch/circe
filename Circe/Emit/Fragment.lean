@@ -27,9 +27,15 @@ import Circe.Eval
     M2b with value ctors + trivial dtors (`accCtor` = the `_ZN3AccC2Ev`
     field-init leaf, `accAdd` = the `_ZN3Acc3addEi` checked-add leaf,
     `accGet` = the `_ZNK3Acc3getEv` identity leaf, `accDtor` = the
-    `_ZN3AccD2Ev` no-op leaf, `accTwo` = the `cleanup`-scoped entry). -/
+    `_ZN3AccD2Ev` no-op leaf, `accTwo` = the `cleanup`-scoped entry),
+    and in N4a with overloads + namespaces (`add3` = the 3-`i32`
+    overload leaf, `useAdd`/`useNsAdd` = single-delegation entries
+    resolving to a mangled `add` leaf). -/
 inductive FragKind : Type
   | add
+  | add3
+  | useAdd
+  | useNsAdd
   | add64
   | addu64
   | incr

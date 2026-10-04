@@ -100,6 +100,20 @@ theorem emit_correct_incr_ok (p r : BitVec 32)
   rw [h]
   exact i32_map_ok r
 
+/-- `emit_correct` for `add` under a renamed (e.g. mangled) leaf:
+    evaluation never inspects the function name, so overload and
+    namespace leaves share the body proof (N4a caller programs evaluate
+    over `[{addFunc with name := nm}]`). -/
+theorem evalFuncFuel_addAt (F : Nat) (nm : String) (a b : BitVec 32) :
+    evalFuncFuel F { addFunc with name := nm } [.i32 a, .i32 b] =
+      addFwd a b := by
+  have ha := envLookup_add_a a b
+  have hb := envLookup_add_b a b
+  cases F <;>
+    simp only [evalFuncFuel, addFunc, bindArgs, evalStmtFuel,
+      evalStmtZero, evalStmtWith, evalExpr, addFwd, ha, hb] <;>
+    (cases checkedAddI32 a b <;> rfl)
+
 /-- `emit_correct` for `add` at any fuel (loop-free body, so every fuel
     agrees; loop proofs and program steps generalize the fuel). -/
 theorem evalFuncFuel_add (F : Nat) (a b : BitVec 32) :
@@ -189,3 +203,110 @@ theorem emit_correct_add64_ok (a b r : BitVec 64)
   unfold add64Fwd
   rw [h]
   exact i64_map_ok r
+
+/-! ## N4a: arity-3 `add` overload leaf (`_Z3addiii`) -/
+
+/-- Canonical CoreIR for the 3-`i32` overload leaf in
+    `tests/cpp/overload_add.cpp`
+    (`int32_t add(int32_t a, int32_t b, int32_t c)`): the `add` idiom
+    with one more threaded operand, the SSA temporary as an explicit
+    `let_` (so both `emit_correct` proofs stay flat, like `addCaller`). -/
+def add3Func : Func :=
+  ⟨"_Z3addiii", [{ name := "a", ty := .i 32, role := .owned },
+           { name := "b", ty := .i 32, role := .owned },
+           { name := "c", ty := .i 32, role := .owned }],
+   .i 32,
+   .seq (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
+        (.return_ (.add (.var "t") (.var "c")))⟩
+
+/-- Verified forward function for `add3` (cf. rendered `_Z3addiii_fwd`):
+    sequential `Result` binds over the leaf op. -/
+def add3Fwd (x y z : BitVec 32) : Result Value :=
+  match checkedAddI32 x y with
+  | .error e => .error e
+  | .ok t => .i32 <$> checkedAddI32 t z
+
+/-- Bridge: forward ok-path threads both adds. -/
+theorem add3Fwd_ok (x y z t r : BitVec 32)
+    (h1 : checkedAddI32 x y = .ok t) (h2 : checkedAddI32 t z = .ok r) :
+    add3Fwd x y z = .ok (.i32 r) := by
+  simp [add3Fwd, h1, h2, i32_map_ok]
+
+/-- Bridge: first-add failure propagates (and determines the error). -/
+theorem add3Fwd_err (x y z : BitVec 32) (e : Panic)
+    (h : checkedAddI32 x y = .error e) :
+    add3Fwd x y z = .error e := by
+  simp [add3Fwd, h]
+
+/-- Env facts for the `add3` shape. -/
+theorem envLookup_add3_a (x y z : BitVec 32) :
+    envLookup [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "a" =
+      some (.i32 x) := by
+  simp [envLookup]
+
+theorem envLookup_add3_b (x y z : BitVec 32) :
+    envLookup [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "b" =
+      some (.i32 y) := by
+  simp [envLookup, show ("b" : String) ≠ "a" by decide]
+
+theorem envLookup_add3_c (x y z : BitVec 32) :
+    envLookup [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "c" =
+      some (.i32 z) := by
+  simp [envLookup, show ("c" : String) ≠ "a" by decide,
+    show ("c" : String) ≠ "b" by decide]
+
+/-- `emit_correct` for `add3` at any fuel (loop-free body): the `let_`
+    makes both adds single (flat) steps, sequenced like `addCaller`. -/
+theorem evalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
+    evalFuncFuel F add3Func [.i32 x, .i32 y, .i32 z] = add3Fwd x y z := by
+  have hbind : bindArgs add3Func.args [.i32 x, .i32 y, .i32 z] =
+      some [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] := rfl
+  have hbody : add3Func.body =
+      .seq (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
+           (.return_ (.add (.var "t") (.var "c"))) := rfl
+  have ha := envLookup_add3_a x y z
+  have hb := envLookup_add3_b x y z
+  have hc := envLookup_add3_c x y z
+  simp only [evalFuncFuel, hbind, hbody]
+  cases h1 : checkedAddI32 x y with
+  | error e =>
+    have hexpr : evalExpr (.add (.var "a") (.var "b"))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env) = .error e := by
+      simp [evalExpr, ha, hb, h1, Except.map]
+    have hlet := evalStmtFuel_let_err F "t" (.i 32) _ _ e hexpr
+    rw [evalStmtFuel_seq_err _ _ _ _ _ hlet]
+    simp [add3Fwd, h1]
+  | ok t =>
+    have hexpr : evalExpr (.add (.var "a") (.var "b"))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env) =
+        .ok (.i32 t) := by
+      simp [evalExpr, ha, hb, h1, Except.map]
+    have hlet := evalStmtFuel_let_ F "t" (.i 32) _ _ (.i32 t) hexpr
+    have ht : envLookup (envExtend [("a", .i32 x), ("b", .i32 y),
+        ("c", .i32 z)] "t" (.i32 t)) "t" = some (.i32 t) :=
+      envExtend_hit _ _ _
+    have hc2 : envLookup (envExtend [("a", .i32 x), ("b", .i32 y),
+        ("c", .i32 z)] "t" (.i32 t)) "c" = some (.i32 z) := by
+      simp [envExtend, envLookup, show ("c" : String) ≠ "t" by decide]
+    cases h2 : checkedAddI32 t z with
+    | error e =>
+      have hexpr2 : evalExpr (.add (.var "t") (.var "c"))
+          (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t"
+            (.i32 t)) = .error e := by
+        simp [evalExpr, ht, hc2, h2, Except.map]
+      have hret := evalStmtFuel_return_err F _ _ e hexpr2
+      rw [evalStmtFuel_seq_fallthrough _ _ _ _ _ hlet, hret]
+      simp [add3Fwd, h1, h2, i32_map_error]
+    | ok r =>
+      have hexpr2 : evalExpr (.add (.var "t") (.var "c"))
+          (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t"
+            (.i32 t)) = .ok (.i32 r) := by
+        simp [evalExpr, ht, hc2, h2, Except.map]
+      have hret := evalStmtFuel_return F _ _ (.i32 r) hexpr2
+      rw [evalStmtFuel_seq_fallthrough _ _ _ _ _ hlet, hret]
+      simp [add3Fwd, h1, h2, i32_map_ok]
+
+/-- Emitter correctness, `add3` (all inputs, ok and error paths). -/
+theorem emit_correct_add3 (x y z : BitVec 32) :
+    evalFunc add3Func [.i32 x, .i32 y, .i32 z] = add3Fwd x y z :=
+  evalFuncFuel_add3 EVAL_FUEL x y z

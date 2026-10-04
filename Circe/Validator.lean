@@ -344,6 +344,68 @@ def isPointSumRefShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
+/-! ## N4a: overload + namespace shapes -/
+
+/-- Known overload-leaf callees (mangled): the two `i32`-leaf overloads
+    plus the namespaced leaf. Caller gates admit calls into the
+    (name, arity) pairs named in `validate` below; this registry names
+    every known leaf for the wrong-shape rejection. Adding an overload
+    extends the registry plus one gate arm — unknown mangled callees
+    still reject. -/
+def overloadLeafCallees : List String :=
+  ["_Z3addii", "_Z3addiii", "_ZN2ns3addEii"]
+
+/-- `add` at arity 3: the `_Z3addiii` overload leaf (two `nsw` adds
+    threaded over three by-value `i32`s, no calls — the `add` idiom
+    with one more operand). Name-agnostic like `isAddShape`: any
+    triple-`i32` double-add validates to the canonical leaf. -/
+def isAdd3Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b, c] =>
+    isI32 a.ctype && isI32 b.ctype && isI32 c.ctype && isI32 raw.ret &&
+    containsSubstr raw.text "cir.add nsw" &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- Single-delegation caller into one known overload leaf (S1
+    discipline at a mangled name: exactly one call site to `callee`,
+    arithmetic lives in the callee so no local `nsw`, no self-call). -/
+def isOverloadCallerShape (raw : RawFunc) (callee : String) : Bool :=
+  match raw.params with
+  | [x, y] =>
+    noBreakContinueSwitch raw.text &&
+    isI32 x.ctype && isI32 y.ctype && isI32 raw.ret &&
+    callsFunc raw.text callee &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- Calls a known overload leaf but not with an admitted (name, arity,
+    single-site) shape (e.g. wrong arg count, extra call sites, local
+    arithmetic): dedicated rejection naming the admitted pairs. -/
+def callsOverloadWrongShape (raw : RawFunc) : Bool :=
+  overloadLeafCallees.any (callsFunc raw.text)
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -1237,6 +1299,15 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { addCallerFunc with name := raw.name }
       else if isSumCallerShape raw then
         .ok { sumCallerFunc with name := raw.name }
+      else if isAdd3Shape raw then
+        .ok { add3Func with name := raw.name }
+      else if isOverloadCallerShape raw "_Z3addii" then
+        .ok { useAddFunc with name := raw.name }
+      else if isOverloadCallerShape raw "_ZN2ns3addEii" then
+        .ok { useNsAddFunc with name := raw.name }
+      else if callsOverloadWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known overload leaf but not with an admitted (name, arity, single-site) shape: admitted callers are single-site 2-`i32` delegations into `_Z3addii` (`use_add` shape) and `_ZN2ns3addEii` (`use_ns_add` shape) only (known overload leaves `_Z3addii` / `_Z3addiii` / `_ZN2ns3addEii`; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then
@@ -1276,7 +1347,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if hasNonHeapCall raw.text &&
           !containsSubstr raw.text "realloc" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only), outside the Ownable-C subset (see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses function call outside the admitted call shapes (S1: calls into `add`/`sum_array` with the exact `add_caller`/`sum_caller` shapes only; N4a: single-site 2-`i32` calls into the known overload leaves `_Z3addii` / `_ZN2ns3addEii` only), outside the Ownable-C subset (see docs/SUBSET.md)"
       else if 1 < freeCallCount raw.text &&
           mallocCallCount raw.text < freeCallCount raw.text then
         reject raw.name .outOfSubset

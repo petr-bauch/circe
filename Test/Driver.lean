@@ -18,6 +18,7 @@ import DiffCalls
 import DiffFlow
 import DiffMethod
 import DiffNorestrict
+import DiffOverload
 import DiffPhase3
 import DiffPhase4
 import DiffStruct
@@ -34,6 +35,7 @@ import GoldenFlow
 import GoldenFreeDiscipline
 import GoldenM2Setup
 import GoldenMethod
+import GoldenOverload
 import GoldenPhase4
 import GoldenPhase6
 import GoldenPhase7
@@ -129,6 +131,8 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/point_sum_ref.cpp", "tests/diff/driver_method.cpp"], bin "circe_method_native"),
    ("c++", ["tests/cpp/acc_two.cpp", "tests/diff/driver_acc.cpp"], bin "circe_acc_native"),
    ("c++", ["tests/cpp/box_through.cpp", "tests/diff/driver_box.cpp"], bin "circe_box_native"),
+   ("c++", ["tests/cpp/overload_add.cpp", "tests/diff/driver_overload.cpp"], bin "circe_overload_native"),
+   ("c++", ["tests/cpp/ns_add.cpp", "tests/diff/driver_ns_add.cpp"], bin "circe_ns_add_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
@@ -158,7 +162,12 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/AccDtor.lean", "out/AccDtor.lean"),
    ("tests/golden/AccTwo.lean", "out/AccTwo.lean"),
    ("tests/golden/BoxThrough.lean", "out/BoxThrough.lean"),
-   ("tests/golden/SumNorestrict.lean", "out/SumNorestrict.lean")]
+   ("tests/golden/SumNorestrict.lean", "out/SumNorestrict.lean"),
+   ("tests/golden/OverloadAdd.lean", "out/OverloadAdd.lean"),
+   ("tests/golden/Add3.lean", "out/Add3.lean"),
+   ("tests/golden/UseAdd.lean", "out/UseAdd.lean"),
+   ("tests/golden/NsAdd.lean", "out/NsAdd.lean"),
+   ("tests/golden/UseNsAdd.lean", "out/UseNsAdd.lean")]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -178,7 +187,12 @@ def emittedTypechecks : List String :=
    "out/AccCtor_Spec.lean", "out/AccAdd_Spec.lean", "out/AccGet_Spec.lean",
    "out/AccDtor_Spec.lean", "out/AccTwo_Spec.lean",
    "out/BoxThrough.lean", "out/BoxThrough_Spec.lean",
-   "out/SumNorestrict.lean", "out/SumNorestrict_Spec.lean"]
+   "out/SumNorestrict.lean", "out/SumNorestrict_Spec.lean",
+   "out/OverloadAdd.lean", "out/OverloadAdd_Spec.lean",
+   "out/Add3.lean", "out/Add3_Spec.lean",
+   "out/UseAdd.lean", "out/UseAdd_Spec.lean",
+   "out/NsAdd.lean", "out/NsAdd_Spec.lean",
+   "out/UseNsAdd.lean", "out/UseNsAdd_Spec.lean"]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -388,7 +402,22 @@ def contentAsserts : List (String × List (String × String)) :=
    ("l1-scope",
     [("Circe/Scope.lean", "def extractScopes"),
      ("Circe/Scope.lean", "theorem extractScopes_empty"),
-     ("Circe/Scope.lean", "theorem extractScopes_bound")])]
+     ("Circe/Scope.lean", "theorem extractScopes_bound")]),
+   ("n4a-overload",
+    [("Circe/Validator.lean", "def isAdd3Shape"),
+     ("Circe/Validator.lean", "def isOverloadCallerShape"),
+     ("Circe/Validator.lean", "def overloadLeafCallees"),
+     ("Circe/Validator.lean", "calls a known overload leaf"),
+     ("Circe/Emit/Match.lean", "some .add3"),
+     ("Circe/Emit/Match.lean", "some .useNsAdd"),
+     ("Circe/Emit/Add.lean", "theorem evalFuncFuel_add3"),
+     ("Circe/Emit/Calls.lean", "theorem evalProgFunc_useNsAdd"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_add3"),
+     ("Circe/Transfer.lean", "theorem memTransferProg_useAdd"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_useNsAdd"),
+     ("Circe/Mem.lean", "theorem memEvalStmtFuel_seq_fallthrough"),
+     ("out/UseAdd.lean", "_Z7use_addii_fwd"),
+     ("tests/golden/UseNsAdd.lean", "_Z10use_ns_addii_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -437,8 +466,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 26 then
-    throw (IO.userError s!"expected 26 spec stubs, found {stubs.length}")
+  if stubs.length != 31 then
+    throw (IO.userError s!"expected 31 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -469,6 +498,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-acc", DiffAcc.main [bin "circe_acc_native", trials]),
    ("diff-method", DiffMethod.main [bin "circe_method_native", trials]),
    ("diff-box", DiffBox.main [bin "circe_box_native", trials]),
+   ("diff-overload", DiffOverload.main [bin "circe_overload_native", bin "circe_ns_add_native", trials]),
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials])]
 
 def checkSuites : List Job :=
@@ -487,6 +517,7 @@ def checkSuites : List Job :=
    ("golden-method", GoldenMethod.main),
    ("golden-acc", GoldenAcc.main),
    ("golden-box", GoldenBox.main),
+   ("golden-overload", GoldenOverload.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -496,10 +527,11 @@ def checkSuites : List Job :=
     `tests/lean` runner without registration fails loudly here). -/
 def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffBox", "DiffCalls", "DiffFlow",
-   "DiffMethod", "DiffNorestrict", "DiffPhase3", "DiffPhase4", "DiffStruct",
+   "DiffMethod", "DiffNorestrict", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffStruct",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc",
-   "DiffWidth", "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
-   "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenPhase4",
+   "DiffWidth", "DiffOverload",
+   "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
+   "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenStruct", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
    "GoldenWidth", "ScopeReport"]

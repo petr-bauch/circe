@@ -379,6 +379,35 @@ theorem boxThrough_correct (x : BitVec 32) :
     boxThroughFwd x = .ok (.i32 x) := by
   cir_simp
 
+/-! ## N4a: overloads + namespaces (one property per new shape) -/
+
+/-- The 3-`i32` overload leaf threads both adds, mirroring
+    `add64_correct_ok` (`simp only` exposes the `(<$>)` residue for
+    `cir_simp`). -/
+theorem add3_correct_ok (x y z t r : BitVec 32)
+    (h1 : checkedAddI32 x y = .ok t)
+    (h2 : checkedAddI32 t z = .ok r) :
+    add3Fwd x y z = .ok (.i32 r) := by
+  simp only [add3Fwd, h1, h2] <;> cir_simp
+
+/-- First-add failure propagates out of the overload leaf. -/
+theorem add3_correct_err (x y z : BitVec 32) (e : Panic)
+    (h : checkedAddI32 x y = .error e) :
+    add3Fwd x y z = .error e := by
+  simp only [add3Fwd, h] <;> cir_simp
+
+/-- `use_add` delegates: the entry is the resolved overload body (via
+    `useAddFwd_is_call`; the delegation rewrite is the spec, as in
+    `pointSumRef_correct`). -/
+theorem useAdd_correct (x y : BitVec 32) :
+    useAddFwd x y = addFwd x y := by
+  cir_simp
+
+/-- `use_ns_add` delegates: the entry is the namespaced leaf body. -/
+theorem useNsAdd_correct (x y : BitVec 32) :
+    useNsAddFwd x y = addFwd x y := by
+  cir_simp
+
 /-! ## N3c gallery: worked properties beyond the admitted-shape specs -/
 
 /-- The index fill is sorted: `vec` writes `k` at slot `k`, so the

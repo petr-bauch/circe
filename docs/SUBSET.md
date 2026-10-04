@@ -202,6 +202,31 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     M2b; `cir.trap` only in M2b; everywhere else both reject loudly.
     Misshapen uses (missing `new`, unguarded `delete`, double-
     `delete`, wrong size const) are rejected with dedicated messages.
+16. Overloads + namespaces (N4a): mangling-scheme match, not an
+    admit-list — the gate pins arity/types and is name-agnostic
+    (`isAdd3Shape` / `isOverloadCallerShape` never inspect the
+    spelling):
+    `_Z3addii` 2-`i32` leaf (body-identical to `add`: two `i32`,
+    `cir.add nsw`, `i32` return; renamed-leaf proofs reuse
+    `evalFuncFuel_addAt` / `memEvalFuncFuel_addAt`),
+    `_Z3addiii` 3-`i32` leaf (three `i32`, two threaded `nsw` adds
+    via an explicit `let_` temp, `i32` return),
+    `_Z7use_addii` entry (two `i32`, exactly one call site to the
+    2-`i32` overload, `i32` return),
+    `_ZN2ns3addEii` namespaced leaf (body-identical to `add` under
+    the nested-name scheme) and `_Z10use_ns_addii` entry (two
+    `i32`, exactly one call site to the namespaced leaf, `i32`
+    return).
+    Semantics: `add3` threads two `checkedAddI32` binds (ok/err
+    lemmas `add3Fwd_ok/err`); entries dispatch to their leaf at the
+    same fuel via `evalProgFunc` (`useAddFwd_is_call` /
+    `useNsAddFwd_is_call`); errors propagate. Int-only leaves and
+    entries need explicit oracle facts (pure, so the `unknown`
+    verdict is unchecked — but the wiring entry is still required).
+    Misshapen uses (calls to unknown mangled callees, wrong-arity
+    calls into known leaves, double calls, local arithmetic beside
+    the call) are rejected with dedicated messages
+    (`callsOverloadWrongShape`).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -214,7 +239,9 @@ S1 caller shapes only; `@_ZNK5Point3sumEv` in the exact M2a entry shape
 only; `@_ZN3AccC2Ev` / `@_ZN3Acc3addEi` / `@_ZNK3Acc3getEv` /
 `@_ZN3AccD2Ev` in the exact M2b entry shape only (1 + 2 + 1 + 1 sites);
 `@_Znwm` / `@_ZdlPvm` in the exact M2c entry shape only (1 + at most 1
-sites: leak allowed, double-`delete` rejected)),
+sites: leak allowed, double-`delete` rejected);
+`@_Z3addii` in the exact N4a `use_add` entry shape only (1 site);
+`@_ZN2ns3addEii` in the exact N4a `use_ns_add` entry shape only (1 site)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf

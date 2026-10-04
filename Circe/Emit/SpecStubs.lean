@@ -252,6 +252,72 @@ def emitAddCallerSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2)).pretty\n"
   ++ s!"      == (repr ((checkedAddI32 t.1 t.2.1).bind fun u => checkedAddI32 u t.2.2)).pretty\n"
 
+/-- Spec stub for the `add3` shape (N4a 3-`i32` overload leaf). -/
+def emitAdd3SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(x, y, z)` = two threaded `nsw` adds.\n"
+  ++ s!"    Base body reference: two sequenced `checkedAddI32` binds\n"
+  ++ s!"    (cf. emitted `{name}_fwd`, `add3Fwd_ok/err`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y z : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  do let t ← checkedAddI32 x y\n"
+  ++ "     checkedAddI32 t z\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, first-add overflow, second-add overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0, 0), (1, 2, 3), (0x7FFFFFFF, 1, 0), (0x7FFFFFFF, 0, 1), (1, 0x7FFFFFFF, 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the two-add bind structure holds on every edge\n"
+  ++ "    (cf. `add3Fwd_ok/err`). TODO (user): fill the ok/err equation. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2)).pretty\n"
+  ++ s!"      == (repr ((checkedAddI32 t.1 t.2.1).bind fun u => checkedAddI32 u t.2.2)).pretty\n"
+
+/-- Spec stub for the `use_add` shape (N4a overload entry). -/
+def emitUseAddSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(x, y)` delegates to the `_Z3addii` overload.\n"
+  ++ s!"    Base body reference: `checkedAddI32` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `useAddFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 x y\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 1), (1, 0x7FFFFFFF), (0x7FFFFFFF, 0x7FFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `checkedAddI32` on every edge.\n"
+  ++ "    TODO (user): strengthen to the delegation equation\n"
+  ++ "    (`useAddFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (checkedAddI32 t.1 t.2)).pretty\n"
+
+/-- Spec stub for the `use_ns_add` shape (N4a namespace entry). -/
+def emitUseNsAddSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(x, y)` delegates to the `_ZN2ns3addEii` leaf.\n"
+  ++ s!"    Base body reference: `checkedAddI32` (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `useNsAddFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 x y\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (1, 2), (0x7FFFFFFF, 1), (1, 0x7FFFFFFF), (0x7FFFFFFF, 0x7FFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with `checkedAddI32` on every edge.\n"
+  ++ "    TODO (user): strengthen to the delegation equation\n"
+  ++ "    (`useNsAddFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ s!"      == (repr (checkedAddI32 t.1 t.2)).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

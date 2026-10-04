@@ -90,6 +90,68 @@ theorem oracleNoalias_addCaller (x y z : BitVec 32) :
     exact bindMemArgs_addCaller x y z
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-! ## N4a: overload / namespace footprints (empty: owned scalars) -/
+
+/-- `add3` binding pins nothing (three owned scalars). -/
+theorem bindMemArgs_add3 (x y z : BitVec 32) :
+    bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned },
+       { name := "c", ty := .i 32, role := .owned }]
+      [.i32 x, .i32 y, .i32 z] emptyMem =
+      some ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)], emptyMem, []) := by
+  rfl
+
+/-- `add3` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_add3 (x y z : BitVec 32) :
+    oracleNoalias add3Func [.i32 x, .i32 y, .i32 z] := by
+  have hb : bindMemArgs add3Func.args [.i32 x, .i32 y, .i32 z]
+      emptyMem =
+      some ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned },
+       { name := "c", ty := .i 32, role := .owned }]
+      [.i32 x, .i32 y, .i32 z] emptyMem = _
+    exact bindMemArgs_add3 x y z
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- Overload-caller binding pins nothing (two owned scalars; shared by
+    both entries). -/
+theorem bindMemArgs_useAdd (x y : BitVec 32) :
+    bindMemArgs
+      [{ name := "x", ty := .i 32, role := .owned },
+       { name := "y", ty := .i 32, role := .owned }]
+      [.i32 x, .i32 y] emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) := by
+  rfl
+
+/-- `use_add` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_useAdd (x y : BitVec 32) :
+    oracleNoalias useAddFunc [.i32 x, .i32 y] := by
+  have hb : bindMemArgs useAddFunc.args [.i32 x, .i32 y]
+      emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "x", ty := .i 32, role := .owned },
+       { name := "y", ty := .i 32, role := .owned }]
+      [.i32 x, .i32 y] emptyMem = _
+    exact bindMemArgs_useAdd x y
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `use_ns_add` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_useNsAdd (x y : BitVec 32) :
+    oracleNoalias useNsAddFunc [.i32 x, .i32 y] := by
+  have hb : bindMemArgs useNsAddFunc.args [.i32 x, .i32 y]
+      emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "x", ty := .i 32, role := .owned },
+       { name := "y", ty := .i 32, role := .owned }]
+      [.i32 x, .i32 y] emptyMem = _
+    exact bindMemArgs_useAdd x y
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-! ## Loop-free scalar shapes: empty footprint (M3c) -/
 
 /-- `add64` binding pins nothing (two owned 64-bit scalars). -/

@@ -14,6 +14,8 @@ verbatim.
 | `vec_correct` | heap program = `List.sum` of `[0,n)` (`vecFillSumU32_correct` + take bridge); `vec_empty` is `n = 0` | `vecFillSumU32 n.toNat` |
 | `vec64_correct` (M1b) | `u64` heap program = `List.sum` of `[0,n)` (`vecFillSumU64_correct` + take bridge); `vec64_empty` is `n = 0` | `vecFillSumU64 n.toNat` |
 | `vecRealloc_correct` (M1c) | grown heap program = `List.sum` of `[0,n+n)` (`vecReallocFillSumU32_correct` + take bridge); `vecRealloc_empty` is `n = 0` | `vecReallocFillSumU32 n.toNat` |
+| `add3_correct_ok/err` (N4a) | threaded two-add: ok needs both `checkedAddI32` certs, first-add error propagates | `add3Fwd x y z` (two sequenced binds) |
+| `useAdd_correct` / `useNsAdd_correct` (N4a) | entry forward = `addFwd` (overload resolution is identity at spec level) | `useAddFwd` / `useNsAddFwd` |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`
@@ -25,7 +27,9 @@ assertions in the check script.
 checked-op unfoldings (+ ok/err + range bridges, 32- and 64-bit),
 `prefixSumU32`/`prefixSumU64` + sum bridges, `bget` / `pointTranslate`
 shapes (+ struct-field ok/err bridges), call-unfold
-(`addCallerFwd_as_calls`, `sumCallerFwd_is_call`), vector ops (+ the
+(`addCallerFwd_as_calls`, `sumCallerFwd_is_call`) + the N4a overload
+folds (`add3Fwd`/`add3Fwd_ok/err`, `useAddFwd_is_call`,
+`useNsAddFwd_is_call`), vector ops (+ the
 whole-program bridges `vecFillSumU32_correct` / `vecFillSumU64_correct`),
 S3a flow folds, and
 `Result` bind/map computation rules (caller-side `←` chains compute
@@ -157,7 +161,7 @@ one proof); `vecRealloc_empty`/`vec64_empty` shortened to bare
 ## Spec scaffolding (ROADMAP.md S4 — done)
 
 The emitter writes `out/<name>_Spec.lean` next to each forward file
-(25 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
+(31 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,
 dispatched on `matchFrag` exactly like `emitFunc`): unverified stub
 with the function signature, the `Base`-op body reference, an
 edge-case list (empty / singleton / max-fuel), and a `Diff*`-style

@@ -74,6 +74,149 @@ def sumCallerFwd (l : List (BitVec 32)) (n : BitVec 32) : Result Value :=
 theorem sumCallerFwd_is_call (l : List (BitVec 32)) (n : BitVec 32) :
     sumCallerFwd l n = sumFwd l n := rfl
 
+/-! ## N4a: overload / namespace callers (`use_add`, `use_ns_add`) -/
+
+/-- Canonical CoreIR for `tests/cpp/overload_add.cpp:use_add`: single
+    DAG call resolving to the 2-`i32` overload (`_Z3addii`). The callee
+    is the renamed `add` leaf (matched by mangled name in
+    `evalProgStmt`). -/
+def useAddFunc : Func :=
+  ⟨"_Z7use_addii",
+   [{ name := "x", ty := .i 32, role := .owned },
+    { name := "y", ty := .i 32, role := .owned }],
+   .i 32,
+   .seq (.callRet "s" "_Z3addii" ["x", "y"])
+        (.return_ (.var "s"))⟩
+
+/-- Canonical CoreIR for `tests/cpp/ns_add.cpp:use_ns_add`: single DAG
+    call resolving to the namespaced leaf (`_ZN2ns3addEii`). -/
+def useNsAddFunc : Func :=
+  ⟨"_Z10use_ns_addii",
+   [{ name := "x", ty := .i 32, role := .owned },
+    { name := "y", ty := .i 32, role := .owned }],
+   .i 32,
+   .seq (.callRet "s" "_ZN2ns3addEii" ["x", "y"])
+        (.return_ (.var "s"))⟩
+
+/-- Value-level forward for `use_add`: direct delegation to the `add`
+    leaf forward (cf. rendered `_Z7use_addii_fwd`). -/
+def useAddFwd (x y : BitVec 32) : Result Value :=
+  addFwd x y
+
+theorem useAddFwd_is_call (x y : BitVec 32) :
+    useAddFwd x y = addFwd x y := rfl
+
+/-- Value-level forward for `use_ns_add`: same delegation at the
+    namespaced leaf. -/
+def useNsAddFwd (x y : BitVec 32) : Result Value :=
+  addFwd x y
+
+theorem useNsAddFwd_is_call (x y : BitVec 32) :
+    useNsAddFwd x y = addFwd x y := rfl
+
+/-- Env facts for the overload-caller shape (shared by both entries). -/
+theorem envLookup_useAddCaller_x (x y : BitVec 32) :
+    envLookup [("x", .i32 x), ("y", .i32 y)] "x" = some (.i32 x) := by
+  simp [envLookup]
+
+theorem envLookup_useAddCaller_y (x y : BitVec 32) :
+    envLookup [("x", .i32 x), ("y", .i32 y)] "y" = some (.i32 y) := by
+  simp [envLookup, show ("y" : String) ≠ "x" by decide]
+
+/-- `emit_correct` for `use_add`: program evaluation over the renamed
+    `add` leaf agrees with the delegating forward (loop-free leaf, so
+    no fuel side conditions). -/
+theorem evalProgFunc_useAdd (F : Nat) (x y : BitVec 32) :
+    evalProgFunc [{ addFunc with name := "_Z3addii" }] F useAddFunc
+      [.i32 x, .i32 y] = useAddFwd x y := by
+  have hbind : bindArgs useAddFunc.args [.i32 x, .i32 y] =
+      some [("x", .i32 x), ("y", .i32 y)] := rfl
+  have hbody : useAddFunc.body =
+      .seq (.callRet "s" "_Z3addii" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useAddCaller_x x y
+  have hy := envLookup_useAddCaller_y x y
+  have hfind : findFunc [{ addFunc with name := "_Z3addii" }] "_Z3addii" =
+      some { addFunc with name := "_Z3addii" } :=
+    findFunc_hit { addFunc with name := "_Z3addii" } []
+  have hargs : lookupArgs [("x", .i32 x), ("y", .i32 y)] ["x", "y"] =
+      some [.i32 x, .i32 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := evalFuncFuel_addAt F "_Z3addii" x y
+  cases hadd : addFwd x y with
+  | error e =>
+    have hcall' : evalFuncFuel F { addFunc with name := "_Z3addii" }
+        [.i32 x, .i32 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_err [{ addFunc with name := "_Z3addii" }]
+      F "s" "_Z3addii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      [.i32 x, .i32 y] { addFunc with name := "_Z3addii" } e hargs hfind hcall'
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstep]
+    simp [useAddFwd, hadd]
+  | ok v =>
+    have hcall' : evalFuncFuel F { addFunc with name := "_Z3addii" }
+        [.i32 x, .i32 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_ok [{ addFunc with name := "_Z3addii" }]
+      F "s" "_Z3addii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      [.i32 x, .i32 y] { addFunc with name := "_Z3addii" } v hargs hfind hcall'
+    have hret : evalProgStmt [{ addFunc with name := "_Z3addii" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v) =
+        .ok (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v,
+          .returned v) :=
+      evalProgStmt_return [{ addFunc with name := "_Z3addii" }] F (.var "s") _
+        v (evalExpr_var_hit _ _ _ (envExtend_hit _ _ _))
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep, hret]
+    simp [useAddFwd, hadd]
+
+/-- `emit_correct` for `use_ns_add`: same proof at the namespaced leaf. -/
+theorem evalProgFunc_useNsAdd (F : Nat) (x y : BitVec 32) :
+    evalProgFunc [{ addFunc with name := "_ZN2ns3addEii" }] F useNsAddFunc
+      [.i32 x, .i32 y] = useNsAddFwd x y := by
+  have hbind : bindArgs useNsAddFunc.args [.i32 x, .i32 y] =
+      some [("x", .i32 x), ("y", .i32 y)] := rfl
+  have hbody : useNsAddFunc.body =
+      .seq (.callRet "s" "_ZN2ns3addEii" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useAddCaller_x x y
+  have hy := envLookup_useAddCaller_y x y
+  have hfind : findFunc [{ addFunc with name := "_ZN2ns3addEii" }] "_ZN2ns3addEii" =
+      some { addFunc with name := "_ZN2ns3addEii" } :=
+    findFunc_hit { addFunc with name := "_ZN2ns3addEii" } []
+  have hargs : lookupArgs [("x", .i32 x), ("y", .i32 y)] ["x", "y"] =
+      some [.i32 x, .i32 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := evalFuncFuel_addAt F "_ZN2ns3addEii" x y
+  cases hadd : addFwd x y with
+  | error e =>
+    have hcall' : evalFuncFuel F { addFunc with name := "_ZN2ns3addEii" }
+        [.i32 x, .i32 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_err [{ addFunc with name := "_ZN2ns3addEii" }]
+      F "s" "_ZN2ns3addEii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      [.i32 x, .i32 y] { addFunc with name := "_ZN2ns3addEii" } e hargs hfind hcall'
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstep]
+    simp [useNsAddFwd, hadd]
+  | ok v =>
+    have hcall' : evalFuncFuel F { addFunc with name := "_ZN2ns3addEii" }
+        [.i32 x, .i32 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := evalProgStmt_callRet_ok [{ addFunc with name := "_ZN2ns3addEii" }]
+      F "s" "_ZN2ns3addEii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      [.i32 x, .i32 y] { addFunc with name := "_ZN2ns3addEii" } v hargs hfind hcall'
+    have hret : evalProgStmt [{ addFunc with name := "_ZN2ns3addEii" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v) =
+        .ok (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v,
+          .returned v) :=
+      evalProgStmt_return [{ addFunc with name := "_ZN2ns3addEii" }] F (.var "s") _
+        v (evalExpr_var_hit _ _ _ (envExtend_hit _ _ _))
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep, hret]
+    simp [useNsAddFwd, hadd]
+
 /-- Env facts for the `add_caller` shape. -/
 theorem envLookup_addCaller_x (x y z : BitVec 32) :
     envLookup [("x", .i32 x), ("y", .i32 y), ("z", .i32 z)] "x" =

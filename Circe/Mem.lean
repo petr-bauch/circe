@@ -825,6 +825,20 @@ theorem memEvalStmtFuel_return (f : Nat) (e : CExpr) (ρ : Env)
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv]
 
+/-- `return_` propagates expression errors (any fuel; mirrors
+    `evalStmtFuel_return_err`). -/
+theorem memEvalStmtFuel_return_err (f : Nat) (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (err : Panic)
+    (h : memEvalExpr e ρ m π = .error err) :
+    memEvalStmtFuel f (.return_ e) ρ m π = .error err := by
+  cases f with
+  | zero =>
+    simp only [memEvalStmtFuel, memEvalStmtZero] at h ⊢
+    simp only [memEvalStmtWith, h]
+  | succ g =>
+    simp only [memEvalStmtFuel] at h ⊢
+    simp only [memEvalStmtWith, h]
+
 /-- `assign` agrees when the assigned expression does. -/
 theorem memEvalStmtFuel_assign (f : Nat) (x : String) (e : CExpr)
     (ρ : Env) (m : Mem) (π : Layout) (v : Value) (ρ' : Env)
@@ -1103,6 +1117,36 @@ theorem memEvalStmtFuel_seq (f : Nat) (a b : CStmt) (ρ : Env)
     simp only [memEvalStmtFuel] at ha hb ⊢
     simp only [memEvalStmtWith, ha, hb]
 
+/-- `seq` propagates first-statement errors (any fuel; mirrors
+    `evalStmtFuel_seq_err`). -/
+theorem memEvalStmtFuel_seq_err (f : Nat) (a b : CStmt) (ρ : Env)
+    (m : Mem) (π : Layout) (e : Panic)
+    (h : memEvalStmtFuel f a ρ m π = .error e) :
+    memEvalStmtFuel f (.seq a b) ρ m π = .error e := by
+  cases f with
+  | zero =>
+    simp only [memEvalStmtFuel, memEvalStmtZero] at h ⊢
+    simp only [memEvalStmtWith, h]
+  | succ g =>
+    simp only [memEvalStmtFuel] at h ⊢
+    simp only [memEvalStmtWith, h]
+
+/-- `seq` threads the environment on fall-through (any fuel, no
+    condition on the second statement; mirrors
+    `evalStmtFuel_seq_fallthrough`). -/
+theorem memEvalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt) (ρ : Env)
+    (m : Mem) (π : Layout) (ρ₁ : Env) (m₁ : Mem) (π₁ : Layout)
+    (ha : memEvalStmtFuel f a ρ m π = .ok ((ρ₁, m₁, π₁), .fellThrough)) :
+    memEvalStmtFuel f (.seq a b) ρ m π =
+      memEvalStmtFuel f b ρ₁ m₁ π₁ := by
+  cases f with
+  | zero =>
+    simp only [memEvalStmtFuel, memEvalStmtZero] at ha ⊢
+    simp only [memEvalStmtWith, ha]
+  | succ g =>
+    simp only [memEvalStmtFuel] at ha ⊢
+    simp only [memEvalStmtWith, ha]
+
 /-- Pure `let_` agrees when the bound expression does (`vnew` takes
     the allocating arm instead — see `memEvalStmtFuel_let_vnew`;
     `boxNew` takes its own allocating arm — see
@@ -1120,6 +1164,21 @@ theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
   | .boxNew se => exact absurd rfl (hnotBox se)
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv]
+
+/-- Pure `let_` propagates expression errors (any fuel; mirrors
+    `evalStmtFuel_let_err`; allocating arms are excluded as in
+    `memEvalStmtFuel_let_pure`). -/
+theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
+    (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (err : Panic)
+    (hnot : ∀ se, e ≠ .vnew se)
+    (hnotBox : ∀ se, e ≠ .boxNew se)
+    (h : memEvalExpr e ρ m π = .error err) :
+    memEvalStmtFuel f (.let_ x ty e) ρ m π = .error err := by
+  match e with
+  | .vnew se => exact absurd rfl (hnot se)
+  | .boxNew se => exact absurd rfl (hnotBox se)
+  | _ =>
+    cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
 
 /-- Allocating `let_` (`vnew`): the value side runs `vecNew`, the
     memory side additionally pins a fresh block holding the same words,

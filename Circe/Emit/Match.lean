@@ -143,6 +143,22 @@ def matchFrag : Func → Option FragKind
         (.seq (.callRet "r" "add" ["t", "z"])
               (.return_ (.var "r"))) => some .addCall
     | _ => none
+  | ⟨_, [⟨"a", .i 32, .owned⟩, ⟨"b", .i 32, .owned⟩,
+         ⟨"c", .i 32, .owned⟩], _, body⟩ =>
+    -- `let_`-bound SSA temporary: body matched separately (cf.
+    -- `addCall` note).
+    match body with
+    | .seq (.let_ "t" _ (.add (.var "a") (.var "b")))
+        (.return_ (.add (.var "t") (.var "c"))) => some .add3
+    | _ => none
+  | ⟨_, [⟨"x", .i 32, .owned⟩, ⟨"y", .i 32, .owned⟩], _, body⟩ =>
+    -- Mangled callees: body matched separately (cf. `addCall` note).
+    match body with
+    | .seq (.callRet "s" "_Z3addii" ["x", "y"])
+        (.return_ (.var "s")) => some .useAdd
+    | .seq (.callRet "s" "_ZN2ns3addEii" ["x", "y"])
+        (.return_ (.var "s")) => some .useNsAdd
+    | _ => none
   | ⟨_, [⟨"a", .array (.u 32) _, .sharedBorrow⟩,
          ⟨"n", .u 32, .owned⟩], _, body⟩ =>
     match body with
@@ -261,6 +277,9 @@ def matchFrag : Func → Option FragKind
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
+theorem matchFrag_add3 : matchFrag add3Func = some .add3 := rfl
+theorem matchFrag_useAdd : matchFrag useAddFunc = some .useAdd := rfl
+theorem matchFrag_useNsAdd : matchFrag useNsAddFunc = some .useNsAdd := rfl
 theorem matchFrag_incr : matchFrag incrFunc = some .incr := rfl
 theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl

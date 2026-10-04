@@ -156,6 +156,36 @@ def emitSumCallerText (name : String) : String :=
   ++ "def " ++ name ++ "_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
   ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
 
+/-- Render the `add3` overload-leaf forward definition: two sequential
+    checked adds (leaf body `checkedAddI32` inlined twice, see
+    `add3Fwd_ok/err`). -/
+def emitAdd3Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (3-`i32` overload leaf: two threaded `nsw` adds). -/\n"
+  ++ s!"def {name}_fwd (x y z : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  do let t ← checkedAddI32 x y\n"
+  ++ "     checkedAddI32 t z\n"
+
+/-- Render the `use_add` entry forward definition: direct delegation to
+    the resolved overload leaf body (`checkedAddI32`, see
+    `useAddFwd_is_call`). -/
+def emitUseAddText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_Z3addii` overload body). -/\n"
+  ++ s!"def {name}_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 x y\n"
+
+/-- Render the `use_ns_add` entry forward definition: direct delegation
+    to the namespaced leaf body (see `useNsAddFwd_is_call`). -/
+def emitUseNsAddText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the `_ZN2ns3addEii` namespaced body). -/\n"
+  ++ s!"def {name}_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedAddI32 x y\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

@@ -3991,6 +3991,137 @@ theorem memEvalFuncFuel_add (F : Nat) (a b : BitVec 32) :
       memEvalExpr, addFwd, ha, hbb] <;>
     (cases checkedAddI32 a b <;> rfl)
 
+/-- `memEval` for `add` under a renamed leaf (mirrors
+    `evalFuncFuel_addAt` on the memory side; the name never matters). -/
+theorem memEvalFuncFuel_addAt (F : Nat) (nm : String) (a b : BitVec 32) :
+    memEvalFuncFuel F { addFunc with name := nm } [.i32 a, .i32 b] =
+      addFwd a b := by
+  have hbf : addFunc.args =
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }] := rfl
+  have hbody : addFunc.body =
+      .return_ (.add (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }]
+      [.i32 a, .i32 b] emptyMem =
+      some ([("a", .i32 a), ("b", .i32 b)], emptyMem, []) :=
+    bindMemArgs_add a b
+  have ha := envLookup_add_a a b
+  have hbb := envLookup_add_b a b
+  simp only [memEvalFuncFuel, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      memEvalExpr, addFwd, ha, hbb] <;>
+    (cases checkedAddI32 a b <;> rfl)
+
+/-- `memEval` for `add3` (mirrors `evalFuncFuel_add3` on the memory
+    side: the `let_` makes both adds single steps; int-only, so
+    `Mem`/`Layout` stay `emptyMem`/`[]`). -/
+theorem memEvalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
+    memEvalFuncFuel F add3Func [.i32 x, .i32 y, .i32 z] = add3Fwd x y z := by
+  have hbind : bindMemArgs add3Func.args [.i32 x, .i32 y, .i32 z] emptyMem =
+      some ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)], emptyMem, []) :=
+    bindMemArgs_add3 x y z
+  have hbody : add3Func.body =
+      .seq (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
+           (.return_ (.add (.var "t") (.var "c"))) := rfl
+  have ha := envLookup_add3_a x y z
+  have hb := envLookup_add3_b x y z
+  have hc := envLookup_add3_c x y z
+  have hmem1 : memEvalExpr (.add (.var "a") (.var "b"))
+      ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env) emptyMem [] =
+      evalExpr (.add (.var "a") (.var "b"))
+        [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] := by
+    simp only [memEvalExpr, evalExpr, ha, hb]
+  simp only [memEvalFuncFuel, hbind, hbody]
+  cases h1 : checkedAddI32 x y with
+  | error e =>
+    have hv1 : evalExpr (.add (.var "a") (.var "b"))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env) = .error e := by
+      simp [evalExpr, ha, hb, h1, Except.map]
+    have hmemv1 : memEvalExpr (.add (.var "a") (.var "b"))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env) emptyMem [] =
+        .error e := by
+      rw [hmem1]; exact hv1
+    have hlet := memEvalStmtFuel_let_err F "t" (.i 32)
+      (.add (.var "a") (.var "b"))
+      [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] e
+      (by intro se h; cases h) (by intro se h; cases h) hmemv1
+    have hseq := memEvalStmtFuel_seq_err F
+      (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
+      (.return_ (.add (.var "t") (.var "c")))
+      [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] _ hlet
+    rw [hseq]
+    simp [add3Fwd, h1]
+  | ok t =>
+    have hv1 : evalExpr (.add (.var "a") (.var "b"))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env) =
+        .ok (.i32 t) := by
+      simp [evalExpr, ha, hb, h1, Except.map]
+    have hlet := memEvalStmtFuel_let_pure F "t" (.i 32)
+      (.add (.var "a") (.var "b"))
+      [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] (.i32 t)
+      (by intro se h; cases h) (by intro se h; cases h) hmem1 hv1
+    have ht : envLookup (envExtend [("a", .i32 x), ("b", .i32 y),
+        ("c", .i32 z)] "t" (.i32 t)) "t" = some (.i32 t) :=
+      envExtend_hit _ _ _
+    have hc2 : envLookup (envExtend [("a", .i32 x), ("b", .i32 y),
+        ("c", .i32 z)] "t" (.i32 t)) "c" = some (.i32 z) := by
+      simp [envExtend, envLookup, show ("c" : String) ≠ "t" by decide]
+    have hmem2 : memEvalExpr (.add (.var "t") (.var "c"))
+        (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t" (.i32 t))
+        emptyMem [] =
+        evalExpr (.add (.var "t") (.var "c"))
+          (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t"
+            (.i32 t)) := by
+      simp only [memEvalExpr, evalExpr, ht, hc2]
+    cases h2 : checkedAddI32 t z with
+    | error e =>
+      have hv2 : evalExpr (.add (.var "t") (.var "c"))
+          (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t"
+            (.i32 t)) = .error e := by
+        simp [evalExpr, ht, hc2, h2, Except.map]
+      have hmemv2 : memEvalExpr (.add (.var "t") (.var "c"))
+          (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t"
+            (.i32 t)) emptyMem [] = .error e := by
+        rw [hmem2]; exact hv2
+      have hret := memEvalStmtFuel_return_err F (.add (.var "t") (.var "c"))
+        (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t" (.i32 t))
+        emptyMem [] e hmemv2
+      rw [memEvalStmtFuel_seq_fallthrough F
+        (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
+        (.return_ (.add (.var "t") (.var "c")))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env)
+        emptyMem []
+        (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t" (.i32 t))
+        emptyMem [] hlet, hret]
+      simp [add3Fwd, h1, h2, i32_map_error]
+    | ok r =>
+      have hv2 : evalExpr (.add (.var "t") (.var "c"))
+          (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t"
+            (.i32 t)) = .ok (.i32 r) := by
+        simp [evalExpr, ht, hc2, h2, Except.map]
+      have hret := memEvalStmtFuel_return F (.add (.var "t") (.var "c"))
+        (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t" (.i32 t))
+        emptyMem [] (.i32 r) hmem2 hv2
+      have hseq := memEvalStmtFuel_seq_fallthrough F
+        (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
+        (.return_ (.add (.var "t") (.var "c")))
+        ([("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] : Env)
+        emptyMem []
+        (envExtend [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] "t" (.i32 t))
+        emptyMem [] hlet
+      rw [hseq, hret]
+      simp [add3Fwd, h1, h2, i32_map_ok]
+
+/-- Transfer for `add3`: both sides equal `add3Fwd`. -/
+theorem memTransfer_add3 (F : Nat) (x y z : BitVec 32)
+    (_h : oracleNoalias add3Func [.i32 x, .i32 y, .i32 z]) :
+    memEvalFuncFuel F add3Func [.i32 x, .i32 y, .i32 z] =
+      evalFuncFuel F add3Func [.i32 x, .i32 y, .i32 z] := by
+  rw [memEvalFuncFuel_add3, evalFuncFuel_add3]
+
 /-- `memEval` for `add_caller`: program evaluation over `[addFunc]`
     agrees with the forward (mirrors `evalProgFunc_addCaller`; caller
     `Mem`/`Layout` stay `emptyMem`/`[]` — each callee runs on its own
@@ -4166,6 +4297,135 @@ theorem memTransferProg_sumCaller (F : Nat) (l : List (BitVec 32))
       evalProgFunc [sumFunc] F sumCallerFunc [.arr32 l, .u32 nv] := by
   rw [memEvalProgFunc_sumCaller F l nv hle h32 hF,
     evalProgFunc_sumCaller F l nv hle h32 hF]
+
+/-! ## N4a program transfers: `use_add`, `use_ns_add` -/
+
+/-- `memEval` for `use_add`: program evaluation over the renamed `add`
+    leaf agrees with the delegating forward (mirrors
+    `evalProgFunc_useAdd`; int-only, so `Mem`/`Layout` stay
+    `emptyMem`/`[]`). -/
+theorem memEvalProgFunc_useAdd (F : Nat) (x y : BitVec 32) :
+    memEvalProgFunc [{ addFunc with name := "_Z3addii" }] F useAddFunc
+      [.i32 x, .i32 y] = useAddFwd x y := by
+  have hbind : bindMemArgs useAddFunc.args [.i32 x, .i32 y] emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) :=
+    bindMemArgs_useAdd x y
+  have hbody : useAddFunc.body =
+      .seq (.callRet "s" "_Z3addii" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useAddCaller_x x y
+  have hy := envLookup_useAddCaller_y x y
+  have hfind : findFunc [{ addFunc with name := "_Z3addii" }] "_Z3addii" =
+      some { addFunc with name := "_Z3addii" } :=
+    findFunc_hit { addFunc with name := "_Z3addii" } []
+  have hargs : lookupArgs [("x", .i32 x), ("y", .i32 y)] ["x", "y"] =
+      some [.i32 x, .i32 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := memEvalFuncFuel_addAt F "_Z3addii" x y
+  cases hadd : addFwd x y with
+  | error e =>
+    have hcall' : memEvalFuncFuel F { addFunc with name := "_Z3addii" }
+        [.i32 x, .i32 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_err
+      [{ addFunc with name := "_Z3addii" }]
+      F "s" "_Z3addii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      emptyMem []
+      [.i32 x, .i32 y] { addFunc with name := "_Z3addii" } e hargs hfind hcall'
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstep]
+    simp [useAddFwd, hadd]
+  | ok v =>
+    have hcall' : memEvalFuncFuel F { addFunc with name := "_Z3addii" }
+        [.i32 x, .i32 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_ok
+      [{ addFunc with name := "_Z3addii" }]
+      F "s" "_Z3addii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      emptyMem []
+      [.i32 x, .i32 y] { addFunc with name := "_Z3addii" } v hargs hfind hcall'
+    have hret : memEvalProgStmt [{ addFunc with name := "_Z3addii" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v)
+        emptyMem [] =
+        .ok (((envExtend [("x", .i32 x), ("y", .i32 y)] "s" v,
+          emptyMem, []), .returned v)) :=
+      memEvalProgStmt_return [{ addFunc with name := "_Z3addii" }] F (.var "s") _
+        _ _ v (by simp [memEvalExpr, envExtend_hit])
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep, hret]
+    simp [useAddFwd, hadd]
+
+/-- Transfer for `use_add` (program level): both sides equal
+    `useAddFwd`. -/
+theorem memTransferProg_useAdd (F : Nat) (x y : BitVec 32)
+    (_h : oracleNoalias useAddFunc [.i32 x, .i32 y]) :
+    memEvalProgFunc [{ addFunc with name := "_Z3addii" }] F useAddFunc
+      [.i32 x, .i32 y] =
+      evalProgFunc [{ addFunc with name := "_Z3addii" }] F useAddFunc
+        [.i32 x, .i32 y] := by
+  rw [memEvalProgFunc_useAdd, evalProgFunc_useAdd]
+
+/-- `memEval` for `use_ns_add`: same proof at the namespaced leaf. -/
+theorem memEvalProgFunc_useNsAdd (F : Nat) (x y : BitVec 32) :
+    memEvalProgFunc [{ addFunc with name := "_ZN2ns3addEii" }] F useNsAddFunc
+      [.i32 x, .i32 y] = useNsAddFwd x y := by
+  have hbind : bindMemArgs useNsAddFunc.args [.i32 x, .i32 y] emptyMem =
+      some ([("x", .i32 x), ("y", .i32 y)], emptyMem, []) :=
+    bindMemArgs_useAdd x y
+  have hbody : useNsAddFunc.body =
+      .seq (.callRet "s" "_ZN2ns3addEii" ["x", "y"])
+           (.return_ (.var "s")) := rfl
+  have hx := envLookup_useAddCaller_x x y
+  have hy := envLookup_useAddCaller_y x y
+  have hfind : findFunc [{ addFunc with name := "_ZN2ns3addEii" }] "_ZN2ns3addEii" =
+      some { addFunc with name := "_ZN2ns3addEii" } :=
+    findFunc_hit { addFunc with name := "_ZN2ns3addEii" } []
+  have hargs : lookupArgs [("x", .i32 x), ("y", .i32 y)] ["x", "y"] =
+      some [.i32 x, .i32 y] := by
+    simp [lookupArgs, hx, hy]
+  have hcall := memEvalFuncFuel_addAt F "_ZN2ns3addEii" x y
+  cases hadd : addFwd x y with
+  | error e =>
+    have hcall' : memEvalFuncFuel F { addFunc with name := "_ZN2ns3addEii" }
+        [.i32 x, .i32 y] = .error e := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_err
+      [{ addFunc with name := "_ZN2ns3addEii" }]
+      F "s" "_ZN2ns3addEii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      emptyMem []
+      [.i32 x, .i32 y] { addFunc with name := "_ZN2ns3addEii" } e hargs hfind hcall'
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstep]
+    simp [useNsAddFwd, hadd]
+  | ok v =>
+    have hcall' : memEvalFuncFuel F { addFunc with name := "_ZN2ns3addEii" }
+        [.i32 x, .i32 y] = .ok v := by
+      rw [hcall, hadd]
+    have hstep := memEvalProgStmt_callRet_ok
+      [{ addFunc with name := "_ZN2ns3addEii" }]
+      F "s" "_ZN2ns3addEii" ["x", "y"] [("x", .i32 x), ("y", .i32 y)]
+      emptyMem []
+      [.i32 x, .i32 y] { addFunc with name := "_ZN2ns3addEii" } v hargs hfind hcall'
+    have hret : memEvalProgStmt [{ addFunc with name := "_ZN2ns3addEii" }] F
+        (.return_ (.var "s")) (envExtend [("x", .i32 x), ("y", .i32 y)] "s" v)
+        emptyMem [] =
+        .ok (((envExtend [("x", .i32 x), ("y", .i32 y)] "s" v,
+          emptyMem, []), .returned v)) :=
+      memEvalProgStmt_return [{ addFunc with name := "_ZN2ns3addEii" }] F (.var "s") _
+        _ _ v (by simp [memEvalExpr, envExtend_hit])
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstep, hret]
+    simp [useNsAddFwd, hadd]
+
+/-- Transfer for `use_ns_add` (program level): both sides equal
+    `useNsAddFwd`. -/
+theorem memTransferProg_useNsAdd (F : Nat) (x y : BitVec 32)
+    (_h : oracleNoalias useNsAddFunc [.i32 x, .i32 y]) :
+    memEvalProgFunc [{ addFunc with name := "_ZN2ns3addEii" }] F useNsAddFunc
+      [.i32 x, .i32 y] =
+      evalProgFunc [{ addFunc with name := "_ZN2ns3addEii" }] F useNsAddFunc
+        [.i32 x, .i32 y] := by
+  rw [memEvalProgFunc_useNsAdd, evalProgFunc_useNsAdd]
 
 /-! ## M3d C++ transfers: `methodSum` leaf + `pointSumRef` entry (N1a) -/
 

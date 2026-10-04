@@ -77,6 +77,8 @@ macro "cir_simp" : tactic =>
     accTwo, accTwo_ok, accTwo_err_a, accTwo_err_b, accAddFwd_ok,
     accAddFwd_err, accTwoFwd_is_accTwo,
     accCtorFwd, accCtor, accGetFwd, accDtorFwd,
+    add3Fwd, add3Fwd_ok, add3Fwd_err,
+    useAddFwd_is_call, useNsAddFwd_is_call,
     boxThrough, boxThrough_ok, boxThroughFwd_is_boxThrough,
     boxNew, boxNew_ok, boxGet, boxGet_ok, boxFree, boxFree_ok,
     addCallerFwd_as_calls, sumCallerFwd_is_call,
