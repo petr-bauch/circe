@@ -32,7 +32,11 @@ import Circe.CoreIR
     `std::optional<int32_t>` is `optVal` (the engaged word or
     `none`; N4d-ii). `std::span<const int32_t>` is `spanVal` (the
     reified viewed words; `sharedBorrow` pure-copy snapshot semantics,
-    the S1 `sum_array` precedent bundled into one value; N4d-iii). -/
+    the S1 `sum_array` precedent bundled into one value; N4d-iii).
+    `std::vector<int32_t>` reads are `stdVecVal` (the reified element
+    words; same `sharedBorrow` snapshot story over the heap triple —
+    the `_M_start` load path fuses into the read, so the triple
+    itself never materializes; N4d-iv-a, reads only). -/
 inductive Value : Type
   | i32 : BitVec 32 → Value
   | u32 : BitVec 32 → Value
@@ -47,6 +51,7 @@ inductive Value : Type
   | structVal : String → List (String × BitVec 32) → Value
   | optVal : Option (BitVec 32) → Value
   | spanVal : List (BitVec 32) → Value
+  | stdVecVal : List (BitVec 32) → Value
   deriving DecidableEq, Repr
 
 /-- Evaluation environment: variables to values. Loan/borrow bookkeeping
@@ -400,6 +405,23 @@ def evalExpr : CExpr → Env → Result Value
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
+  | .stdVecLen s, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecVal l) => .ok (.u64 (BitVec.ofNat 64 l.length))
+    | some _ => .error .AssertFail
+  | .stdVecAt s ie, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecVal l) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        match l[i.toNat]? with
+        | some x => .ok (.i32 x)
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
     | .error e => .error e
@@ -718,6 +740,52 @@ theorem evalExpr_spanAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
     (ρ : Env)
     (hs : envLookup ρ s = some (.i32 v)) :
     evalExpr (.spanAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `stdVecLen` of a vector delivers its length as a `u64` word. -/
+theorem evalExpr_stdVecLen_some (s : String) (ρ : Env)
+    (l : List (BitVec 32))
+    (hs : envLookup ρ s = some (.stdVecVal l)) :
+    evalExpr (.stdVecLen s) ρ = .ok (.u64 (BitVec.ofNat 64 l.length)) := by
+  simp [evalExpr, hs]
+
+/-- `stdVecLen` of a non-vector is rejected, never silently modeled. -/
+theorem evalExpr_stdVecLen_notval (s : String) (v : BitVec 32) (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.stdVecLen s) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `stdVecAt` in bounds delivers the word. -/
+theorem evalExpr_stdVecAt_some (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 32)) (i : BitVec 64) (x : BitVec 32)
+    (hs : envLookup ρ s = some (.stdVecVal l))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hget : l[i.toNat]? = some x) :
+    evalExpr (.stdVecAt s ie) ρ = .ok (.i32 x) := by
+  simp [evalExpr, hs, hi, hget]
+
+/-- `stdVecAt` off the end is `OOB` (mirrors `spanAt`). -/
+theorem evalExpr_stdVecAt_oob (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 32)) (i : BitVec 64)
+    (hs : envLookup ρ s = some (.stdVecVal l))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hget : l[i.toNat]? = none) :
+    evalExpr (.stdVecAt s ie) ρ = .error .OOB := by
+  simp [evalExpr, hs, hi, hget]
+
+/-- `stdVecAt` with a non-`u64` index is rejected. -/
+theorem evalExpr_stdVecAt_nonu64 (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 32)) (v : BitVec 32)
+    (hs : envLookup ρ s = some (.stdVecVal l))
+    (hi : evalExpr ie ρ = .ok (.i32 v)) :
+    evalExpr (.stdVecAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs, hi]
+
+/-- `stdVecAt` of a non-vector is rejected, never silently modeled. -/
+theorem evalExpr_stdVecAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
+    (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.stdVecAt s ie) ρ = .error .AssertFail := by
   simp [evalExpr, hs]
 
 /-- `vnew` on a `u32` size allocates a zeroed live block. -/

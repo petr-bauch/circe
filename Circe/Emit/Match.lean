@@ -22,6 +22,7 @@ import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.Optional
 import Circe.Emit.Span
+import Circe.Emit.VecRead
 import Circe.Emit.Box
 import Circe.Emit.Flow
 
@@ -398,6 +399,29 @@ def matchFrag : Func → Option FragKind
       if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
           one == BitVec.ofNat 64 1 then some .spanSum else none
     | _ => none
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩], _,
+      .return_ (.stdVecLen "s")⟩ =>
+    some .vecSize
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.stdVecAt "s" (.var "n"))⟩ =>
+    some .vecIndex
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩], _, body⟩ =>
+    match body with
+    | .seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
+      (.seq (.while_ (.ult (.var "i") (.stdVecLen "s"))
+              (.seq (.assign "t"
+                      (.add (.var "t") (.stdVecAt "s" (.var "i"))))
+                (.assign "i"
+                  (.uadd (.var "i") (.lit (.u64 one))))))
+            (.return_ (.var "t")))) =>
+      if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
+          one == BitVec.ofNat 64 1 then some .vecReadSum else none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -446,3 +470,6 @@ theorem matchFrag_spanExtent : matchFrag spanExtentFunc = some .spanExtent := rf
 theorem matchFrag_spanSize : matchFrag spanSizeFunc = some .spanSize := rfl
 theorem matchFrag_spanIndex : matchFrag spanIndexFunc = some .spanIndex := rfl
 theorem matchFrag_spanSum : matchFrag spanSumFunc = some .spanSum := rfl
+theorem matchFrag_stdVecSize : matchFrag stdVecSizeFunc = some .vecSize := rfl
+theorem matchFrag_stdVecIndex : matchFrag stdVecIndexFunc = some .vecIndex := rfl
+theorem matchFrag_stdVecReadSum : matchFrag stdVecReadSumFunc = some .vecReadSum := rfl

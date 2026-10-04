@@ -31,6 +31,7 @@ import DiffVec
 import DiffVec2
 import DiffVec64
 import DiffVecLeak
+import DiffVecRead
 import DiffVecRealloc
 import DiffWidth
 import GoldenAcc
@@ -54,6 +55,7 @@ import GoldenStruct
 import GoldenTadd
 import GoldenVec2
 import GoldenVec64
+import GoldenVecRead
 import GoldenVecRealloc
 import GoldenWidth
 import ScopeReport
@@ -150,6 +152,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/array_sum.cpp", "tests/diff/driver_array_sum.cpp"], bin "circe_array_sum_native"),
    ("c++", ["tests/cpp/opt_deref.cpp", "tests/diff/driver_opt_deref.cpp"], bin "circe_opt_deref_native"),
    ("c++", ["-std=c++20", "tests/cpp/span_sum.cpp", "tests/diff/driver_span_sum.cpp"], bin "circe_span_sum_native"),
+   ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
@@ -209,7 +212,13 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/SpanIndex.lean", "out/SpanIndex.lean"),
    ("tests/golden/SpanIndex_Spec.lean", "out/SpanIndex_Spec.lean"),
    ("tests/golden/SpanSum.lean", "out/SpanSum.lean"),
-   ("tests/golden/SpanSum_Spec.lean", "out/SpanSum_Spec.lean")]
+   ("tests/golden/SpanSum_Spec.lean", "out/SpanSum_Spec.lean"),
+   ("tests/golden/VecSize.lean", "out/VecSize.lean"),
+   ("tests/golden/VecSize_Spec.lean", "out/VecSize_Spec.lean"),
+   ("tests/golden/VecIndex.lean", "out/VecIndex.lean"),
+   ("tests/golden/VecIndex_Spec.lean", "out/VecIndex_Spec.lean"),
+   ("tests/golden/VecReadSum.lean", "out/VecReadSum.lean"),
+   ("tests/golden/VecReadSum_Spec.lean", "out/VecReadSum_Spec.lean")]
 
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
@@ -255,7 +264,10 @@ def emittedTypechecks : List String :=
    "out/SpanExtent.lean", "out/SpanExtent_Spec.lean",
    "out/SpanSize.lean", "out/SpanSize_Spec.lean",
    "out/SpanIndex.lean", "out/SpanIndex_Spec.lean",
-   "out/SpanSum.lean", "out/SpanSum_Spec.lean"]
+   "out/SpanSum.lean", "out/SpanSum_Spec.lean",
+   "out/VecSize.lean", "out/VecSize_Spec.lean",
+   "out/VecIndex.lean", "out/VecIndex_Spec.lean",
+   "out/VecReadSum.lean", "out/VecReadSum_Spec.lean"]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -592,7 +604,32 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Mem.lean", "theorem memEvalExpr_spanAt_oob"),
      ("Circe/Eval.lean", "theorem evalExpr_spanAt_oob"),
      ("out/SpanSum.lean", "_Z8span_sumSt4spanIKiLm18446744073709551615EE_fwd"),
-     ("tests/golden/SpanExtent.lean", "_M_extentEv_fwd")])]
+     ("tests/golden/SpanExtent.lean", "_M_extentEv_fwd")]),
+   ("n4d-vecread",
+    [("Circe/Validator.lean", "def isStdVecSizeShape"),
+     ("Circe/Validator.lean", "def isStdVecIndexShape"),
+     ("Circe/Validator.lean", "def isStdVecReadSumShape"),
+     ("Circe/Validator.lean", "def stdVecLeafCallees"),
+     ("Circe/Validator.lean", "calls a known `std::vector` leaf"),
+     ("Circe/Emit/Match.lean", "some .vecSize"),
+     ("Circe/Emit/Match.lean", "some .vecIndex"),
+     ("Circe/Emit/Match.lean", "some .vecReadSum"),
+     ("Circe/Emit/VecRead.lean", "theorem evalFuncFuel_stdVecReadSum"),
+     ("Circe/Emit/VecRead.lean", "theorem stdVecWhile_correct"),
+     ("Circe/Emit/VecRead.lean", "theorem evalFuncFuel_stdVecIndex"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_stdVecReadSum"),
+     ("Circe/Transfer.lean", "theorem memStdVecWhile_correct"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_stdVecIndex_hit"),
+     ("Circe/Transfer.lean", "theorem memEvalFuncFuel_stdVecIndex_oob"),
+     ("Circe/Derived.lean", "theorem bindMemArgs_stdVecVal"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_stdVecReadSum"),
+     ("Circe/Specs.lean", "theorem stdVecReadSum_correct_cons"),
+     ("Circe/Specs.lean", "theorem stdVecReadSum_correct_cons_err"),
+     ("Circe/Specs.lean", "theorem stdVecIndex_correct_oob"),
+     ("Circe/Mem.lean", "theorem memEvalExpr_stdVecAt_oob"),
+     ("Circe/Eval.lean", "theorem evalExpr_stdVecAt_oob"),
+     ("out/VecReadSum.lean", "_Z12vec_read_sumRKSt6vectorIiSaIiEE_fwd"),
+     ("tests/golden/VecSize.lean", "_ZNKSt6vectorIiSaIiEE4sizeEv_fwd")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -642,8 +679,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 52 then
-    throw (IO.userError s!"expected 52 spec stubs, found {stubs.length}")
+  if stubs.length != 55 then
+    throw (IO.userError s!"expected 55 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -680,7 +717,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-array", DiffArray.main [bin "circe_array_sum_native", trials]),
    ("diff-optional", DiffOptional.main [bin "circe_opt_deref_native", trials]),
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials]),
-   ("diff-span", DiffSpan.main [bin "circe_span_sum_native", trials])]
+   ("diff-span", DiffSpan.main [bin "circe_span_sum_native", trials]),
+   ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -704,6 +742,7 @@ def checkSuites : List Job :=
    ("golden-array", GoldenArray.main),
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
+   ("golden-vecread", GoldenVecRead.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
@@ -715,12 +754,12 @@ def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
-   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc",
+   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
    "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc",
+   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=

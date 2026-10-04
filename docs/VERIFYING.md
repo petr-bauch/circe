@@ -30,6 +30,9 @@ verbatim.
 | `spanExtent_correct` / `spanSize_correct` (N4d-iii) | leaves report the reified length | `spanExtentFwd l` / `spanSizeFwd l` (length read) |
 | `spanIndex_correct_some/oob` (N4d-iii) | leaf reads the word at a live `u64` index, `OOB` off the end | `spanIndexFwd l n` (index read) |
 | `spanSum_correct_nil/cons/cons_err` (N4d-iii) | checked-add fold: nil is zero, cons threads `checkedAddI32`, error propagates | `spanSumFwd l` (fold from `0`) |
+| `stdVecSize_correct` (N4d-iv-a) | leaf reports the reified length | `stdVecSizeFwd l` (length read) |
+| `stdVecIndex_correct_some/oob` (N4d-iv-a) | leaf reads the word at a live `u64` index, `OOB` off the end | `stdVecIndexFwd l n` (index read) |
+| `stdVecReadSum_correct_nil/cons/cons_err` (N4d-iv-a) | checked-add fold: nil is zero, cons threads `checkedAddI32`, error propagates | `stdVecReadSumFwd l` (fold from `0`) |
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`

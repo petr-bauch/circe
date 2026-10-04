@@ -69,6 +69,12 @@ inductive CLit : Type
     as a `u64` word); `spanAt s ie` is bounded indexing over the
     reified words (`operator[]` fused: `ie` must be a `u64`, `OOB`
     off the end, mirroring `idx`).
+    `stdVecLen s` reads the length of `std::vector<int32_t>` `s`
+    (`size` fused: the `_M_finish` / `_M_start` loads + `ptr_diff` +
+    `cast` fuse into the read — `s` must be a `stdVecVal`, delivered
+    as a `u64` word); `stdVecAt s ie` is bounded indexing over the
+    reified words (`operator[]` fused: `ie` must be a `u64`, `OOB`
+    off the end, mirroring `spanAt`).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
@@ -92,6 +98,8 @@ inductive CExpr : Type
   | optGet : String → CExpr
   | spanLen : String → CExpr
   | spanAt : String → CExpr → CExpr
+  | stdVecLen : String → CExpr
+  | stdVecAt : String → CExpr → CExpr
   | idxi : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr

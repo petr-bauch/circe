@@ -980,6 +980,141 @@ def spanLeafCallees : List String :=
 def callsSpanWrongShape (raw : RawFunc) : Bool :=
   spanLeafCallees.any (callsFunc raw.text)
 
+/-- The `std::vector<int32_t>` object type (the `_M_start` /
+    `_M_finish` / `_M_end_of_storage` triple). -/
+def isStdVectorType (t : String) : Bool :=
+  containsSubstr t "rec_std3A3Avector"
+
+/-- The `size` projection leaf: single `const&` to the vector object
+    with the single-reference triple, `u64` return, no calls at all,
+    the double `_M_impl` projection pair (`_M_finish` + `_M_start`
+    loads) with exactly one `ptr_diff` and one integral `cast`
+    (`s64 → u64`), no control flow. -/
+def isStdVecSizeShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    isU64 raw.ret &&
+    opCount raw.text "cir.call @" == 0 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.base_class_addr" == 4 &&
+    opCount raw.text "cir.get_member" == 4 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_finish" &&
+    containsSubstr raw.text "_M_start" &&
+    opCount raw.text "cir.ptr_diff" == 1 &&
+    containsSubstr raw.text "cir.cast integral" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
+/-- The `operator[]` fused leaf: the vector `const&` (with the
+    single-reference triple) plus the `u64` index, pointer-to-`i32`
+    return, no calls at all (no assert skeleton — unchecked indexing
+    is UB, so the model reports `OOB`), the pure projection chain
+    (`base [0]` + `get_member [0]` (`_M_impl`) + `base [0]` +
+    `get_member [0]` (`_M_start`) + both loads + one `ptr_stride`).
+    Any const/cmp/branch beside the chain rejects. -/
+def isStdVecIndexShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this, idx] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef && isStdVectorType this.ctype &&
+    isU64 idx.ctype &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    opCount raw.text "cir.call @" == 0 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.base_class_addr" == 2 &&
+    opCount raw.text "cir.get_member" == 2 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_start" &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
+/-- The `vec_read_sum` index-loop entry: single `const&` to the
+    vector object with the single-reference triple (unlike span's
+    by-value entry — the vector cannot pass by value without a copy
+    ctor, so the triple carries uniqueness like every M2a
+    single-reference param), `i32` return, exactly two call sites
+    (`size` in `cond`, `operator[]` in `body`), the single `cir.for`
+    with the `lt` comparison, the `u64` increment, and the one `nsw`
+    accumulation add. Three `cir.const` (the two live `0` inits plus
+    one stray dead `i32` `0`, the clang init quirk — dropped
+    downstream), no projections of its own. -/
+def isStdVecReadSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecIndexName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.inc" == 1 &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 3 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Known `std::vector<int32_t>` leaf callees (mangled): the `size`
+    projection leaf and the fused `operator[]` leaf. Entry gates
+    admit calls into the (name, arity, site-count) pairs named in
+    `validate` below; this registry names every known vector leaf
+    for the wrong-shape rejection. -/
+def stdVecLeafCallees : List String :=
+  [stdVecSizeName, stdVecIndexName]
+
+/-- Calls a known `std::vector` leaf but not with an admitted (name,
+    arity, site-count) shape: dedicated rejection naming the
+    admitted shapes. -/
+def callsStdVecWrongShape (raw : RawFunc) : Bool :=
+  stdVecLeafCallees.any (callsFunc raw.text)
+
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
 
 /-- `add_caller`: three by-value `i32`s, `i32` return, calls `@add`
@@ -2063,6 +2198,15 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsSpanWrongShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls a known `std::span` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_extent` extent leaf (`span_extent`), the single-site `size` delegation (`span_size`), the single-site `operator[]` fused leaf with the dead assert skeleton (`span_index`), and the 2-site `span_sum` index-loop entry (`span_sum`) only (known span leaves `{spanExtentName}` / `{spanSizeName}` / `{spanIndexName}`; see docs/SUBSET.md)"
+      else if isStdVecSizeShape raw then
+        .ok { stdVecSizeFunc with name := raw.name }
+      else if isStdVecIndexShape raw then
+        .ok { stdVecIndexFunc with name := raw.name }
+      else if isStdVecReadSumShape raw then
+        .ok { stdVecReadSumFunc with name := raw.name }
+      else if callsStdVecWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the call-free `operator[]` fused leaf (`vec_index`), and the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}`; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then

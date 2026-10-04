@@ -560,6 +560,45 @@ theorem spanSum_correct_cons_err (x : BitVec 32) (xs : List (BitVec 32))
     spanSumFwd (x :: xs) = .error e := by
   simp [spanSumFwd, spanFold, h, i32_map_error]
 
+/-! ## N4d-iv-a: `std::vector<int32_t>` reads (one property per new shape) -/
+
+/-- The `size` leaf reports the reified length. -/
+theorem stdVecSize_correct (l : List (BitVec 32)) :
+    stdVecSizeFwd l = .ok (.u64 (BitVec.ofNat 64 l.length)) :=
+  rfl
+
+/-- The `operator[]` leaf delivers the word on a hit. -/
+theorem stdVecIndex_correct_some (l : List (BitVec 32)) (n : BitVec 64)
+    (x : BitVec 32) (hget : l[n.toNat]? = some x) :
+    stdVecIndexFwd l n = .ok (.i32 x) := by
+  simp [stdVecIndexFwd, hget]
+
+/-- The `operator[]` leaf fails `OOB` loudly past the end. -/
+theorem stdVecIndex_correct_oob (l : List (BitVec 32)) (n : BitVec 64)
+    (hget : l[n.toNat]? = none) :
+    stdVecIndexFwd l n = .error .OOB := by
+  simp [stdVecIndexFwd, hget]
+
+/-- The `vec_read_sum` entry sums the empty vector to zero. -/
+theorem stdVecReadSum_correct_nil :
+    stdVecReadSumFwd [] = .ok (.i32 (BitVec.ofNat 32 0)) := by
+  simp [stdVecReadSumFwd, stdVecFold, i32_map_ok]
+
+/-- The `vec_read_sum` entry threads the head word through the
+    checked add (cf. `spanSum_correct_cons`). -/
+theorem stdVecReadSum_correct_cons (x : BitVec 32) (xs : List (BitVec 32))
+    (a : BitVec 32)
+    (h : checkedAddI32 (BitVec.ofNat 32 0) x = .ok a) :
+    stdVecReadSumFwd (x :: xs) = .i32 <$> stdVecFold xs a := by
+  simp [stdVecReadSumFwd, stdVecFold, h]
+
+/-- The `vec_read_sum` entry reports a head-word overflow loudly. -/
+theorem stdVecReadSum_correct_cons_err (x : BitVec 32) (xs : List (BitVec 32))
+    (e : Panic)
+    (h : checkedAddI32 (BitVec.ofNat 32 0) x = .error e) :
+    stdVecReadSumFwd (x :: xs) = .error e := by
+  simp [stdVecReadSumFwd, stdVecFold, h, i32_map_error]
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

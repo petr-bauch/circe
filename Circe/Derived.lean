@@ -487,6 +487,84 @@ theorem oracleNoalias_spanSum (l : List (BitVec 32)) :
   have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-- Vector binding pins the `(1 + length)`-word
+    `[(BitVec.ofNat 32 length)] ++ l` block (the heap-triple
+    snapshot model: word `0` is the length, words `1+i` are the
+    reified elements; reads only, N4d-iv-a). Stated over a general
+    object type: `bindMemArgs` dispatches on the value alone, and
+    both vector receivers share the `stdVecVal` value story. -/
+theorem bindMemArgs_stdVecVal (nm : String) (ty : CType)
+    (l : List (BitVec 32)) :
+    bindMemArgs
+      [{ name := nm, ty := ty, role := .sharedBorrow }]
+      [.stdVecVal l] emptyMem =
+      some ([(nm, .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [(nm, 0, 0)]) := by
+  rfl
+
+/-- `size` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_stdVecSize (l : List (BitVec 32)) :
+    oracleNoalias stdVecSizeFunc [.stdVecVal l] := by
+  have hb : bindMemArgs stdVecSizeFunc.args [.stdVecVal l] emptyMem =
+      some ([("s", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow }]
+      [.stdVecVal l] emptyMem = _
+    exact bindMemArgs_stdVecVal "s" stdVecObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `operator[]` binding pins the `(1 + length)`-word block plus
+    the owned index word (cf. `bindMemArgs_spanIndex`). -/
+theorem bindMemArgs_stdVecIndex (l : List (BitVec 32)) (n : BitVec 64) :
+    bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecVal l, .u64 n] emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+  rfl
+
+/-- `operator[]` footprints are a singleton (the index is owned;
+    the view is read-only). -/
+theorem oracleNoalias_stdVecIndex (l : List (BitVec 32)) (n : BitVec 64) :
+    oracleNoalias stdVecIndexFunc [.stdVecVal l, .u64 n] := by
+  have hb : bindMemArgs stdVecIndexFunc.args [.stdVecVal l, .u64 n] emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecVal l, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecIndex l n
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `vec_read_sum` footprints are a singleton (the loop runs after
+    entry over the read-only view). -/
+theorem oracleNoalias_stdVecReadSum (l : List (BitVec 32)) :
+    oracleNoalias stdVecReadSumFunc [.stdVecVal l] := by
+  have hb : bindMemArgs stdVecReadSumFunc.args [.stdVecVal l] emptyMem =
+      some ([("s", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow }]
+      [.stdVecVal l] emptyMem = _
+    exact bindMemArgs_stdVecVal "s" stdVecObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## Loop-free scalar shapes: empty footprint (M3c) -/
 
 /-- `add64` binding pins nothing (two owned 64-bit scalars). -/

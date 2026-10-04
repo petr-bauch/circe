@@ -92,6 +92,9 @@ inductive FragKind : Type
   | spanSize
   | spanIndex
   | spanSum
+  | vecSize
+  | vecIndex
+  | vecReadSum
   deriving DecidableEq, Repr
 
 

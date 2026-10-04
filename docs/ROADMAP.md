@@ -13,9 +13,10 @@ M3d; N2a (read-only sharing discipline, model-side), N2b
 (rejection catalog), and N2c (`restrict`-recovery) are done — N2
 (viability past noalias) is complete; N3 (spec + tactic support) is
 done — N4d-i (`std::array` reads) is done; N4d-ii (`optional`
-guarded deref) is done; N4d-iii (`span` index-sum) is done; the
-active frontier is `string_view` range-for (same iterator reason
-as the span range-for pin) / N4d-iv (`vector`).
+guarded deref) is done; N4d-iii (`span` index-sum) is done;
+N4d-iv-a (`vector` reads) is done; the active frontier is
+`string_view` range-for (same iterator reason as the span
+range-for pin) / N4d-iv-b (`vector` growth).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
 
@@ -439,16 +440,25 @@ is not value-faithful):
   `spanFold`; containment result — index-based is IN, range-for
   (`begin`/`end` iterator calls + pointer-chasing) is OUT with a
   deferral pin; gate + emit + transfer + golden/diff/spec green).
-  N4d-iii `std::string_view` range-for and N4d-iv `std::vector`
-  (reallocation moves values) remain: each needs a probed lowering
-  + a token/value model before admission. Probes so far:
+  N4d-iv-a `std::vector` reads — DONE (2026-10-04:
+  `size` projection leaf + call-free fused `operator[]` leaf +
+  `const&` 2-call `vec_read_sum` index-loop entry; `stdVecVal` +
+  `stdVecLen`/`stdVecAt` with the `OOB` report; the checked-add
+  `stdVecFold`; containment result — reads are IN, growth
+  (`push_back` → reallocation) is OUT with a deferral pin; gate +
+  emit + transfer + golden/diff/spec green).
+  N4d-iii `std::string_view` range-for and N4d-iv-b `std::vector`
+  growth (reallocation moves values) remain: each needs a probed
+  lowering + a token/value model before admission. Probes so far:
   `optional::value` lowers to `cir.trap` (throw path, still
   deferred); `string_view` range-for is `cir.scope` + `cir.for`
-  with `begin`/`end` as `get_member` projections; `vector` is
-  2188-line CIR over 60+ defs (allocators, `memmove`, throws).
+  with `begin`/`end` as `get_member` projections; the full
+  push-corpus `vector` is 2188-line CIR over 60+ defs (allocators,
+  `memmove`, throws).
   Deferral pins live in `tests/lean/GoldenArray.lean` (`optional`
   graduated to `tests/lean/GoldenOptional.lean`, `span` index-sum
-  graduated to `tests/lean/GoldenSpan.lean`).
+  graduated to `tests/lean/GoldenSpan.lean`, `vector` reads
+  graduated to `tests/lean/GoldenVecRead.lean`).
 
 Non-goals (platform-level): inheritance/vtables, exceptions, RTTI,
 concurrency, allocators, iterator invalidation reasoning beyond
@@ -462,7 +472,8 @@ N3 (specs + cheaper proofs + gallery, done 2026-10-04) → N4a
 2026-10-04) → N4c (templates, done 2026-10-04) → N4d-i
 (`std::array` reads, done 2026-10-04) → N4d-ii (`optional`
 guarded deref, done 2026-10-04) → N4d-iii (`span` index-sum,
-done 2026-10-04) → `string_view` range-for / N4d-iv (`vector`).
+done 2026-10-04) → N4d-iv-a (`vector` reads, done 2026-10-04) →
+`string_view` range-for / N4d-iv-b (`vector` growth).
 N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
 

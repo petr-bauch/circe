@@ -417,7 +417,52 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     iterator calls plus pointer-chasing, outside the admitted call
     shapes — pinned in `tests/lean/GoldenSpan.lean`).
     Still deferred: `string_view` range-for (same iterator reason),
-    `vector`.
+    `vector` growth (N4d-iv-b).
+22. `std::vector<int32_t>` reads (N4d-iv-a): the depth-2 call
+    chain (`vec_read_sum` → `size` → the `_M_finish` / `_M_start`
+    loads + `ptr_diff` + `cast`; `vec_read_sum` → `operator[]` →
+    the `_M_start` load + `ptr_stride`) functionalizes with fused
+    edges (the N4d-iii fusion precedent, one level deeper: the
+    corpus entry takes the vector by `const&`, so no ctor/dtor/push
+    defs reach the gate):
+    `_ZNKSt6vectorIiSaIiEE4sizeEv` leaf (single `const&` to the
+    vector object with the single-reference triple, `u64` return,
+    no calls at all, the double `_M_impl` projection pair
+    (`_M_finish` + `_M_start` loads) with exactly one `ptr_diff`
+    and one integral `s64 → u64` cast, no control flow),
+    `_ZNKSt6vectorIiSaIiEEixEm` leaf (the vector `const&` with the
+    single-reference triple plus the `u64` index, pointer-to-`i32`
+    return, no calls at all — no assert skeleton, unchecked
+    indexing is UB so the model reports `OOB` — the pure
+    projection chain `base [0]` + `get_member [0]` (`_M_impl`) +
+    `base [0]` + `get_member [0]` (`_M_start`) + both loads + one
+    `ptr_stride`; any const/cmp/branch beside the chain rejects),
+    `_Z12vec_read_sumRKSt6vectorIiSaIiEE` entry (single `const&`
+    with the single-reference triple — unlike span's by-value entry,
+    the vector cannot pass by value without a copy ctor, so the
+    triple carries uniqueness like every M2a single-reference
+    param — `i32` return, exactly two call sites: `size` in `cond`,
+    `operator[]` in `body`; the single `cir.for` with the `lt`
+    comparison, the `u64` increment, and the one `nsw` accumulation
+    add; three `cir.const` — the two live `0` inits plus one stray
+    dead `i32` `0`, the clang init quirk, dropped downstream).
+    Semantics: `stdVecVal : List (BitVec 32)` is the reified element
+    words (`sharedBorrow` snapshot over the heap triple — the
+    `_M_start` load path fuses into the read, so the triple itself
+    never materializes; reads only); `stdVecLen` reads the length,
+    `stdVecAt` the word at a live `u64` index (`OOB` off the end);
+    `stdVecReadSum` is the checked-add fold from `0` (loud
+    err-propagation); memory binds the `[(len)] ++ words` block.
+    All three validate under synthetic facts (single-reference
+    params). Misshapen uses (double calls into `size`, two
+    `operator[]` calls with no `size`, wrong-arity calls into
+    `size`, bare vector pointers without the triple) are rejected
+    with dedicated messages (`callsStdVecWrongShape`, or
+    `alias-reject`).
+    Containment result: reads are IN; growth (`push_back` →
+    reallocation) is OUT with a deferral pin (N4d-iv-b).
+    Still deferred: `push_back`/`emplace` (growth), `reserve`,
+    `insert`/`erase`, `at()`.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
