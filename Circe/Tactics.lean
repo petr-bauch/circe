@@ -13,9 +13,13 @@ whole-program bridges), S3a flow folds, and the `Except`
 by `rfl`, with assoc/pure for nested binds). Stage 2 (S5) adds two
 tactics beside it: `cir_fuel` (fuel automation) and `cir_choose`
 (selector split + forward/backward equations), plus the
-`word32_lt_two32_of_fuel` bound lemma. Plain `simp`/`omega` /
-`bv_decide` suffice in the common case; `cir_simp` just saves
-re-listing the set.
+`word32_lt_two32_of_fuel` bound lemma. Stage 3 (N5) adds two
+more: `fuel_step_down` (composer fuel split: `k + 1 ≤ F` gives
+`F = F' + 1` with `k ≤ F'` in one `obtain`) and `cir_step`
+(registered program-step cascade: evaluator unfolding + `Except.map`
+normalization with per-step hypotheses as arguments). Plain `simp` /
+`omega` / `bv_decide` suffice in the common case; `cir_simp` just
+saves re-listing the set.
 -/
 import Circe.Emit
 

@@ -18,7 +18,9 @@ def _Z12vec_push_sumv_spec_fwd : Result Value :=
 def _Z12vec_push_sumv_spec_edges : List (Unit × Result Value) :=
   [((), .ok (.i32 (BitVec.ofNat 32 6)))]
 
-/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/
+/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.
+    TODO (user): strengthen to the gallery equation `vecPushSumEntry_correct`
+    (proved by hand in `Circe.Specs`). -/
 def _Z12vec_push_sumv_spec_check : Bool :=
   _Z12vec_push_sumv_spec_edges.all fun t =>
     (repr (_Z12vec_push_sumv_spec_fwd)).pretty == (repr t.2).pretty

@@ -232,7 +232,7 @@ theorem stdVecBody_step_ok (F : Nat) (l : List (BitVec 32)) (k : Nat)
   have htn : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk64
   have hadd : evalExpr (.add (.var "t") (.stdVecAt "s" (.var "i")))
         (mkStdVecEnv l k acc) = .ok (.i32 a) := by
-    simp only [evalExpr, ht, hi, hs, htn, hget, hc, Except.map]
+    cir_step evalExpr [ht, hi, hs, htn, hget, hc]
   have hincr : evalExpr (.uadd (.var "i") (.lit (.u64 (BitVec.ofNat 64 1))))
         (mkStdVecEnv l k a) =
         .ok (.u64 (BitVec.ofNat 64 (k + 1))) := by
@@ -258,7 +258,7 @@ theorem stdVecBody_step_err (F : Nat) (l : List (BitVec 32)) (k : Nat)
   have htn : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk64
   have hadd : evalExpr (.add (.var "t") (.stdVecAt "s" (.var "i")))
         (mkStdVecEnv l k acc) = .error e := by
-    simp only [evalExpr, ht, hi, hs, htn, hget, hc, Except.map]
+    cir_step evalExpr [ht, hi, hs, htn, hget, hc]
   cases F <;>
     simp [stdVecBody, evalStmtFuel, evalStmtZero, evalStmtWith, hadd]
 

@@ -147,8 +147,7 @@ set_option maxRecDepth 8192 in
 theorem evalProgFunc_vecPushSumEntry (F : Nat) (hF : 6 ≤ F) :
     evalProgFunc vecGrowProg F vecPushSumEntryFunc [] =
       vecPushSumEntryFwd := by
-  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
-  have hF' : 5 ≤ F' := by omega
+  obtain ⟨F', rfl, hF'⟩ := fuel_step_down 5 hF
   have hbind : bindArgs vecPushSumEntryFunc.args [] = some [] := rfl
   have hbody : vecPushSumEntryFunc.body =
       .seq (.callRet "v0" stdVecCtorName [])
@@ -909,7 +908,7 @@ theorem evalProgFunc_vecPushSumEntry (F : Nat) (hF : 6 ≤ F) :
           "n2" (.u64 (BitVec.ofNat 64 2)))
           "e2" (.i32 (BitVec.ofNat 32 3))) =
       .ok (.i32 (BitVec.ofNat 32 3)) := by
-    simp only [evalExpr, he0, he1, hA1, Except.map]
+    cir_step evalExpr [he0, he1, hA1]
   have hstepS1 : evalProgStmt vecGrowProg (F' + 1)
       (.let_ "s1" (.i 32) (.add (.var "e0") (.var "e1")))
       (envExtend (envExtend (envExtend (envExtend (envExtend
@@ -1023,7 +1022,7 @@ theorem evalProgFunc_vecPushSumEntry (F : Nat) (hF : 6 ≤ F) :
           "e2" (.i32 (BitVec.ofNat 32 3)))
           "s1" (.i32 (BitVec.ofNat 32 3))) =
       .ok (.i32 (BitVec.ofNat 32 6)) := by
-    simp only [evalExpr, hs1, he2s, hA2, Except.map]
+    cir_step evalExpr [hs1, he2s, hA2]
   have hstepS2 : evalProgStmt vecGrowProg (F' + 1)
       (.let_ "s2" (.i 32) (.add (.var "s1") (.var "e2")))
       (envExtend (envExtend (envExtend (envExtend (envExtend

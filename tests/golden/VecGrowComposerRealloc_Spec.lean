@@ -40,7 +40,9 @@ def _ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iterator
   [(((⟨[], false⟩, 0, 0, 0, 5)), .ok (.stdVecOwned ⟨[(5 : BitVec 32)], false⟩ 1 1)),
    (((⟨[], false⟩, stdVecMaxDiff, 0, 0, 5)), .error .AssertFail)]
 
-/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/
+/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.
+    TODO (user): strengthen to the gallery equations `stdVecGrowRealloc_correct_ok` /
+    `stdVecGrowRealloc_correct_err_checklen` (proved by hand in `Circe.Specs`). -/
 def _ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT__spec_check : Bool :=
   _ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT__spec_edges.all fun t =>
     match t with

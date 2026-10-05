@@ -6,6 +6,8 @@ Circe.Eval.Stmt — statement + program evaluation over `Circe.Eval.Core`
 import Circe.Base
 import Circe.CoreIR
 import Circe.Eval.Core
+import Lean.Elab.Tactic
+import Lean.Parser.Extension
 
 /-! ## Statement evaluator (fuel-bounded `while_`) -/
 
@@ -43,6 +45,36 @@ theorem word64_lt_two64_of_fuel (n : BitVec 64)
     whole sequence when `simp` makes no progress). -/
 macro "cir_fuel" : tactic =>
   `(tactic| (first | (simp only [EVAL_FUEL] at *; omega) | omega))
+
+/-- Composer fuel split (N5a): from a closed/composer bound `k + 1 ≤ F`,
+    split `F = F' + 1` with the stepped-down bound `k ≤ F'` — one
+    `obtain` replacing the `obtain ⟨F', rfl⟩ ... + have ... := by omega`
+    pair at the six b2 composer sites (`evalProgFunc`/`memEvalProgFunc`
+    for emplace/push_back/entry). The arithmetic lives here; call sites
+    name only `F'`, `hF'`, and `k`. -/
+theorem fuel_step_down {F : Nat} (k : Nat) (h : k + 1 ≤ F) :
+    ∃ F', F = F' + 1 ∧ k ≤ F' := by
+  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
+  exact ⟨F', rfl, by omega⟩
+
+/-- Program-step cascade (N5b): the registered cascade core — evaluator
+    unfolding + `Except.map` normalization (the `Span.lean` precedent) —
+    with per-step hypotheses as arguments. Replaces the bespoke
+    `simp only [evalExpr, <hyps>, Except.map]` lines at the span/read/
+    entry steps; new composers close steps with this (+ N5a) instead of
+    re-listing the set. The evaluator is an argument so mem-side steps
+    (`memEvalExpr`) share the core. -/
+elab "cir_step " ev:ident " [" hs:ident,* "]" : tactic => do
+  -- Reparse (not splice): `simp only` arg kinds reject spliced idents,
+  -- so elaborate the exact surface string at the use site instead.
+  let names := ev :: hs.getElems.toList
+  let code := "simp only [" ++
+    String.intercalate ", "
+      ((names.map fun s => (Lean.Syntax.getId s.raw).toString) ++
+        ["Except.map"]) ++ "]"
+  let .ok stx := Lean.Parser.runParserCategory (← Lean.MonadEnv.getEnv) `tactic code
+    | throwError "cir_step: could not parse {code}"
+  Lean.Elab.Tactic.evalTactic stx
 
 /-- Loop-free statement skeleton parameterized by the `while_` handler.
     Structural on `s`, so all equation lemmas and kernel reduction work;

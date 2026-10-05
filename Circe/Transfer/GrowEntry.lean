@@ -13,8 +13,7 @@ import Circe.Transfer.GrowEmplace
 theorem memEvalProgFunc_vecPushSumEntry (F : Nat) (hF : 6 ≤ F) :
     memEvalProgFunc vecGrowProg F vecPushSumEntryFunc [] =
       vecPushSumEntryFwd := by
-  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
-  have hF' : 5 ≤ F' := by omega
+  obtain ⟨F', rfl, hF'⟩ := fuel_step_down 5 hF
   have hbind : bindMemArgs vecPushSumEntryFunc.args [] emptyMem =
       some ([], emptyMem, []) := rfl
   have hbody : vecPushSumEntryFunc.body =
@@ -960,7 +959,7 @@ theorem memEvalProgFunc_vecPushSumEntry (F : Nat) (hF : 6 ≤ F) :
           "n2" (.u64 (BitVec.ofNat 64 2)))
           "e2" (.i32 (BitVec.ofNat 32 3))) =
       .ok (.i32 (BitVec.ofNat 32 3)) := by
-    simp only [evalExpr, he0, he1, hA1, Except.map]
+    cir_step evalExpr [he0, he1, hA1]
   have hmagreeS1 : memEvalExpr (.add (.var "e0") (.var "e1"))
       (envExtend (envExtend (envExtend (envExtend (envExtend
         (envExtend (envExtend (envExtend (envExtend (envExtend
@@ -1119,7 +1118,7 @@ theorem memEvalProgFunc_vecPushSumEntry (F : Nat) (hF : 6 ≤ F) :
           "e2" (.i32 (BitVec.ofNat 32 3)))
           "s1" (.i32 (BitVec.ofNat 32 3))) =
       .ok (.i32 (BitVec.ofNat 32 6)) := by
-    simp only [evalExpr, hs1, he2s, hA2, Except.map]
+    cir_step evalExpr [hs1, he2s, hA2]
   have hmagreeS2 : memEvalExpr (.add (.var "s1") (.var "e2"))
       (envExtend (envExtend (envExtend (envExtend (envExtend
         (envExtend (envExtend (envExtend (envExtend (envExtend

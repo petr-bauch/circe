@@ -20,7 +20,11 @@ def _ZNSt6vectorIiSaIiEE9push_backEOi_spec_edges : List ((Vec32 × Nat × Nat ×
    (((⟨[], false⟩, 0, 0, 5)), .ok (.stdVecOwned ⟨[(5 : BitVec 32)], false⟩ 1 1)),
    (((⟨[], false⟩, stdVecMaxDiff, stdVecMaxDiff, 5)), .error .AssertFail)]
 
-/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/
+/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.
+    TODO (user): strengthen to the gallery equations `stdVecPushBack_correct_slow` /
+    `stdVecPushBack_correct_ok_slow` / `stdVecPushBack_correct_fast` /
+    `stdVecPushBack_correct_ok_fast` / `stdVecPushBack_correct_err_checklen` /
+    `stdVecPushBack_correct_err_construct` (proved by hand in `Circe.Specs`). -/
 def _ZNSt6vectorIiSaIiEE9push_backEOi_spec_check : Bool :=
   _ZNSt6vectorIiSaIiEE9push_backEOi_spec_edges.all fun t =>
     match t with

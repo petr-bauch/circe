@@ -42,7 +42,7 @@ theorem evalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32) (len cap : Nat)
     evalProgFunc vecGrowProg F stdVecEmplaceBackFunc
       [.stdVecOwned b len cap, .i32 x] =
       stdVecEmplaceBackFwd b len cap x := by
-  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
+  obtain ⟨F', rfl, _⟩ := fuel_step_down (len + 1) hF
   have hbind : bindArgs stdVecEmplaceBackFunc.args
       [.stdVecOwned b len cap, .i32 x] =
       some [("t", .stdVecOwned b len cap), ("x", .i32 x)] := rfl
@@ -525,8 +525,7 @@ theorem evalProgFunc_stdVecPushBack (F : Nat) (b : Vec32) (len cap : Nat)
     evalProgFunc vecGrowProg F stdVecPushBackFunc
       [.stdVecOwned b len cap, .i32 x] =
       stdVecPushBackFwd b len cap x := by
-  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
-  have hF' : len + 2 ≤ F' := by omega
+  obtain ⟨F', rfl, hF'⟩ := fuel_step_down (len + 2) hF
   have hbind : bindArgs stdVecPushBackFunc.args
       [.stdVecOwned b len cap, .i32 x] =
       some [("t", .stdVecOwned b len cap), ("x", .i32 x)] := rfl

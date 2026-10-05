@@ -764,7 +764,22 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Specs.lean", "theorem stdVecCheckLen_correct_fail"),
      ("Circe/Mem/Agree.lean", "theorem vgrowSet_lockstep"),
      ("out/VecGrowReloc.lean", "_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0__fwd"),
-     ("tests/golden/VecGrowCheckLen.lean", "_ZNKSt6vectorIiSaIiEE12_M_check_lenEmPKc_fwd")])]
+     ("tests/golden/VecGrowCheckLen.lean", "_ZNKSt6vectorIiSaIiEE12_M_check_lenEmPKc_fwd")]),
+   ("n5-ergonomics",
+    [("Circe/Eval/Stmt.lean", "theorem fuel_step_down"),
+     ("Circe/Eval/Stmt.lean", "elab \"cir_step \""),
+     ("Circe/Emit/VecCompose/Entry.lean", "fuel_step_down"),
+     ("Circe/Emit/VecCompose/Emplace.lean", "fuel_step_down"),
+     ("Circe/Transfer/GrowEmplace.lean", "fuel_step_down"),
+     ("Circe/Transfer/GrowEntry.lean", "fuel_step_down"),
+     ("Circe/Emit/Span.lean", "cir_step evalExpr"),
+     ("Circe/Emit/VecRead.lean", "cir_step evalExpr"),
+     ("Circe/Emit/VecCompose/Entry.lean", "cir_step evalExpr"),
+     ("Circe/Transfer/GrowEntry.lean", "cir_step evalExpr"),
+     ("tests/golden/VecGrowComposerRealloc_Spec.lean", "TODO (user)"),
+     ("tests/golden/VecGrowComposerEmplace_Spec.lean", "TODO (user)"),
+     ("tests/golden/VecGrowComposerPushBack_Spec.lean", "TODO (user)"),
+     ("tests/golden/VecGrowComposerEntry_Spec.lean", "TODO (user)")])]
 
 /-! ## Custom jobs (logic `check.sh` expresses in shell) -/
 
@@ -786,6 +801,15 @@ def checkCirFuelAdoption : IO Unit := do
     let text ← IO.FS.readFile f
     if containsSubstr text "by cir_fuel" then found := true
   if !found then throw (IO.userError "no `by cir_fuel` adoption in Circe/Emit")
+
+/-- N5a negative gate: the manual composer fuel split
+    (`Nat.exists_eq_succ_of_ne_zero` at call sites) is gone — the only
+    remaining occurrence is the `fuel_step_down` proof itself. -/
+def checkNoManualFuelSplit : IO Unit := do
+  let out ← shOut "grep" #["-rl", "exists_eq_succ_of_ne_zero", "Circe/"]
+  let hits := (out.splitOn "\n").filter (· != "")
+  if hits != ["Circe/Eval/Stmt.lean"] then
+    throw (IO.userError s!"manual fuel split outside fuel_step_down: {hits}")
 
 /-- M2 setup gate: no `cir.cleanup`/`cir.trap` in C corpus `.cir` files
     (C++ files excluded by construction). -/
@@ -945,6 +969,7 @@ def main (args : List String) : IO Unit := do
     ++ [("spec-stubs", checkSpecStubs),
         ("m2-setup-gate", checkM2SetupGate),
         ("cir-fuel-adoption", checkCirFuelAdoption),
+        ("n5-no-manual-fuel-split", checkNoManualFuelSplit),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

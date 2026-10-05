@@ -43,7 +43,11 @@ def _ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT__spec_edges : List ((Vec32 ×
    (((⟨[], false⟩, 0, 0, 5)), .ok (.stdVecOwned ⟨[(5 : BitVec 32)], false⟩ 1 1)),
    (((⟨[], false⟩, stdVecMaxDiff, stdVecMaxDiff, 5)), .error .AssertFail)]
 
-/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/
+/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.
+    TODO (user): strengthen to the gallery equations `stdVecEmplaceBack_correct_fast` /
+    `stdVecEmplaceBack_correct_ok_fast` / `stdVecEmplaceBack_correct_slow` /
+    `stdVecEmplaceBack_correct_ok_slow` / `stdVecEmplaceBack_correct_err_checklen` /
+    `stdVecEmplaceBack_correct_err_construct` (proved by hand in `Circe.Specs`). -/
 def _ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT__spec_check : Bool :=
   _ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT__spec_edges.all fun t =>
     match t with

@@ -126,6 +126,26 @@ Loop-fact side conditions discharge uniformly (`sumWhile_correct ...
 (`by cir_choose b`). No new subset: nested/skip/find keep their
 hand-rolled fuel steps and can migrate as needed.
 
+Stage 3 (N5) covers the composer patterns S5 left manual. `fuel_step_down`
+packs the `F = F' + 1` split with its stepped-down bound (before → after):
+
+```lean
+-- before: two lines + two manual omegas at all six b2 composer sites
+  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
+  have hF' : 5 ≤ F' := by omega
+-- after: arithmetic lives in the lemma; the site names only F', hF', k
+  obtain ⟨F', rfl, hF'⟩ := fuel_step_down 5 hF
+```
+
+`cir_step` registers the program-step cascade (evaluator unfolding +
+`Except.map` normalization) with per-step hypotheses as arguments —
+the eight span/read/entry `simp only [evalExpr, <hyps>, Except.map>`
+lines are now `cir_step evalExpr [<hyps>]`. New composers close steps
+with these two instead of bespoke lists. Obligation rule: every composer
+spec stub names its owed gallery equations (`TODO (user)` — e.g. the
+entry stub names `vecPushSumEntry_correct`); the equations themselves
+stay hand-proved in `Circe.Specs`, pinned per-slice in the driver.
+
 ## N3c gallery: worked properties (DELIVERED.md N3 — done)
 
 Three end-to-end proofs over the existing corpus, checked into

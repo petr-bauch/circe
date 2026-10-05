@@ -44,8 +44,69 @@ length-paired discipline.
 
 ### Suggested order
 
-`string_view` range-for. N2c opportunistically wherever a
+N5 (proof ergonomics) → N6 (switch + arithmetic gaps) → N7
+(`string_view` range-for; `reserve`/`insert`/`erase` follow-ups).
+N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
+Iris spike runs alongside N5 (report, not migration).
+
+## N5. Proof ergonomics — DONE (2026-10-05)
+
+N4d-iv-b2 was the most proof-heavy slice so far: composer fuel
+side-goals (`len + 2 ≤ F` emplace, `len + 3 ≤ F` push_back,
+`6 ≤ F` closed entry, additive `.callProg` at depth `fuel - 1`),
+bespoke Fwd-cascade `simp only [...]` sets per composer (plus
+`Except.map` leftovers per the `Span.lean` precedent). Ergonomics
+compounds across every later slice; S4/S5 precedent applies
+(before/after shortening, `check.sh` adoption asserts, no new
+trusted code, no validator/emit behavior change). Each slice below:
+helper → re-shorten a b2 proof onto it → adoption assert →
+`CHECK-OK`.
+
+- N5a: composer fuel automation — generalize `cir_fuel` (S5) to
+  composer fuel shapes: additive calls at `fuel - 1`,
+  closed-entry constant bounds, `remaining ≤ F` side conditions.
+  Target: the b2 fuel side-goals discharge with no manual
+  `omega`/`have` lines.
+- N5b: composer cascade registry — each proved composer registers
+  its Fwd-cascade simp set once (`Except.map` normalization
+  included); new entries close with the registry + N5a instead of
+  bespoke simp lists.
+- N5c: spec-stub obligations — per-slice proof obligations
+  generated from the spec stub mirror (hole-shaped, discharged by
+  hand), keeping the N3 gallery pattern as new forwards land.
+
+Result: `fuel_step_down` lemma (one-`obtain` composer split, six
+b2 sites adopted, negative driver gate `n5-no-manual-fuel-split`
+forbids the manual pair); `cir_step` cascade macro (eight
+span/read/entry steps adopted, `Except.map` by construction);
+composer stubs name their owed gallery equations (`TODO (user)`,
+pinned per stub in the driver). Suite green.
+
+Non-goals: proof search, SMT backends, `validate`/`emit`
+semantics changes.
+
+## Later directions — sketches (not planned)
+
+- N6: language gaps — `switch` (probe lowering first:
+  jump-table vs if-chain value-faithfulness; expected small
+  contained slice), arithmetic remainder (division / remainder /
+  bitwise lowering probes; overflow stays `checked*`-loud).
+- N7: STD growth — `string_view` range-for (shares the span
+  iterator blocker: `begin`/`end` + pointer-chasing; needs a
+  probed lowering + a token/value model), then
+  `reserve`/`insert`/`erase` composers (`erase` needs
+  memmove-down leaves; reuse the no-inlining `vecGrowProg`
+  pattern).
+- Iris spike (time-boxed, alongside N5): evaluate `iris-lean`
+  (Lean 4 Iris port: MoSeL proof interface today, full-logic
+  port deferred upstream — see
+  `https://github.com/markusdemedeiros/iris-lean`; verify it
+  builds at our toolchain pin) for heap reasoning. Questions:
+  what would it replace (Mem tags? the oracle?) and where is
+  the migration seam? Deliverable is a spike report, not a
+  migration — no commitment until a concrete slice needs
+  framing beyond equational specs.
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)
 
