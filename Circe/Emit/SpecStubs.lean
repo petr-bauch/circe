@@ -1209,6 +1209,52 @@ def emitStdVecRelocSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2.1 t.1.2.2.2.1 t.1.2.2.2.2.1 t.1.2.2.2.2.2.1 t.1.2.2.2.2.2.2.1 t.1.2.2.2.2.2.2.2.1 t.1.2.2.2.2.2.2.2.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `_M_realloc_insert` growth composition (N4d-iv-b2:
+    the bind chain over the frozen b1 leaf forwards; mismatch shapes
+    fail loudly through the `vecGrow*` projectors, cf.
+    `stdVecGrowReallocFwd`). -/
+def emitStdVecGrowReallocSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, pos, x)` reallocating insert (growth\n"
+  ++ s!"    composition: `check_len` → `begin` → `mi` → `allocate` →\n"
+  ++ s!"    `construct`-at-`k` → two `_S_relocate`s → the cap-counted\n"
+  ++ s!"    `_M_deallocate` guard).\n"
+  ++ s!"    Base body reference: the bind chain itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecGrowReallocFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) (x : BitVec 32) : Result Value :=\n"
+  ++ "  (stdVecCheckLenFwd len (BitVec.ofNat 64 1)).bind fun ckv =>\n"
+  ++ "  (vecGrowU64 ckv).bind fun newlen =>\n"
+  ++ "  (stdVecBeginFwd).bind fun bgv =>\n"
+  ++ "  (vecGrowU64 bgv).bind fun bpos =>\n"
+  ++ "  (stdVecMinusFwd pos bpos).bind fun miv =>\n"
+  ++ "  (vecGrowI64 miv).bind fun kd =>\n"
+  ++ "  (stdVecAllocFwd newlen).bind fun alv =>\n"
+  ++ "  (vecGrowOwned alv).bind fun (bNew, lenA, capA) =>\n"
+  ++ "  (stdVecConstructFwd bNew lenA capA kd x).bind fun conv =>\n"
+  ++ "  (vecGrowOwned conv).bind fun (bC, lenC, capC) =>\n"
+  ++ "  (stdVecRelocFwd b len cap bC lenC capC (BitVec.ofNat 64 0) kd\n"
+  ++ "    (BitVec.ofNat 64 0)).bind fun r1v =>\n"
+  ++ "  (vecGrowOwned r1v).bind fun (bR1, lenR1, capR1) =>\n"
+  ++ "  (stdVecRelocFwd b len cap bR1 lenR1 capR1 kd (BitVec.ofNat 64 len)\n"
+  ++ "    (kd + BitVec.ofNat 64 1)).bind fun r2v =>\n"
+  ++ "  (vecGrowOwned r2v).bind fun (bR2, _, capR2) =>\n"
+  ++ "  (stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap)).bind fun _ =>\n"
+  ++ "  .ok (.stdVecOwned bR2\n"
+  ++ "    ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty insert ok, `check_len` failure (frozen by evaluating `stdVecGrowReallocFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 64 × BitVec 32) × Result Value) :=\n"
+  ++ "  [(((⟨[], false⟩, 0, 0, 0, 5)), .ok (.stdVecOwned ⟨[(5 : BitVec 32)], false⟩ 1 1)),\n"
+  ++ "   (((⟨[], false⟩, stdVecMaxDiff, 0, 0, 5)), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, pos, x), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap pos x)).pretty == (repr expected).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

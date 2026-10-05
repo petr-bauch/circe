@@ -6,10 +6,12 @@
 --    output: 53 defined defs) validates under per-def `.noalias`
 --    oracle facts via `validateModule`: the 21 b1 leaf
 --    representatives emit byte-identical text to
---    `tests/golden/VecGrow*.lean`, the 4 N4d-iv-b2 growth composers
---    (entry, `push_back`, `emplace_back`, `_M_realloc_insert`)
+--    `tests/golden/VecGrow*.lean`, the admitted `_M_realloc_insert`
+--    composer emits byte-identical text to
+--    `tests/golden/VecGrowComposerRealloc*.lean`, the 3 remaining
+--    N4d-iv-b2 growth composers (entry, `push_back`, `emplace_back`)
 --    reject with the dedicated composer pin, and every other def
---    validates (49 ok / 4 composer-pinned, 53 total — the pinned
+--    validates (50 ok / 3 composer-pinned, 53 total — the pinned
 --    frontier).
 -- 2. Rejection suite: call to an unknown vector callee (generic),
 --    double call into `max_size` (site-count pin), `check_len`
@@ -105,12 +107,19 @@ def vecGrowLeaves : List (String × String) :=
    ("_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_", "VecGrowReloc"),
    ("_ZN9__gnu_cxx13new_allocatorIiEC2Ev", "VecGrowUnit")]
 
-/-- The 4 N4d-iv-b2 growth composers (deferred; must pin, not emit). -/
+/-- The 3 remaining N4d-iv-b2 growth composers (deferred; must pin,
+    not emit). -/
 def vecGrowComposers : List String :=
   ["_Z12vec_push_sumv",
    "_ZNSt6vectorIiSaIiEE9push_backEOi",
-   "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_",
-   "_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT_"]
+   "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_"]
+
+/-- The admitted N4d-iv-b2 composer: corpus def name × golden stem
+    (`_M_realloc_insert` validates to `stdVecGrowReallocFunc` and
+    emits byte-identical text). -/
+def vecGrowAdmitted : List (String × String) :=
+  [("_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT_",
+    "VecGrowComposerRealloc")]
 
 def checkVecGrowPipeline : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_push_sum.cir"
@@ -118,8 +127,8 @@ def checkVecGrowPipeline : IO Nat := do
   if res.length != 53 then
     throw (IO.userError s!"vec-grow frontier drift: {res.length} defs, expected 53")
   let errs := res.filter (fun (_, v) => !v.isOk)
-  if errs.length != 4 then
-    throw (IO.userError s!"vec-grow rejects drift: {errs.length} errors, expected 4 composer pins")
+  if errs.length != 3 then
+    throw (IO.userError s!"vec-grow rejects drift: {errs.length} errors, expected 3 composer pins")
   for (name, g) in vecGrowLeaves do
     match res.find? (fun (m, _) => m == name) with
     | none =>
@@ -132,6 +141,24 @@ def checkVecGrowPipeline : IO Nat := do
       if got != want then
         throw (IO.userError s!"golden mismatch for {g} ({name})")
   IO.println "PASS pipeline vec_push_sum (21 b1 leaves byte-identical)"
+  for (name, g) in vecGrowAdmitted do
+    match res.find? (fun (m, _) => m == name) with
+    | none =>
+      throw (IO.userError s!"vec-grow admitted composer missing: {name}")
+    | some (_, .error rej) =>
+      throw (IO.userError s!"vec-grow admitted composer rejected: {name}: {rej.message}")
+    | some (_, .ok f) =>
+      let want ← IO.FS.readFile s!"tests/golden/{g}.lean"
+      let got := emitFileText (emitFunc f)
+      if got != want then
+        throw (IO.userError s!"golden mismatch for {g} ({name})")
+      let wantSpec ← IO.FS.readFile s!"tests/golden/{g}_Spec.lean"
+      let gotSpec ← match emitSpec f with
+        | .ok s => pure s
+        | .error _ => throw (IO.userError s!"spec emit failed for {g} ({name})")
+      if gotSpec != wantSpec then
+        throw (IO.userError s!"spec golden mismatch for {g} ({name})")
+  IO.println "PASS pipeline vec_push_sum (realloc composer byte-identical)"
   let mut pinned := 0
   for name in vecGrowComposers do
     match res.find? (fun (m, _) => m == name) with
@@ -143,8 +170,8 @@ def checkVecGrowPipeline : IO Nat := do
       if !containsSubstr rej.message "N4d-iv-b2 growth composer" then
         throw (IO.userError s!"vec-grow composer wrong pin: {name}: {rej.message}")
       pinned := pinned + 1
-  IO.println "PASS pipeline vec_push_sum (4 b2 composers pinned)"
-  pure (vecGrowLeaves.length + pinned)
+  IO.println "PASS pipeline vec_push_sum (3 remaining b2 composers pinned)"
+  pure (vecGrowLeaves.length + vecGrowAdmitted.length + pinned)
 
 /-- Adversarial case: inline CIR must reject with `code` in the message
     plus `substr`. -/

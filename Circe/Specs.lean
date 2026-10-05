@@ -865,6 +865,44 @@ theorem stdVecReloc_correct_nil (bS : Vec32) (lenS capS : Nat)
       .ok (.stdVecOwned bD lenD capD) := by
   simp [stdVecRelocFwd, h, stdVecBlitFold]
 
+/-! ## N4d-iv-b2 `_M_realloc_insert`: composer spec (Fwd level) -/
+
+/-- `check_len` failure fails the whole reallocation (the first bind;
+    cf. `addCaller_correct_err`). -/
+theorem stdVecGrowRealloc_correct_err_checklen (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) (x : BitVec 32) (e : Panic)
+    (h : stdVecCheckLenFwd len (BitVec.ofNat 64 1) = .error e) :
+    stdVecGrowReallocFwd b len cap pos x = .error e := by
+  simp only [stdVecGrowReallocFwd, h, vecGrow_bind_err]
+
+/-- All-ok stages deliver the reallocated triple: the second relocate's
+    buffer with the bumped length (`addCaller_correct_ok` shape — one
+    equation per composer `callRet`, projectors discharging the
+    between-call value shapes). -/
+theorem stdVecGrowRealloc_correct_ok (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) (x : BitVec 32)
+    (newlen : BitVec 64) (bNew bC bR1 bR2 : Vec32) (v : Value)
+    (hck : stdVecCheckLenFwd len (BitVec.ofNat 64 1) = .ok (.u64 newlen))
+    (hbg : stdVecBeginFwd = .ok (.u64 (BitVec.ofNat 64 0)))
+    (hmi : stdVecMinusFwd pos (BitVec.ofNat 64 0) =
+      .ok (.i64 (pos - BitVec.ofNat 64 0)))
+    (hal : stdVecAllocFwd newlen = .ok (.stdVecOwned bNew 0 newlen.toNat))
+    (hcon : stdVecConstructFwd bNew 0 newlen.toNat
+      (pos - BitVec.ofNat 64 0) x = .ok (.stdVecOwned bC 0 newlen.toNat))
+    (hr1 : stdVecRelocFwd b len cap bC 0 newlen.toNat
+      (BitVec.ofNat 64 0) (pos - BitVec.ofNat 64 0)
+      (BitVec.ofNat 64 0) = .ok (.stdVecOwned bR1 0 newlen.toNat))
+    (hr2 : stdVecRelocFwd b len cap bR1 0 newlen.toNat
+      (pos - BitVec.ofNat 64 0) (BitVec.ofNat 64 len)
+      ((pos - BitVec.ofNat 64 0) + BitVec.ofNat 64 1) =
+      .ok (.stdVecOwned bR2 0 newlen.toNat))
+    (hgd : stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap) = .ok v) :
+    stdVecGrowReallocFwd b len cap pos x =
+      .ok (.stdVecOwned bR2 ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat)
+        newlen.toNat) := by
+  simp only [stdVecGrowReallocFwd, hck, hbg, hmi, hal, hcon, hr1, hr2, hgd,
+    vecGrow_bind_ok, vecGrowU64, vecGrowI64, vecGrowOwned]
+
 /-! ## N3c gallery: worked properties beyond the admitted-shape specs -/
 
 /-- The index fill is sorted: `vec` writes `k` at slot `k`, so the

@@ -24,6 +24,7 @@ import Circe.Emit.Optional
 import Circe.Emit.Span
 import Circe.Emit.VecRead
 import Circe.Emit.VecGrow
+import Circe.Emit.VecCompose
 import Circe.Emit.Box
 import Circe.Emit.Flow
 
@@ -552,6 +553,42 @@ def matchFrag : Func → Option FragKind
         else none
       | _ => none
     | _ => none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"pos", .u 64, .owned⟩,
+         ⟨"x", .i 32, .owned⟩], _, body⟩ =>
+    -- `_M_realloc_insert` composer: the 8-site growth composition
+    -- over the frozen b1 leaves (callee names are the corpus def
+    -- names — cf. `stdVecGrowReallocFunc`; the `matchFrag`
+    -- `rfl` below keeps them in sync). Body matched separately
+    -- (cf. the `addCall` note).
+    match body with
+    | .seq (.let_ "one" _ (.lit (.u64 one)))
+      (.seq (.let_ "zero" _ (.lit (.u64 zero)))
+      (.seq (.callRet "newlen"
+              "_ZNKSt6vectorIiSaIiEE12_M_check_lenEmPKc" ["t", "one"])
+      (.seq (.callRet "bpos" "_ZNSt6vectorIiSaIiEE5beginEv" ["t"])
+      (.seq (.callRet "kd" "_ZN9__gnu_cxxmiIPiSt6vectorIiSaIiEEEENS_17__normal_iteratorIT_T0_E15difference_typeERKS8_SB_"
+              ["pos", "bpos"])
+      (.seq (.let_ "k" _ (.u64ofI64 (.var "kd")))
+      (.seq (.let_ "lenOld" _ (.vgrowLen "t"))
+      (.seq (.let_ "capOld" _ (.vgrowCap "t"))
+      (.seq (.callRet "tNew0" "_ZNSt12_Vector_baseIiSaIiEE11_M_allocateEm"
+              ["newlen"])
+      (.seq (.callRet "tNew1"
+              "_ZNSt16allocator_traitsISaIiEE9constructIiJiEEEvRS0_PT_DpOT0_"
+              ["tNew0", "k", "x"])
+      (.seq (.callRet "tC1" "_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_"
+              ["t", "tNew1", "zero", "k", "zero"])
+      (.seq (.let_ "kp1" _ (.uadd (.var "k") (.var "one")))
+      (.seq (.callRet "tC2" "_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_"
+              ["t", "tC1", "k", "lenOld", "kp1"])
+      (.seq (.let_ "lenNew" _ (.uadd (.var "lenOld") (.var "one")))
+      (.seq (.callRet "tDead" "_ZNSt12_Vector_baseIiSaIiEE13_M_deallocateEPim"
+              ["t", "capOld"])
+            (.return_ (.vgrowSetLen "tC2" (.var "lenNew"))))))))))))))))) =>
+      if one == BitVec.ofNat 64 1 && zero == BitVec.ofNat 64 0 then
+        some .vecGrowRealloc
+      else none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -624,3 +661,4 @@ theorem matchFrag_stdVecDealloc : matchFrag stdVecDeallocFunc = some .vecDealloc
 theorem matchFrag_stdVecDeallocGuard : matchFrag stdVecDeallocGuardFunc = some .vecDeallocGuard := rfl
 theorem matchFrag_stdVecConstruct : matchFrag stdVecConstructFunc = some .vecConstruct := rfl
 theorem matchFrag_stdVecReloc : matchFrag stdVecRelocFunc = some .vecReloc := rfl
+theorem matchFrag_stdVecGrowRealloc : matchFrag stdVecGrowReallocFunc = some .vecGrowRealloc := rfl

@@ -57,6 +57,7 @@ import Circe.Parser
 import Circe.Oracle
 import Circe.Emit
 import Circe.Emit.VecGrow
+import Circe.Emit.VecCompose
 
 /-- Machine-readable rejection codes (see docs/SUBSET.md). -/
 inductive RejectCode : Type
@@ -1128,6 +1129,19 @@ def isErasedIntPtr (p : RawParam) : Bool :=
   (p.ctype == "!cir.ptr<!s32i>" || p.ctype == "!cir.ptr<!s8i>" ||
     p.ctype == "!cir.ptr<!void>") && !p.singleRef && !p.noalias
 
+/-- By-value iterator param (N4d-iv-b2): the exact
+    `__normal_iterator<int*, vector<int>>` record alias, passed by
+    value with neither the single-reference triple nor `noalias`
+    (the risk noted in the b2 plan). The value model erases it to a
+    `u64` offset (the wrapped pointer), so it needs no uniqueness
+    evidence — cf. `isErasedIntPtr`, which covers only pointer
+    spellings, never record spellings. Any other record alias (or the
+    same alias with uniqueness attrs) fails loudly. -/
+def isVecGrowIterParam (p : RawParam) : Bool :=
+  p.ctype ==
+    "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+  !p.singleRef && !p.noalias
+
 /-- N4d-iv-b2 composer anchor: the `_M_realloc_insert` name (own
     signature or a call site), a call into `emplace_back`, or a call
     into `push_back`. No b1 leaf calls these (checked against the
@@ -1989,6 +2003,80 @@ def isStdVecRelocShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.if" &&
     !containsSubstr raw.text "cir.ptr_stride" &&
     !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- `_M_realloc_insert` (N4d-iv-b2): the 16-site growth composition
+    (`check_len` + `begin` + `mi` + `allocate` + `construct`-at-`k` +
+    two `_S_relocate`s + the cap-counted `deallocate`, with the
+    const-folded live `cir.if #true` arm and the const-folded dead
+    destroy/deallocate `cir.if #false` arm). The fused `Func`
+    (`stdVecGrowReallocFunc`) keeps all eight leaf calls
+    (`begin`/`mi` included — the position stays absolute until the
+    `mi` call) and drops only provably-dead code: the `getTp`
+    allocator tokens (no b1 callee takes one), the `base` pointer
+    projections (the erased `u64` iterator param carries the offset),
+    the `.str` message and `s8` hint (unused), the `array_to_ptrdecay`
+    cast, the dead `cir.if #false` arm (pinned here, never executed),
+    and the header pointer stores (the fresh triple already carries
+    the buffer and capacity — see `vgrowSetLen`). The dead-arm
+    destroy/`Destroy`/deallocate calls are pinned by exact site
+    counts below (1 each), so a live destroy would fail loudly. -/
+def isStdVecReallocInsertShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "" &&
+  containsSubstr raw.text "cir.const #true" &&
+  containsSubstr raw.text "cir.const #false" &&
+  match raw.params with
+  | [this, pos, x] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isVecGrowIterParam pos &&
+    isVecGrowRef "!cir.ptr<!s32i>" x &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecCheckLenName &&
+    opCount raw.text ("cir.call @" ++ stdVecCheckLenName ++ "(") == 1 &&
+    callsFunc raw.text stdVecBeginName &&
+    opCount raw.text ("cir.call @" ++ stdVecBeginName ++ "(") == 1 &&
+    callsFunc raw.text stdVecMinusName &&
+    opCount raw.text ("cir.call @" ++ stdVecMinusName ++ "(") == 1 &&
+    callsFunc raw.text stdVecAllocateName &&
+    opCount raw.text ("cir.call @" ++ stdVecAllocateName ++ "(") == 1 &&
+    callsFunc raw.text stdVecTraitsConstructName &&
+    opCount raw.text
+      ("cir.call @" ++ stdVecTraitsConstructName ++ "(") == 1 &&
+    callsFunc raw.text stdVecRelocName &&
+    opCount raw.text ("cir.call @" ++ stdVecRelocName ++ "(") == 2 &&
+    callsFunc raw.text stdVecDeallocName &&
+    opCount raw.text ("cir.call @" ++ stdVecDeallocName ++ "(") == 2 &&
+    callsFunc raw.text stdVecGetTpName &&
+    opCount raw.text ("cir.call @" ++ stdVecGetTpName ++ "(") == 3 &&
+    callsFunc raw.text stdVecIterBaseName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterBaseName ++ "(") == 2 &&
+    callsFunc raw.text stdVecTraitsDestroyName &&
+    opCount raw.text
+      ("cir.call @" ++ stdVecTraitsDestroyName ++ "(") == 1 &&
+    callsFunc raw.text stdVecDestroyName &&
+    opCount raw.text ("cir.call @" ++ stdVecDestroyName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 16 &&
+    opCount raw.text "cir.if" == 3 &&
+    opCount raw.text "cir.const" == 6 &&
+    opCount raw.text "cir.scope" == 5 &&
+    opCount raw.text "cir.ptr_stride" == 4 &&
+    opCount raw.text "cir.ptr_diff" == 1 &&
+    opCount raw.text "cir.cast" == 4 &&
+    opCount raw.text "cir.get_member" == 14 &&
+    opCount raw.text "cir.base_class_addr" == 22 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.cleanup"
   | _ => false
 
 /-- Any N4d-iv-b1 growth-leaf shape (disjunction for the alias-gate
@@ -3003,6 +3091,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
   if raw.name != oracle.funcName then
     reject raw.name .outOfSubset
       s!"out-of-subset: oracle fact is for '{oracle.funcName}', not '{raw.name}' (wiring error; refusing to translate)"
+  else if isStdVecReallocInsertShape raw then
+    .ok { stdVecGrowReallocFunc with name := raw.name }
   else if isVecGrowComposerText raw.text then
     reject raw.name .outOfSubset
       s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (`_M_realloc_insert` / `emplace_back` / `push_back` / the `vec_push_sum` entry: multi-call growth composition — checked length, fresh storage, value relocation): growth leaves validate in N4d-iv-b1, composition is deferred to N4d-iv-b2 (see docs/ROADMAP.md N4d-iv-b)"

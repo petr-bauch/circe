@@ -608,6 +608,34 @@ def emitStdVecRelocText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok bD' => .ok (bD', lenD, capD)\n"
 
+/-- Render the `_M_realloc_insert` growth composition (the tag-erased
+    `stdVecGrowReallocFwd`: the bind chain over the frozen b1 leaf
+    forwards). -/
+def emitStdVecGrowReallocText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the growth composition over the frozen leaf forwards). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) (x : BitVec 32) : Result Value :=\n"
+  ++ "  (stdVecCheckLenFwd len (BitVec.ofNat 64 1)).bind fun ckv =>\n"
+  ++ "  (vecGrowU64 ckv).bind fun newlen =>\n"
+  ++ "  (stdVecBeginFwd).bind fun bgv =>\n"
+  ++ "  (vecGrowU64 bgv).bind fun bpos =>\n"
+  ++ "  (stdVecMinusFwd pos bpos).bind fun miv =>\n"
+  ++ "  (vecGrowI64 miv).bind fun kd =>\n"
+  ++ "  (stdVecAllocFwd newlen).bind fun alv =>\n"
+  ++ "  (vecGrowOwned alv).bind fun (bNew, lenA, capA) =>\n"
+  ++ "  (stdVecConstructFwd bNew lenA capA kd x).bind fun conv =>\n"
+  ++ "  (vecGrowOwned conv).bind fun (bC, lenC, capC) =>\n"
+  ++ "  (stdVecRelocFwd b len cap bC lenC capC (BitVec.ofNat 64 0) kd\n"
+  ++ "    (BitVec.ofNat 64 0)).bind fun r1v =>\n"
+  ++ "  (vecGrowOwned r1v).bind fun (bR1, lenR1, capR1) =>\n"
+  ++ "  (stdVecRelocFwd b len cap bR1 lenR1 capR1 kd (BitVec.ofNat 64 len)\n"
+  ++ "    (kd + BitVec.ofNat 64 1)).bind fun r2v =>\n"
+  ++ "  (vecGrowOwned r2v).bind fun (bR2, _, capR2) =>\n"
+  ++ "  (stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap)).bind fun _ =>\n"
+  ++ "  .ok (.stdVecOwned bR2\n"
+  ++ "    ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

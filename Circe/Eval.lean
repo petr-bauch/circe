@@ -483,6 +483,20 @@ def evalExpr : CExpr → Env → Result Value
       | .error e => .error e
       | .ok v => .ok (.stdVecOwned v 0 n.toNat)
     | .ok _ => .error .AssertFail
+  | .vgrowSetLen s e, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecOwned b _ cap) =>
+      match evalExpr e ρ with
+      | .error err => .error err
+      | .ok (.u64 n) => .ok (.stdVecOwned b n.toNat cap)
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .u64ofI64 e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok (.i64 d) => .ok (.u64 d)
+    | .ok _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
     | .error e => .error e
@@ -1058,6 +1072,45 @@ theorem evalExpr_vgrowNew_u64 (e : CExpr) (ρ : Env) (n : BitVec 64)
     evalExpr (.vgrowNew e) ρ =
       .ok (.stdVecOwned ⟨List.replicate n.toNat 0, false⟩ 0 n.toNat) := by
   simp [evalExpr, h, vecNew]
+
+/-- `vgrowSetLen` on an owned triple rebuilds it with the new length
+    (N4d-iv-b2: the realloc header stores fused). -/
+theorem evalExpr_vgrowSetLen_hit (s : String) (e : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (n : BitVec 64)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (he : evalExpr e ρ = .ok (.u64 n)) :
+    evalExpr (.vgrowSetLen s e) ρ =
+      .ok (.stdVecOwned b n.toNat cap) := by
+  simp [evalExpr, hs, he]
+
+/-- `vgrowSetLen` of a non-triple is rejected, never silently modeled. -/
+theorem evalExpr_vgrowSetLen_notval (s : String) (e : CExpr)
+    (v : BitVec 32) (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.vgrowSetLen s e) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `vgrowSetLen` on a non-`u64` length is rejected. -/
+theorem evalExpr_vgrowSetLen_nonu64 (s : String) (e : CExpr) (ρ : Env)
+    (b : Vec32) (len cap : Nat) (v : BitVec 32)
+    (hs : envLookup ρ s = some (.stdVecOwned b len cap))
+    (he : evalExpr e ρ = .ok (.i32 v)) :
+    evalExpr (.vgrowSetLen s e) ρ = .error .AssertFail := by
+  simp [evalExpr, hs, he]
+
+/-- `u64ofI64` on an `i64` word retags the same bits as `u64`
+    (N4d-iv-b2: the `mi`-difference `s64 -> u64` cast fused). -/
+theorem evalExpr_u64ofI64_hit (e : CExpr) (ρ : Env) (d : BitVec 64)
+    (h : evalExpr e ρ = .ok (.i64 d)) :
+    evalExpr (.u64ofI64 e) ρ = .ok (.u64 d) := by
+  simp [evalExpr, h]
+
+/-- `u64ofI64` on a non-`i64` word is rejected. -/
+theorem evalExpr_u64ofI64_mismatch (e : CExpr) (ρ : Env)
+    (n : BitVec 64)
+    (h : evalExpr e ρ = .ok (.u64 n)) :
+    evalExpr (.u64ofI64 e) ρ = .error .AssertFail := by
+  simp [evalExpr, h]
 
 /-- `vgrowNew` on a non-`u64` capacity is rejected. -/
 theorem evalExpr_vgrowNew_mismatch (ρ : Env) :

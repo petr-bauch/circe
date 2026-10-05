@@ -8,8 +8,8 @@
 # Coverage lives in Test/Driver.lean (its roster IS the wiring):
 # regenerate out/ (tools/GenOut.lean, single source of truth) →
 # native drivers → golden diffs → typechecks → Diff* fuzz vs native →
-# golden suites → emitted-body correspondence → specs (76/76 typecheck,
-# 76/76 _check entries true) → TEST-OK. lake does not track
+# golden suites → emitted-body correspondence → specs (77/77 typecheck,
+# 77/77 _check entries true) → TEST-OK. lake does not track
 # include_str deps, so diff enforces drift.
 # `check-phase*.sh` kept for compat (early-phase slices standalone).
 set -euo pipefail

@@ -93,6 +93,17 @@ inductive CLit : Type
     `n == 0` null branch coincides with the empty triple under the
     null-iff-`cap == 0` convention, so both branches build the same
     value).
+    Composer-only pure operations (N4d-iv-b2: `_M_realloc_insert` /
+    `emplace_back` growth composition over the frozen b1 leaves —
+    these never appear in leaf bodies, only in composer `Func`s):
+    `vgrowSetLen s e` rebuilds the owned triple `s` with length `e`
+    (same buffer and capacity; `s` must be a `stdVecOwned`, `e` a
+    `u64` — the `_M_start` / `_M_finish` / `_M_end_of_storage`
+    header stores fused, the pointer computations dropped since the
+    buffer identity and capacity already thread through the fresh
+    triple); `u64ofI64 e` reinterprets an `i64` word as `u64`
+    (same 64 bits retagged; `e` must be an `i64` — the
+    `cir.cast integral s64 -> u64` on the `mi` difference fused).
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
@@ -125,6 +136,8 @@ inductive CExpr : Type
   | vgrowCap : String → CExpr
   | vgrowAt : String → CExpr → CExpr
   | vgrowNew : CExpr → CExpr
+  | vgrowSetLen : String → CExpr → CExpr
+  | u64ofI64 : CExpr → CExpr
   | idxi : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr

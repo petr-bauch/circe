@@ -1521,6 +1521,48 @@ theorem oracleNoalias_stdVecReloc (bS : Vec32) (lenS capS : Nat)
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-! ## N4d-iv-b2 `_M_realloc_insert` composer: entry binding + footprint -/
+
+/-- Realloc binding pins the owned triple (the composer takes the old
+    triple by value plus the position and element words). -/
+theorem bindMemArgs_stdVecGrowRealloc (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) (x : BitVec 32) :
+    bindMemArgs stdVecGrowReallocFunc.args
+      [.stdVecOwned b len cap, .u64 pos, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("pos", .u64 pos),
+        ("x", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Realloc footprints are a singleton (the old triple is owned; the
+    position and element words are pure). -/
+theorem oracleNoalias_stdVecGrowRealloc (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) (x : BitVec 32) :
+    oracleNoalias stdVecGrowReallocFunc
+      [.stdVecOwned b len cap, .u64 pos, .i32 x] := by
+  have hb : bindMemArgs stdVecGrowReallocFunc.args
+      [.stdVecOwned b len cap, .u64 pos, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("pos", .u64 pos),
+        ("x", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "pos", ty := .u 64, role := .owned },
+       { name := "x", ty := .i 32, role := .owned }]
+      [.stdVecOwned b len cap, .u64 pos, .i32 x] emptyMem = _
+    exact bindMemArgs_stdVecGrowRealloc b len cap pos x
+  have hn : LayoutNoAlias [("t", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## Cache bridge (discharged by the executable check) -/
 
 /-- Bridge: on a `noalias` verdict the gate admits. The premise

@@ -460,6 +460,14 @@ is not value-faithful):
   (entry / `push_back` / `emplace_back` / `_M_realloc_insert`,
   deferred to N4d-iv-b2); gate + emit + transfer + golden/diff/
   spec green).
+  N4d-iv-b2 `_M_realloc_insert` — DONE (2026-10-05: the 16-site
+  growth composition over the frozen b1 leaves via the shared
+  `vecGrowProg`, no inlining; `evalProgFunc` + `memEvalProgFunc`
+  + `memTransfer` green, `VecGrowComposerRealloc*.lean` goldens
+  byte-identical, spec stub mirror-agreement check true;
+  containment result — `_M_realloc_insert` is IN,
+  `emplace_back` / `push_back` / entry stay OUT with the
+  composer pin).
   N4d-iii `std::string_view` range-for and N4d-iv-b `std::vector`
   growth (reallocation moves values) remain: each needs a probed
   lowering + a token/value model before admission. Probes so far:
@@ -488,8 +496,9 @@ N3 (specs + cheaper proofs + gallery, done 2026-10-04) → N4a
 guarded deref, done 2026-10-04) → N4d-iii (`span` index-sum,
 done 2026-10-04) → N4d-iv-a (`vector` reads, done 2026-10-04) →
 N4d-iv-b1 (`vector` growth leaves, done 2026-10-04) →
-N4d-iv-b2 (`vector` growth composition) / `string_view`
-range-for.
+N4d-iv-b2 (`vector` growth composition: `_M_realloc_insert` done
+2026-10-05; `emplace_back` / `push_back` / entry remain) /
+`string_view` range-for.
 N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
 

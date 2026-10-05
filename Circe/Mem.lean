@@ -630,6 +630,20 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       | .error e => .error e
       | .ok v => .ok (.stdVecOwned v 0 n.toNat)
     | .ok _ => .error .AssertFail
+  | .vgrowSetLen s e, ρ, m, π =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.stdVecOwned b _ cap) =>
+      match memEvalExpr e ρ m π with
+      | .error err => .error err
+      | .ok (.u64 n) => .ok (.stdVecOwned b n.toNat cap)
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .u64ofI64 e, ρ, m, π =>
+    match memEvalExpr e ρ m π with
+    | .error err => .error err
+    | .ok (.i64 d) => .ok (.u64 d)
+    | .ok _ => .error .AssertFail
   | .vnew se, ρ, m, π =>
     match memEvalExpr se ρ m π with
     | .error e => .error e
@@ -948,6 +962,25 @@ theorem memEvalExpr_vgrowNew_agree (ce : CExpr) (ρ : Env) (m : Mem)
     (π : Layout)
     (h : memEvalExpr ce ρ m π = evalExpr ce ρ) :
     memEvalExpr (.vgrowNew ce) ρ m π = evalExpr (.vgrowNew ce) ρ := by
+  simp only [memEvalExpr, evalExpr, h]
+  rfl
+
+/-- `vgrowSetLen` agreement: the rebuild is pure on both sides (same
+    buffer and capacity, length from the agreed subexpression;
+    N4d-iv-b2). -/
+theorem memEvalExpr_vgrowSetLen_agree (s : String) (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout)
+    (h : memEvalExpr e ρ m π = evalExpr e ρ) :
+    memEvalExpr (.vgrowSetLen s e) ρ m π =
+      evalExpr (.vgrowSetLen s e) ρ := by
+  simp only [memEvalExpr, evalExpr, h]
+  rfl
+
+/-- `u64ofI64` agreement: the retag is pure on both sides (N4d-iv-b2). -/
+theorem memEvalExpr_u64ofI64_agree (e : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (h : memEvalExpr e ρ m π = evalExpr e ρ) :
+    memEvalExpr (.u64ofI64 e) ρ m π = evalExpr (.u64ofI64 e) ρ := by
   simp only [memEvalExpr, evalExpr, h]
   rfl
 

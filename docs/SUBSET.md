@@ -465,8 +465,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `insert`/`erase`, `at()`.
 23. `std::vector<int32_t>` growth leaves (N4d-iv-b1): the 21
     call-free leaf bodies of the `vec_push_sum` frontier (53
-    defined defs; the 4 multi-call composers — entry,
-    `push_back`, `emplace_back`, `_M_realloc_insert` — stay OUT
+    defined defs; the 3 remaining multi-call composers — entry,
+    `push_back`, `emplace_back` — stay OUT
     with the dedicated composer pin): default ctor (empty owned
     triple), erased no-ops (allocator ctors/dtors, destroy range /
     element, allocator projection — all answer zero), dtor (frees
@@ -494,8 +494,25 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     params need no uniqueness inside pinned shapes).
     Containment result: growth leaves are IN; multi-call growth
     composition is OUT with the composer pin (N4d-iv-b2:
-    `_M_realloc_insert` / `emplace_back` / `push_back` / entry).
+    `emplace_back` / `push_back` / entry — `_M_realloc_insert`
+    graduated in 24).
     Still deferred: `reserve`, `insert`/`erase`, `at()`.
+24. `std::vector<int32_t>` growth composition (N4d-iv-b2,
+    `_M_realloc_insert` only): the 16-site corpus def over the
+    frozen b1 leaves (`check_len` → `begin` → `mi` → `allocate` →
+    `construct`-at-`k` → two `_S_relocate`s → the cap-counted
+    `_M_deallocate` guard, returning the reallocated triple with
+    the bumped length). Prog-based composition over the shared
+    `vecGrowProg` (no inlining): the value model threads the
+    owned-mutable triple, the const-folded `cir.if #true` arm is
+    live, the dead destroy/deallocate `cir.if #false` arm is pinned
+    never-executed, the erased `u64` iterator param carries the
+    offset. Memory and layout thread through unchanged (every
+    call runs on its own entry block); the only memory
+    obligations are the two header loads (`hlive`-gated).
+    Containment result: `_M_realloc_insert` is IN;
+    `emplace_back` / `push_back` / entry stay OUT with the
+    composer pin.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
