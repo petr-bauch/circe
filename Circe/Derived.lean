@@ -663,6 +663,24 @@ theorem oracleNoalias_clsDense (x : BitVec 32) :
     exact bindMemArgs_clsDense x
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-- `cls_break` binding pins nothing (one owned scalar; the local `r`
+    never escapes — the epilogue returns its value). -/
+theorem bindMemArgs_clsBreak (x : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+  rfl
+
+/-- `cls_break` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_clsBreak (x : BitVec 32) :
+    oracleNoalias clsBreakFunc [.u32 x] := by
+  have hb : bindMemArgs clsBreakFunc.args [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+    show bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem = _
+    exact bindMemArgs_clsBreak x
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-- `translate` binding pins nothing (the struct crosses by value —
     copy semantics — plus two owned scalars). -/
 theorem bindMemArgs_translate (px py dx dy : BitVec 32) :

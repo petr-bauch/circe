@@ -430,10 +430,41 @@ def isClsDenseLowerableText (text : String) : Bool :=
   caseRegionHas ls "cir.case(default, [])" "cir.return" &&
   arithOpCount text == 0
 
+/-- Text-level lowering check for the `cls_break` switch: equality
+    cases on `0`/`1` with no `default`; every case region stores its
+    pinned const (`10`/`20`) to the result local and exits via
+    `cir.break` (no `cir.return`, no `cir.load` in regions); exactly
+    two breaks and one function-epilogue return whole-text; the `r`
+    alloca and the `99` initializer are present; no loops (so the
+    breaks cannot be loop exits) and no arithmetic. -/
+def isClsBreakLowerableText (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  containsSubstr text "cir.switch" &&
+  opCount text "cir.switch" == 1 &&
+  opCount text "cir.case(" == 2 &&
+  !containsSubstr text "cir.case(default" &&
+  containsSubstr text "cir.case(equal, [#cir.int<0>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<1>" &&
+  opCount text "cir.break" == 2 &&
+  opCount text "cir.return" == 1 &&
+  containsSubstr text "cir.alloca \"r\"" &&
+  containsSubstr text "#cir.int<99>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "#cir.int<10>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "cir.store" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "cir.break" &&
+  !caseRegionHas ls "cir.case(equal, [#cir.int<0>" "cir.return" &&
+  !caseRegionHas ls "cir.case(equal, [#cir.int<0>" "cir.load" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "#cir.int<20>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.store" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.break" &&
+  !caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.return" &&
+  !caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.load" &&
+  arithOpCount text == 0
+
 /-- Any admitted switch lowering (the `forbiddenOp` exemption gate). -/
 def isAdmittedSwitchText (text : String) : Bool :=
   isClsLowerableText text || isClsFallLowerableText text ||
-    isClsDenseLowerableText text
+    isClsDenseLowerableText text || isClsBreakLowerableText text
 
 /-- `cls`: one `u32` scrutinee, `u32` return, lowerable `cir.switch`
     (see `isClsLowerableText`), no loops/calls/heap/indexing. -/
@@ -504,6 +535,31 @@ def isClsDenseShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "nsw"
   | _ => false
 
+/-- `cls_break`: one `u32` scrutinee, `u32` return, break-switch
+    (see `isClsBreakLowerableText`), no loops/calls/heap/indexing.
+    `cir.break` is allowed here (exactly two, switch-scoped: no
+    `cir.for`/`cir.while` means no loop they could exit); every other
+    shape still excludes it via `noBreakContinueSwitch`. -/
+def isClsBreakShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x] =>
+    isU32 x.ctype && isU32 raw.ret &&
+    isClsBreakLowerableText raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.continue" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "nsw"
+  | _ => false
+
 /-- A line with a bare unstructured branch (`cir.br` from `goto`),
     excluding `cir.break` (which merely *contains* the substring
     `cir.br`: S3a admits `break` in the exact `skip_sum` shape). -/
@@ -525,6 +581,7 @@ def isCNoPtrShape (raw : RawFunc) : Bool :=
   isVecShape raw || isVec2Shape raw || isVec64Shape raw ||
   isVecReallocShape raw || isNestedShape raw || isSkipShape raw ||
   isClsShape raw || isClsFallShape raw || isClsDenseShape raw ||
+  isClsBreakShape raw ||
   isAdd64Shape raw || isAddu64Shape raw ||
   isNegShape raw || isSdivShape raw
 
@@ -1356,6 +1413,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { clsFallFunc with name := raw.name }
       else if isClsDenseShape raw then
         .ok { clsDenseFunc with name := raw.name }
+      else if isClsBreakShape raw then
+        .ok { clsBreakFunc with name := raw.name }
       else if isAdd64Shape raw then
         .ok { add64Func with name := raw.name }
       else if isAddu64Shape raw then
@@ -1414,7 +1473,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity), the admitted N4d-i `operator[]` shape (N4d-i: single `const&` to `std::array<int, 4>` with the single-reference triple, one `_M_elems` `get_member` + exactly one call into the `_S_ref` leaf), and the admitted M2c `box_through` entry shape (M2c: `new` + `Box.x` field write/read + at most one sized `delete`; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.switch" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape family (S3a/N6b-i: `cls` — equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30` from its own region; `cls_fall` — empty `case 0` falling through to `case 1` returning `10`, `default` `30`; `cls_dense` — equality cases on `0`..`7` + `default`, bare const `return`s of `0`/`10`/../`70`/`80`; no arithmetic in case bodies; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape family (S3a/N6b-i: `cls` — equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30` from its own region; `cls_fall` — empty `case 0` falling through to `case 1` returning `10`, `default` `30`; `cls_dense` — equality cases on `0`..`7` + `default`, bare const `return`s of `0`/`10`/../`70`/`80`; `cls_break` — equality cases on `0`/`1` with no `default`, each storing `10`/`20` to the result local and exiting via `cir.break`, epilogue returning the local (`99` initializer); no arithmetic in case bodies; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.break" ||
           containsSubstr raw.text "cir.continue" then
         reject raw.name .outOfSubset
@@ -1593,6 +1652,12 @@ example : runPipelineOpt (include_str "../../tests/cir/cls_fall.cir")
 example : runPipelineOpt (include_str "../../tests/cir/cls_dense.cir")
     ⟨"cls_dense", .unknown⟩
     = some (include_str "../../tests/golden/ClsDense.lean") := by native_decide
+
+/-- The checked-in `cls_break` CIR (real CIRGen output, `break` cases
+    with no `default`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../../tests/cir/cls_break.cir")
+    ⟨"cls_break", .unknown⟩
+    = some (include_str "../../tests/golden/ClsBreak.lean") := by native_decide
 
 /-- The checked-in `add64` CIR (real CIRGen output, `nsw` add on
     `!s64i`) validates and emits exactly the golden. -/

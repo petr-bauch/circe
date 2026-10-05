@@ -26,6 +26,7 @@ find_eq noalias
 cls unknown
 cls_fall unknown
 cls_dense unknown
+cls_break unknown
 add64 unknown
 addu64 unknown
 sum_norestrict unknown

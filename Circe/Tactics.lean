@@ -104,4 +104,4 @@ macro "cir_simp" : tactic =>
     u32_map_ok, u32_map_error, u64_map_ok, u64_map_error,
     addFwd_ok, addFwd_err, sumFwd_ok, sumFwd_oob,
     nestedFwd, skipFwd, findEqFwd, clsFwd, clsFallFwd, clsDenseFwd,
-    add64Fwd, addu64Fwd])
+    clsBreakFwd, add64Fwd, addu64Fwd])

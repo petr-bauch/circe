@@ -333,6 +333,17 @@ def matchFrag : Func → Option FragKind
       else if c0 == 0 && c1 == 1 && r0 == 10 && r1 == 10 && r2 == 30 then
         some .clsFall
       else none
+    | .seq (.let_ "r" (.u 32) (.lit (.u32 v99)))
+        (.seq (.if_ (.ueq (.var "x") (.lit (.u32 c0)))
+                  (.assign "r" (.lit (.u32 r0)))
+                  .skip)
+        (.seq (.if_ (.ueq (.var "x") (.lit (.u32 c1)))
+                  (.assign "r" (.lit (.u32 r1)))
+                  .skip)
+              (.return_ (.var "r")))) =>
+      if v99 == 99 && c0 == 0 && r0 == 10 && c1 == 1 && r1 == 20 then
+        some .clsBreak
+      else none
     | .if_ (.ueq (.var "x") (.lit (.u32 c0)))
         (.return_ (.lit (.u32 r0)))
         (.if_ (.ueq (.var "x") (.lit (.u32 c1)))
@@ -710,6 +721,7 @@ theorem matchFrag_findEq : matchFrag findEqFunc = some .findEq := rfl
 theorem matchFrag_cls : matchFrag clsFunc = some .cls := rfl
 theorem matchFrag_clsFall : matchFrag clsFallFunc = some .clsFall := rfl
 theorem matchFrag_clsDense : matchFrag clsDenseFunc = some .clsDense := rfl
+theorem matchFrag_clsBreak : matchFrag clsBreakFunc = some .clsBreak := rfl
 theorem matchFrag_arrayRef : matchFrag arrayRefFunc = some .arrayRef := rfl
 theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
 theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl

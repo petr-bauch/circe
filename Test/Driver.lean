@@ -137,6 +137,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/cls.c", "tests/diff/driver_cls.c"], bin "circe_cls_native"),
    ("cc", ["tests/c/cls_fall.c", "tests/diff/driver_cls_fall.c"], bin "circe_cls_fall_native"),
    ("cc", ["tests/c/cls_dense.c", "tests/diff/driver_cls_dense.c"], bin "circe_cls_dense_native"),
+   ("cc", ["tests/c/cls_break.c", "tests/diff/driver_cls_break.c"], bin "circe_cls_break_native"),
    ("cc", ["tests/c/add64.c", "tests/diff/driver_add64.c"], bin "circe_add64_native"),
    ("cc", ["tests/c/addu64.c", "tests/diff/driver_addu64.c"], bin "circe_addu64_native"),
    ("cc", ["tests/c/neg.c", "tests/diff/driver_neg.c"], bin "circe_neg_native"),
@@ -178,6 +179,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ClsFall_Spec.lean", "out/ClsFall_Spec.lean"),
    ("tests/golden/ClsDense.lean", "out/ClsDense.lean"),
    ("tests/golden/ClsDense_Spec.lean", "out/ClsDense_Spec.lean"),
+   ("tests/golden/ClsBreak.lean", "out/ClsBreak.lean"),
+   ("tests/golden/ClsBreak_Spec.lean", "out/ClsBreak_Spec.lean"),
    ("tests/golden/Add64.lean", "out/Add64.lean"),
    ("tests/golden/Addu64.lean", "out/Addu64.lean"),
    ("tests/golden/Neg.lean", "out/Neg.lean"),
@@ -290,7 +293,7 @@ def emittedTypechecks : List String :=
   ["out/Add.lean", "out/Incr.lean", "out/Choose.lean", "out/SumArray.lean",
    "out/AddCaller.lean", "out/SumCaller.lean", "out/StructByValue.lean",
    "out/NestedSum.lean", "out/SkipSum.lean", "out/FindEq.lean", "out/Cls.lean",
-   "out/ClsFall.lean", "out/ClsDense.lean",
+   "out/ClsFall.lean", "out/ClsDense.lean", "out/ClsBreak.lean",
    "out/Add64.lean", "out/Addu64.lean",
    "out/Neg.lean", "out/Sdiv.lean",
    "out/VecAlloc.lean",
@@ -448,7 +451,19 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer/Flow.lean", "theorem memTransfer_clsFall"),
      ("Circe/Transfer/Flow.lean", "theorem memTransfer_clsDense"),
      ("Circe/Derived.lean", "theorem oracleNoalias_clsFall"),
-     ("Circe/Derived.lean", "theorem oracleNoalias_clsDense")]),
+     ("Circe/Derived.lean", "theorem oracleNoalias_clsDense"),
+     ("out/ClsBreak.lean", ".ok (if x == 0 then 10 else if x == 1 then 20 else 99)"),
+     ("tests/golden/ClsBreak.lean", "cls_break_fwd"),
+     ("tests/golden/ClsBreak_Spec.lean", "cls_break_spec_check"),
+     ("Circe/Validator/Gate.lean", "def isClsBreakLowerableText"),
+     ("Circe/Validator/Gate.lean", "def isClsBreakShape"),
+     ("Circe/Emit/Flow.lean", "theorem evalFuncFuel_clsBreak"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_clsBreak"),
+     ("Circe/Specs.lean", "theorem clsBreak_correct"),
+     ("Circe/Tactics.lean", "clsDenseFwd,"),
+     ("Circe/Tactics.lean", "clsBreakFwd, add64Fwd"),
+     ("Circe/Transfer/Flow.lean", "theorem memTransfer_clsBreak"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_clsBreak")]),
    ("s4-cir-simp",
     [("Circe/Tactics.lean", "addCallerFwd_as_calls, sumCallerFwd_is_call"),
      ("Circe/Tactics.lean", "pointTranslate_ok, pointTranslate_err_x"),
@@ -511,12 +526,14 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer/Flow.lean", "theorem memTransfer_cls"),
      ("Circe/Transfer/Flow.lean", "theorem memTransfer_clsFall"),
      ("Circe/Transfer/Flow.lean", "theorem memTransfer_clsDense"),
+     ("Circe/Transfer/Flow.lean", "theorem memTransfer_clsBreak"),
      ("Circe/Transfer/Flow.lean", "theorem memTransfer_translate"),
      ("Circe/Derived.lean", "theorem oracleNoalias_add64"),
      ("Circe/Derived.lean", "theorem oracleNoalias_addu64"),
      ("Circe/Derived.lean", "theorem oracleNoalias_cls"),
      ("Circe/Derived.lean", "theorem oracleNoalias_clsFall"),
      ("Circe/Derived.lean", "theorem oracleNoalias_clsDense"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_clsBreak"),
      ("Circe/Derived.lean", "theorem oracleNoalias_translate"),
      ("Circe/Mem/Model.lean", "theorem memEvalExpr_add_fget_var")]),
    ("m3c-flow",
@@ -901,8 +918,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 84 then
-    throw (IO.userError s!"expected 84 spec stubs, found {stubs.length}")
+  if stubs.length != 85 then
+    throw (IO.userError s!"expected 85 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -923,7 +940,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-phase4", DiffPhase4.main [bin "circe_choose_native", bin "circe_sum_native", trials]),
    ("diff-calls", DiffCalls.main [bin "circe_add_caller_native", bin "circe_sum_caller_native", trials]),
    ("diff-struct", DiffStruct.main [bin "circe_struct_native", trials]),
-   ("diff-flow", DiffFlow.main [bin "circe_nested_native", bin "circe_skip_native", bin "circe_find_native", bin "circe_cls_native", bin "circe_cls_fall_native", bin "circe_cls_dense_native", trials]),
+   ("diff-flow", DiffFlow.main [bin "circe_nested_native", bin "circe_skip_native", bin "circe_find_native", bin "circe_cls_native", bin "circe_cls_fall_native", bin "circe_cls_dense_native", bin "circe_cls_break_native", trials]),
    ("diff-width", DiffWidth.main [bin "circe_add64_native", bin "circe_addu64_native", trials]),
    ("diff-arith", DiffArith.main [bin "circe_neg_native", bin "circe_sdiv_native", trials]),
    ("diff-vec", DiffVec.main [bin "circe_vec_native", trials]),

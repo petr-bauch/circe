@@ -1434,3 +1434,84 @@ theorem evalFuncFuel_clsDense (F : Nat) (x : BitVec 32) :
 theorem emit_correct_clsDense (x : BitVec 32) :
     evalFunc clsDenseFunc [.u32 x] = clsDenseFwd x :=
   evalFuncFuel_clsDense EVAL_FUEL x
+/-! ### `cls_break`: break-switch without default (N6b-ii) -/
+
+/-- Canonical CoreIR for `tests/c/cls_break.c`: the result local `r`
+    starts at `99`; each case is a guarded assign (the `cir.break`s
+    erase — disjoint guards make the sequential assigns exact);
+    unmatched scrutinees keep `99`. The validator admits exactly this
+    lowered shape (`isClsBreakShape`). -/
+def clsBreakFunc : Func :=
+  ⟨"cls_break",
+   [{ name := "x", ty := .u 32, role := .owned }],
+   .u 32,
+   .seq (.let_ "r" (.u 32) (.lit (.u32 99)))
+   (.seq (.if_ (.ueq (.var "x") (.lit (.u32 0)))
+            (.assign "r" (.lit (.u32 10)))
+            .skip)
+   (.seq (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+            (.assign "r" (.lit (.u32 20)))
+            .skip)
+         (.return_ (.var "r"))))⟩
+
+/-- Value-level forward for `cls_break` (cf. rendered `cls_break_fwd`). -/
+def clsBreakFwd (x : BitVec 32) : Result Value :=
+  .ok (.u32 (if x == 0 then 10 else if x == 1 then 20 else 99))
+
+/-- `emit_correct` for `cls_break` (loop-free: any fuel). -/
+theorem evalFuncFuel_clsBreak (F : Nat) (x : BitVec 32) :
+    evalFuncFuel F clsBreakFunc [.u32 x] = clsBreakFwd x := by
+  have hbind : bindArgs clsBreakFunc.args [.u32 x] =
+      some [("x", .u32 x)] := rfl
+  have hbody : clsBreakFunc.body =
+      .seq (.let_ "r" (.u 32) (.lit (.u32 99)))
+      (.seq (.if_ (.ueq (.var "x") (.lit (.u32 0)))
+               (.assign "r" (.lit (.u32 10)))
+               .skip)
+      (.seq (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+               (.assign "r" (.lit (.u32 20)))
+               .skip)
+            (.return_ (.var "r")))) := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) :=
+    envExtend_hit _ _ _
+  have hxr : ("x" : String) ≠ "r" := by decide
+  by_cases h0 : x = 0
+  · subst h0
+    have hupd : envUpdate [("r", .u32 99#32), ("x", .u32 0#32)]
+        "r" (.u32 10#32) =
+        some [(("r", .u32 10#32)), ("x", .u32 0#32)] :=
+      envUpdate_hit _ _ _ _
+    have hlk : envLookup [(("r", .u32 10#32)), ("x", .u32 0#32)] "x" =
+        some (.u32 0#32) := by simp [envLookup, hxr]
+    have g01 : (0#32 == 1#32) = false := by decide
+    cases F <;>
+      simp [evalFuncFuel, clsBreakFunc, bindArgs, evalStmtFuel, evalStmtZero,
+        evalStmtWith, evalExpr, litVal, envLookup, envExtend, clsBreakFwd,
+        hupd, hlk, g01]
+  · have h0' : x ≠ 0#32 := h0
+    have e0 : (x == 0#32) = false := by simp [h0']
+    by_cases h1 : x = 1
+    · subst h1
+      have hupd : envUpdate [("r", .u32 99#32), ("x", .u32 1#32)]
+          "r" (.u32 20#32) =
+          some [(("r", .u32 20#32)), ("x", .u32 1#32)] :=
+        envUpdate_hit _ _ _ _
+      have hlk : envLookup [(("r", .u32 20#32)), ("x", .u32 1#32)] "x" =
+          some (.u32 1#32) := by simp [envLookup, hxr]
+      cases F <;>
+        simp [evalFuncFuel, clsBreakFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, envExtend, clsBreakFwd, e0,
+          hupd, hlk]
+    · have h1' : x ≠ 1#32 := h1
+      have e1 : (x == 1#32) = false := by simp [h1']
+      have hlk : envLookup [(("r", .u32 99#32)), ("x", .u32 x)] "x" =
+          some (.u32 x) := by simp [envLookup, hxr]
+      cases F <;>
+        simp [evalFuncFuel, clsBreakFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, envExtend, clsBreakFwd, e0, e1,
+          hlk]
+
+/-- `emit_correct` for `cls_break` at the default fuel. -/
+theorem emit_correct_clsBreak (x : BitVec 32) :
+    evalFunc clsBreakFunc [.u32 x] = clsBreakFwd x :=
+  evalFuncFuel_clsBreak EVAL_FUEL x

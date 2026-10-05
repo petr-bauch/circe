@@ -347,6 +347,73 @@ theorem memTransfer_clsDense (F : Nat) (x : BitVec 32)
                         e0, e1, e2, e3, e4, e5, e6, e7]
   exact U F
 
+/-- Transfer for `cls_break` (any fuel): guarded assigns over a local
+    are pure, so memory is untouched and both sides classify
+    identically. -/
+theorem memTransfer_clsBreak (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias clsBreakFunc [.u32 x]) :
+    memEvalFuncFuel F clsBreakFunc [.u32 x] =
+      evalFuncFuel F clsBreakFunc [.u32 x] := by
+  have hbf : clsBreakFunc.args =
+      [{ name := "x", ty := .u 32, role := .owned }] := rfl
+  have hbody : clsBreakFunc.body =
+      .seq (.let_ "r" (.u 32) (.lit (.u32 99)))
+      (.seq (.if_ (.ueq (.var "x") (.lit (.u32 0)))
+               (.assign "r" (.lit (.u32 10)))
+               .skip)
+      (.seq (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+               (.assign "r" (.lit (.u32 20)))
+               .skip)
+            (.return_ (.var "r")))) := rfl
+  have hb : bindMemArgs
+      [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) := by
+    simp [envLookup]
+  have hxr : ("x" : String) ≠ "r" := by decide
+  by_cases h0 : x = 0
+  · subst h0
+    have hupd : envUpdate [("r", .u32 99#32), ("x", .u32 0#32)]
+        "r" (.u32 10#32) =
+        some [(("r", .u32 10#32)), ("x", .u32 0#32)] :=
+      envUpdate_hit _ _ _ _
+    have hlk : envLookup [(("r", .u32 10#32)), ("x", .u32 0#32)] "x" =
+        some (.u32 0#32) := by simp [envLookup, hxr]
+    have g01 : (0#32 == 1#32) = false := by decide
+    simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        evalStmtFuel, evalStmtZero, evalStmtWith,
+        memEvalExpr, evalExpr, litVal, envLookup, envExtend,
+        hupd, hlk, g01]
+  · have h0' : x ≠ 0#32 := h0
+    have e0 : (x == 0#32) = false := by simp [h0']
+    by_cases h1 : x = 1
+    · subst h1
+      have hupd : envUpdate [("r", .u32 99#32), ("x", .u32 1#32)]
+          "r" (.u32 20#32) =
+          some [(("r", .u32 20#32)), ("x", .u32 1#32)] :=
+        envUpdate_hit _ _ _ _
+      have hlk : envLookup [(("r", .u32 20#32)), ("x", .u32 1#32)] "x" =
+          some (.u32 1#32) := by simp [envLookup, hxr]
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup, envExtend, e0,
+          hupd, hlk]
+    · have h1' : x ≠ 1#32 := h1
+      have e1 : (x == 1#32) = false := by simp [h1']
+      have hlk : envLookup [(("r", .u32 99#32)), ("x", .u32 x)] "x" =
+          some (.u32 x) := by simp [envLookup, hxr]
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup, envExtend, e0, e1,
+          hlk]
+
 /-- Transfer for `translate` (any fuel): field projection + checked
     adds + struct construction are all pure (the struct crosses by
     value), so memory rides alongside untouched. The `Eval` side reuses

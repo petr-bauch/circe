@@ -18,6 +18,7 @@ verbatim.
 | `useAdd_correct` / `useNsAdd_correct` (N4a) | entry forward = `addFwd` (overload resolution is identity at spec level) | `useAddFwd` / `useNsAddFwd` |
 | `clsFall_correct` (N6b-i) | `0` falls through to the `1` arm: both answer `10`, else `30` | `clsFallFwd x` (if-chain) |
 | `clsDense_correct` (N6b-i) | exhaustive dispatch over all eight cases + default | `clsDenseFwd x` (8-deep if-chain) |
+| `clsBreak_correct` (N6b-ii) | both cases store their const, else the `99` initializer | `clsBreakFwd x` (guarded assigns) |
 | `neg_correct_ok/err` (N6a) | ok delivers `-x`, err is exactly `INT_MIN` overflow | `negFwd x` (`checkedNegI32`) |
 | `sdiv_correct_ok/zero/overflow` (N6a) | truncating quotient; zero divisor is `DivZero`; `INT_MIN / -1` is `Overflow` | `sdivFwd a b` (`checkedDivI32`) |
 | `accMoveCtor_correct` (N4b) | dst takes src word (zeroing is entry-level) | `accMoveCtorFwd d s` |

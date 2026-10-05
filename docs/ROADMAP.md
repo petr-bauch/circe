@@ -109,8 +109,10 @@ semantics changes.
   into `case 1`) + `cls_dense` (`0`..`7` + `default`) as exact shapes
   with per-region const pins + `arithOpCount == 0` (closes the
   unsigned-arith-in-case-body hole and the permuted-const hole in the
-  old whole-text `cls` pins; 15/15 `GoldenFlow`); N6b-ii (break-switch
-  without default) and N6b-iii (compute bodies) remain.
+  old whole-text `cls` pins; 15/15 `GoldenFlow`); N6b-ii done
+  (2026-10-06): `cls_break` (`0`/`1`, no `default`, store + `break`
+  per case, `99` initializer) as guarded assigns over a local
+  (19/19 `GoldenFlow`); N6b-iii (compute bodies) remains.
 - N7: STD growth — `string_view` range-for (shares the span
   iterator blocker: `begin`/`end` + pointer-chasing; needs a
   probed lowering + a token/value model), then

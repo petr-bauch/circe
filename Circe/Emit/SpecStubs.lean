@@ -1775,6 +1775,26 @@ def emitClsFallSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd x)).pretty\n"
   ++ "      == (repr (((if x == (0 : BitVec 32) then (Except.ok (10 : BitVec 32)) else if x == (1 : BitVec 32) then (Except.ok (10 : BitVec 32)) else (Except.ok (30 : BitVec 32))) : Result (BitVec 32)))).pretty\n"
 
+/-- Spec stub for the `cls_break` shape (N6b-ii break-switch). -/
+def emitClsBreakSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t x)` (`switch` on 0/1, no `default`: guarded stores + `break`, `99` initializer).\n"
+  ++ s!"    Base body reference: the guarded assigns (cf. emitted `{name}_fwd`, `emit_correct_clsBreak`). -/\n"
+  ++ s!"def {name}_spec_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (if x == 0 then 10 else if x == 1 then 20 else 99)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: both cases, initializer path, max. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 2, 0xFFFFFFFF]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the class equation holds on every edge (this one is\n"
+  ++ "    already the spec — the guarded assigns are the whole body). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun x =>\n"
+  ++ s!"    (repr ({name}_spec_fwd x)).pretty\n"
+  ++ "      == (repr (((Except.ok (if x == (0 : BitVec 32) then (10 : BitVec 32) else if x == (1 : BitVec 32) then (20 : BitVec 32) else (99 : BitVec 32))) : Result (BitVec 32)))).pretty\n"
+
 /-- Spec stub for the `cls_dense` shape (N6b-i eight-case switch). -/
 def emitClsDenseSpecText (name : String) : String :=
   emitSpecHeader

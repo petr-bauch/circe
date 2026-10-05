@@ -297,6 +297,15 @@ theorem clsDense_correct (x : BitVec 32) :
     by_cases h3 : x = 3 <;> by_cases h4 : x = 4 <;> by_cases h5 : x = 5 <;>
     by_cases h6 : x = 6 <;> by_cases h7 : x = 7 <;> cir_simp <;> simp_all
 
+/-! ## `cls_break`: guarded stores over the initializer (N6b-ii, N3a) -/
+
+/-- `cls_break` dispatches exhaustively: both cases store their const,
+    unmatched scrutinees keep the `99` initializer. -/
+theorem clsBreak_correct (x : BitVec 32) :
+    clsBreakFwd x =
+      .ok (.u32 (if x == 0 then 10 else if x == 1 then 20 else 99)) := by
+  by_cases h0 : x = 0 <;> by_cases h1 : x = 1 <;> cir_simp <;> simp_all
+
 /-! ## `add64` / `addu64`: 64-bit addition (S3b, N3a) -/
 
 /-- `add64` success delivers the mathematical sum with the `nsw`
