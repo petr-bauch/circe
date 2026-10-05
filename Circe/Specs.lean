@@ -278,6 +278,25 @@ theorem cls_correct (x : BitVec 32) :
       .ok (.u32 (if x == 0 then 10 else if x == 1 then 20 else 30)) := by
   by_cases h0 : x = 0 <;> by_cases h1 : x = 1 <;> cir_simp <;> simp_all
 
+/-! ## `cls_fall` / `cls_dense`: fallthrough + dense switches (N6b-i, N3a) -/
+
+/-- `cls_fall` dispatches exhaustively: `0` falls through to the `1`
+    arm, so both answer `10`. -/
+theorem clsFall_correct (x : BitVec 32) :
+    clsFallFwd x =
+      .ok (.u32 (if x == 0 then 10 else if x == 1 then 10 else 30)) := by
+  by_cases h0 : x = 0 <;> by_cases h1 : x = 1 <;> cir_simp <;> simp_all
+
+/-- `cls_dense` dispatches exhaustively over all eight cases. -/
+theorem clsDense_correct (x : BitVec 32) :
+    clsDenseFwd x =
+      .ok (.u32 (if x == 0 then 0 else if x == 1 then 10 else if x == 2 then 20
+        else if x == 3 then 30 else if x == 4 then 40 else if x == 5 then 50
+        else if x == 6 then 60 else if x == 7 then 70 else 80)) := by
+  by_cases h0 : x = 0 <;> by_cases h1 : x = 1 <;> by_cases h2 : x = 2 <;>
+    by_cases h3 : x = 3 <;> by_cases h4 : x = 4 <;> by_cases h5 : x = 5 <;>
+    by_cases h6 : x = 6 <;> by_cases h7 : x = 7 <;> cir_simp <;> simp_all
+
 /-! ## `add64` / `addu64`: 64-bit addition (S3b, N3a) -/
 
 /-- `add64` success delivers the mathematical sum with the `nsw`

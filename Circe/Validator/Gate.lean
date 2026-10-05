@@ -352,18 +352,88 @@ def isFindEqShape (raw : RawFunc) : Bool :=
   | _ => false
 
 /-- Text-level lowering check for `cir.switch`: equality cases on the
-    pinned consts `0`/`1` plus `default`, every case returning a pinned
-    const (`10`/`20`/`30`). This is the `forbiddenOp` exemption gate;
-    full admission additionally pins the signature (`isClsShape`). -/
+    pinned consts `0`/`1` plus `default`, every case returning its pinned
+    const (`10`/`20`/`30`) from its own region (N6b-i: per-region pins,
+    so a permuted const mapping no longer validates to the canonical
+    body; `arithOpCount == 0`, so unsigned arithmetic in a case body no
+    longer slips past the `nsw`/`cir.mul` exclusions either). This is
+    the `forbiddenOp` exemption gate; full admission additionally pins
+    the signature (`isClsShape`). -/
 def isClsLowerableText (text : String) : Bool :=
+  let ls := text.splitOn "\n"
   containsSubstr text "cir.switch" &&
   opCount text "cir.case(" == 3 &&
   containsSubstr text "cir.case(equal, [#cir.int<0>" &&
   containsSubstr text "cir.case(equal, [#cir.int<1>" &&
   containsSubstr text "cir.case(default, [])" &&
-  containsSubstr text "#cir.int<10>" &&
-  containsSubstr text "#cir.int<20>" &&
-  containsSubstr text "#cir.int<30>"
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "#cir.int<10>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "#cir.int<20>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.return" &&
+  caseRegionHas ls "cir.case(default, [])" "#cir.int<30>" &&
+  caseRegionHas ls "cir.case(default, [])" "cir.return" &&
+  arithOpCount text == 0
+
+/-- Text-level lowering check for the `cls_fall` switch: equality cases
+    on `0`/`1` plus `default`, where the `case 0` region is empty (a
+    bare `cir.yield`: control falls through to `case 1`), `case 1`
+    returns `10` and `default` returns `30` from their own regions.
+    The emptiness pin pairs `caseRegionEmpty` with the header-presence
+    pin above (an absent header would pass vacuously). -/
+def isClsFallLowerableText (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  containsSubstr text "cir.switch" &&
+  opCount text "cir.case(" == 3 &&
+  containsSubstr text "cir.case(equal, [#cir.int<0>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<1>" &&
+  containsSubstr text "cir.case(default, [])" &&
+  caseRegionEmpty ls "cir.case(equal, [#cir.int<0>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "#cir.int<10>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.return" &&
+  caseRegionHas ls "cir.case(default, [])" "#cir.int<30>" &&
+  caseRegionHas ls "cir.case(default, [])" "cir.return" &&
+  arithOpCount text == 0
+
+/-- Text-level lowering check for the `cls_dense` switch: equality cases
+    on `0`..`7` plus `default`, every case returning its pinned const
+    (`0`/`10`/../`70`, default `80`) from its own region. -/
+def isClsDenseLowerableText (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  containsSubstr text "cir.switch" &&
+  opCount text "cir.case(" == 9 &&
+  containsSubstr text "cir.case(equal, [#cir.int<0>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<1>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<2>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<3>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<4>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<5>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<6>" &&
+  containsSubstr text "cir.case(equal, [#cir.int<7>" &&
+  containsSubstr text "cir.case(default, [])" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "#cir.int<0>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<0>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "#cir.int<10>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<1>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<2>" "#cir.int<20>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<2>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<3>" "#cir.int<30>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<3>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<4>" "#cir.int<40>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<4>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<5>" "#cir.int<50>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<5>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<6>" "#cir.int<60>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<6>" "cir.return" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<7>" "#cir.int<70>" &&
+  caseRegionHas ls "cir.case(equal, [#cir.int<7>" "cir.return" &&
+  caseRegionHas ls "cir.case(default, [])" "#cir.int<80>" &&
+  caseRegionHas ls "cir.case(default, [])" "cir.return" &&
+  arithOpCount text == 0
+
+/-- Any admitted switch lowering (the `forbiddenOp` exemption gate). -/
+def isAdmittedSwitchText (text : String) : Bool :=
+  isClsLowerableText text || isClsFallLowerableText text ||
+    isClsDenseLowerableText text
 
 /-- `cls`: one `u32` scrutinee, `u32` return, lowerable `cir.switch`
     (see `isClsLowerableText`), no loops/calls/heap/indexing. -/
@@ -372,6 +442,52 @@ def isClsShape (raw : RawFunc) : Bool :=
   | [x] =>
     isU32 x.ctype && isU32 raw.ret &&
     isClsLowerableText raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.break" &&
+    !containsSubstr raw.text "cir.continue" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "nsw"
+  | _ => false
+
+/-- `cls_fall`: one `u32` scrutinee, `u32` return, fallthrough switch
+    (see `isClsFallLowerableText`), no loops/calls/heap/indexing. -/
+def isClsFallShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x] =>
+    isU32 x.ctype && isU32 raw.ret &&
+    isClsFallLowerableText raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.break" &&
+    !containsSubstr raw.text "cir.continue" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "nsw"
+  | _ => false
+
+/-- `cls_dense`: one `u32` scrutinee, `u32` return, eight-case switch
+    (see `isClsDenseLowerableText`), no loops/calls/heap/indexing. -/
+def isClsDenseShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x] =>
+    isU32 x.ctype && isU32 raw.ret &&
+    isClsDenseLowerableText raw.text &&
     !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.call @malloc" &&
     !containsSubstr raw.text "cir.call @free(" &&
@@ -408,7 +524,8 @@ def isCNoPtrShape (raw : RawFunc) : Bool :=
   isAddShape raw || isAddCallerShape raw || isTranslateShape raw ||
   isVecShape raw || isVec2Shape raw || isVec64Shape raw ||
   isVecReallocShape raw || isNestedShape raw || isSkipShape raw ||
-  isClsShape raw || isAdd64Shape raw || isAddu64Shape raw ||
+  isClsShape raw || isClsFallShape raw || isClsDenseShape raw ||
+  isAdd64Shape raw || isAddu64Shape raw ||
   isNegShape raw || isSdivShape raw
 
 /-- Text-derived noalias evidence (C only): no live pointer params and an
@@ -1023,7 +1140,7 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
   else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text && !isBoxThroughExemptText text && !isVecDtorExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b / N4d-iv-b1-dtor shapes, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.trap" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b shapes, see docs/ROADMAP.md M2)"
-  else if containsSubstr text "cir.switch" && !isClsLowerableText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
+  else if containsSubstr text "cir.switch" && !isAdmittedSwitchText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
   else if hasWrappingSignedArith text then some "signed wrapping arithmetic without `nsw` (signed overflow is UB in C: mark the op `nsw` or use unsigned arithmetic)"
@@ -1235,6 +1352,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { findEqFunc with name := raw.name }
       else if isClsShape raw then
         .ok { clsFunc with name := raw.name }
+      else if isClsFallShape raw then
+        .ok { clsFallFunc with name := raw.name }
+      else if isClsDenseShape raw then
+        .ok { clsDenseFunc with name := raw.name }
       else if isAdd64Shape raw then
         .ok { add64Func with name := raw.name }
       else if isAddu64Shape raw then
@@ -1293,7 +1414,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"out-of-subset: function '{raw.name}' uses struct field access (`cir.get_member`) outside the admitted `translate` shape (S2: by-value `Point` + two `i32` deltas with `nsw` field adds only), the admitted M2a method shapes (M2a: single `this` / `const&` with the single-reference triple, `get_member` x/y + one `nsw` add in the leaf, exactly one mangled method call in the entry), the admitted M2b `Acc` leaf shapes (M2b: single `this` with the single-reference triple, `cxx_ctor` field-init / `add` one-`nsw`-add / `get` identity), the admitted N4d-i `operator[]` shape (N4d-i: single `const&` to `std::array<int, 4>` with the single-reference triple, one `_M_elems` `get_member` + exactly one call into the `_S_ref` leaf), and the admitted M2c `box_through` entry shape (M2c: `new` + `Box.x` field write/read + at most one sized `delete`; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.switch" then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape (S3a: equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30`; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' uses `switch` (`cir.switch`) outside the admitted `cls` shape family (S3a/N6b-i: `cls` — equality cases on `0`/`1` + `default`, every case a bare const `return` of `10`/`20`/`30` from its own region; `cls_fall` — empty `case 0` falling through to `case 1` returning `10`, `default` `30`; `cls_dense` — equality cases on `0`..`7` + `default`, bare const `return`s of `0`/`10`/../`70`/`80`; no arithmetic in case bodies; see docs/SUBSET.md)"
       else if containsSubstr raw.text "cir.break" ||
           containsSubstr raw.text "cir.continue" then
         reject raw.name .outOfSubset
@@ -1460,6 +1581,18 @@ example : runPipelineOpt (include_str "../../tests/cir/find_eq.cir")
 example : runPipelineOpt (include_str "../../tests/cir/cls.cir")
     ⟨"cls", .unknown⟩
     = some (include_str "../../tests/golden/Cls.lean") := by native_decide
+
+/-- The checked-in `cls_fall` CIR (real CIRGen output, empty `case 0`
+    falling through to `case 1`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../../tests/cir/cls_fall.cir")
+    ⟨"cls_fall", .unknown⟩
+    = some (include_str "../../tests/golden/ClsFall.lean") := by native_decide
+
+/-- The checked-in `cls_dense` CIR (real CIRGen output, eight equality
+    cases + `default`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../../tests/cir/cls_dense.cir")
+    ⟨"cls_dense", .unknown⟩
+    = some (include_str "../../tests/golden/ClsDense.lean") := by native_decide
 
 /-- The checked-in `add64` CIR (real CIRGen output, `nsw` add on
     `!s64i`) validates and emits exactly the golden. -/

@@ -2,15 +2,17 @@
 -- rejection suite.
 --
 -- Run from the repo root: `lake env lean --run tests/lean/GoldenFlow.lean`
--- 1. Corpus pipeline: `tests/cir/{nested_sum,skip_sum,find_eq,cls}.cir`
---    parse, validate under their `tests/oracle/verdicts.txt` verdicts,
---    and emit byte-identical text to `tests/golden/{NestedSum,SkipSum,
---    FindEq,Cls}.lean`.
+-- 1. Corpus pipeline: `tests/cir/{nested_sum,skip_sum,find_eq,cls,
+--    cls_fall,cls_dense}.cir` parse, validate under their
+--    `tests/oracle/verdicts.txt` verdicts, and emit byte-identical text
+--    to `tests/golden/{NestedSum,SkipSum,FindEq,Cls,ClsFall,ClsDense}.lean`.
 -- 2. Rejection suite: misshapen control flow (break outside a loop,
 --    non-lowerable switch, lowerable switch with wrong signature,
 --    break inside nested loops, single-return search loop, range-case
---    switch) hits exact codes + message substrings, so the new
---    `validate` branches are exercised. Mismatch policy: any in-subset
+--    switch, unsigned arithmetic in a case body, permuted const mapping,
+--    double-`10` mapping matching neither `cls` nor `cls_fall` pins)
+--    hits exact codes + message substrings, so the new `validate`
+--    branches are exercised. Mismatch policy: any in-subset
 --    divergence is P0; out-of-subset must reject loudly.
 import Circe.Validator
 
@@ -53,9 +55,11 @@ def checkRejectFlow (name text : String) (verdict : Verdict)
 def advBreakNoLoop : String :=
   "module {\n  cir.func @bn(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.break loc(#loc1)\n    cir.return %arg0 : !u32i\n  }\n}"
 
-/-- `switch` with fallthrough (second case falls into default: no
-    `return` in the case body, consts unpinned): not if-chain
-    lowerable, so the `forbiddenOp` switch branch fires. -/
+/-- `switch` with unadmitted fallthrough (first case returns the
+    scrutinee, second case is an empty scope on const `2`): neither the
+    `cls` shape (non-const returns) nor the N6b-i `cls_fall` shape
+    (which needs an empty `case 0` falling into a const `case 1`) nor
+    `cls_dense` matches, so the `forbiddenOp` switch branch fires. -/
 def advSwitchFallthrough : String :=
   "module {\n  cir.func @sf(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        cir.return %arg0 : !u32i\n      }\n      cir.case(equal, [#cir.int<2> : !u32i]) {\n        cir.scope {\n        }\n      }\n      cir.case(default, []) {\n        cir.return %arg0 : !u32i\n      }\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
 
@@ -81,6 +85,27 @@ def advSearchNoReturn : String :=
 def advSwitchRange : String :=
   "module {\n  cir.func @sr(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(range, [#cir.int<0> : !u32i, #cir.int<5> : !u32i]) {\n        cir.return %arg0 : !u32i\n      }\n      cir.case(default, []) {\n        cir.return %arg0 : !u32i\n      }\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
 
+/-- `cls`-shaped `switch` with unsigned arithmetic in a case body: the
+    region pins pass but `arithOpCount == 0` fails (N6b-i closes the
+    unsigned-arith hole — plain `cir.add` used to slip past the
+    `nsw`/`cir.mul` exclusions and validate to `clsFunc`). -/
+def advSwitchArith : String :=
+  "module {\n  cir.func @sx(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        %t = cir.add %arg0, %arg0 : !u32i\n        %a = cir.const #cir.int<10> : !u32i\n        cir.return %a : !u32i\n      }\n      cir.case(equal, [#cir.int<1> : !u32i]) {\n        %b = cir.const #cir.int<20> : !u32i\n        cir.return %b : !u32i\n      }\n      cir.case(default, []) {\n        %c = cir.const #cir.int<30> : !u32i\n        cir.return %c : !u32i\n      }\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
+
+/-- Permuted const mapping: every pinned const is present, but `case 0`
+    returns `30` and `default` returns `10` — the N6b-i per-region pins
+    (not the old whole-text pins) reject it, so no canonical body can
+    miscompile it. -/
+def advSwitchPermuted : String :=
+  "module {\n  cir.func @sp(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        %a = cir.const #cir.int<30> : !u32i\n        cir.return %a : !u32i\n      }\n      cir.case(equal, [#cir.int<1> : !u32i]) {\n        %b = cir.const #cir.int<20> : !u32i\n        cir.return %b : !u32i\n      }\n      cir.case(default, []) {\n        %c = cir.const #cir.int<10> : !u32i\n        cir.return %c : !u32i\n      }\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
+
+/-- Double-`10` mapping: `case 0` and `case 1` both return `10`, so the
+    text matches neither the `cls` region pins (`case 1` needs `20`)
+    nor the `cls_fall` emptiness pin (`case 0` is non-empty) — the
+    shared-structure overlap validates to no canonical body. -/
+def advSwitchDoubleTen : String :=
+  "module {\n  cir.func @sd(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        %a = cir.const #cir.int<10> : !u32i\n        cir.return %a : !u32i\n      }\n      cir.case(equal, [#cir.int<1> : !u32i]) {\n        %b = cir.const #cir.int<10> : !u32i\n        cir.return %b : !u32i\n      }\n      cir.case(default, []) {\n        %c = cir.const #cir.int<30> : !u32i\n        cir.return %c : !u32i\n      }\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
+
 def main : IO Unit := do
   let verdictText ← IO.FS.readFile "tests/oracle/verdicts.txt"
   let verdicts := parseOracleFacts verdictText
@@ -97,6 +122,12 @@ def main : IO Unit := do
   let c4 ← checkFlowPipeline verdicts "tests/cir/cls.cir"
     "tests/golden/Cls.lean" "cls"
   passed := passed + c4
+  let c5 ← checkFlowPipeline verdicts "tests/cir/cls_fall.cir"
+    "tests/golden/ClsFall.lean" "cls_fall"
+  passed := passed + c5
+  let c6 ← checkFlowPipeline verdicts "tests/cir/cls_dense.cir"
+    "tests/golden/ClsDense.lean" "cls_dense"
+  passed := passed + c6
   let r1 ← checkRejectFlow "bn" advBreakNoLoop .unknown
     "out-of-subset" "`break`/`continue`"
   passed := passed + r1
@@ -115,6 +146,15 @@ def main : IO Unit := do
   let r6 ← checkRejectFlow "sr" advSwitchRange .unknown
     "out-of-subset" "`cir.switch`"
   passed := passed + r6
+  let r7 ← checkRejectFlow "sx" advSwitchArith .unknown
+    "out-of-subset" "`cir.switch`"
+  passed := passed + r7
+  let r8 ← checkRejectFlow "sp" advSwitchPermuted .unknown
+    "out-of-subset" "`cir.switch`"
+  passed := passed + r8
+  let r9 ← checkRejectFlow "sd" advSwitchDoubleTen .unknown
+    "out-of-subset" "`cir.switch`"
+  passed := passed + r9
   IO.println s!"GOLDENFLOW-OK passed={passed}"
 
 end GoldenFlow

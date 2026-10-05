@@ -20,8 +20,9 @@ Check order (first hit wins — rejection codes are priority-ordered):
    function pointers, VLAs, variadics, cleanup regions (`cir.cleanup`),
    trap (`cir.trap`), `goto` (`cir.br`),
    bitfields, signed wrapping arithmetic without `nsw` — all `outOfSubset`;
-   `switch` is shape-aware (the admitted `cls` lowering passes, all other
-   `switch` uses are `outOfSubset`);
+   `switch` is shape-aware (the admitted `cls` / `cls_fall` /
+   `cls_dense` lowerings pass, all other `switch` uses are
+   `outOfSubset`);
    heap (`malloc`/`free`/`realloc`) and calls are shape-aware (see step 5):
    the admitted `vec_alloc` / `vec_copy_sum` / `vec_alloc_u64` /
    `vec_realloc` (M1c) shapes pass (M1d: each with `free <= expected`:

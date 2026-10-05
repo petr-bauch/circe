@@ -101,8 +101,16 @@ semantics changes.
   sub/mul, shifts, bitwise, `nsw`-less minus) rejects through
   one catalog branch with per-cause messages (13/13
   `GoldenRejectCatalog`, `intClass` uniformity guard preserves
-  the `wmix` routing); N6b probes `switch` (jump-table vs
-  if-chain value-faithfulness).
+  the `wmix` routing); N6b probes done (2026-10-05): dense switches
+  stay `cir.switch` at CIR level (no jump-table spelling — the if-chain
+  covers all densities), fallthrough is an empty `cir.case` region,
+  `break`-switches carry trailing code, case bodies can carry
+  arithmetic. N6b-i done (2026-10-05): `cls_fall` (empty `case 0`
+  into `case 1`) + `cls_dense` (`0`..`7` + `default`) as exact shapes
+  with per-region const pins + `arithOpCount == 0` (closes the
+  unsigned-arith-in-case-body hole and the permuted-const hole in the
+  old whole-text `cls` pins; 15/15 `GoldenFlow`); N6b-ii (break-switch
+  without default) and N6b-iii (compute bodies) remain.
 - N7: STD growth — `string_view` range-for (shares the span
   iterator blocker: `begin`/`end` + pointer-chasing; needs a
   probed lowering + a token/value model), then

@@ -330,6 +330,31 @@ def matchFrag : Func → Option FragKind
               (.return_ (.lit (.u32 r2)))) =>
       if c0 == 0 && c1 == 1 && r0 == 10 && r1 == 20 && r2 == 30 then
         some .cls
+      else if c0 == 0 && c1 == 1 && r0 == 10 && r1 == 10 && r2 == 30 then
+        some .clsFall
+      else none
+    | .if_ (.ueq (.var "x") (.lit (.u32 c0)))
+        (.return_ (.lit (.u32 r0)))
+        (.if_ (.ueq (.var "x") (.lit (.u32 c1)))
+              (.return_ (.lit (.u32 r1)))
+              (.if_ (.ueq (.var "x") (.lit (.u32 c2)))
+                    (.return_ (.lit (.u32 r2)))
+                    (.if_ (.ueq (.var "x") (.lit (.u32 c3)))
+                          (.return_ (.lit (.u32 r3)))
+                          (.if_ (.ueq (.var "x") (.lit (.u32 c4)))
+                                (.return_ (.lit (.u32 r4)))
+                                (.if_ (.ueq (.var "x") (.lit (.u32 c5)))
+                                      (.return_ (.lit (.u32 r5)))
+                                      (.if_ (.ueq (.var "x") (.lit (.u32 c6)))
+                                            (.return_ (.lit (.u32 r6)))
+                                            (.if_ (.ueq (.var "x") (.lit (.u32 c7)))
+                                                  (.return_ (.lit (.u32 r7)))
+                                                  (.return_ (.lit (.u32 r8)))))))))) =>
+      if c0 == 0 && c1 == 1 && c2 == 2 && c3 == 3 && c4 == 4 &&
+          c5 == 5 && c6 == 6 && c7 == 7 &&
+          r0 == 0 && r1 == 10 && r2 == 20 && r3 == 30 && r4 == 40 &&
+          r5 == 50 && r6 == 60 && r7 == 70 && r8 == 80 then
+        some .clsDense
       else none
     | _ => none
   | ⟨_, [⟨"t", .array (.i 32) 4, .sharedBorrow⟩,
@@ -683,6 +708,8 @@ theorem matchFrag_nested : matchFrag nestedFunc = some .nested := rfl
 theorem matchFrag_skip : matchFrag skipFunc = some .skip := rfl
 theorem matchFrag_findEq : matchFrag findEqFunc = some .findEq := rfl
 theorem matchFrag_cls : matchFrag clsFunc = some .cls := rfl
+theorem matchFrag_clsFall : matchFrag clsFallFunc = some .clsFall := rfl
+theorem matchFrag_clsDense : matchFrag clsDenseFunc = some .clsDense := rfl
 theorem matchFrag_arrayRef : matchFrag arrayRefFunc = some .arrayRef := rfl
 theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
 theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl

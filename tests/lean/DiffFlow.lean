@@ -2,7 +2,7 @@
 -- `nested_sum` / `skip_sum` / `find_eq` / `cls` (evaluation + forwards)
 -- vs the native C binaries.
 --
--- Run: `lake env lean --run tests/lean/DiffFlow.lean <nested> <skip> <find> <cls> [trials]`
+-- Run: `lake env lean --run tests/lean/DiffFlow.lean <nested> <skip> <find> <cls> <cls_fall> <cls_dense> [trials]`
 -- Every trial asserts evaluated `evalFuncFuel` agrees with the value
 -- forward (runtime composition check) and both agree with native
 -- (fuel-sufficient, in-range cases; fuel-exhausted / OOB cases only
@@ -119,12 +119,57 @@ def checkCls (clsBin : String) (x : BitVec 32) : IO Nat := do
   else
     throw (IO.userError s!"cls eval/fwd mismatch (emit_correct violated at runtime)")
 
+/-- Directed `cls_fall` inputs: the fallthrough case, the target case,
+    default, large values. -/
+def clsFallEdges : List (BitVec 32) :=
+  [0, 1, 2, 3, 10, 30, 0xFFFFFFFF]
+
+def checkClsFall (clsFallBin : String) (x : BitVec 32) : IO Nat := do
+  let fwd := clsFallFwd x
+  let ev := evalFunc clsFallFunc [.u32 x]
+  if (repr fwd).pretty == (repr ev).pretty then
+    match fwd with
+    | .ok (.u32 r) =>
+      let native ← runNative clsFallBin #[toString x.toNat]
+      match native.toNat? with
+      | none => throw (IO.userError s!"cls_fall native unparsable: {native}")
+      | some v =>
+        if v != r.toNat then
+          throw (IO.userError s!"cls_fall mismatch: x={x.toNat} lean={r.toNat} native={v}")
+        pure 1
+    | _ => throw (IO.userError s!"cls_fall eval shape unexpected")
+  else
+    throw (IO.userError s!"cls_fall eval/fwd mismatch (emit_correct violated at runtime)")
+
+/-- Directed `cls_dense` inputs: every case, default, large values. -/
+def clsDenseEdges : List (BitVec 32) :=
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 70, 80, 0xFFFFFFFF]
+
+def checkClsDense (clsDenseBin : String) (x : BitVec 32) : IO Nat := do
+  let fwd := clsDenseFwd x
+  let ev := evalFunc clsDenseFunc [.u32 x]
+  if (repr fwd).pretty == (repr ev).pretty then
+    match fwd with
+    | .ok (.u32 r) =>
+      let native ← runNative clsDenseBin #[toString x.toNat]
+      match native.toNat? with
+      | none => throw (IO.userError s!"cls_dense native unparsable: {native}")
+      | some v =>
+        if v != r.toNat then
+          throw (IO.userError s!"cls_dense mismatch: x={x.toNat} lean={r.toNat} native={v}")
+        pure 1
+    | _ => throw (IO.userError s!"cls_dense eval shape unexpected")
+  else
+    throw (IO.userError s!"cls_dense eval/fwd mismatch (emit_correct violated at runtime)")
+
 def main (args : List String) : IO Unit := do
   let nestBin := args.getD 0 "/tmp/opencode/circe_nested_native"
   let skipBin := args.getD 1 "/tmp/opencode/circe_skip_native"
   let findBin := args.getD 2 "/tmp/opencode/circe_find_native"
   let clsBin := args.getD 3 "/tmp/opencode/circe_cls_native"
-  let trials := (args.getD 4 "1000").toNat?.getD 1000
+  let clsFallBin := args.getD 4 "/tmp/opencode/circe_cls_fall_native"
+  let clsDenseBin := args.getD 5 "/tmp/opencode/circe_cls_dense_native"
+  let trials := (args.getD 6 "1000").toNat?.getD 1000
   let mut passed := 0
   for (n, m) in nestedEdges do
     let c ← checkNested nestBin n m
@@ -137,6 +182,12 @@ def main (args : List String) : IO Unit := do
     passed := passed + c
   for x in clsEdges do
     let c ← checkCls clsBin x
+    passed := passed + c
+  for x in clsFallEdges do
+    let c ← checkClsFall clsFallBin x
+    passed := passed + c
+  for x in clsDenseEdges do
+    let c ← checkClsDense clsDenseBin x
     passed := passed + c
   let mut s := 0x9E3779B97F4A7C15
   for _ in List.range trials do
@@ -167,6 +218,12 @@ def main (args : List String) : IO Unit := do
     -- Full-range switch scrutinee (never fails, native always agrees).
     s := lcgNext s
     let c ← checkCls clsBin (BitVec.ofNat 32 s)
+    passed := passed + c
+    s := lcgNext s
+    let c ← checkClsFall clsFallBin (BitVec.ofNat 32 s)
+    passed := passed + c
+    s := lcgNext s
+    let c ← checkClsDense clsDenseBin (BitVec.ofNat 32 s)
     passed := passed + c
   IO.println s!"DIFFFLOW-OK passed={passed} (edges + {trials} random trials)"
 

@@ -627,6 +627,42 @@ theorem oracleNoalias_cls (x : BitVec 32) :
     exact bindMemArgs_cls x
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-- `cls_fall` binding pins nothing (one owned scalar; the fallthrough
+    switch is an if-chain over pure comparisons). -/
+theorem bindMemArgs_clsFall (x : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+  rfl
+
+/-- `cls_fall` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_clsFall (x : BitVec 32) :
+    oracleNoalias clsFallFunc [.u32 x] := by
+  have hb : bindMemArgs clsFallFunc.args [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+    show bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem = _
+    exact bindMemArgs_clsFall x
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-- `cls_dense` binding pins nothing (one owned scalar; the dense
+    switch is an if-chain over pure comparisons). -/
+theorem bindMemArgs_clsDense (x : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+  rfl
+
+/-- `cls_dense` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_clsDense (x : BitVec 32) :
+    oracleNoalias clsDenseFunc [.u32 x] := by
+  have hb : bindMemArgs clsDenseFunc.args [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := by
+    show bindMemArgs [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem = _
+    exact bindMemArgs_clsDense x
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-- `translate` binding pins nothing (the struct crosses by value —
     copy semantics — plus two owned scalars). -/
 theorem bindMemArgs_translate (px py dx dy : BitVec 32) :

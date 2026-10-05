@@ -1264,3 +1264,173 @@ theorem evalFuncFuel_cls (F : Nat) (x : BitVec 32) :
 theorem emit_correct_cls (x : BitVec 32) :
     evalFunc clsFunc [.u32 x] = clsFwd x :=
   evalFuncFuel_cls EVAL_FUEL x
+/-! ### `cls_fall`: switch with fallthrough (N6b-i) -/
+
+/-- Canonical CoreIR for `tests/c/cls_fall.c`: the empty `case 0`
+    falls through to `case 1`, so both map to the `10` arm of the
+    nested `if_` chain. The validator admits exactly this lowered shape
+    (`isClsFallShape`: empty `case 0` region, `case 1` → `10`,
+    `default` → `30`, no arithmetic). -/
+def clsFallFunc : Func :=
+  ⟨"cls_fall",
+   [{ name := "x", ty := .u 32, role := .owned }],
+   .u 32,
+   .if_ (.ueq (.var "x") (.lit (.u32 0)))
+     (.return_ (.lit (.u32 10)))
+     (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+       (.return_ (.lit (.u32 10)))
+       (.return_ (.lit (.u32 30))))⟩
+
+/-- Value-level forward for `cls_fall` (cf. rendered `cls_fall_fwd`). -/
+def clsFallFwd (x : BitVec 32) : Result Value :=
+  if x == 0 then .ok (.u32 10)
+  else if x == 1 then .ok (.u32 10)
+  else .ok (.u32 30)
+
+/-- `emit_correct` for `cls_fall` (loop-free: any fuel). -/
+theorem evalFuncFuel_clsFall (F : Nat) (x : BitVec 32) :
+    evalFuncFuel F clsFallFunc [.u32 x] = clsFallFwd x := by
+  have hbind : bindArgs clsFallFunc.args [.u32 x] =
+      some [("x", .u32 x)] := rfl
+  have hbody : clsFallFunc.body =
+      .if_ (.ueq (.var "x") (.lit (.u32 0)))
+        (.return_ (.lit (.u32 10)))
+        (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+          (.return_ (.lit (.u32 10)))
+          (.return_ (.lit (.u32 30)))) := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) :=
+    envExtend_hit _ _ _
+  by_cases h0 : x = 0
+  · subst h0
+    cases F <;>
+      simp [evalFuncFuel, clsFallFunc, bindArgs, evalStmtFuel, evalStmtZero,
+        evalStmtWith, evalExpr, litVal, envLookup, clsFallFwd]
+  · have h0' : x ≠ 0#32 := h0
+    by_cases h1 : x = 1
+    · subst h1
+      cases F <;>
+        simp [evalFuncFuel, clsFallFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, clsFallFwd]
+    · have h1' : x ≠ 1#32 := h1
+      have e0 : (x == 0#32) = false := by simp [h0']
+      have e1 : (x == 1#32) = false := by simp [h1']
+      cases F <;>
+        simp [evalFuncFuel, clsFallFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, clsFallFwd, e0, e1]
+
+/-- `emit_correct` for `cls_fall` at the default fuel. -/
+theorem emit_correct_clsFall (x : BitVec 32) :
+    evalFunc clsFallFunc [.u32 x] = clsFallFwd x :=
+  evalFuncFuel_clsFall EVAL_FUEL x
+/-! ### `cls_dense`: eight-case switch (N6b-i) -/
+
+/-- Canonical CoreIR for `tests/c/cls_dense.c`: equality cases on
+    `0`..`7` plus `default`, every case a bare const `return`, lowered
+    to an 8-deep `if_` chain (dense switches stay `cir.switch` at CIR
+    level — jump tables only appear at LLVM lowering). The validator
+    admits exactly this lowered shape (`isClsDenseShape`). -/
+def clsDenseFunc : Func :=
+  ⟨"cls_dense",
+   [{ name := "x", ty := .u 32, role := .owned }],
+   .u 32,
+   .if_ (.ueq (.var "x") (.lit (.u32 0)))
+     (.return_ (.lit (.u32 0)))
+     (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+       (.return_ (.lit (.u32 10)))
+       (.if_ (.ueq (.var "x") (.lit (.u32 2)))
+         (.return_ (.lit (.u32 20)))
+         (.if_ (.ueq (.var "x") (.lit (.u32 3)))
+           (.return_ (.lit (.u32 30)))
+           (.if_ (.ueq (.var "x") (.lit (.u32 4)))
+             (.return_ (.lit (.u32 40)))
+             (.if_ (.ueq (.var "x") (.lit (.u32 5)))
+               (.return_ (.lit (.u32 50)))
+               (.if_ (.ueq (.var "x") (.lit (.u32 6)))
+                 (.return_ (.lit (.u32 60)))
+                 (.if_ (.ueq (.var "x") (.lit (.u32 7)))
+                   (.return_ (.lit (.u32 70)))
+                   (.return_ (.lit (.u32 80))))))))))⟩
+
+/-- Value-level forward for `cls_dense` (cf. rendered `cls_dense_fwd`). -/
+def clsDenseFwd (x : BitVec 32) : Result Value :=
+  if x == 0 then .ok (.u32 0)
+  else if x == 1 then .ok (.u32 10)
+  else if x == 2 then .ok (.u32 20)
+  else if x == 3 then .ok (.u32 30)
+  else if x == 4 then .ok (.u32 40)
+  else if x == 5 then .ok (.u32 50)
+  else if x == 6 then .ok (.u32 60)
+  else if x == 7 then .ok (.u32 70)
+  else .ok (.u32 80)
+
+/-- `emit_correct` for `cls_dense` (loop-free: any fuel). -/
+theorem evalFuncFuel_clsDense (F : Nat) (x : BitVec 32) :
+    evalFuncFuel F clsDenseFunc [.u32 x] = clsDenseFwd x := by
+  have hbind : bindArgs clsDenseFunc.args [.u32 x] =
+      some [("x", .u32 x)] := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) :=
+    envExtend_hit _ _ _
+  by_cases h0 : x = 0
+  · subst h0
+    cases F <;>
+      simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+        evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd]
+  · have h0' : x ≠ 0#32 := h0
+    have e0 : (x == 0#32) = false := by simp [h0']
+    by_cases h1 : x = 1
+    · subst h1
+      cases F <;>
+        simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0]
+    · have h1' : x ≠ 1#32 := h1
+      have e1 : (x == 1#32) = false := by simp [h1']
+      by_cases h2 : x = 2
+      · subst h2
+        cases F <;>
+          simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+            evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1]
+      · have h2' : x ≠ 2#32 := h2
+        have e2 : (x == 2#32) = false := by simp [h2']
+        by_cases h3 : x = 3
+        · subst h3
+          cases F <;>
+            simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+              evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1, e2]
+        · have h3' : x ≠ 3#32 := h3
+          have e3 : (x == 3#32) = false := by simp [h3']
+          by_cases h4 : x = 4
+          · subst h4
+            cases F <;>
+              simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+                evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1, e2, e3]
+          · have h4' : x ≠ 4#32 := h4
+            have e4 : (x == 4#32) = false := by simp [h4']
+            by_cases h5 : x = 5
+            · subst h5
+              cases F <;>
+                simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+                  evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1, e2, e3, e4]
+            · have h5' : x ≠ 5#32 := h5
+              have e5 : (x == 5#32) = false := by simp [h5']
+              by_cases h6 : x = 6
+              · subst h6
+                cases F <;>
+                  simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+                    evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1, e2, e3, e4, e5]
+              · have h6' : x ≠ 6#32 := h6
+                have e6 : (x == 6#32) = false := by simp [h6']
+                by_cases h7 : x = 7
+                · subst h7
+                  cases F <;>
+                    simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+                      evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1, e2, e3, e4, e5, e6]
+                · have h7' : x ≠ 7#32 := h7
+                  have e7 : (x == 7#32) = false := by simp [h7']
+                  cases F <;>
+                    simp [evalFuncFuel, clsDenseFunc, bindArgs, evalStmtFuel, evalStmtZero,
+                      evalStmtWith, evalExpr, litVal, envLookup, clsDenseFwd, e0, e1, e2, e3, e4, e5, e6, e7]
+
+/-- `emit_correct` for `cls_dense` at the default fuel. -/
+theorem emit_correct_clsDense (x : BitVec 32) :
+    evalFunc clsDenseFunc [.u32 x] = clsDenseFwd x :=
+  evalFuncFuel_clsDense EVAL_FUEL x

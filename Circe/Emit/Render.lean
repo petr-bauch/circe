@@ -866,6 +866,34 @@ def emitClsText (name : String) : String :=
   ++ "  else if x == 1 then .ok 20\n"
   ++ "  else .ok 30\n"
 
+/-- Render the `cls_fall` forward definition (empty `case 0` falls
+    through to `case 1`: both arms answer `10`). -/
+def emitClsFallText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`switch` with fallthrough, lowered to an if-chain). -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  if x == 0 then .ok 10\n"
+  ++ "  else if x == 1 then .ok 10\n"
+  ++ "  else .ok 30\n"
+
+/-- Render the `cls_dense` forward definition (eight equality cases +
+    default, lowered to an 8-deep if-chain). -/
+def emitClsDenseText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (dense `switch`, lowered to an if-chain). -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  if x == 0 then .ok 0\n"
+  ++ "  else if x == 1 then .ok 10\n"
+  ++ "  else if x == 2 then .ok 20\n"
+  ++ "  else if x == 3 then .ok 30\n"
+  ++ "  else if x == 4 then .ok 40\n"
+  ++ "  else if x == 5 then .ok 50\n"
+  ++ "  else if x == 6 then .ok 60\n"
+  ++ "  else if x == 7 then .ok 70\n"
+  ++ "  else .ok 80\n"
+
 /-- Project an emission to its forward text (`""` on rejection, so a
     rejection also fails the golden examples below). Top-level def so
     `native_decide` can compile it. -/

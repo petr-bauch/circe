@@ -124,13 +124,22 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     a bounded loop; over-long lengths are `OOB` unless an early hit
     fires first),
     `cls` (`cir.switch` with equality cases on `0`/`1` + `default`,
-    every case a bare const `return`, lowered to an `if_` chain).
+    every case a bare const `return` of `10`/`20`/`30` from its own
+    region, lowered to an `if_` chain),
+    `cls_fall` (N6b-i: empty `case 0` falling through to `case 1`
+    returning `10`, `default` `30`),
+    `cls_dense` (N6b-i: equality cases on `0`..`7` + `default`, bare
+    const `return`s of `0`/`10`/../`70`/`80`; dense switches stay
+    `cir.switch` at CIR level — jump tables only appear at LLVM
+    lowering — so the `if_` chain covers all densities).
+    No arithmetic in case bodies (`arithOpCount == 0`).
     Semantics: `break_`/`continue_` are loop-scoped `Outcome` signals
     (`broke`/`continued` escaping a body is `AssertFail`); older
     shapes exclude `cir.break`/`cir.continue`/`cir.switch`/`cir.case`
     via `noBreakContinueSwitch`, so a loop-exit can never validate as
     a plain loop. Misshapen uses (break outside loops, non-lowerable
-    switches, wrong-signature lowerings, single-return searches) are
+    switches, wrong-signature lowerings, single-return searches,
+    arithmetic in case bodies, permuted const mappings) are
     rejected with dedicated messages.
 12. Widths (S3b): loop-free 64-bit adds only —
     `add64` (`!s64i` params/return, `cir.add nsw`, checked via
@@ -604,7 +613,9 @@ shape only: the `derived [0]` + `_M_payload [0]` + `base [0]` +
 only: one live `_M_payload [0]` beside the payload call; all other
 struct uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
-on pinned consts + `default`, all other switches rejected),
+on pinned consts + `default`; N6b-i `cls_fall` (empty `case 0` into
+`case 1`) + `cls_dense` (`0`..`7` + `default`); all other switches
+rejected),
 `cir.mul` (plain unsigned, S3a `nested_sum` shape only),
 `cir.minus` (`nsw`, N6a `neg` shape only),
 `cir.div` (`!s32i`, N6a `sdiv` shape only; all other spellings rejected),
@@ -659,7 +670,7 @@ inconclusive oracle verdicts keep their `alias-reject` messages, and
 the ambiguous-inputs escape keeps the borrow-return `escape-reject`.
 Coverage: `tests/lean/GoldenPhase4.lean` (19) + `GoldenPhase6.lean` (18) + `GoldenPhase7.lean` (6)
 + `GoldenCalls.lean` (7) + `GoldenStruct.lean` (5)
-+ `GoldenFlow.lean` (10) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
++ `GoldenFlow.lean` (15: 6 pipeline + 9 rejection) + `GoldenWidth.lean` (5) + `GoldenVec2.lean` (6)
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
 + `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9)

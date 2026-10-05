@@ -16,6 +16,8 @@ verbatim.
 | `vecRealloc_correct` (M1c) | grown heap program = `List.sum` of `[0,n+n)` (`vecReallocFillSumU32_correct` + take bridge); `vecRealloc_empty` is `n = 0` | `vecReallocFillSumU32 n.toNat` |
 | `add3_correct_ok/err` (N4a) | threaded two-add: ok needs both `checkedAddI32` certs, first-add error propagates | `add3Fwd x y z` (two sequenced binds) |
 | `useAdd_correct` / `useNsAdd_correct` (N4a) | entry forward = `addFwd` (overload resolution is identity at spec level) | `useAddFwd` / `useNsAddFwd` |
+| `clsFall_correct` (N6b-i) | `0` falls through to the `1` arm: both answer `10`, else `30` | `clsFallFwd x` (if-chain) |
+| `clsDense_correct` (N6b-i) | exhaustive dispatch over all eight cases + default | `clsDenseFwd x` (8-deep if-chain) |
 | `neg_correct_ok/err` (N6a) | ok delivers `-x`, err is exactly `INT_MIN` overflow | `negFwd x` (`checkedNegI32`) |
 | `sdiv_correct_ok/zero/overflow` (N6a) | truncating quotient; zero divisor is `DivZero`; `INT_MIN / -1` is `Overflow` | `sdivFwd a b` (`checkedDivI32`) |
 | `accMoveCtor_correct` (N4b) | dst takes src word (zeroing is entry-level) | `accMoveCtorFwd d s` |

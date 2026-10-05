@@ -193,6 +193,160 @@ theorem memTransfer_cls (F : Nat) (x : BitVec 32)
           evalStmtFuel, evalStmtZero, evalStmtWith,
           memEvalExpr, evalExpr, litVal, envLookup, e0, e1]
 
+/-- Transfer for `cls_fall` (any fuel): the switch-as-if-chain is pure,
+    so memory is untouched and both sides classify identically. -/
+theorem memTransfer_clsFall (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias clsFallFunc [.u32 x]) :
+    memEvalFuncFuel F clsFallFunc [.u32 x] =
+      evalFuncFuel F clsFallFunc [.u32 x] := by
+  have hbf : clsFallFunc.args =
+      [{ name := "x", ty := .u 32, role := .owned }] := rfl
+  have hbody : clsFallFunc.body =
+      .if_ (.ueq (.var "x") (.lit (.u32 0)))
+        (.return_ (.lit (.u32 10)))
+        (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+          (.return_ (.lit (.u32 10)))
+          (.return_ (.lit (.u32 30)))) := rfl
+  have hb : bindMemArgs
+      [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) := by
+    simp [envLookup]
+  by_cases h0 : x = 0
+  · subst h0
+    simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        evalStmtFuel, evalStmtZero, evalStmtWith,
+        memEvalExpr, evalExpr, litVal, envLookup]
+  · have h0' : x ≠ 0#32 := h0
+    by_cases h1 : x = 1
+    · subst h1
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup]
+    · have h1' : x ≠ 1#32 := h1
+      have e0 : (x == 0#32) = false := by simp [h0']
+      have e1 : (x == 1#32) = false := by simp [h1']
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup, e0, e1]
+
+/-- Transfer for `cls_dense` (any fuel): the 8-deep if-chain is pure,
+    so memory is untouched and both sides classify identically. -/
+theorem memTransfer_clsDense (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias clsDenseFunc [.u32 x]) :
+    memEvalFuncFuel F clsDenseFunc [.u32 x] =
+      evalFuncFuel F clsDenseFunc [.u32 x] := by
+  have hbf : clsDenseFunc.args =
+      [{ name := "x", ty := .u 32, role := .owned }] := rfl
+  have hb : bindMemArgs
+      [{ name := "x", ty := .u 32, role := .owned }]
+      [.u32 x] emptyMem =
+      some ([("x", .u32 x)], emptyMem, []) := rfl
+  have hx : envLookup [("x", .u32 x)] "x" = some (.u32 x) := by
+    simp [envLookup]
+  have U : ∀ (F : Nat),
+      memEvalFuncFuel F clsDenseFunc [.u32 x] =
+        evalFuncFuel F clsDenseFunc [.u32 x] := by
+    intro F
+    by_cases h0 : x = 0
+    · subst h0
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+        clsDenseFunc]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup]
+    · have h0' : x ≠ 0#32 := h0
+      have e0 : (x == 0#32) = false := by simp [h0']
+      by_cases h1 : x = 1
+      · subst h1
+        simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+          clsDenseFunc]
+        cases F <;>
+          simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+            evalStmtFuel, evalStmtZero, evalStmtWith,
+            memEvalExpr, evalExpr, litVal, envLookup, e0]
+      · have h1' : x ≠ 1#32 := h1
+        have e1 : (x == 1#32) = false := by simp [h1']
+        by_cases h2 : x = 2
+        · subst h2
+          simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+            clsDenseFunc]
+          cases F <;>
+            simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+              evalStmtFuel, evalStmtZero, evalStmtWith,
+              memEvalExpr, evalExpr, litVal, envLookup, e0, e1]
+        · have h2' : x ≠ 2#32 := h2
+          have e2 : (x == 2#32) = false := by simp [h2']
+          by_cases h3 : x = 3
+          · subst h3
+            simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+              clsDenseFunc]
+            cases F <;>
+              simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+                evalStmtFuel, evalStmtZero, evalStmtWith,
+                memEvalExpr, evalExpr, litVal, envLookup, e0, e1, e2]
+          · have h3' : x ≠ 3#32 := h3
+            have e3 : (x == 3#32) = false := by simp [h3']
+            by_cases h4 : x = 4
+            · subst h4
+              simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+                clsDenseFunc]
+              cases F <;>
+                simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+                  evalStmtFuel, evalStmtZero, evalStmtWith,
+                  memEvalExpr, evalExpr, litVal, envLookup, e0, e1, e2, e3]
+            · have h4' : x ≠ 4#32 := h4
+              have e4 : (x == 4#32) = false := by simp [h4']
+              by_cases h5 : x = 5
+              · subst h5
+                simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+                  clsDenseFunc]
+                cases F <;>
+                  simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+                    evalStmtFuel, evalStmtZero, evalStmtWith,
+                    memEvalExpr, evalExpr, litVal, envLookup,
+                    e0, e1, e2, e3, e4]
+              · have h5' : x ≠ 5#32 := h5
+                have e5 : (x == 5#32) = false := by simp [h5']
+                by_cases h6 : x = 6
+                · subst h6
+                  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+                    clsDenseFunc]
+                  cases F <;>
+                    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+                      evalStmtFuel, evalStmtZero, evalStmtWith,
+                      memEvalExpr, evalExpr, litVal, envLookup,
+                      e0, e1, e2, e3, e4, e5]
+                · have h6' : x ≠ 6#32 := h6
+                  have e6 : (x == 6#32) = false := by simp [h6']
+                  by_cases h7 : x = 7
+                  · subst h7
+                    simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+                      clsDenseFunc]
+                    cases F <;>
+                      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+                        evalStmtFuel, evalStmtZero, evalStmtWith,
+                        memEvalExpr, evalExpr, litVal, envLookup,
+                        e0, e1, e2, e3, e4, e5, e6]
+                  · have h7' : x ≠ 7#32 := h7
+                    have e7 : (x == 7#32) = false := by simp [h7']
+                    simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hb,
+                      clsDenseFunc]
+                    cases F <;>
+                      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+                        evalStmtFuel, evalStmtZero, evalStmtWith,
+                        memEvalExpr, evalExpr, litVal, envLookup,
+                        e0, e1, e2, e3, e4, e5, e6, e7]
+  exact U F
+
 /-- Transfer for `translate` (any fuel): field projection + checked
     adds + struct construction are all pure (the struct crosses by
     value), so memory rides alongside untouched. The `Eval` side reuses

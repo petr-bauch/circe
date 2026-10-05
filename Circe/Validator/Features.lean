@@ -191,6 +191,40 @@ def arithRejectWhy (text : String) : String :=
   else
     "unwired arithmetic op (no leaf admits this spelling)"
 
+/-- Index of the first line satisfying `pred` (`none` if absent). -/
+def findLineIdx (ls : List String) (pred : String → Bool) : Option Nat :=
+  go ls 0
+where go : List String → Nat → Option Nat
+  | [], _ => none
+  | l :: rest, i => if pred l then some i else go rest (i + 1)
+
+/-- Lines of the `cir.case` region whose header line contains `header`:
+    lines after the header up to (excluding) the next `cir.case(`
+    header or the switch-closing `cir.yield`. `[]` when the header is
+    absent — so `caseRegionEmpty` (an `all`) must always be paired with
+    an explicit header-presence pin, while `caseRegionHas` (an `any`)
+    fails closed. -/
+def caseRegion (ls : List String) (header : String) : List String :=
+  match findLineIdx ls (fun l => containsSubstr l header) with
+  | none => []
+  | some i =>
+    let rest := ls.drop (i + 1)
+    match findLineIdx rest (fun l =>
+      containsSubstr l "cir.case(" || containsSubstr l "cir.yield") with
+    | none => rest
+    | some j => rest.take j
+
+/-- The case region holds no CIR op except the fallthrough `cir.yield`
+    (closing `}` lines hold none). Pair with a header-presence pin:
+    on an absent header the region is `[]` and this passes vacuously. -/
+def caseRegionEmpty (ls : List String) (header : String) : Bool :=
+  (caseRegion ls header).all (fun l =>
+    !containsSubstr l "cir." || containsSubstr l "cir.yield")
+
+/-- The case region mentions `needle` (fails closed on absent header). -/
+def caseRegionHas (ls : List String) (header needle : String) : Bool :=
+  (caseRegion ls header).any (fun l => containsSubstr l needle)
+
 /-- Pointer params (discipline applies). -/
 def ptrParams (raw : RawFunc) : List RawParam :=
   raw.params.filter (fun p => isPtrType p.ctype)

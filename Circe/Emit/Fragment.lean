@@ -81,6 +81,8 @@ inductive FragKind : Type
   | skip
   | findEq
   | cls
+  | clsFall
+  | clsDense
   | arrayRef
   | arrayAt
   | arraySum
