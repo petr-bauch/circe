@@ -54,6 +54,8 @@ inductive FragKind : Type
   | useTadd64
   | add64
   | addu64
+  | neg
+  | sdiv
   | incr
   | choose
   | sum

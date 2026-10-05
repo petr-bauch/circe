@@ -107,6 +107,45 @@ def emitAddu64SpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun p =>\n"
   ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr ((Except.ok (p.1 + p.2) : Result (BitVec 64)))).pretty\n"
 
+/-- Spec stub for the `neg` shape (N6a: signed-32 negation). -/
+def emitNegSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `int32_t {name}(int32_t x)` (negation, `INT_MIN` overflows).\n"
+  ++ s!"    Base body reference: `checkedNegI32` (cf. emitted `{name}_fwd`, `emit_correct_neg`). -/\n"
+  ++ s!"def {name}_spec_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedNegI32 x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, unit, `INT32_MAX`, `INT32_MIN` (overflow). -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32) :=\n"
+  ++ "  [0, 1, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equations `neg_correct_ok` /\n"
+  ++ "    `neg_correct_err` (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p => (repr ({name}_spec_fwd p)).pretty == (repr (checkedNegI32 p)).pretty\n"
+
+/-- Spec stub for the `sdiv` shape (N6a: signed-32 division). -/
+def emitSdivSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `int32_t {name}(int32_t a, int32_t b)` (truncating division).\n"
+  ++ s!"    Base body reference: `checkedDivI32` (cf. emitted `{name}_fwd`, `emit_correct_sdiv`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedDivI32 a b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: exact, truncating, divide-by-zero, `INT_MIN / -1` (overflow). -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(6, 3), (7, 3), (1, 0), (0x80000000, 0xFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equations `sdiv_correct_ok` /\n"
+  ++ "    `sdiv_correct_zero` / `sdiv_correct_overflow` (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedDivI32 p.1 p.2)).pretty\n"
+
 /-- Spec stub for the `choose` shape (forward + backward). -/
 def emitChooseSpecText (name : String) : String :=
   emitSpecHeader

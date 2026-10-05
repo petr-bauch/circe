@@ -284,6 +284,10 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
       `AssertFail`;
     - `uadd`/`umul` on `u32`/`u64` wrap (plain `cir.add`/`cir.mul`;
       never fail); mixed widths are `AssertFail`;
+    - `neg` on `i32` goes through `checkedNegI32` (`INT_MIN` overflows);
+    - `sdiv` on `i32` goes through `checkedDivI32` (zero divisor is
+      `DivZero`, `INT_MIN / -1` overflows); non-`i32` operands are
+      `AssertFail`;
     - `ult` on `u32`/`u64` is unsigned comparison (mixed widths are
       `AssertFail`); `ueq` is width-polymorphic bit equality
       (`u32`/`u64`/`i32`/`i64` pairs; `cir.cmp eq` compares bits
@@ -346,6 +350,17 @@ def evalExpr : CExpr → Env → Result Value
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x * y))
     | .ok (.u64 x), .ok (.u64 y) => .ok (.u64 (x * y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .neg a, ρ =>
+    match evalExpr a ρ with
+    | .ok (.i32 x) => (checkedNegI32 x).map .i32
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
+  | .sdiv a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.i32 x), .ok (.i32 y) => (checkedDivI32 x y).map .i32
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e

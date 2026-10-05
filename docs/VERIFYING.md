@@ -16,6 +16,8 @@ verbatim.
 | `vecRealloc_correct` (M1c) | grown heap program = `List.sum` of `[0,n+n)` (`vecReallocFillSumU32_correct` + take bridge); `vecRealloc_empty` is `n = 0` | `vecReallocFillSumU32 n.toNat` |
 | `add3_correct_ok/err` (N4a) | threaded two-add: ok needs both `checkedAddI32` certs, first-add error propagates | `add3Fwd x y z` (two sequenced binds) |
 | `useAdd_correct` / `useNsAdd_correct` (N4a) | entry forward = `addFwd` (overload resolution is identity at spec level) | `useAddFwd` / `useNsAddFwd` |
+| `neg_correct_ok/err` (N6a) | ok delivers `-x`, err is exactly `INT_MIN` overflow | `negFwd x` (`checkedNegI32`) |
+| `sdiv_correct_ok/zero/overflow` (N6a) | truncating quotient; zero divisor is `DivZero`; `INT_MIN / -1` is `Overflow` | `sdivFwd a b` (`checkedDivI32`) |
 | `accMoveCtor_correct` (N4b) | dst takes src word (zeroing is entry-level) | `accMoveCtorFwd d s` |
 | `moveAcc_correct_ok/err_a/err_b` (N4b) | threaded adds with zeroing `assign`; move invisible at spec level | `moveAccFwd a b` |
 | `scopeEarly_correct_eq/ne/err_a/err_b` (N4b) | early `get` on `a == b`, else second add + `get` | `scopeEarlyFwd a b` |

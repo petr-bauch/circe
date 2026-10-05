@@ -88,10 +88,21 @@ semantics changes.
 
 ## Later directions — sketches (not planned)
 
-- N6: language gaps — `switch` (probe lowering first:
-  jump-table vs if-chain value-faithfulness; expected small
-  contained slice), arithmetic remainder (division / remainder /
-  bitwise lowering probes; overflow stays `checked*`-loud).
+- N6: language gaps — N6a-i probes done (2026-10-05):
+  negation is `cir.minus nsw`, (un)signed div/rem are `cir.div` /
+  `cir.rem` with signedness from the type, sub/mul carry `nsw`,
+  all single-op lowerings (64-bit div included, no libcall),
+  VERIFY-OK. N6a-ii wires `neg` + `sdiv` (i32) with the
+  pre-proved `checkedNegI32` / `checkedDivI32`. Probe fallout:
+  multi-op functions validated to single-op bodies (P0 hole) —
+  fixed family-wide with `arithOpCount == 1` in all six
+  arithmetic leaf gates. N6a-iii done (2026-10-05): the unwired
+  remainder (multi-op bodies, unsigned div/rem, signed
+  sub/mul, shifts, bitwise, `nsw`-less minus) rejects through
+  one catalog branch with per-cause messages (13/13
+  `GoldenRejectCatalog`, `intClass` uniformity guard preserves
+  the `wmix` routing); N6b probes `switch` (jump-table vs
+  if-chain value-faithfulness).
 - N7: STD growth — `string_view` range-for (shares the span
   iterator blocker: `begin`/`end` + pointer-chasing; needs a
   probed lowering + a token/value model), then

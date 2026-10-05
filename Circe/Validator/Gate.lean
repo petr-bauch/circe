@@ -151,6 +151,7 @@ def isAdd64Shape (raw : RawFunc) : Bool :=
   | [a, b] =>
     isI64 a.ctype && isI64 b.ctype && isI64 raw.ret &&
     containsSubstr raw.text "cir.add nsw" &&
+    arithOpCount raw.text == 1 &&
     noBreakContinueSwitch raw.text &&
     !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
@@ -170,6 +171,50 @@ def isAddu64Shape (raw : RawFunc) : Bool :=
     isU64 a.ctype && isU64 b.ctype && isU64 raw.ret &&
     containsSubstr raw.text "cir.add " &&
     !containsSubstr raw.text "nsw" &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-! ## N6a: signed-32 negation + division leaves (`neg`, `sdiv`) -/
+
+/-- `neg`: one by-value `i32`, `i32` return, `nsw` unary minus, no
+    control flow, no calls — with single-op exactness (N6a family fix:
+    `arithOpCount == 1`). -/
+def isNegShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [x] =>
+    isI32 x.ctype && isI32 raw.ret &&
+    containsSubstr raw.text "cir.minus nsw" &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `sdiv`: two by-value `i32`s, `i32` return, signed `cir.div`
+    (signedness from the type, no flag), no control flow, no calls —
+    with single-op exactness. Unsigned `cir.div`/`cir.rem` spellings
+    stay out (dedicated rejection, N6a-iii). -/
+def isSdivShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
+    containsSubstr raw.text "cir.div " &&
+    arithOpCount raw.text == 1 &&
     noBreakContinueSwitch raw.text &&
     !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
@@ -363,7 +408,8 @@ def isCNoPtrShape (raw : RawFunc) : Bool :=
   isAddShape raw || isAddCallerShape raw || isTranslateShape raw ||
   isVecShape raw || isVec2Shape raw || isVec64Shape raw ||
   isVecReallocShape raw || isNestedShape raw || isSkipShape raw ||
-  isClsShape raw || isAdd64Shape raw || isAddu64Shape raw
+  isClsShape raw || isAdd64Shape raw || isAddu64Shape raw ||
+  isNegShape raw || isSdivShape raw
 
 /-- Text-derived noalias evidence (C only): no live pointer params and an
     admitted no-ptr C shape (vacuous), one `noalias` param in an admitted
@@ -1193,6 +1239,13 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { add64Func with name := raw.name }
       else if isAddu64Shape raw then
         .ok { addu64Func with name := raw.name }
+      else if isNegShape raw then
+        .ok { negFunc with name := raw.name }
+      else if isSdivShape raw then
+        .ok { sdivFunc with name := raw.name }
+      else if isUnadmittedArithLeaf raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' uses integer arithmetic outside the admitted single-op leaves: {arithRejectWhy raw.text} (see docs/SUBSET.md)"
       else if containsSubstr raw.text "alloca \"coerce\"" then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' passes a struct by value (the `coerce` alloca + `bitcast` lowering): by-value struct params are deferred — pass by `const&` instead (M2a admits `const&` / `this` pointers only; see docs/ROADMAP.md M2)"
@@ -1419,6 +1472,18 @@ example : runPipelineOpt (include_str "../../tests/cir/add64.cir")
 example : runPipelineOpt (include_str "../../tests/cir/addu64.cir")
     ⟨"addu64", .unknown⟩
     = some (include_str "../../tests/golden/Addu64.lean") := by native_decide
+
+/-- The checked-in `neg` CIR (real CIRGen output, `cir.minus nsw` on
+    `!s32i`) validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../../tests/cir/neg.cir")
+    ⟨"neg", .unknown⟩
+    = some (include_str "../../tests/golden/Neg.lean") := by native_decide
+
+/-- The checked-in `sdiv` CIR (real CIRGen output, `cir.div` on `!s32i`)
+    validates and emits exactly the golden. -/
+example : runPipelineOpt (include_str "../../tests/cir/sdiv.cir")
+    ⟨"sdiv", .unknown⟩
+    = some (include_str "../../tests/golden/Sdiv.lean") := by native_decide
 
 /-- The checked-in `point_sum_ref` C++ module (real CIRGen output with
     `-fno-exceptions`: entry + method leaf, no oracle facts) validates

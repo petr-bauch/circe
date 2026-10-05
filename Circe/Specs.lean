@@ -298,6 +298,38 @@ theorem addu64_correct (a b : BitVec 64) :
     addu64Fwd a b = .ok (.u64 (a + b)) := by
   cir_simp
 
+/-! ## `neg` / `sdiv`: signed negation + division (N6a) -/
+
+/-- `neg` success delivers the mathematical negation (`INT_MIN` fails). -/
+theorem neg_correct_ok (x r : BitVec 32)
+    (h : checkedNegI32 x = .ok r) :
+    negFwd x = .ok (.i32 r) := by
+  simp only [negFwd, h] <;> cir_simp
+
+/-- `neg` overflow reports exactly the `INT_MIN` case. -/
+theorem neg_correct_err (x : BitVec 32) (e : Panic)
+    (h : checkedNegI32 x = .error e) :
+    negFwd x = .error e := by
+  simp only [negFwd, h] <;> cir_simp
+
+/-- `sdiv` success delivers the truncating quotient. -/
+theorem sdiv_correct_ok (a b r : BitVec 32)
+    (h : checkedDivI32 a b = .ok r) :
+    sdivFwd a b = .ok (.i32 r) := by
+  simp only [sdivFwd, h] <;> cir_simp
+
+/-- Division by zero reports `DivZero`. -/
+theorem sdiv_correct_zero (a b : BitVec 32)
+    (h : checkedDivI32 a b = .error .DivZero) :
+    sdivFwd a b = .error .DivZero := by
+  simp only [sdivFwd, h] <;> cir_simp
+
+/-- `INT_MIN / -1` reports `Overflow`. -/
+theorem sdiv_correct_overflow (a b : BitVec 32)
+    (h : checkedDivI32 a b = .error .Overflow) :
+    sdivFwd a b = .error .Overflow := by
+  simp only [sdivFwd, h] <;> cir_simp
+
 /-! ## `sum_norestrict`: same body, same theorem (N2c, N3a) -/
 
 /-- `sum_norestrict` shares the `sum_array` body exactly (N2c recovers

@@ -66,6 +66,24 @@ def emitAddu64Text (name : String) : String :=
   ++ s!"def {name}_fwd (a b : BitVec 64) : Result (BitVec 64) :=\n"
   ++ "  .ok (a + b)\n"
 
+/-- Render the `neg` forward definition (`neg_fwd`, N6a: signed-32
+    negation, `INT_MIN` overflows). -/
+def emitNegText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: value in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedNegI32 x\n"
+
+/-- Render the `sdiv` forward definition (`sdiv_fwd`, N6a: signed-32
+    division, `DivZero` + `INT_MIN / -1` overflow). -/
+def emitSdivText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedDivI32 a b\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader

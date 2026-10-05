@@ -14,6 +14,10 @@
 -- N2c recovery-overreach negatives: a writer without attr text still hits
 -- the rule-1 gate (recovery never covers writers), and two attr-less
 -- pointers hit rule-1 before cause analysis.
+-- N6a-iii arithmetic catalog: leaf-shaped but unadmitted arithmetic —
+-- multi-op bodies (the P0 exactness fix), unsigned div/rem, signed
+-- sub/mul, shifts, bitwise, nsw-less minus — rejects with per-cause
+-- messages under the `outOfSubset` code.
 -- Mismatch policy: any in-subset divergence is P0; out-of-subset must
 -- reject loudly.
 import Circe.Validator
@@ -61,6 +65,42 @@ def advWriterNoAttr : String :=
 def advTwoBarePtrs : String :=
   "module {\n  cir.func @tb(%arg0: !cir.ptr<!u32i> {llvm.noundef}, %arg1: !cir.ptr<!u32i> {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %c = cir.const 0 : !u32i\n    cir.return %c : !u32i\n  }\n}"
 
+/-- Multi-op arithmetic leaf: `add` + `mul` on two `i32`s — matches no
+    single-op gate, so the arithmetic catalog fires (previously this
+    shape silently validated to a single-op body: P0). -/
+def advMultiOp : String :=
+  "module {\n  cir.func @mop(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %m = cir.mul nsw %arg0, %arg1 : !s32i\n    %s = cir.add nsw %m, %arg0 : !s32i\n    cir.return %s : !s32i\n  }\n}"
+
+/-- Unsigned division: `cir.div` on `!u32i` — only signed `sdiv` exists. -/
+def advUdiv : String :=
+  "module {\n  cir.func @udv(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %q = cir.div %arg0, %arg1 : !u32i\n    cir.return %q : !u32i\n  }\n}"
+
+/-- Signed remainder: `cir.rem` on `!s32i` — only `sdiv` exists. -/
+def advSrem : String :=
+  "module {\n  cir.func @srm(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %r = cir.rem %arg0, %arg1 : !s32i\n    cir.return %r : !s32i\n  }\n}"
+
+/-- Signed subtraction: `cir.sub nsw` on `!s32i` — no leaf. -/
+def advSub : String :=
+  "module {\n  cir.func @sbb(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %d = cir.sub nsw %arg0, %arg1 : !s32i\n    cir.return %d : !s32i\n  }\n}"
+
+/-- Signed multiplication: `cir.mul nsw` on `!s32i` — no standalone leaf
+    (unsigned wrapping `cir.mul` lives only inside fused loop shapes). -/
+def advMul : String :=
+  "module {\n  cir.func @mll(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %p = cir.mul nsw %arg0, %arg1 : !s32i\n    cir.return %p : !s32i\n  }\n}"
+
+/-- Shift: `cir.shift` on `!u32i` — no leaf. -/
+def advShift : String :=
+  "module {\n  cir.func @shf(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %s = cir.shift(left, %arg0 : !u32i, %arg1 : !u32i) -> !u32i\n    cir.return %s : !u32i\n  }\n}"
+
+/-- Bitwise: `cir.and` on `!u32i` — no leaf. -/
+def advBitwise : String :=
+  "module {\n  cir.func @bwa(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %b = cir.and %arg0, %arg1 : !u32i\n    cir.return %b : !u32i\n  }\n}"
+
+/-- Unary minus without `nsw`: wrapping negation overflow is UB, and the
+    `neg` leaf requires the marker. -/
+def advMinusBare : String :=
+  "module {\n  cir.func @mnb(%arg0: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %n = cir.minus %arg0 : !s32i\n    cir.return %n : !s32i\n  }\n}"
+
 def main : IO Unit := do
   let mut passed := 0
   let c1 ← checkRejectCatalog "wr" advWriterReader .noalias
@@ -78,6 +118,30 @@ def main : IO Unit := do
   let c5 ← checkRejectCatalog "tb" advTwoBarePtrs .noalias
     "alias-reject" "without `__restrict__`"
   passed := passed + c5
+  let c6 ← checkRejectCatalog "mop" advMultiOp .unknown
+    "outOfSubset" "combines 2 arithmetic ops"
+  passed := passed + c6
+  let c7 ← checkRejectCatalog "udv" advUdiv .unknown
+    "outOfSubset" "unsigned division"
+  passed := passed + c7
+  let c8 ← checkRejectCatalog "srm" advSrem .unknown
+    "outOfSubset" "signed remainder"
+  passed := passed + c8
+  let c9 ← checkRejectCatalog "sbb" advSub .unknown
+    "outOfSubset" "subtraction (`cir.sub`)"
+  passed := passed + c9
+  let c10 ← checkRejectCatalog "mll" advMul .unknown
+    "outOfSubset" "multiplication (`cir.mul`)"
+  passed := passed + c10
+  let c11 ← checkRejectCatalog "shf" advShift .unknown
+    "outOfSubset" "shifts (`cir.shift`)"
+  passed := passed + c11
+  let c12 ← checkRejectCatalog "bwa" advBitwise .unknown
+    "outOfSubset" "bitwise ops"
+  passed := passed + c12
+  let c13 ← checkRejectCatalog "mnb" advMinusBare .unknown
+    "outOfSubset" "without `nsw`"
+  passed := passed + c13
   IO.println s!"GOLDENREJECTCATALOG-OK passed={passed}"
 
 end GoldenRejectCatalog

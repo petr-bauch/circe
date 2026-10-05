@@ -324,3 +324,92 @@ theorem evalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
 theorem emit_correct_add3 (x y z : BitVec 32) :
     evalFunc add3Func [.i32 x, .i32 y, .i32 z] = add3Fwd x y z :=
   evalFuncFuel_add3 EVAL_FUEL x y z
+
+/-! ## N6a: signed-32 negation + division leaves (`neg`, `sdiv`) -/
+
+/-- Canonical CoreIR for `tests/c/neg.c`
+    (`int32_t neg(int32_t x) { return -x; }`): `cir.minus nsw`. -/
+def negFunc : Func :=
+  ⟨"neg", [{ name := "x", ty := .i 32, role := .owned }],
+   .i 32, .return_ (.neg (.var "x"))⟩
+
+/-- Canonical CoreIR for `tests/c/sdiv.c`
+    (`int32_t sdiv(int32_t a, int32_t b) { return a / b; }`): `cir.div`
+    on `!s32i` (signedness from the type, no flag). -/
+def sdivFunc : Func :=
+  ⟨"sdiv", [{ name := "a", ty := .i 32, role := .owned },
+            { name := "b", ty := .i 32, role := .owned }],
+   .i 32, .return_ (.sdiv (.var "a") (.var "b"))⟩
+
+/-- Verified forward function for `neg` (cf. rendered `neg_fwd`). -/
+def negFwd (x : BitVec 32) : Result Value := .i32 <$> checkedNegI32 x
+
+/-- Verified forward function for `sdiv` (cf. rendered `sdiv_fwd`). -/
+def sdivFwd (a b : BitVec 32) : Result Value := .i32 <$> checkedDivI32 a b
+
+/-- Env fact for the `neg` shape. -/
+theorem envLookup_neg_x (x : BitVec 32) :
+    envLookup [("x", .i32 x)] "x" = some (.i32 x) := by
+  simp [envLookup]
+
+/-- Env facts for the `sdiv` shape. -/
+theorem envLookup_sdiv_a (a b : BitVec 32) :
+    envLookup [("a", .i32 a), ("b", .i32 b)] "a" = some (.i32 a) := by
+  simp [envLookup]
+
+theorem envLookup_sdiv_b (a b : BitVec 32) :
+    envLookup [("a", .i32 a), ("b", .i32 b)] "b" = some (.i32 b) := by
+  simp [envLookup, show ("b" : String) ≠ "a" by decide]
+
+/-- Emitter correctness, `neg` (all inputs, ok and error paths). -/
+theorem emit_correct_neg (x : BitVec 32) :
+    evalFunc negFunc [.i32 x] = negFwd x := by
+  have hx := envLookup_neg_x x
+  simp only [evalFunc, evalFuncFuel, negFunc, bindArgs, evalStmtFuel,
+    evalStmtWith, EVAL_FUEL, evalExpr, negFwd, hx]
+  cases checkedNegI32 x <;> rfl
+
+/-- Emitter correctness, `sdiv` (all inputs, ok and error paths). -/
+theorem emit_correct_sdiv (a b : BitVec 32) :
+    evalFunc sdivFunc [.i32 a, .i32 b] = sdivFwd a b := by
+  have ha := envLookup_sdiv_a a b
+  have hb := envLookup_sdiv_b a b
+  simp only [evalFunc, evalFuncFuel, sdivFunc, bindArgs, evalStmtFuel,
+    evalStmtWith, EVAL_FUEL, evalExpr, sdivFwd, ha, hb]
+  cases checkedDivI32 a b <;> rfl
+
+/-- Corollary: `neg` errors are preserved exactly. -/
+theorem emit_correct_neg_err (x : BitVec 32) (e : Panic)
+    (h : checkedNegI32 x = .error e) :
+    evalFunc negFunc [.i32 x] = .error e := by
+  rw [emit_correct_neg]
+  unfold negFwd
+  rw [h]
+  exact i32_map_error e
+
+/-- Corollary: `neg` successes deliver the negated word as a value. -/
+theorem emit_correct_neg_ok (x r : BitVec 32)
+    (h : checkedNegI32 x = .ok r) :
+    evalFunc negFunc [.i32 x] = .ok (.i32 r) := by
+  rw [emit_correct_neg]
+  unfold negFwd
+  rw [h]
+  exact i32_map_ok r
+
+/-- Corollary: `sdiv` errors are preserved exactly. -/
+theorem emit_correct_sdiv_err (a b : BitVec 32) (e : Panic)
+    (h : checkedDivI32 a b = .error e) :
+    evalFunc sdivFunc [.i32 a, .i32 b] = .error e := by
+  rw [emit_correct_sdiv]
+  unfold sdivFwd
+  rw [h]
+  exact i32_map_error e
+
+/-- Corollary: `sdiv` successes deliver the quotient word as a value. -/
+theorem emit_correct_sdiv_ok (a b r : BitVec 32)
+    (h : checkedDivI32 a b = .ok r) :
+    evalFunc sdivFunc [.i32 a, .i32 b] = .ok (.i32 r) := by
+  rw [emit_correct_sdiv]
+  unfold sdivFwd
+  rw [h]
+  exact i32_map_ok r

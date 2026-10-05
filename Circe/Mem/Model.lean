@@ -452,6 +452,17 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .neg a, ρ, m, π =>
+    match memEvalExpr a ρ m π with
+    | .ok (.i32 x) => (checkedNegI32 x).map .i32
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
+  | .sdiv a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.i32 x), .ok (.i32 y) => (checkedDivI32 x y).map .i32
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .ult a b, ρ, m, π =>
     match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))

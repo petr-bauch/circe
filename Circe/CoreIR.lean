@@ -126,6 +126,8 @@ inductive CExpr : Type
   | s64diff : CExpr → CExpr → CExpr
   | tif : CExpr → CExpr → CExpr → CExpr
   | umul : CExpr → CExpr → CExpr
+  | neg : CExpr → CExpr
+  | sdiv : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
   | une : CExpr → CExpr → CExpr

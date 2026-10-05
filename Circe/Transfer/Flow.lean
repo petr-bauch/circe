@@ -95,6 +95,60 @@ theorem memTransfer_addu64 (F : Nat) (a b : BitVec 64)
       evalStmtFuel, evalStmtZero, evalStmtWith,
       memEvalExpr, evalExpr, ha, hbb]
 
+/-! ## N6a transfers: `neg`, `sdiv` -/
+
+/-- Transfer for `neg` (any fuel): same pure shape as `add`, through
+    `checkedNegI32`. -/
+theorem memTransfer_neg (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias negFunc [.i32 x]) :
+    memEvalFuncFuel F negFunc [.i32 x] =
+      evalFuncFuel F negFunc [.i32 x] := by
+  have hbf : negFunc.args =
+      [{ name := "x", ty := .i 32, role := .owned }] := rfl
+  have hbody : negFunc.body =
+      .return_ (.neg (.var "x")) := rfl
+  have hb : bindMemArgs
+      [{ name := "x", ty := .i 32, role := .owned }]
+      [.i32 x] emptyMem =
+      some ([("x", .i32 x)], emptyMem, []) := rfl
+  have hx : envLookup [("x", .i32 x)] "x" =
+      some (.i32 x) := by simp [envLookup]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      hx] <;>
+    (cases h : checkedNegI32 x <;> rfl)
+
+/-- Transfer for `sdiv` (any fuel): same pure shape as `add`, through
+    `checkedDivI32` (zero divisor and `INT_MIN / -1` stay loud on both
+    sides). -/
+theorem memTransfer_sdiv (F : Nat) (a b : BitVec 32)
+    (_h : oracleNoalias sdivFunc [.i32 a, .i32 b]) :
+    memEvalFuncFuel F sdivFunc [.i32 a, .i32 b] =
+      evalFuncFuel F sdivFunc [.i32 a, .i32 b] := by
+  have hbf : sdivFunc.args =
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }] := rfl
+  have hbody : sdivFunc.body =
+      .return_ (.sdiv (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .i 32, role := .owned },
+       { name := "b", ty := .i 32, role := .owned }]
+      [.i32 a, .i32 b] emptyMem =
+      some ([("a", .i32 a), ("b", .i32 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .i32 a), ("b", .i32 b)] "a" =
+      some (.i32 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .i32 a), ("b", .i32 b)] "b" =
+      some (.i32 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb] <;>
+    (cases h : checkedDivI32 a b <;> rfl)
+
 /-- Transfer for `cls` (any fuel): the switch-as-if-chain is pure, so
     memory is untouched and both sides classify identically. -/
 theorem memTransfer_cls (F : Nat) (x : BitVec 32)

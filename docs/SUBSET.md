@@ -543,6 +543,22 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     stay `emptyMem`/`[]`). Evaluates to `1 + 2 + 3 = 6`.
     Containment result: the full 53-def `vec_push_sum` frontier
     is IN — N4d-iv-b2 (`vector` growth composition) is complete.
+28. Signed negation + division (N6a): exact shapes only —
+    `neg` (one by-value `i32`, `cir.minus nsw`, `i32` return;
+    `INT_MIN` overflows loud via `checkedNegI32`) and `sdiv`
+    (two by-value `i32`s, `cir.div` on `!s32i`, `i32` return;
+    zero divisor is `DivZero`, `INT_MIN / -1` is `Overflow` via
+    `checkedDivI32`). Single-op exactness: every arithmetic leaf
+    gate (`add`/`incr`/`add64`/`addu64`/`neg`/`sdiv`) requires
+    `arithOpCount == 1`, so multi-op functions (e.g.
+    `(a + b) + (a * b)`, previously silently validated to a
+    single-op body) reject instead. Unsigned div/rem, sub, mul,
+    and shift/bitwise spellings stay out (dedicated rejections
+    via the arithmetic catalog, which runs after every admission
+    so no exemptions are needed; the `intClass` uniformity guard
+    keeps width-mixed signatures on their existing routing, and
+    `nsw`-less `cir.minus` stays out to protect the `vec_push_sum`
+    iterator helper).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -590,6 +606,8 @@ struct uses rejected), `cir.break`/`cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`, all other switches rejected),
 `cir.mul` (plain unsigned, S3a `nested_sum` shape only),
+`cir.minus` (`nsw`, N6a `neg` shape only),
+`cir.div` (`!s32i`, N6a `sdiv` shape only; all other spellings rejected),
 `get_element` (bounded: the N4d-i `_S_ref` leaf shape only) /
 `ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`
@@ -645,4 +663,4 @@ Coverage: `tests/lean/GoldenPhase4.lean` (19) + `GoldenPhase6.lean` (18) + `Gold
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
 + `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9)
-+ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (5).
++ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (13: 5 alias/escape + 8 arithmetic).

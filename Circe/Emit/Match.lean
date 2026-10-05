@@ -56,6 +56,10 @@ def matchFrag : Func → Option FragKind
       .return_ (.add (.var "a") (.var "b"))⟩ => some .add64
   | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
       .return_ (.uadd (.var "a") (.var "b"))⟩ => some .addu64
+  | ⟨_, [⟨"x", .i 32, .owned⟩], _,
+      .return_ (.neg (.var "x"))⟩ => some .neg
+  | ⟨_, [⟨"a", .i 32, .owned⟩, ⟨"b", .i 32, .owned⟩], _,
+      .return_ (.sdiv (.var "a") (.var "b"))⟩ => some .sdiv
   | ⟨_, [⟨"p", .i 32, .mutBorrow _⟩], _,
       .return_ (.add (.var "p") (.lit (.i32 one)))⟩ =>
     if one == 1 then some .incr else none
@@ -653,6 +657,8 @@ theorem matchFrag_useTadd64 : matchFrag useTadd64Func = some .useTadd64 := rfl
 theorem matchFrag_incr : matchFrag incrFunc = some .incr := rfl
 theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
+theorem matchFrag_neg : matchFrag negFunc = some .neg := rfl
+theorem matchFrag_sdiv : matchFrag sdivFunc = some .sdiv := rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl

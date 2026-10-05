@@ -111,10 +111,15 @@ theorem checkedNegI32_err (a : BitVec 32)
     checkedNegI32 a = .error .Overflow := by
   simp [checkedNegI32, h]
 
-/-- Checked signed-32 division: `DivZero` plus the `INT_MIN / -1` overflow. -/
+/-- Checked signed-32 division: `DivZero` plus the `INT_MIN / -1`
+    overflow. The quotient truncates toward zero (`Int.tdiv`, C
+    semantics) — Lean's `BitVec` `/` is unsigned and `Int` `/` floors,
+    so neither is the C quotient for negative operands (caught by
+    `DiffArith` fuzz: `7 / -3` must be `-2`, not `0`). -/
 def checkedDivI32 (a b : BitVec 32) : Result (BitVec 32) :=
   if b.toInt == 0 then .error .DivZero
-  else if inInt32Range (a.toInt / b.toInt) then .ok (a / b)
+  else if inInt32Range (a.toInt.tdiv b.toInt) then
+    .ok (BitVec.ofInt 32 (a.toInt.tdiv b.toInt))
   else .error .Overflow
 
 theorem checkedDivI32_zero (a b : BitVec 32) (h : b.toInt = 0) :

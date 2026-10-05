@@ -59,18 +59,19 @@ def hasNonHeapCall (text : String) : Bool :=
 def opCount (text needle : String) : Nat :=
   ((text.splitOn needle).length - 1)
 
-/-- Pointer params (discipline applies). -/
-def ptrParams (raw : RawFunc) : List RawParam :=
-  raw.params.filter (fun p => isPtrType p.ctype)
-
-/-- Pointer params the oracle must speak about: every raw pointer
-    except C++ single-reference (`this` / `const&`) params, whose
-    uniqueness is established by the `nonnull + dereferenceable +
-    noundef` attrs in the CIR text itself, so no oracle fact is needed
-    (M2). (`__restrict__` / `noalias` params still need an explicit
-    `noalias` verdict: the attr is a claim, the verdict confirms it.) -/
-def oracleParams (raw : RawFunc) : List RawParam :=
-  raw.params.filter (fun p => isPtrType p.ctype && !p.singleRef)
+/-- Arithmetic-op count for single-op leaf exactness (N6a): a leaf gate
+    admits exactly one arithmetic op — a two-op function (e.g.
+    `(a + b) + (a * b)`) must not validate to a single-op `Func`
+    (in-subset divergence is P0). Covers the CIR integer arithmetic
+    vocabulary (`cir.inc`/`cir.dec` are loop-step ops elsewhere, but a
+    leaf containing one is not a single-op leaf). -/
+def arithOpCount (text : String) : Nat :=
+  opCount text "cir.add" + opCount text "cir.sub" +
+  opCount text "cir.mul" + opCount text "cir.div" +
+  opCount text "cir.rem" + opCount text "cir.minus" +
+  opCount text "cir.inc" + opCount text "cir.dec" +
+  opCount text "cir.shift" + opCount text "cir.and " +
+  opCount text "cir.or " + opCount text "cir.xor "
 
 /-- No loop-exit or switch ops (S3a admits them only in the exact
     `skip_sum` / `cls` shapes; every older shape excludes them so a
@@ -88,6 +89,7 @@ def isAddShape (raw : RawFunc) : Bool :=
   | [a, b] =>
     isI32 a.ctype && isI32 b.ctype && isI32 raw.ret &&
     containsSubstr raw.text "cir.add nsw" &&
+    arithOpCount raw.text == 1 &&
     noBreakContinueSwitch raw.text &&
     !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
@@ -108,12 +110,99 @@ def isIncrShape (raw : RawFunc) : Bool :=
     (match ptrInner p.ctype with | some inner => isI32 inner | none => false) &&
     raw.ret == "" &&
     containsSubstr raw.text "cir.add nsw" &&
+    arithOpCount raw.text == 1 &&
     !hasNonHeapCall raw.text &&
     !containsSubstr raw.text "cir.ternary" &&
     !containsSubstr raw.text "cir.for" &&
     !containsSubstr raw.text "cir.if" &&
     !containsSubstr raw.text "cir.while"
   | _ => false
+
+/-- Leaf skeleton shared by the arithmetic catalog (N6a-iii): the same
+    control/call exclusions as the single-op leaf gates. -/
+def arithLeafSkeleton (text : String) : Bool :=
+  noBreakContinueSwitch text &&
+  !hasNonHeapCall text &&
+  !containsSubstr text "cir.ternary" &&
+  !containsSubstr text "cir.for" &&
+  !containsSubstr text "cir.if" &&
+  !containsSubstr text "cir.while" &&
+  !containsSubstr text "cir.cond_br" &&
+  !containsSubstr text "cir.ptr_stride" &&
+  !containsSubstr text "cir.get_member" &&
+  !containsSubstr text "malloc" &&
+  !containsSubstr text "realloc" &&
+  !containsSubstr text "cir.call @free(" &&
+  !containsSubstr text "_Znwm" &&
+  !containsSubstr text "_ZdlPvm"
+
+/-- Width/sign class of an int type (uniformity check below keeps
+    width-mixed signatures on their existing routing). -/
+def intClass (t : String) : Nat :=
+  if isI32 t then 0 else if isU32 t then 1
+  else if isI64 t then 2 else if isU64 t then 3 else 4
+
+/-- Unadmitted arithmetic leaf (N6a-iii): leaf-shaped (one/two by-value
+    int params of one width/sign class, same-class int return, leaf
+    skeleton) with arithmetic ops, but not an admitted single-op leaf —
+    multi-op bodies, unsigned div/rem, signed sub/mul, shifts, bitwise
+    ops. Runs after every admission, so no exemptions are needed. -/
+def isUnadmittedArithLeaf (raw : RawFunc) : Bool :=
+  let intParam := fun (p : RawParam) =>
+    !isPtrType p.ctype &&
+    (isI32 p.ctype || isU32 p.ctype || isI64 p.ctype || isU64 p.ctype)
+  let intRet := isI32 raw.ret || isU32 raw.ret || isI64 raw.ret || isU64 raw.ret
+  let leaf := intRet && arithLeafSkeleton raw.text &&
+    !callsFunc raw.text raw.name && 1 ≤ arithOpCount raw.text
+  match raw.params with
+  | [x] => intParam x && leaf && intClass x.ctype == intClass raw.ret
+  | [a, b] => intParam a && intParam b && leaf &&
+    intClass a.ctype == intClass b.ctype && intClass a.ctype == intClass raw.ret
+  | _ => false
+
+/-- Cause phrase for unadmitted arithmetic (N6a-iii): multi-op bodies
+    first, then per-op spellings. -/
+def arithRejectWhy (text : String) : String :=
+  let lines := text.splitOn "\n"
+  let hasOp := fun (op : String) =>
+    lines.any (fun line => containsSubstr line op)
+  let hasTyped := fun (op : String) (tys : List String) =>
+    lines.any (fun line => containsSubstr line op &&
+      tys.any (containsSubstr line ·))
+  let unsignedTys := ["!u32i", "!u64i", "<u, 32>", "<u,32>", "<u, 64>", "<u,64>"]
+  if 2 ≤ arithOpCount text then
+    s!"combines {arithOpCount text} arithmetic ops in one function — single-op leaves admit exactly one (`add`/`incr`/`add64`/`addu64`/`neg`/`sdiv`)"
+  else if hasTyped "cir.div " unsignedTys then
+    "unsigned division (`cir.div` on unsigned) is not admitted — only signed `sdiv` on `!s32i`"
+  else if hasTyped "cir.rem " unsignedTys then
+    "unsigned remainder (`cir.rem` on unsigned) is not admitted"
+  else if hasOp "cir.rem " then
+    "signed remainder (`cir.rem`) is not admitted — only `sdiv`"
+  else if hasOp "cir.sub " then
+    "subtraction (`cir.sub`) is not admitted — neither the `nsw` signed nor the wrapping unsigned spelling has a leaf"
+  else if hasOp "cir.mul " then
+    "multiplication (`cir.mul`) is not admitted outside the unsigned wrapping leaves — neither the `nsw` signed spelling nor a standalone leaf exists"
+  else if hasOp "cir.shift" then
+    "shifts (`cir.shift`) are not admitted"
+  else if hasOp "cir.and " || hasOp "cir.or " || hasOp "cir.xor " then
+    "bitwise ops (`cir.and` / `cir.or` / `cir.xor`) are not admitted"
+  else if hasOp "cir.minus" then
+    "unary minus without `nsw` (wrapping negation overflow is UB in C: mark the op `nsw` for the `neg` leaf)"
+  else
+    "unwired arithmetic op (no leaf admits this spelling)"
+
+/-- Pointer params (discipline applies). -/
+def ptrParams (raw : RawFunc) : List RawParam :=
+  raw.params.filter (fun p => isPtrType p.ctype)
+
+/-- Pointer params the oracle must speak about: every raw pointer
+    except C++ single-reference (`this` / `const&`) params, whose
+    uniqueness is established by the `nonnull + dereferenceable +
+    noundef` attrs in the CIR text itself, so no oracle fact is needed
+    (M2). (`__restrict__` / `noalias` params still need an explicit
+    `noalias` verdict: the attr is a claim, the verdict confirms it.) -/
+def oracleParams (raw : RawFunc) : List RawParam :=
+  raw.params.filter (fun p => isPtrType p.ctype && !p.singleRef)
 
 /-- `choose`: `bool` + two `noalias` pointers, pointer return, ternary. -/
 def isChooseShape (raw : RawFunc) : Bool :=

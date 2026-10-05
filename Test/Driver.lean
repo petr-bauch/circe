@@ -13,6 +13,7 @@ for compat.
 -/
 import DerivedNoalias
 import DiffAcc
+import DiffArith
 import DiffArray
 import DiffBox
 import DiffCalls
@@ -136,6 +137,8 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/cls.c", "tests/diff/driver_cls.c"], bin "circe_cls_native"),
    ("cc", ["tests/c/add64.c", "tests/diff/driver_add64.c"], bin "circe_add64_native"),
    ("cc", ["tests/c/addu64.c", "tests/diff/driver_addu64.c"], bin "circe_addu64_native"),
+   ("cc", ["tests/c/neg.c", "tests/diff/driver_neg.c"], bin "circe_neg_native"),
+   ("cc", ["tests/c/sdiv.c", "tests/diff/driver_sdiv.c"], bin "circe_sdiv_native"),
    ("cc", ["tests/c/vec_alloc.c", "tests/diff/driver_vec.c"], bin "circe_vec_native"),
    ("cc", ["tests/c/vec_copy_sum.c", "tests/diff/driver_veccopy.c"], bin "circe_vec2_native"),
    ("cc", ["tests/c/vec_alloc_u64.c", "tests/diff/driver_vec64.c"], bin "circe_vec64_native"),
@@ -171,6 +174,10 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/Cls.lean", "out/Cls.lean"),
    ("tests/golden/Add64.lean", "out/Add64.lean"),
    ("tests/golden/Addu64.lean", "out/Addu64.lean"),
+   ("tests/golden/Neg.lean", "out/Neg.lean"),
+   ("tests/golden/Neg_Spec.lean", "out/Neg_Spec.lean"),
+   ("tests/golden/Sdiv.lean", "out/Sdiv.lean"),
+   ("tests/golden/Sdiv_Spec.lean", "out/Sdiv_Spec.lean"),
    ("tests/golden/VecAlloc.lean", "out/VecAlloc.lean"),
    ("tests/golden/VecCopySum.lean", "out/VecCopySum.lean"),
    ("tests/golden/VecAllocU64.lean", "out/VecAllocU64.lean"),
@@ -278,6 +285,7 @@ def emittedTypechecks : List String :=
    "out/AddCaller.lean", "out/SumCaller.lean", "out/StructByValue.lean",
    "out/NestedSum.lean", "out/SkipSum.lean", "out/FindEq.lean", "out/Cls.lean",
    "out/Add64.lean", "out/Addu64.lean",
+   "out/Neg.lean", "out/Sdiv.lean",
    "out/VecAlloc.lean",
    "out/VecCopySum.lean", "out/VecCopySum_Spec.lean",
    "out/VecAllocU64.lean", "out/VecAllocU64_Spec.lean",
@@ -390,6 +398,29 @@ def contentAsserts : List (String × List (String × String)) :=
    ("s3b-bodies",
     [("out/Add64.lean", "checkedAddI64 a b"),
      ("out/Addu64.lean", ".ok (a + b)")]),
+   ("n6a-arith",
+    [("out/Neg.lean", "checkedNegI32 x"),
+     ("out/Sdiv.lean", "checkedDivI32 a b"),
+     ("tests/golden/Neg.lean", "neg_fwd"),
+     ("tests/golden/Sdiv.lean", "sdiv_fwd"),
+     ("tests/golden/Neg_Spec.lean", "neg_correct_ok"),
+     ("tests/golden/Sdiv_Spec.lean", "sdiv_correct_zero"),
+     ("Circe/CoreIR.lean", "| neg : CExpr"),
+     ("Circe/CoreIR.lean", "| sdiv : CExpr"),
+     ("Circe/Emit/Add.lean", "theorem emit_correct_neg"),
+     ("Circe/Emit/Add.lean", "theorem emit_correct_sdiv"),
+     ("Circe/Transfer/Flow.lean", "theorem memTransfer_neg"),
+     ("Circe/Transfer/Flow.lean", "theorem memTransfer_sdiv"),
+     ("Circe/Validator/Gate.lean", "def isNegShape"),
+     ("Circe/Validator/Gate.lean", "def isSdivShape"),
+     ("Circe/Validator/Gate.lean", "arithOpCount raw.text == 1"),
+     ("Circe/Specs.lean", "theorem neg_correct_ok"),
+     ("Circe/Specs.lean", "theorem neg_correct_err"),
+     ("Circe/Specs.lean", "theorem sdiv_correct_ok"),
+     ("Circe/Specs.lean", "theorem sdiv_correct_zero"),
+     ("Circe/Specs.lean", "theorem sdiv_correct_overflow"),
+     ("Circe/Tactics.lean", "checkedNegI32_ok, checkedNegI32_err"),
+     ("Circe/Tactics.lean", "checkedDivI32_zero")]),
    ("s4-cir-simp",
     [("Circe/Tactics.lean", "addCallerFwd_as_calls, sumCallerFwd_is_call"),
      ("Circe/Tactics.lean", "pointTranslate_ok, pointTranslate_err_x"),
@@ -838,8 +869,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 80 then
-    throw (IO.userError s!"expected 80 spec stubs, found {stubs.length}")
+  if stubs.length != 82 then
+    throw (IO.userError s!"expected 82 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -862,6 +893,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-struct", DiffStruct.main [bin "circe_struct_native", trials]),
    ("diff-flow", DiffFlow.main [bin "circe_nested_native", bin "circe_skip_native", bin "circe_find_native", bin "circe_cls_native", trials]),
    ("diff-width", DiffWidth.main [bin "circe_add64_native", bin "circe_addu64_native", trials]),
+   ("diff-arith", DiffArith.main [bin "circe_neg_native", bin "circe_sdiv_native", trials]),
    ("diff-vec", DiffVec.main [bin "circe_vec_native", trials]),
    ("diff-vec2", DiffVec2.main [bin "circe_vec2_native", trials]),
    ("diff-vec64", DiffVec64.main [bin "circe_vec64_native", trials]),
@@ -911,7 +943,7 @@ def checkSuites : List Job :=
 /-- Registered suite module names (mirrors the `Suites` roots: a new
     `tests/lean` runner without registration fails loudly here). -/
 def suiteModules : List String :=
-  ["DerivedNoalias", "DiffAcc", "DiffBox", "DiffCalls", "DiffFlow",
+  ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
