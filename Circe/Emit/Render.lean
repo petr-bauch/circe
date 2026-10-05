@@ -636,6 +636,39 @@ def emitStdVecGrowReallocText (name : String) : String :=
   ++ "  .ok (.stdVecOwned bR2\n"
   ++ "    ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)\n"
 
+/-- Render the `emplace_back` composer (the tag-erased
+    `stdVecEmplaceBackFwd`: capacity dispatch — slow arm is the
+    realloc bind chain at `pos = len`, fast arm is the construct
+    forward at `len` with length `len + 1`). -/
+def emitStdVecEmplaceBackText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (fast construct / slow realloc composition over the frozen leaf forwards). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (x : BitVec 32) : Result Value :=\n"
+  ++ "  if len == cap then\n"
+  ++ "    (stdVecCheckLenFwd len (BitVec.ofNat 64 1)).bind fun ckv =>\n"
+  ++ "    (vecGrowU64 ckv).bind fun newlen =>\n"
+  ++ "    (stdVecBeginFwd).bind fun bgv =>\n"
+  ++ "    (vecGrowU64 bgv).bind fun bpos =>\n"
+  ++ "    (stdVecMinusFwd (BitVec.ofNat 64 len) bpos).bind fun miv =>\n"
+  ++ "    (vecGrowI64 miv).bind fun kd =>\n"
+  ++ "    (stdVecAllocFwd newlen).bind fun alv =>\n"
+  ++ "    (vecGrowOwned alv).bind fun (bNew, lenA, capA) =>\n"
+  ++ "    (stdVecConstructFwd bNew lenA capA kd x).bind fun conv =>\n"
+  ++ "    (vecGrowOwned conv).bind fun (bC, lenC, capC) =>\n"
+  ++ "    (stdVecRelocFwd b len cap bC lenC capC (BitVec.ofNat 64 0) kd\n"
+  ++ "      (BitVec.ofNat 64 0)).bind fun r1v =>\n"
+  ++ "    (vecGrowOwned r1v).bind fun (bR1, lenR1, capR1) =>\n"
+  ++ "    (stdVecRelocFwd b len cap bR1 lenR1 capR1 kd (BitVec.ofNat 64 len)\n"
+  ++ "      (kd + BitVec.ofNat 64 1)).bind fun r2v =>\n"
+  ++ "    (vecGrowOwned r2v).bind fun (bR2, _, capR2) =>\n"
+  ++ "    (stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap)).bind fun _ =>\n"
+  ++ "    .ok (.stdVecOwned bR2\n"
+  ++ "      ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)\n"
+  ++ "  else (stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x).bind fun conv =>\n"
+  ++ "    (vecGrowOwned conv).bind fun (b', _, _) =>\n"
+  ++ "    .ok (.stdVecOwned b' (len + 1) cap)\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

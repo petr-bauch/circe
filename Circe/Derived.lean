@@ -1563,6 +1563,45 @@ theorem oracleNoalias_stdVecGrowRealloc (b : Vec32) (len cap : Nat)
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-! ## N4d-iv-b2 `emplace_back` composer: entry binding + footprint -/
+
+/-- Emplace binding pins the owned triple (the composer takes the old
+    triple by value plus the element word). -/
+theorem bindMemArgs_stdVecEmplaceBack (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) :
+    bindMemArgs stdVecEmplaceBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("x", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Emplace footprints are a singleton (the old triple is owned; the
+    element word is pure). -/
+theorem oracleNoalias_stdVecEmplaceBack (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) :
+    oracleNoalias stdVecEmplaceBackFunc
+      [.stdVecOwned b len cap, .i32 x] := by
+  have hb : bindMemArgs stdVecEmplaceBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("x", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "x", ty := .i 32, role := .owned }]
+      [.stdVecOwned b len cap, .i32 x] emptyMem = _
+    exact bindMemArgs_stdVecEmplaceBack b len cap x
+  have hn : LayoutNoAlias [("t", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## Cache bridge (discharged by the executable check) -/
 
 /-- Bridge: on a `noalias` verdict the gate admits. The premise

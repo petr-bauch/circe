@@ -61,6 +61,9 @@ inductive CLit : Type
     `ueq` is width-polymorphic bit equality (`cir.cmp eq` compares
     bits regardless of signedness, so `u32`/`u64`/`i32`/`i64` pairs
     are all defined; mixed widths are `AssertFail`);
+    `une` is width-polymorphic bit inequality (the `ueq` twin:
+    `cir.cmp ne` — N4d-iv-b2 fuses the emplace raw-pointer guard
+    to `len ≠ cap` over `u64` words);
     `idx a i` is bounded indexing (`cir.ptr_stride` + `cir.load`).
     `idxi a i` is `i32`-flavored bounded indexing over the same
     `arr32` word list (`cir.get_element` with a `u64` index, as in
@@ -125,6 +128,7 @@ inductive CExpr : Type
   | umul : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
+  | une : CExpr → CExpr → CExpr
   | idx : String → CExpr → CExpr
   | optHas : String → CExpr
   | optGet : String → CExpr
@@ -159,7 +163,13 @@ inductive CExpr : Type
     function `f` applied to the values of `args` (S1: DAG calls into
     call-free leaves, evaluated by `evalProgStmt` in `Circe.Eval`;
     `call` stays a legacy `fellThrough` stub, never produced by
-    `validate`). Heap block statements: `vset`/`vfree` thread `Vec32` /
+    `validate`). `callProg dst f args` is the depth-n twin of
+    `callRet` (N4d-iv-b2: composer calls composer — emplace calls
+    `_M_realloc_insert`, push_back calls emplace, entry calls
+    push_back): the callee runs under the full program evaluator
+    (`evalProgFunc` / `memEvalProgFunc`, same fuel), so arbitrarily
+    deep `Prog` call DAGs evaluate; leaf calls stay `callRet`.
+    Heap block statements: `vset`/`vfree` thread `Vec32` /
     `Vec64` values with an affine token; `vrealloc vec m` (M1c) resizes
     the named block to `m` words via `vecRealloc` (prefix preserved,
     growth zero-filled, never fails). `boxFree box` (M2c) consumes the
@@ -199,6 +209,7 @@ inductive CStmt : Type
   | continue_
   | call (func : String) (args : List String)
   | callRet (dst func : String) (args : List String)
+  | callProg (dst func : String) (args : List String)
   | return_ (val : CExpr)
 
 /-- A validated function: name, params, return type, and body. -/

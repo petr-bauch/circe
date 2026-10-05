@@ -253,8 +253,8 @@ theorem evalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
     have hret : evalProgStmt [arrayAtFunc] F
         (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
           (.var "e2")) (.var "e3")))
-        (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) = .error e :=
-      evalStmtFuel_return_err F _ _ e hexpr
+        (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) = .error e := by
+      simp only [evalProgStmt]; exact evalStmtFuel_return_err F _ _ e hexpr
     simp only [evalProgFunc, hbind, hbody]
     rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hlet0,
       evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep0,
@@ -276,8 +276,8 @@ theorem evalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       have hret : evalProgStmt [arrayAtFunc] F
           (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
             (.var "e2")) (.var "e3")))
-          (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) = .error e :=
-        evalStmtFuel_return_err F _ _ e hexpr
+          (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) = .error e := by
+        simp only [evalProgStmt]; exact evalStmtFuel_return_err F _ _ e hexpr
       simp only [evalProgFunc, hbind, hbody]
       rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hlet0,
         evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep0,
@@ -300,7 +300,7 @@ theorem evalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
             (.return_ (.add (.add (.add (.var "e0") (.var "e1"))
               (.var "e2")) (.var "e3")))
             (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)) "e3" (.i32 d)) = .error e :=
-          evalStmtFuel_return_err F _ _ e hexpr
+          by simp only [evalProgStmt]; exact evalStmtFuel_return_err F _ _ e hexpr
         simp only [evalProgFunc, hbind, hbody]
         rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hlet0,
           evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep0,

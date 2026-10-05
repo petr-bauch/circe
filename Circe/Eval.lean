@@ -381,6 +381,15 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .une a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x != y))
+    | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x != y))
+    | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x != y))
+    | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x != y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .idx arr ie, ρ =>
     match envLookup ρ arr with
     | none => .error .Uninit
@@ -1467,6 +1476,10 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     -- Calls need program context (which function `f` resolves to); outside
     -- `evalProgStmt` they are rejected loudly, never silently modeled.
     .error .AssertFail
+  | .callProg _ _ _, _ =>
+    -- Composer calls need program context too (`evalProgStmt` runs them
+    -- via `evalProgFunc`); at leaf level they are loud like `callRet`.
+    .error .AssertFail
   | .return_ e, ρ =>
     match evalExpr e ρ with
     | .error err => .error err
@@ -1837,9 +1850,14 @@ theorem lookupArgs_cons_hit (ρ : Env) (x : String) (v : Value)
     lookupArgs ρ (x :: xs) = some (v :: vs) := by
   simp [lookupArgs, h, t]
 
-/-- Depth-1 program statement evaluation. `callRet dst f xs` looks up the
+mutual
+/-- Program statement evaluation. `callRet dst f xs` looks up the
     actuals, dispatches to the call-free callee via the old `evalFuncFuel`
     at the same fuel, and extends the environment with the result;
+    `callProg dst f xs` is the depth-n twin (N4d-iv-b2: composer calls
+    composer): the callee runs under `evalProgFunc` at one less fuel
+    (fuel is the call-depth budget as well as the loop budget; zero fuel
+    is loud), so arbitrarily deep `Prog` call DAGs evaluate;
     `seq` recurses; everything else delegates to the old `evalStmtFuel`.
     Callee errors propagate; unknown callees / unbound actuals are loud. -/
 def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × Outcome)
@@ -1853,6 +1871,19 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
         match evalFuncFuel fuel callee vs with
         | .error e => .error e
         | .ok ret => .ok (envExtend ρ dst ret, .fellThrough)
+  | .callProg dst f xs, ρ =>
+    match lookupArgs ρ xs with
+    | none => .error .Uninit
+    | some vs =>
+      match findFunc prog f with
+      | none => .error .AssertFail
+      | some callee =>
+        match fuel with
+        | 0 => .error .AssertFail
+        | fuel + 1 =>
+          match evalProgFunc prog fuel callee vs with
+          | .error e => .error e
+          | .ok ret => .ok (envExtend ρ dst ret, .fellThrough)
   | .seq a b, ρ =>
     match evalProgStmt prog fuel a ρ with
     | .error e => .error e
@@ -1867,6 +1898,23 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
     | .ok (.b false) => evalProgStmt prog fuel e ρ
     | _ => .error .AssertFail
   | s, ρ => evalStmtFuel fuel s ρ
+  termination_by s _ => (fuel, 0, s)
+
+/-- Whole-program function semantics: bind, run the body under the program,
+    demand a `return` (falling off the end is `AssertFail`, as before). -/
+def evalProgFunc (prog : Prog) (fuel : Nat) (f : Func)
+    (args : List Value) : Result Value :=
+  match bindArgs f.args args with
+  | none => .error .AssertFail
+  | some ρ =>
+    match evalProgStmt prog fuel f.body ρ with
+    | .error e => .error e
+    | .ok (_, .returned v) => .ok v
+    | .ok (_, .broke) => .error .AssertFail
+    | .ok (_, .continued) => .error .AssertFail
+    | .ok (_, .fellThrough) => .error .AssertFail
+  termination_by (fuel, 1, f.body)
+end
 
 /-- `callRet` with resolved actuals + callee runs the callee. -/
 theorem evalProgStmt_callRet_ok (prog : Prog) (fuel : Nat)
@@ -1905,19 +1953,53 @@ theorem evalProgStmt_callRet_unbound (prog : Prog) (fuel : Nat)
     evalProgStmt prog fuel (.callRet dst f xs) ρ = .error .Uninit := by
   simp [evalProgStmt, hargs]
 
-/-- Whole-program function semantics: bind, run the body under the program,
-    demand a `return` (falling off the end is `AssertFail`, as before). -/
-def evalProgFunc (prog : Prog) (fuel : Nat) (f : Func)
-    (args : List Value) : Result Value :=
-  match bindArgs f.args args with
-  | none => .error .AssertFail
-  | some ρ =>
-    match evalProgStmt prog fuel f.body ρ with
-    | .error e => .error e
-    | .ok (_, .returned v) => .ok v
-    | .ok (_, .broke) => .error .AssertFail
-    | .ok (_, .continued) => .error .AssertFail
-    | .ok (_, .fellThrough) => .error .AssertFail
+/-- `callProg` with resolved actuals + callee runs the callee under the
+    program evaluator (one fuel less; N4d-iv-b2 composer calls). -/
+theorem evalProgStmt_callProg_ok (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (vs : List Value) (callee : Func) (ret : Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : evalProgFunc prog fuel callee vs = .ok ret) :
+    evalProgStmt prog (fuel + 1) (.callProg dst f xs) ρ =
+      .ok (envExtend ρ dst ret, .fellThrough) := by
+  simp [evalProgStmt, hargs, hfind, hcall]
+
+/-- `callProg` propagates callee errors. -/
+theorem evalProgStmt_callProg_err (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (vs : List Value) (callee : Func) (e : Panic)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : evalProgFunc prog fuel callee vs = .error e) :
+    evalProgStmt prog (fuel + 1) (.callProg dst f xs) ρ = .error e := by
+  simp [evalProgStmt, hargs, hfind, hcall]
+
+/-- `callProg` to an unknown callee is rejected, never silently modeled. -/
+theorem evalProgStmt_callProg_unknown (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (vs : List Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = none) :
+    evalProgStmt prog fuel (.callProg dst f xs) ρ =
+      .error .AssertFail := by
+  simp [evalProgStmt, hargs, hfind]
+
+/-- `callProg` with unbound actuals is `Uninit`. -/
+theorem evalProgStmt_callProg_unbound (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (hargs : lookupArgs ρ xs = none) :
+    evalProgStmt prog fuel (.callProg dst f xs) ρ = .error .Uninit := by
+  simp [evalProgStmt, hargs]
+
+/-- `callProg` at zero fuel is loud (the call-depth budget is spent). -/
+theorem evalProgStmt_callProg_nofuel (prog : Prog)
+    (dst f : String) (xs : List String) (ρ : Env) (vs : List Value)
+    (callee : Func)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee) :
+    evalProgStmt prog 0 (.callProg dst f xs) ρ =
+      .error .AssertFail := by
+  simp [evalProgStmt, hargs, hfind]
 
 theorem evalProgFunc_arity (prog : Prog) (fuel : Nat) (f : Func)
     (args : List Value) (h : bindArgs f.args args = none) :
@@ -2066,4 +2148,5 @@ theorem evalStmtFuel_cleanup (f : Nat) (body : CStmt) (ρ : Env) :
 theorem evalProgStmt_cleanup (prog : Prog) (fuel : Nat) (body : CStmt)
     (ρ : Env) :
     evalProgStmt prog fuel (.cleanup body) ρ =
-      evalProgStmt prog fuel body ρ := rfl
+      evalProgStmt prog fuel body ρ := by
+  simp only [evalProgStmt]

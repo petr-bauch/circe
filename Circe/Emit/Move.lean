@@ -280,7 +280,7 @@ theorem evalProgFunc_scopeEarly (F : Nat) (a b : BitVec 32) :
             "s0" (.i32 0)) "s1" (.i32 s1)) =
           .ok ((envExtend (envExtend ([("a", .i32 a), ("b", .i32 b)] : Env)
             "s0" (.i32 0)) "s1" (.i32 s1)), .fellThrough) := by
-        cases F <;> rfl
+        cases F <;> simp [evalProgStmt, evalStmtFuel, evalStmtZero, evalStmtWith]
       have hifF' : evalProgStmt earlyProg F
           (.if_ (.ueq (.var "a") (.var "b"))
             (.seq (.callRet "r1" "_ZNK3Acc3getEv" ["s1"])
@@ -480,7 +480,7 @@ theorem evalProgFunc_moveAcc (F : Nat) (a b : BitVec 32) :
           "s0" (.i32 0)) "s1" (.i32 s1)) "d1" (.i32 s1)) =
         .ok (([("d1", .i32 s1), ("s1", .i32 0), ("s0", .i32 0),
           ("a", .i32 a), ("b", .i32 b)] : Env), .fellThrough) :=
-      evalStmtFuel_assign _ _ _ _ _ _ hexpr0 hupd
+      by simp only [evalProgStmt]; exact evalStmtFuel_assign _ _ _ _ _ _ hexpr0 hupd
     have hargs2 : lookupArgs
         ([("d1", .i32 s1), ("s1", .i32 0), ("s0", .i32 0),
           ("a", .i32 a), ("b", .i32 b)] : Env)

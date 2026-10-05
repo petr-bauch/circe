@@ -117,6 +117,7 @@ inductive FragKind : Type
   | vecConstruct
   | vecReloc
   | vecGrowRealloc
+  | vecEmplaceBack
   deriving DecidableEq, Repr
 
 

@@ -589,6 +589,28 @@ def matchFrag : Func → Option FragKind
         some .vecGrowRealloc
       else none
     | _ => none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"x", .i 32, .owned⟩], _, body⟩ =>
+    -- `emplace_back` composer: guard fused to `len`/`cap` + `.une`,
+    -- fast arm over the frozen construct leaf, slow arm over the
+    -- frozen `end` leaf + the proved realloc composer via
+    -- `callProg` (cf. `stdVecEmplaceBackFunc`; the `matchFrag`
+    -- `rfl` below keeps them in sync).
+    match body with
+    | .seq (.let_ "len" _ (.vgrowLen "t"))
+      (.seq (.let_ "cap" _ (.vgrowCap "t"))
+      (.if_ (.une (.var "len") (.var "cap"))
+        (.seq (.callRet "tF"
+                "_ZNSt16allocator_traitsISaIiEE9constructIiJiEEEvRS0_PT_DpOT0_"
+                ["t", "len", "x"])
+        (.seq (.let_ "len1" _ (.uadd (.var "len") (.lit (.u64 one))))
+              (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+        (.seq (.callRet "pos" "_ZNSt6vectorIiSaIiEE3endEv" ["t"])
+        (.seq (.callProg "r"
+                "_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT_"
+                ["t", "pos", "x"])
+              (.return_ (.var "r")))))) =>
+      if one == BitVec.ofNat 64 1 then some .vecEmplaceBack else none
+    | _ => none
   | _ => none
 
 theorem matchFrag_add : matchFrag addFunc = some .add := rfl
@@ -662,3 +684,4 @@ theorem matchFrag_stdVecDeallocGuard : matchFrag stdVecDeallocGuardFunc = some .
 theorem matchFrag_stdVecConstruct : matchFrag stdVecConstructFunc = some .vecConstruct := rfl
 theorem matchFrag_stdVecReloc : matchFrag stdVecRelocFunc = some .vecReloc := rfl
 theorem matchFrag_stdVecGrowRealloc : matchFrag stdVecGrowReallocFunc = some .vecGrowRealloc := rfl
+theorem matchFrag_stdVecEmplaceBack : matchFrag stdVecEmplaceBackFunc = some .vecEmplaceBack := rfl

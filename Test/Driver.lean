@@ -262,6 +262,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecGrowReloc_Spec.lean", "out/VecGrowReloc_Spec.lean"),
    ("tests/golden/VecGrowComposerRealloc.lean", "out/VecGrowComposerRealloc.lean"),
    ("tests/golden/VecGrowComposerRealloc_Spec.lean", "out/VecGrowComposerRealloc_Spec.lean"),
+   ("tests/golden/VecGrowComposerEmplace.lean", "out/VecGrowComposerEmplace.lean"),
+   ("tests/golden/VecGrowComposerEmplace_Spec.lean", "out/VecGrowComposerEmplace_Spec.lean"),
    ("tests/golden/VecGrowUnit.lean", "out/VecGrowUnit.lean"),
    ("tests/golden/VecGrowUnit_Spec.lean", "out/VecGrowUnit_Spec.lean"),]
 
@@ -334,6 +336,7 @@ def emittedTypechecks : List String :=
    "out/VecGrowMinusEl.lean", "out/VecGrowMinusEl_Spec.lean",
    "out/VecGrowReloc.lean", "out/VecGrowReloc_Spec.lean",
    "out/VecGrowComposerRealloc.lean", "out/VecGrowComposerRealloc_Spec.lean",
+   "out/VecGrowComposerEmplace.lean", "out/VecGrowComposerEmplace_Spec.lean",
    "out/VecGrowUnit.lean", "out/VecGrowUnit_Spec.lean",]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
@@ -716,6 +719,19 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Derived.lean", "theorem oracleNoalias_stdVecGrowRealloc"),
      ("Circe/Validator.lean", "def isStdVecReallocInsertShape"),
      ("out/VecGrowComposerRealloc.lean", "_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT__fwd"),
+     ("Circe/Specs.lean", "theorem stdVecEmplaceBack_correct_slow"),
+     ("Circe/Specs.lean", "theorem stdVecEmplaceBack_correct_fast"),
+     ("Circe/Specs.lean", "theorem stdVecEmplaceBack_correct_err_checklen"),
+     ("Circe/Specs.lean", "theorem stdVecEmplaceBack_correct_ok_slow"),
+     ("Circe/Specs.lean", "theorem stdVecEmplaceBack_correct_err_construct"),
+     ("Circe/Specs.lean", "theorem stdVecEmplaceBack_correct_ok_fast"),
+     ("Circe/Emit/VecCompose.lean", "theorem evalProgFunc_stdVecEmplaceBack"),
+     ("Circe/Transfer.lean", "theorem memEvalProgFunc_stdVecEmplaceBack"),
+     ("Circe/Transfer.lean", "theorem memTransfer_stdVecEmplaceBack"),
+     ("Circe/Derived.lean", "theorem bindMemArgs_stdVecEmplaceBack"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_stdVecEmplaceBack"),
+     ("Circe/Validator.lean", "def isStdVecEmplaceBackShape"),
+     ("out/VecGrowComposerEmplace.lean", "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT__fwd"),
      ("Circe/Specs.lean", "theorem stdVecCheckLen_correct_fail"),
      ("Circe/Mem.lean", "theorem vgrowSet_lockstep"),
      ("out/VecGrowReloc.lean", "_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0__fwd"),
@@ -769,8 +785,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 77 then
-    throw (IO.userError s!"expected 77 spec stubs, found {stubs.length}")
+  if stubs.length != 78 then
+    throw (IO.userError s!"expected 78 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do

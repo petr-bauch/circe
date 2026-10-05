@@ -2079,6 +2079,60 @@ def isStdVecReallocInsertShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.cleanup"
   | _ => false
 
+/-- `emplace_back` (N4d-iv-b2): the guard (`_M_finish` /
+    `_M_end_of_storage` loads + raw-pointer `cmp ne` + `cir.if`)
+    with the fast `traits::construct` + finish-bump (`ptr_stride`)
+    arm, the slow `end()` + `_M_realloc_insert` arm, and the shared
+    `back()` tail. The fused `Func` (`stdVecEmplaceBackFunc`) keeps
+    the finish/end loads as `len` / `cap` lets with a `.une`
+    dispatch, the four leaf/composer calls by name, and drops only
+    the fused-away material: the member projections, the `__args` /
+    iterator allocas, and the `back()` + `__retval` tail (the C++
+    reference functionalizes as triple threading — cf.
+    `stdVecEmplaceBackFunc`). Exact site counts below pin the shape;
+    anything else fails loudly. -/
+def isStdVecEmplaceBackShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "!cir.ptr<!s32i>" &&
+  match raw.params with
+  | [this, x] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isVecGrowRef "!cir.ptr<!s32i>" x &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecTraitsConstructName &&
+    opCount raw.text
+      ("cir.call @" ++ stdVecTraitsConstructName ++ "(") == 1 &&
+    callsFunc raw.text stdVecEndName &&
+    opCount raw.text ("cir.call @" ++ stdVecEndName ++ "(") == 1 &&
+    callsFunc raw.text stdVecGrowReallocName &&
+    opCount raw.text ("cir.call @" ++ stdVecGrowReallocName ++ "(") == 1 &&
+    callsFunc raw.text stdVecBackName &&
+    opCount raw.text ("cir.call @" ++ stdVecBackName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.store" == 5 &&
+    opCount raw.text "cir.load" == 9 &&
+    opCount raw.text "cir.const" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.scope" == 1 &&
+    opCount raw.text "cir.get_member" == 9 &&
+    opCount raw.text "cir.base_class_addr" == 10 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.cleanup"
+  | _ => false
+
 /-- Any N4d-iv-b1 growth-leaf shape (disjunction for the alias-gate
     carve-outs: a func matching one of these has exactly the pinned
     params, so the erased-offset params need no uniqueness). -/
@@ -3093,6 +3147,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       s!"out-of-subset: oracle fact is for '{oracle.funcName}', not '{raw.name}' (wiring error; refusing to translate)"
   else if isStdVecReallocInsertShape raw then
     .ok { stdVecGrowReallocFunc with name := raw.name }
+  else if isStdVecEmplaceBackShape raw then
+    .ok { stdVecEmplaceBackFunc with name := raw.name }
   else if isVecGrowComposerText raw.text then
     reject raw.name .outOfSubset
       s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (`_M_realloc_insert` / `emplace_back` / `push_back` / the `vec_push_sum` entry: multi-call growth composition — checked length, fresh storage, value relocation): growth leaves validate in N4d-iv-b1, composition is deferred to N4d-iv-b2 (see docs/ROADMAP.md N4d-iv-b)"

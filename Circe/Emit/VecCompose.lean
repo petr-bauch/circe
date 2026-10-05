@@ -26,16 +26,8 @@ def stdVecGrowReallocName : String :=
 theorem evalProgStmt_let_fb (prog : Prog) (fuel : Nat) (x : String)
     (ty : CType) (e : CExpr) (ρ : Env) :
     evalProgStmt prog fuel (.let_ x ty e) ρ =
-      evalStmtFuel fuel (.let_ x ty e) ρ := rfl
-
-/-- The shared growth program: the frozen b1 leaves the composers
-    call into (name-stamped exactly as the corpus defines them, so
-    `findFunc` resolves every composer `callRet`). Grows as later
-    composers need more callees. -/
-def vecGrowProg : Prog :=
-  [stdVecCheckLenFunc, stdVecBeginFunc, stdVecMinusFunc,
-    stdVecAllocFunc, stdVecConstructFunc, stdVecRelocFunc,
-    stdVecDeallocGuardFunc]
+      evalStmtFuel fuel (.let_ x ty e) ρ := by
+  simp only [evalProgStmt]
 
 /-- Blit preserves the destination length (the copy loop only
     `vecSet`s, which preserves length — cf. `vecSet_length`). -/
@@ -206,6 +198,18 @@ def stdVecGrowReallocFwd (b : Vec32) (len cap : Nat) (pos : BitVec 64)
   (stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap)).bind fun _ =>
   .ok (.stdVecOwned bR2
     ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)
+
+/-- The shared growth program: the frozen b1 leaves the composers
+    call into (name-stamped exactly as the corpus defines them, so
+    `findFunc` resolves every composer `callRet`), plus the
+    already-proved composers later composers call into via
+    `callProg` (`_M_realloc_insert` for `emplace_back`), plus the
+    frozen `end` leaf the slow arm calls. Grows as later composers
+    need more callees. Listed after the composer it includes. -/
+def vecGrowProg : Prog :=
+  [stdVecCheckLenFunc, stdVecBeginFunc, stdVecMinusFunc,
+    stdVecAllocFunc, stdVecConstructFunc, stdVecRelocFunc,
+    stdVecDeallocGuardFunc, stdVecGrowReallocFunc, stdVecEndFunc]
 
 /-- `check_len` success at `n = 1` delivers a `u64` word holding at
     least `len + 1` (the growth invariant both relocates' destination
@@ -1858,3 +1862,511 @@ theorem evalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32) (len cap : Nat)
                   simp only [stdVecGrowReallocFwd, hck, hbgU, hmiU, hal,
                     hcon, hr1, hr2, hgd, vecGrow_bind_ok, vecGrowU64,
                     vecGrowI64, vecGrowOwned]
+
+/-! ## N4d-iv-b2: `emplace_back` (fast/slow growth composer) -/
+
+/-- Mangled name of `emplace_back<int>`. -/
+def stdVecEmplaceBackName : String :=
+  "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_"
+
+/-- Canonical CoreIR for `emplace_back`: the guard (`_M_finish` /
+    `_M_end_of_storage` loads + raw-pointer `cmp ne` + `cir.if`)
+    fuses to `len` / `cap` lets + a `.une` dispatch (`ne` on
+    `base + len*4` vs `base + cap*4` with the same base and nonzero
+    scale is exactly `len ≠ cap`); the `__args` pack load fuses to
+    the direct `x` param. Fast arm: the `traits::construct` call is
+    a `callRet` into the frozen b1 leaf, and the
+    construct-at-finish + finish-bump (`ptr_stride` + store) fuse to
+    `len + 1` with a `vgrowSetLen` return. Slow arm: the `end()`
+    call is a `callRet` into the frozen `end` leaf, and the
+    `_M_realloc_insert` call is a `callProg` into the proved
+    composer (composer-calls-composer runs under the program
+    evaluator at depth `fuel - 1`). The shared tail (`back()` call
+    + `__retval` store + return) fuses away: the C++ reference
+    return functionalizes as triple threading (mirroring how
+    `construct`'s C++ `void` functionalizes), so both arms return
+    the updated triple directly. -/
+def stdVecEmplaceBackFunc : Func :=
+  ⟨stdVecEmplaceBackName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "x", ty := .i 32, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+   (.seq (.let_ "cap" (.u 64) (.vgrowCap "t"))
+   (.if_ (.une (.var "len") (.var "cap"))
+     (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
+     (.seq (.let_ "len1" (.u 64)
+              (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+           (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+     (.seq (.callRet "pos" stdVecEndName ["t"])
+     (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
+           (.return_ (.var "r"))))))⟩
+
+/-- Value-level forward for `emplace_back`: capacity decides. Fast
+    (`len ≠ cap`): the frozen construct forward at `len`, length
+    `len + 1` (one equation per composer `callRet`, mirroring how
+    `stdVecGrowReallocFwd` threads the leaf forwards). Slow
+    (`len = cap`): the realloc forward at `pos = len` (the fused
+    `end()` value). -/
+def stdVecEmplaceBackFwd (b : Vec32) (len cap : Nat) (x : BitVec 32) :
+    Result Value :=
+  if len == cap then
+    stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x
+  else
+    (stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x).bind fun conv =>
+    (vecGrowOwned conv).bind fun (b', _, _) =>
+    .ok (.stdVecOwned b' (len + 1) cap)
+
+set_option maxRecDepth 8192 in
+/-- `emit_correct` for `emplace_back`: the program over the frozen
+    leaves plus the proved realloc composer agrees with the capacity
+    dispatch forward. Caller-side preconditions: the old triple is
+    live, `len` is below the `length_error` boundary, the element
+    lands in the buffer, words fit, and fuel covers the slow path
+    (one `callProg` depth plus the realloc relocates). -/
+theorem evalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32) (len cap : Nat)
+    (x : BitVec 32)
+    (hlive : b.freed = false)
+    (hmax : len ≤ stdVecMaxDiffBV.toNat)
+    (hlenB : len < b.val.length)
+    (h64 : b.val.length < 2 ^ 64)
+    (hcap64 : cap < 2 ^ 64)
+    (hF : len + 2 ≤ F) :
+    evalProgFunc vecGrowProg F stdVecEmplaceBackFunc
+      [.stdVecOwned b len cap, .i32 x] =
+      stdVecEmplaceBackFwd b len cap x := by
+  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
+  have hbind : bindArgs stdVecEmplaceBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] =
+      some [("t", .stdVecOwned b len cap), ("x", .i32 x)] := rfl
+  have hbody : stdVecEmplaceBackFunc.body =
+      (.seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+      (.seq (.let_ "cap" (.u 64) (.vgrowCap "t"))
+      (.if_ (.une (.var "len") (.var "cap"))
+        (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
+        (.seq (.let_ "len1" (.u 64)
+                 (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+              (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+        (.seq (.callRet "pos" stdVecEndName ["t"])
+        (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
+              (.return_ (.var "r"))))))) := rfl
+  have hlen64 : len < 2 ^ 64 := Nat.lt_trans hlenB h64
+  have hrt : (BitVec.ofNat 64 len).toNat = len := ofNat64_toNat _ hlen64
+  have h1w : (BitVec.ofNat 64 1).toNat = 1 := ofNat64_toNat 1 (by decide)
+  have hlen1lt : len + 1 < 2 ^ 64 := by omega
+  have hlen1 : ((BitVec.ofNat 64 len) + (BitVec.ofNat 64 1)).toNat =
+      len + 1 := by
+    rw [BitVec.toNat_add_of_lt (by rw [hrt, h1w]; exact hlen1lt), hrt, h1w]
+  have ht0 : envLookup [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "t" = some (.stdVecOwned b len cap) := by simp [envLookup]
+  have hlenV : evalExpr (.vgrowLen "t")
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)] =
+      .ok (.u64 (BitVec.ofNat 64 len)) :=
+    evalExpr_vgrowLen_some "t" _ b len cap ht0
+  have hstepLen : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "len" (.u 64) (.vgrowLen "t"))
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)] =
+      .ok (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)), .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlenV
+  have ht1 : envLookup (envExtend
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "len" (.u64 (BitVec.ofNat 64 len))) "t" =
+      some (.stdVecOwned b len cap) := by
+    simp [envLookup, envExtend, show ("t" : String) ≠ "len" by decide]
+  have hcapV : evalExpr (.vgrowCap "t") (envExtend
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "len" (.u64 (BitVec.ofNat 64 len))) =
+      .ok (.u64 (BitVec.ofNat 64 cap)) :=
+    evalExpr_vgrowCap_some "t" _ b len cap ht1
+  have hstepCap : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "cap" (.u 64) (.vgrowCap "t"))
+      (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len))) =
+      .ok (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap)), .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hcapV
+  have hlen2 : envLookup (envExtend (envExtend
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "len" (.u64 (BitVec.ofNat 64 len)))
+      "cap" (.u64 (BitVec.ofNat 64 cap))) "len" =
+      some (.u64 (BitVec.ofNat 64 len)) := by
+    simp [envLookup, envExtend, show ("len" : String) ≠ "cap" by decide]
+  have hcap2 : envLookup (envExtend (envExtend
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "len" (.u64 (BitVec.ofNat 64 len)))
+      "cap" (.u64 (BitVec.ofNat 64 cap))) "cap" =
+      some (.u64 (BitVec.ofNat 64 cap)) := by
+    simp [envLookup, envExtend]
+  have ht2 : envLookup (envExtend (envExtend
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "len" (.u64 (BitVec.ofNat 64 len)))
+      "cap" (.u64 (BitVec.ofNat 64 cap))) "t" =
+      some (.stdVecOwned b len cap) := by
+    simp [envLookup, envExtend,
+      show ("t" : String) ≠ "cap" by decide,
+      show ("t" : String) ≠ "len" by decide]
+  have hx2 : envLookup (envExtend (envExtend
+      [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "len" (.u64 (BitVec.ofNat 64 len)))
+      "cap" (.u64 (BitVec.ofNat 64 cap))) "x" =
+      some (.i32 x) := by
+    simp [envLookup, envExtend,
+      show ("x" : String) ≠ "cap" by decide,
+      show ("x" : String) ≠ "len" by decide]
+  have hfindCon : findFunc vecGrowProg stdVecTraitsConstructName =
+      some stdVecConstructFunc := by
+    unfold vecGrowProg
+    rw [findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide)]
+    exact findFunc_hit _ _
+  have hfindEnd : findFunc vecGrowProg stdVecEndName =
+      some stdVecEndFunc := by
+    unfold vecGrowProg
+    rw [findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide)]
+    exact findFunc_hit _ _
+  have hfindR : findFunc vecGrowProg stdVecGrowReallocName =
+      some stdVecGrowReallocFunc := by
+    unfold vecGrowProg
+    rw [findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide),
+      findFunc_miss _ _ _ (by decide)]
+    exact findFunc_hit _ _
+  by_cases hlc : len = cap
+  · -- Slow path: `len = cap`, the `end()` position feeds the
+    -- realloc composer via `callProg` at depth `F'`.
+    have hcond : evalExpr (.une (.var "len") (.var "cap"))
+        (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap))) =
+        .ok (.b false) := by
+      simp [evalExpr, envLookup, envExtend,
+        show ("len" : String) ≠ "cap" by decide, hlc]
+    have hif : evalProgStmt vecGrowProg (F' + 1)
+        (.if_ (.une (.var "len") (.var "cap"))
+          (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
+          (.seq (.let_ "len1" (.u 64)
+                   (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+                (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+          (.seq (.callRet "pos" stdVecEndName ["t"])
+          (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
+                (.return_ (.var "r")))))
+        (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap))) =
+        evalProgStmt vecGrowProg (F' + 1)
+        (.seq (.callRet "pos" stdVecEndName ["t"])
+        (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
+              (.return_ (.var "r"))))
+        (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap))) :=
+      evalProgStmt_if_false vecGrowProg (F' + 1) _ _ _ _ hcond
+    have hargsPos : lookupArgs (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap))) ["t"] =
+        some [.stdVecOwned b len cap] := by
+      simp only [lookupArgs, ht2]
+    have hcallEnd : evalFuncFuel (F' + 1) stdVecEndFunc
+        [.stdVecOwned b len cap] = stdVecEndFwd len :=
+      evalFuncFuel_stdVecEnd _ b len cap
+    have hcallEnd' : evalFuncFuel (F' + 1) stdVecEndFunc
+        [.stdVecOwned b len cap] = .ok (.u64 (BitVec.ofNat 64 len)) := by
+      rw [hcallEnd]; rfl
+    have hstepPos := evalProgStmt_callRet_ok vecGrowProg (F' + 1) "pos"
+      stdVecEndName ["t"] _ _ stdVecEndFunc (.u64 (BitVec.ofNat 64 len))
+      hargsPos hfindEnd hcallEnd'
+    have ht3 : envLookup (envExtend (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap)))
+        "pos" (.u64 (BitVec.ofNat 64 len))) "t" =
+        some (.stdVecOwned b len cap) := by
+      simp [envLookup, envExtend,
+        show ("t" : String) ≠ "pos" by decide,
+        show ("t" : String) ≠ "cap" by decide,
+        show ("t" : String) ≠ "len" by decide]
+    have hpos3 : envLookup (envExtend (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap)))
+        "pos" (.u64 (BitVec.ofNat 64 len))) "pos" =
+        some (.u64 (BitVec.ofNat 64 len)) := by
+      simp [envLookup, envExtend]
+    have hx3 : envLookup (envExtend (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap)))
+        "pos" (.u64 (BitVec.ofNat 64 len))) "x" =
+        some (.i32 x) := by
+      simp [envLookup, envExtend,
+        show ("x" : String) ≠ "pos" by decide,
+        show ("x" : String) ≠ "cap" by decide,
+        show ("x" : String) ≠ "len" by decide]
+    have hargsR : lookupArgs (envExtend (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap)))
+        "pos" (.u64 (BitVec.ofNat 64 len))) ["t", "pos", "x"] =
+        some [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len),
+          .i32 x] := by
+      simp only [lookupArgs, ht3, hpos3, hx3]
+    have hSlen : (BitVec.ofNat 64 len).toNat ≤ len := Nat.le_of_eq hrt
+    have hcallR : evalProgFunc vecGrowProg F' stdVecGrowReallocFunc
+        [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
+        stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x :=
+      evalProgFunc_stdVecGrowRealloc F' b len cap (BitVec.ofNat 64 len) x
+        hlive hmax hSlen (Nat.le_of_lt hlenB) h64
+        (by rw [hrt]; omega) (by rw [hrt]; omega)
+    have hFwdSlow : stdVecEmplaceBackFwd b len cap x =
+        stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x := by
+      unfold stdVecEmplaceBackFwd; simp [hlc]
+    cases hR : stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x with
+    | error e =>
+      have hcallR' : evalProgFunc vecGrowProg F' stdVecGrowReallocFunc
+          [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
+          .error e := by rw [hcallR, hR]
+      have hstepR := evalProgStmt_callProg_err vecGrowProg F' "r"
+        stdVecGrowReallocName ["t", "pos", "x"] _ _ stdVecGrowReallocFunc e
+        hargsR hfindR hcallR'
+      simp only [evalProgFunc, hbind, hbody]
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepLen,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCap,
+        hif, evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepPos,
+        evalProgStmt_seq_err _ _ _ _ _ _ hstepR]
+      simp only [hFwdSlow, hR]
+    | ok v =>
+      have hcallR' : evalProgFunc vecGrowProg F' stdVecGrowReallocFunc
+          [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
+          .ok v := by rw [hcallR, hR]
+      have hstepR := evalProgStmt_callProg_ok vecGrowProg F' "r"
+        stdVecGrowReallocName ["t", "pos", "x"] _ _ stdVecGrowReallocFunc v
+        hargsR hfindR hcallR'
+      have hrE : evalExpr (.var "r") (envExtend (envExtend (envExtend
+          (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "pos" (.u64 (BitVec.ofNat 64 len))) "r" v) =
+          .ok v := by
+        simp [evalExpr, envLookup, envExtend]
+      have hret : evalProgStmt vecGrowProg (F' + 1)
+          (.return_ (.var "r")) (envExtend (envExtend (envExtend
+          (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "pos" (.u64 (BitVec.ofNat 64 len))) "r" v) =
+          .ok ((envExtend (envExtend (envExtend
+          (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "pos" (.u64 (BitVec.ofNat 64 len))) "r" v), .returned v) :=
+        evalProgStmt_return vecGrowProg (F' + 1) _ _ _ hrE
+      simp only [evalProgFunc, hbind, hbody]
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepLen,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCap,
+        hif, evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepPos,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepR, hret]
+      simp only [hFwdSlow, hR]
+  · -- Fast path: `len ≠ cap`, construct at `len`, bump to `len + 1`.
+    have hne64 : BitVec.ofNat 64 len ≠ BitVec.ofNat 64 cap := by
+      intro hcon
+      apply hlc
+      have h1 := congrArg BitVec.toNat hcon
+      rw [hrt, ofNat64_toNat _ hcap64] at h1
+      exact h1
+    have hcond : evalExpr (.une (.var "len") (.var "cap"))
+        (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap))) =
+        .ok (.b true) := by
+      simp [evalExpr, envLookup, envExtend,
+        show ("len" : String) ≠ "cap" by decide, hne64]
+    have hif : evalProgStmt vecGrowProg (F' + 1)
+        (.if_ (.une (.var "len") (.var "cap"))
+          (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
+          (.seq (.let_ "len1" (.u 64)
+                   (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+                (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+          (.seq (.callRet "pos" stdVecEndName ["t"])
+          (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
+                (.return_ (.var "r")))))
+        (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap))) =
+        evalProgStmt vecGrowProg (F' + 1)
+        (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
+        (.seq (.let_ "len1" (.u 64)
+                 (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+              (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+        (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap))) :=
+      evalProgStmt_if_true vecGrowProg (F' + 1) _ _ _ _ hcond
+    have hargsCon : lookupArgs (envExtend (envExtend
+        [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+        "len" (.u64 (BitVec.ofNat 64 len)))
+        "cap" (.u64 (BitVec.ofNat 64 cap))) ["t", "len", "x"] =
+        some [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len),
+          .i32 x] := by
+      simp only [lookupArgs, ht2, hlen2, hx2]
+    have hcallCon : evalFuncFuel (F' + 1) stdVecConstructFunc
+        [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
+        stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x :=
+      evalFuncFuel_stdVecConstruct (F' + 1) b len cap
+        (BitVec.ofNat 64 len) x
+    have hFwdFast : stdVecEmplaceBackFwd b len cap x =
+        ((stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x).bind
+          fun conv =>
+        (vecGrowOwned conv).bind fun (b', _, _) =>
+        .ok (.stdVecOwned b' (len + 1) cap)) := by
+      unfold stdVecEmplaceBackFwd; simp [hlc]
+    cases hcon : stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x with
+    | error e =>
+      have hcallCon' : evalFuncFuel (F' + 1) stdVecConstructFunc
+          [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
+          .error e := by rw [hcallCon, hcon]
+      have hstepCon := evalProgStmt_callRet_err vecGrowProg (F' + 1) "tF"
+        stdVecTraitsConstructName ["t", "len", "x"] _ _
+        stdVecConstructFunc e hargsCon hfindCon hcallCon'
+      simp only [evalProgFunc, hbind, hbody]
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepLen,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCap,
+        hif, evalProgStmt_seq_err _ _ _ _ _ _ hstepCon]
+      simp only [hFwdFast, hcon, vecGrow_bind_err]
+    | ok v =>
+      obtain ⟨bC, rfl, hClive, hClen⟩ :=
+        stdVecConstructFwd_ok _ _ _ _ _ _ hcon
+      have hcallCon' : evalFuncFuel (F' + 1) stdVecConstructFunc
+          [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
+          .ok (.stdVecOwned bC len cap) := by rw [hcallCon, hcon]
+      have hstepCon := evalProgStmt_callRet_ok vecGrowProg (F' + 1) "tF"
+        stdVecTraitsConstructName ["t", "len", "x"] _ _
+        stdVecConstructFunc (.stdVecOwned bC len cap)
+        hargsCon hfindCon hcallCon'
+      have hlenF : envLookup (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap)) "len" =
+          some (.u64 (BitVec.ofNat 64 len)) := by
+        simp [envLookup, envExtend,
+          show ("len" : String) ≠ "tF" by decide,
+          show ("len" : String) ≠ "cap" by decide]
+      have hlen1Eval : evalExpr
+          (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1))))
+          (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap)) =
+          .ok (.u64 ((BitVec.ofNat 64 len) + (BitVec.ofNat 64 1))) :=
+        evalExpr_uadd_u64 _ _ _ _ _
+          (evalExpr_var_hit _ _ _ hlenF) rfl
+      have hstepLen1 : evalProgStmt vecGrowProg (F' + 1)
+          (.let_ "len1" (.u 64)
+            (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+          (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap)) =
+          .ok (envExtend (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap))
+          "len1" (.u64 ((BitVec.ofNat 64 len) + (BitVec.ofNat 64 1))),
+          .fellThrough) := by
+        rw [evalProgStmt_let_fb]
+        exact evalStmtFuel_let_ _ _ _ _ _ _ hlen1Eval
+      have htFret : envLookup (envExtend (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap))
+          "len1" (.u64 ((BitVec.ofNat 64 len) +
+            (BitVec.ofNat 64 1)))) "tF" =
+          some (.stdVecOwned bC len cap) := by
+        simp [envLookup, envExtend,
+          show ("tF" : String) ≠ "len1" by decide]
+      have hlen1E : evalExpr (.var "len1") (envExtend (envExtend
+          (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap))
+          "len1" (.u64 ((BitVec.ofNat 64 len) +
+            (BitVec.ofNat 64 1)))) =
+          .ok (.u64 ((BitVec.ofNat 64 len) + (BitVec.ofNat 64 1))) := by
+        simp [evalExpr, envLookup, envExtend]
+      have hretEval : evalExpr
+          (.vgrowSetLen "tF" (.var "len1")) (envExtend (envExtend
+          (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap))
+          "len1" (.u64 ((BitVec.ofNat 64 len) +
+            (BitVec.ofNat 64 1)))) =
+          .ok (.stdVecOwned bC (len + 1) cap) := by
+        have h0 : evalExpr
+            (.vgrowSetLen "tF" (.var "len1")) (envExtend (envExtend
+            (envExtend (envExtend
+            [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+            "len" (.u64 (BitVec.ofNat 64 len)))
+            "cap" (.u64 (BitVec.ofNat 64 cap)))
+            "tF" (.stdVecOwned bC len cap))
+            "len1" (.u64 ((BitVec.ofNat 64 len) +
+              (BitVec.ofNat 64 1)))) =
+            .ok (.stdVecOwned bC
+              (((BitVec.ofNat 64 len) + (BitVec.ofNat 64 1)).toNat) cap) :=
+          evalExpr_vgrowSetLen_hit _ _ _ _ _ _ _ htFret hlen1E
+        rw [hlen1] at h0; exact h0
+      have hret : evalProgStmt vecGrowProg (F' + 1)
+          (.return_ (.vgrowSetLen "tF" (.var "len1"))) (envExtend
+          (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap))
+          "len1" (.u64 ((BitVec.ofNat 64 len) +
+            (BitVec.ofNat 64 1)))) =
+          .ok ((envExtend (envExtend (envExtend (envExtend
+          [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "len" (.u64 (BitVec.ofNat 64 len)))
+          "cap" (.u64 (BitVec.ofNat 64 cap)))
+          "tF" (.stdVecOwned bC len cap))
+          "len1" (.u64 ((BitVec.ofNat 64 len) +
+            (BitVec.ofNat 64 1)))),
+            .returned (.stdVecOwned bC (len + 1) cap)) :=
+        evalProgStmt_return vecGrowProg (F' + 1) _ _ _ hretEval
+      simp only [evalProgFunc, hbind, hbody]
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepLen,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCap,
+        hif, evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCon,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepLen1, hret]
+      simp only [hFwdFast, hcon, vecGrow_bind_ok, vecGrowOwned]
