@@ -1602,6 +1602,46 @@ theorem oracleNoalias_stdVecEmplaceBack (b : Vec32) (len cap : Nat)
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-! ## N4d-iv-b2 `push_back` forwarder: entry binding + footprint -/
+
+/-- Push-back binding pins the owned triple (same `(t, x)` params as
+    `emplace_back`: the forwarder takes the old triple by value plus
+    the element word). -/
+theorem bindMemArgs_stdVecPushBack (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) :
+    bindMemArgs stdVecPushBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("x", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Push-back footprints are a singleton (the old triple is owned; the
+    element word is pure). -/
+theorem oracleNoalias_stdVecPushBack (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) :
+    oracleNoalias stdVecPushBackFunc
+      [.stdVecOwned b len cap, .i32 x] := by
+  have hb : bindMemArgs stdVecPushBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("x", .i32 x)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "x", ty := .i 32, role := .owned }]
+      [.stdVecOwned b len cap, .i32 x] emptyMem = _
+    exact bindMemArgs_stdVecPushBack b len cap x
+  have hn : LayoutNoAlias [("t", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## Cache bridge (discharged by the executable check) -/
 
 /-- Bridge: on a `noalias` verdict the gate admits. The premise

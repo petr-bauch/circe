@@ -1304,6 +1304,32 @@ def emitStdVecEmplaceBackSpecText (name : String) : String :=
   ++ s!"    | ((b, len, cap, x), expected) =>\n"
   ++ s!"      (repr ({name}_spec_fwd b len cap x)).pretty == (repr expected).pretty\n"
 
+/-- Spec stub for the `push_back` forwarder: the mirror delegates to
+    the verified `stdVecPushBackFwd` (same `Base` op as the emitted
+    forward, so the proved `stdVecPushBack_correct_*` specs transfer
+    verbatim by body identity). -/
+def emitStdVecPushBackSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, x)` forwards to `emplace_back` (the reference result is discarded; the C++ `void` functionalizes as triple threading).\n"
+  ++ s!"    Base body reference: the delegation itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecPushBackFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (x : BitVec 32) : Result Value :=\n"
+  ++ "  stdVecPushBackFwd b len cap x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: fast append, slow realloc-insert, `check_len` failure (frozen by evaluating `stdVecPushBackFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 32) × Result Value) :=\n"
+  ++ "  [(((⟨[(0 : BitVec 32)], false⟩, 0, 1, 5)), .ok (.stdVecOwned ⟨[(5 : BitVec 32)], false⟩ 1 1)),\n"
+  ++ "   (((⟨[], false⟩, 0, 0, 5)), .ok (.stdVecOwned ⟨[(5 : BitVec 32)], false⟩ 1 1)),\n"
+  ++ "   (((⟨[], false⟩, stdVecMaxDiff, stdVecMaxDiff, 5)), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, x), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap x)).pretty == (repr expected).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

@@ -12381,5 +12381,112 @@ theorem memTransfer_stdVecEmplaceBack (F : Nat) (b : Vec32)
     evalProgFunc_stdVecEmplaceBack F b len cap x hlive hmax
       hlenB h64 hcap64 hF]
 
+/-! ## N4d-iv-b2 `push_back` forwarder: memory agreement -/
+
+/-- `memEval` for `push_back`: the single-`callProg` forwarder agrees
+    with the `emplace_back` dispatch forward (mirrors
+    `evalProgFunc_stdVecPushBack`; memory and layout thread through
+    unchanged — the forwarder binds no locals — so there are no
+    memory obligations beyond the callee's). -/
+theorem memEvalProgFunc_stdVecPushBack (F : Nat) (b : Vec32)
+    (len cap : Nat) (x : BitVec 32)
+    (hlive : b.freed = false)
+    (hmax : len ≤ stdVecMaxDiffBV.toNat)
+    (hlenB : len < b.val.length)
+    (h64 : b.val.length < 2 ^ 64)
+    (hcap64 : cap < 2 ^ 64)
+    (hF : len + 3 ≤ F) :
+    memEvalProgFunc vecGrowProg F stdVecPushBackFunc
+      [.stdVecOwned b len cap, .i32 x] =
+      stdVecPushBackFwd b len cap x := by
+  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
+  have hF' : len + 2 ≤ F' := by omega
+  have hbind : bindMemArgs stdVecPushBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("x", .i32 x)],
+        tripleMem b len cap, [("t", 0, 0)]) := rfl
+  have hbody : stdVecPushBackFunc.body =
+      (.seq (.callProg "r" stdVecEmplaceBackName ["t", "x"])
+        (.return_ (.var "r"))) := rfl
+  have hFwd : stdVecPushBackFwd b len cap x =
+      stdVecEmplaceBackFwd b len cap x := rfl
+  have ht : envLookup [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "t" = some (.stdVecOwned b len cap) := by simp [envLookup]
+  have hx : envLookup [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "x" = some (.i32 x) := by
+    simp [envLookup, show ("t" : String) ≠ "x" by decide]
+  have hargs : lookupArgs [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      ["t", "x"] = some [.stdVecOwned b len cap, .i32 x] := by
+    simp only [lookupArgs, ht, hx]
+  have hcall : memEvalProgFunc vecGrowProg F' stdVecEmplaceBackFunc
+      [.stdVecOwned b len cap, .i32 x] =
+      stdVecEmplaceBackFwd b len cap x :=
+    memEvalProgFunc_stdVecEmplaceBack F' b len cap x hlive hmax
+      hlenB h64 hcap64 hF'
+  cases hR : stdVecEmplaceBackFwd b len cap x with
+  | error e =>
+    have hcall' : memEvalProgFunc vecGrowProg F' stdVecEmplaceBackFunc
+        [.stdVecOwned b len cap, .i32 x] = .error e := by rw [hcall, hR]
+    have hstepCall := memEvalProgStmt_callProg_err vecGrowProg F' "r"
+      stdVecEmplaceBackName ["t", "x"] _
+      (tripleMem b len cap) [("t", 0, 0)] _
+      stdVecEmplaceBackFunc e
+      hargs findFunc_stdVecEmplaceBack hcall'
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hstepCall]
+    simp only [hFwd, hR]
+  | ok v =>
+    have hcall' : memEvalProgFunc vecGrowProg F' stdVecEmplaceBackFunc
+        [.stdVecOwned b len cap, .i32 x] = .ok v := by rw [hcall, hR]
+    have hstepCall := memEvalProgStmt_callProg_ok vecGrowProg F' "r"
+      stdVecEmplaceBackName ["t", "x"] _
+      (tripleMem b len cap) [("t", 0, 0)] _
+      stdVecEmplaceBackFunc v
+      hargs findFunc_stdVecEmplaceBack hcall'
+    have hrEeval : evalExpr (.var "r")
+        (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)] "r" v) =
+        .ok v := by
+      simp [evalExpr, envLookup, envExtend]
+    have hrE : memEvalExpr (.var "r")
+        (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)] "r" v)
+        (tripleMem b len cap) [("t", 0, 0)] =
+        .ok v := by
+      rw [memEvalExpr_var]; exact hrEeval
+    have hret : memEvalProgStmt vecGrowProg (F' + 1)
+        (.return_ (.var "r"))
+        (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)] "r" v)
+        (tripleMem b len cap) [("t", 0, 0)] =
+        .ok (((envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "r" v),
+          tripleMem b len cap, [("t", 0, 0)]), .returned v) :=
+      memEvalProgStmt_return vecGrowProg (F' + 1) _ _ _ _ _ hrE
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstepCall,
+      hret]
+    simp only [hFwd, hR]
+
+/-- Transfer for `push_back`: program evaluation over the proved
+    `emplace_back` composer agrees on both sides (the forwarder takes
+    the old triple by value, so the footprint singleton from
+    `oracleNoalias_stdVecPushBack` suffices). -/
+theorem memTransfer_stdVecPushBack (F : Nat) (b : Vec32)
+    (len cap : Nat) (x : BitVec 32)
+    (hlive : b.freed = false)
+    (hmax : len ≤ stdVecMaxDiffBV.toNat)
+    (hlenB : len < b.val.length)
+    (h64 : b.val.length < 2 ^ 64)
+    (hcap64 : cap < 2 ^ 64)
+    (hF : len + 3 ≤ F)
+    (_h : oracleNoalias stdVecPushBackFunc
+      [.stdVecOwned b len cap, .i32 x]) :
+    memEvalProgFunc vecGrowProg F stdVecPushBackFunc
+      [.stdVecOwned b len cap, .i32 x] =
+      evalProgFunc vecGrowProg F stdVecPushBackFunc
+        [.stdVecOwned b len cap, .i32 x] := by
+  rw [memEvalProgFunc_stdVecPushBack F b len cap x hlive hmax
+    hlenB h64 hcap64 hF,
+    evalProgFunc_stdVecPushBack F b len cap x hlive hmax
+      hlenB h64 hcap64 hF]
+
 
 

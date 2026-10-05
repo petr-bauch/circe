@@ -669,6 +669,17 @@ def emitStdVecEmplaceBackText (name : String) : String :=
   ++ "    (vecGrowOwned conv).bind fun (b', _, _) =>\n"
   ++ "    .ok (.stdVecOwned b' (len + 1) cap)\n"
 
+/-- Render the `push_back` forwarder definition: direct delegation to
+    the verified `stdVecPushBackFwd` (the discarded reference never
+    affects the triple; cf. `emitTranslateText` delegating to the
+    verified `Base` op). -/
+def emitStdVecPushBackText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (single-`callProg` forwarder into the proved `emplace_back` composer). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (x : BitVec 32) : Result Value :=\n"
+  ++ "  stdVecPushBackFwd b len cap x\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

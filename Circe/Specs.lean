@@ -983,6 +983,88 @@ theorem stdVecEmplaceBack_correct_ok_fast (b : Vec32) (len cap : Nat)
   simp only [stdVecEmplaceBack_correct_fast b len cap x hlc, h,
     vecGrow_bind_ok, vecGrowOwned]
 
+/-! ## N4d-iv-b2 `push_back`: forwarder spec (Fwd level) -/
+
+/-- Slow dispatch: at capacity the forwarder is the realloc forward at
+    `pos = len` (via `emplace_back`). -/
+theorem stdVecPushBack_correct_slow (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) (h : len = cap) :
+    stdVecPushBackFwd b len cap x =
+      stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x := by
+  unfold stdVecPushBackFwd
+  exact stdVecEmplaceBack_correct_slow b len cap x h
+
+/-- Fast dispatch: below capacity the forwarder is the construct
+    forward at `len` with length `len + 1`. -/
+theorem stdVecPushBack_correct_fast (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) (h : len ≠ cap) :
+    stdVecPushBackFwd b len cap x =
+      ((stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x).bind
+        fun conv =>
+      (vecGrowOwned conv).bind fun (b', _, _) =>
+      .ok (.stdVecOwned b' (len + 1) cap)) := by
+  unfold stdVecPushBackFwd
+  exact stdVecEmplaceBack_correct_fast b len cap x h
+
+/-- `check_len` failure fails the slow path (and hence the whole
+    append at capacity). -/
+theorem stdVecPushBack_correct_err_checklen (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) (e : Panic)
+    (hlc : len = cap)
+    (h : stdVecCheckLenFwd len (BitVec.ofNat 64 1) = .error e) :
+    stdVecPushBackFwd b len cap x = .error e := by
+  unfold stdVecPushBackFwd
+  exact stdVecEmplaceBack_correct_err_checklen b len cap x e hlc h
+
+/-- All-ok slow stages deliver the reallocated triple. -/
+theorem stdVecPushBack_correct_ok_slow (b : Vec32) (len cap : Nat)
+    (x : BitVec 32)
+    (hlc : len = cap)
+    (newlen : BitVec 64) (bNew bC bR1 bR2 : Vec32) (v : Value)
+    (hck : stdVecCheckLenFwd len (BitVec.ofNat 64 1) = .ok (.u64 newlen))
+    (hbg : stdVecBeginFwd = .ok (.u64 (BitVec.ofNat 64 0)))
+    (hmi : stdVecMinusFwd (BitVec.ofNat 64 len) (BitVec.ofNat 64 0) =
+      .ok (.i64 ((BitVec.ofNat 64 len) - BitVec.ofNat 64 0)))
+    (hal : stdVecAllocFwd newlen = .ok (.stdVecOwned bNew 0 newlen.toNat))
+    (hcon : stdVecConstructFwd bNew 0 newlen.toNat
+      ((BitVec.ofNat 64 len) - BitVec.ofNat 64 0) x =
+      .ok (.stdVecOwned bC 0 newlen.toNat))
+    (hr1 : stdVecRelocFwd b len cap bC 0 newlen.toNat
+      (BitVec.ofNat 64 0) ((BitVec.ofNat 64 len) - BitVec.ofNat 64 0)
+      (BitVec.ofNat 64 0) = .ok (.stdVecOwned bR1 0 newlen.toNat))
+    (hr2 : stdVecRelocFwd b len cap bR1 0 newlen.toNat
+      ((BitVec.ofNat 64 len) - BitVec.ofNat 64 0) (BitVec.ofNat 64 len)
+      (((BitVec.ofNat 64 len) - BitVec.ofNat 64 0) + BitVec.ofNat 64 1) =
+      .ok (.stdVecOwned bR2 0 newlen.toNat))
+    (hgd : stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap) = .ok v) :
+    stdVecPushBackFwd b len cap x =
+      .ok (.stdVecOwned bR2 ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat)
+        newlen.toNat) := by
+  unfold stdVecPushBackFwd
+  exact stdVecEmplaceBack_correct_ok_slow b len cap x hlc newlen bNew
+    bC bR1 bR2 v hck hbg hmi hal hcon hr1 hr2 hgd
+
+/-- Fast construct failure fails the whole append. -/
+theorem stdVecPushBack_correct_err_construct (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) (e : Panic)
+    (hlc : len ≠ cap)
+    (h : stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x =
+      .error e) :
+    stdVecPushBackFwd b len cap x = .error e := by
+  unfold stdVecPushBackFwd
+  exact stdVecEmplaceBack_correct_err_construct b len cap x e hlc h
+
+/-- Fast construct success delivers the bumped triple. -/
+theorem stdVecPushBack_correct_ok_fast (b : Vec32) (len cap : Nat)
+    (x : BitVec 32) (bC : Vec32)
+    (hlc : len ≠ cap)
+    (h : stdVecConstructFwd b len cap (BitVec.ofNat 64 len) x =
+      .ok (.stdVecOwned bC len cap)) :
+    stdVecPushBackFwd b len cap x =
+      .ok (.stdVecOwned bC (len + 1) cap) := by
+  unfold stdVecPushBackFwd
+  exact stdVecEmplaceBack_correct_ok_fast b len cap x bC hlc h
+
 /-! ## N3c gallery: worked properties beyond the admitted-shape specs -/
 
 /-- The index fill is sorted: `vec` writes `k` at slot `k`, so the

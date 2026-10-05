@@ -465,10 +465,10 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `insert`/`erase`, `at()`.
 23. `std::vector<int32_t>` growth leaves (N4d-iv-b1): the 21
     call-free leaf bodies of the `vec_push_sum` frontier (53
-    defined defs; the 2 remaining multi-call composers — entry,
-    `push_back` — stay OUT with the dedicated composer pin
+    defined defs; the remaining multi-call composer — entry —
+    stays OUT with the dedicated composer pin
     (`_M_realloc_insert` graduated in 24, `emplace_back`
-    graduated in 25): default ctor (empty owned
+    graduated in 25, `push_back` graduated in 26): default ctor (empty owned
     triple), erased no-ops (allocator ctors/dtors, destroy range /
     element, allocator projection — all answer zero), dtor (frees
     iff `cap > 0`, else passthrough), `max_size` chain (the
@@ -522,8 +522,17 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     to the direct `x`; `back()` + `__retval` fuse away (the C++
     reference functionalizes as triple threading). Fuel `F=F'+1`
     with `len+2 ≤ F`, closed under `cap < 2^64` + `len < buf.length`.
-    Containment result: `emplace_back` is IN; `push_back` / entry
-    stay OUT with the composer pin.
+    Containment result: `emplace_back` and `push_back` are IN;
+    entry stays OUT with the composer pin.
+26. `std::vector<int32_t>` `push_back` (N4d-iv-b2): the 8-site
+    forwarder over the proved `emplace_back` composer — the
+    `this` / `__x` spill+reload fuses to the direct `(t, x)` params,
+    the single `emplace_back` call (reference result discarded
+    before the void return) is a `callProg` at depth `fuel - 1`,
+    and the C++ `void` functionalizes as triple threading. Fuel
+    `len + 3 ≤ F` (one more `callProg` depth than `emplace_back`).
+    Containment result: `push_back` is IN; entry stays OUT with the
+    composer pin.
 
 ## Admitted CIR ops (raw CIRGen shape)
 

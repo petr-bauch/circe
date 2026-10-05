@@ -2133,6 +2133,45 @@ def isStdVecEmplaceBackShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.cleanup"
   | _ => false
 
+/-- N4d-iv-b2 `push_back` forwarder shape: the 8-site corpus def
+    (`this` / `__x` spill+reload fused to the direct params, one
+    `emplace_back` call whose reference result is discarded before
+    the void return). -/
+def isStdVecPushBackShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "" &&
+  match raw.params with
+  | [this, x] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isVecGrowRef "!cir.ptr<!s32i>" x &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecEmplaceBackName &&
+    opCount raw.text ("cir.call @" ++ stdVecEmplaceBackName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.alloca" == 2 &&
+    opCount raw.text "cir.store" == 2 &&
+    opCount raw.text "cir.load" == 2 &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.scope" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.cleanup"
+  | _ => false
+
 /-- Any N4d-iv-b1 growth-leaf shape (disjunction for the alias-gate
     carve-outs: a func matching one of these has exactly the pinned
     params, so the erased-offset params need no uniqueness). -/
@@ -3149,9 +3188,11 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     .ok { stdVecGrowReallocFunc with name := raw.name }
   else if isStdVecEmplaceBackShape raw then
     .ok { stdVecEmplaceBackFunc with name := raw.name }
+  else if isStdVecPushBackShape raw then
+    .ok { stdVecPushBackFunc with name := raw.name }
   else if isVecGrowComposerText raw.text then
     reject raw.name .outOfSubset
-      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (`_M_realloc_insert` / `emplace_back` / `push_back` / the `vec_push_sum` entry: multi-call growth composition — checked length, fresh storage, value relocation): growth leaves validate in N4d-iv-b1, composition is deferred to N4d-iv-b2 (see docs/ROADMAP.md N4d-iv-b)"
+      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (the `vec_push_sum` entry over the admitted `push_back` forwarder: multi-call growth composition — checked length, fresh storage, value relocation): growth leaves and composers validate in N4d-iv-b1/N4d-iv-b2, the entry is deferred (see docs/ROADMAP.md N4d-iv-b)"
   else match forbiddenOp raw.text with
   | some what =>
     reject raw.name .outOfSubset

@@ -199,17 +199,56 @@ def stdVecGrowReallocFwd (b : Vec32) (len cap : Nat) (pos : BitVec 64)
   .ok (.stdVecOwned bR2
     ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)
 
+/-- Mangled name of `emplace_back<int>`. -/
+def stdVecEmplaceBackName : String :=
+  "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_"
+
+/-- Canonical CoreIR for `emplace_back`: the guard (`_M_finish` /
+    `_M_end_of_storage` loads + raw-pointer `cmp ne` + `cir.if`)
+    fuses to `len` / `cap` lets + a `.une` dispatch (`ne` on
+    `base + len*4` vs `base + cap*4` with the same base and nonzero
+    scale is exactly `len ≠ cap`); the `__args` pack load fuses to
+    the direct `x` param. Fast arm: the `traits::construct` call is
+    a `callRet` into the frozen b1 leaf, and the
+    construct-at-finish + finish-bump (`ptr_stride` + store) fuse to
+    `len + 1` with a `vgrowSetLen` return. Slow arm: the `end()`
+    call is a `callRet` into the frozen `end` leaf, and the
+    `_M_realloc_insert` call is a `callProg` into the proved
+    composer (composer-calls-composer runs under the program
+    evaluator at depth `fuel - 1`). The shared tail (`back()` call
+    + `__retval` store + return) fuses away: the C++ reference
+    return functionalizes as triple threading (mirroring how
+    `construct`'s C++ `void` functionalizes), so both arms return
+    the updated triple directly. -/
+def stdVecEmplaceBackFunc : Func :=
+  ⟨stdVecEmplaceBackName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "x", ty := .i 32, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+   (.seq (.let_ "cap" (.u 64) (.vgrowCap "t"))
+   (.if_ (.une (.var "len") (.var "cap"))
+     (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
+     (.seq (.let_ "len1" (.u 64)
+              (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+           (.return_ (.vgrowSetLen "tF" (.var "len1")))))
+     (.seq (.callRet "pos" stdVecEndName ["t"])
+     (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
+           (.return_ (.var "r"))))))⟩
+
 /-- The shared growth program: the frozen b1 leaves the composers
     call into (name-stamped exactly as the corpus defines them, so
     `findFunc` resolves every composer `callRet`), plus the
     already-proved composers later composers call into via
-    `callProg` (`_M_realloc_insert` for `emplace_back`), plus the
+    `callProg` (`_M_realloc_insert` for `emplace_back`,
+    `emplace_back` for `push_back`), plus the
     frozen `end` leaf the slow arm calls. Grows as later composers
     need more callees. Listed after the composer it includes. -/
 def vecGrowProg : Prog :=
   [stdVecCheckLenFunc, stdVecBeginFunc, stdVecMinusFunc,
     stdVecAllocFunc, stdVecConstructFunc, stdVecRelocFunc,
-    stdVecDeallocGuardFunc, stdVecGrowReallocFunc, stdVecEndFunc]
+    stdVecDeallocGuardFunc, stdVecGrowReallocFunc, stdVecEndFunc,
+    stdVecEmplaceBackFunc]
 
 /-- `check_len` success at `n = 1` delivers a `u64` word holding at
     least `len + 1` (the growth invariant both relocates' destination
@@ -1865,43 +1904,6 @@ theorem evalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32) (len cap : Nat)
 
 /-! ## N4d-iv-b2: `emplace_back` (fast/slow growth composer) -/
 
-/-- Mangled name of `emplace_back<int>`. -/
-def stdVecEmplaceBackName : String :=
-  "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_"
-
-/-- Canonical CoreIR for `emplace_back`: the guard (`_M_finish` /
-    `_M_end_of_storage` loads + raw-pointer `cmp ne` + `cir.if`)
-    fuses to `len` / `cap` lets + a `.une` dispatch (`ne` on
-    `base + len*4` vs `base + cap*4` with the same base and nonzero
-    scale is exactly `len ≠ cap`); the `__args` pack load fuses to
-    the direct `x` param. Fast arm: the `traits::construct` call is
-    a `callRet` into the frozen b1 leaf, and the
-    construct-at-finish + finish-bump (`ptr_stride` + store) fuse to
-    `len + 1` with a `vgrowSetLen` return. Slow arm: the `end()`
-    call is a `callRet` into the frozen `end` leaf, and the
-    `_M_realloc_insert` call is a `callProg` into the proved
-    composer (composer-calls-composer runs under the program
-    evaluator at depth `fuel - 1`). The shared tail (`back()` call
-    + `__retval` store + return) fuses away: the C++ reference
-    return functionalizes as triple threading (mirroring how
-    `construct`'s C++ `void` functionalizes), so both arms return
-    the updated triple directly. -/
-def stdVecEmplaceBackFunc : Func :=
-  ⟨stdVecEmplaceBackName,
-   [{ name := "t", ty := .vecBlock, role := .owned },
-    { name := "x", ty := .i 32, role := .owned }],
-   .vecBlock,
-   .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
-   (.seq (.let_ "cap" (.u 64) (.vgrowCap "t"))
-   (.if_ (.une (.var "len") (.var "cap"))
-     (.seq (.callRet "tF" stdVecTraitsConstructName ["t", "len", "x"])
-     (.seq (.let_ "len1" (.u 64)
-              (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
-           (.return_ (.vgrowSetLen "tF" (.var "len1")))))
-     (.seq (.callRet "pos" stdVecEndName ["t"])
-     (.seq (.callProg "r" stdVecGrowReallocName ["t", "pos", "x"])
-           (.return_ (.var "r"))))))⟩
-
 /-- Value-level forward for `emplace_back`: capacity decides. Fast
     (`len ≠ cap`): the frozen construct forward at `len`, length
     `len + 1` (one equation per composer `callRet`, mirroring how
@@ -2370,3 +2372,117 @@ theorem evalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32) (len cap : Nat)
         hif, evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCon,
         evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepLen1, hret]
       simp only [hFwdFast, hcon, vecGrow_bind_ok, vecGrowOwned]
+
+/-! ## N4d-iv-b2: `push_back` (forwarder into `emplace_back`) -/
+
+/-- Mangled name of `push_back` (rvalue-ref overload). -/
+def stdVecPushBackName : String :=
+  "_ZNSt6vectorIiSaIiEE9push_backEOi"
+
+/-- Canonical CoreIR for `push_back`: the `this` / `__x` spill+reload
+    fuses to the direct `(t, x)` params, and the single
+    `emplace_back` call (whose reference result is discarded before
+    the void return) is a `callProg` into the proved composer
+    (composer-calls-composer runs under the program evaluator at
+    depth `fuel - 1`). The C++ `void` functionalizes as triple
+    threading, so the body returns the composer's triple directly. -/
+def stdVecPushBackFunc : Func :=
+  ⟨stdVecPushBackName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "x", ty := .i 32, role := .owned }],
+   .vecBlock,
+   .seq (.callProg "r" stdVecEmplaceBackName ["t", "x"])
+     (.return_ (.var "r"))⟩
+
+/-- Value-level forward for `push_back`: the `emplace_back` dispatch
+    forward (the discarded reference never affects the triple). -/
+def stdVecPushBackFwd (b : Vec32) (len cap : Nat) (x : BitVec 32) :
+    Result Value :=
+  stdVecEmplaceBackFwd b len cap x
+
+/-- `findFunc` resolves the `emplace_back` callee in the grown
+    program (standalone, reused by both the value and memory
+    forwarder proofs). -/
+theorem findFunc_stdVecEmplaceBack :
+    findFunc vecGrowProg stdVecEmplaceBackName =
+      some stdVecEmplaceBackFunc := by
+  unfold vecGrowProg
+  rw [findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide)]
+  exact findFunc_hit _ _
+
+set_option maxRecDepth 8192 in
+/-- `emit_correct` for `push_back`: the single-`callProg` forwarder
+    agrees with the `emplace_back` dispatch forward. Caller-side
+    preconditions mirror `emplace_back`'s; fuel covers one more
+    `callProg` depth (`len + 3 ≤ F`). -/
+theorem evalProgFunc_stdVecPushBack (F : Nat) (b : Vec32) (len cap : Nat)
+    (x : BitVec 32)
+    (hlive : b.freed = false)
+    (hmax : len ≤ stdVecMaxDiffBV.toNat)
+    (hlenB : len < b.val.length)
+    (h64 : b.val.length < 2 ^ 64)
+    (hcap64 : cap < 2 ^ 64)
+    (hF : len + 3 ≤ F) :
+    evalProgFunc vecGrowProg F stdVecPushBackFunc
+      [.stdVecOwned b len cap, .i32 x] =
+      stdVecPushBackFwd b len cap x := by
+  obtain ⟨F', rfl⟩ := Nat.exists_eq_succ_of_ne_zero (by omega : F ≠ 0)
+  have hF' : len + 2 ≤ F' := by omega
+  have hbind : bindArgs stdVecPushBackFunc.args
+      [.stdVecOwned b len cap, .i32 x] =
+      some [("t", .stdVecOwned b len cap), ("x", .i32 x)] := rfl
+  have hbody : stdVecPushBackFunc.body =
+      (.seq (.callProg "r" stdVecEmplaceBackName ["t", "x"])
+        (.return_ (.var "r"))) := rfl
+  have hFwd : stdVecPushBackFwd b len cap x =
+      stdVecEmplaceBackFwd b len cap x := rfl
+  have ht : envLookup [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "t" = some (.stdVecOwned b len cap) := by simp [envLookup]
+  have hx : envLookup [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      "x" = some (.i32 x) := by
+    simp [envLookup, show ("t" : String) ≠ "x" by decide]
+  have hargs : lookupArgs [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+      ["t", "x"] = some [.stdVecOwned b len cap, .i32 x] := by
+    simp only [lookupArgs, ht, hx]
+  have hcall : evalProgFunc vecGrowProg F' stdVecEmplaceBackFunc
+      [.stdVecOwned b len cap, .i32 x] =
+      stdVecEmplaceBackFwd b len cap x :=
+    evalProgFunc_stdVecEmplaceBack F' b len cap x hlive hmax
+      hlenB h64 hcap64 hF'
+  cases hR : stdVecEmplaceBackFwd b len cap x with
+  | error e =>
+    have hcall' : evalProgFunc vecGrowProg F' stdVecEmplaceBackFunc
+        [.stdVecOwned b len cap, .i32 x] = .error e := by rw [hcall, hR]
+    have hstepCall := evalProgStmt_callProg_err vecGrowProg F' "r"
+      stdVecEmplaceBackName ["t", "x"] _ _ stdVecEmplaceBackFunc e
+      hargs findFunc_stdVecEmplaceBack hcall'
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_err _ _ _ _ _ _ hstepCall]
+    simp only [hFwd, hR]
+  | ok v =>
+    have hcall' : evalProgFunc vecGrowProg F' stdVecEmplaceBackFunc
+        [.stdVecOwned b len cap, .i32 x] = .ok v := by rw [hcall, hR]
+    have hstepCall := evalProgStmt_callProg_ok vecGrowProg F' "r"
+      stdVecEmplaceBackName ["t", "x"] _ _ stdVecEmplaceBackFunc v
+      hargs findFunc_stdVecEmplaceBack hcall'
+    have hrE : evalExpr (.var "r")
+        (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)] "r" v) =
+        .ok v := by
+      simp [evalExpr, envLookup, envExtend]
+    have hret : evalProgStmt vecGrowProg (F' + 1)
+        (.return_ (.var "r"))
+        (envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)] "r" v) =
+        .ok ((envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
+          "r" v), .returned v) :=
+      evalProgStmt_return vecGrowProg (F' + 1) _ _ _ hrE
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepCall, hret]
+    simp only [hFwd, hR]

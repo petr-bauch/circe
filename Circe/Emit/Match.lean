@@ -589,6 +589,12 @@ def matchFrag : Func → Option FragKind
         some .vecGrowRealloc
       else none
     | _ => none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"x", .i 32, .owned⟩], _,
+      .seq (.callProg "r"
+              "_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_"
+              ["t", "x"])
+        (.return_ (.var "r"))⟩ =>
+    some .vecPushBack
   | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"x", .i 32, .owned⟩], _, body⟩ =>
     -- `emplace_back` composer: guard fused to `len`/`cap` + `.une`,
     -- fast arm over the frozen construct leaf, slow arm over the
@@ -685,3 +691,4 @@ theorem matchFrag_stdVecConstruct : matchFrag stdVecConstructFunc = some .vecCon
 theorem matchFrag_stdVecReloc : matchFrag stdVecRelocFunc = some .vecReloc := rfl
 theorem matchFrag_stdVecGrowRealloc : matchFrag stdVecGrowReallocFunc = some .vecGrowRealloc := rfl
 theorem matchFrag_stdVecEmplaceBack : matchFrag stdVecEmplaceBackFunc = some .vecEmplaceBack := rfl
+theorem matchFrag_stdVecPushBack : matchFrag stdVecPushBackFunc = some .vecPushBack := rfl

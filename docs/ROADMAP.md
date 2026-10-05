@@ -477,6 +477,13 @@ is not value-faithful):
   spec stub mirror-agreement check true; containment result —
   `emplace_back` is IN, `push_back` / entry stay OUT with the
   composer pin).
+  N4d-iv-b2 `push_back` — DONE (2026-10-05: the 8-site forwarder
+  over the proved `emplace_back` composer via additive `.callProg`
+  at depth `fuel - 1` (fuel `len + 3 ≤ F`); `evalProgFunc` +
+  `memEvalProgFunc` + `memTransfer` green,
+  `VecGrowComposerPushBack*.lean` goldens byte-identical, spec stub
+  mirror-agreement check true; containment result — `push_back` is
+  IN, entry stays OUT with the composer pin).
   N4d-iii `std::string_view` range-for and N4d-iv-b `std::vector`
   growth (reallocation moves values) remain: each needs a probed
   lowering + a token/value model before admission. Probes so far:
@@ -506,8 +513,8 @@ guarded deref, done 2026-10-04) → N4d-iii (`span` index-sum,
 done 2026-10-04) → N4d-iv-a (`vector` reads, done 2026-10-04) →
 N4d-iv-b1 (`vector` growth leaves, done 2026-10-04) →
 N4d-iv-b2 (`vector` growth composition: `_M_realloc_insert` done
-2026-10-05, `emplace_back` done 2026-10-05; `push_back` / entry
-remain) /
+2026-10-05, `emplace_back` done 2026-10-05, `push_back` done
+2026-10-05; entry remains) /
 `string_view` range-for.
 N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.
