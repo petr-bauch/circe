@@ -68,7 +68,7 @@ casts (integer promotion — rejected with the promotion message).
 
 Trusted: Clang/CIRGen, CIR syntax, Lean+Mathlib,
 rendering, parser. Oracle verdicts (`tests/oracle/verdicts.txt`) were a
-trust root through M2; M3 (ROADMAP.md) shrinks that trust on the admitted
+trust root through M2; M3 (DELIVERED.md) shrinks that trust on the admitted
 C fragment: `Validator.derivedNoalias` derives noalias from CIR text,
 `Circe.Derived` proves per-shape footprints, and `Circe.Transfer` proves
 `oracle_noalias f → memEval f = Eval f` — so for C the verdicts file is a

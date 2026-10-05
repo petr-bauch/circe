@@ -89,7 +89,7 @@ before → after):
 ```
 
 Plain `simp`/`omega`/`bv_decide` suffice in the common case.
-Stage 2 (ROADMAP.md S5 — done) adds two tactics beside `cir_simp`
+Stage 2 (DELIVERED.md S5 — done) adds two tactics beside `cir_simp`
 plus one bound lemma. Placement follows dependencies (`Tactics`
 imports `Emit`, so the helpers live where their names resolve, all in
 scope via `import Circe.Tactics`):
@@ -126,7 +126,7 @@ Loop-fact side conditions discharge uniformly (`sumWhile_correct ...
 (`by cir_choose b`). No new subset: nested/skip/find keep their
 hand-rolled fuel steps and can migrate as needed.
 
-## N3c gallery: worked properties (ROADMAP.md N3 — done)
+## N3c gallery: worked properties (DELIVERED.md N3 — done)
 
 Three end-to-end proofs over the existing corpus, checked into
 `Circe.Specs` (driver typecheck-gated, so they double as regression
@@ -192,7 +192,7 @@ before `cir_simp` + `simp_all` closes the if-lifting. The set grew by
 one proof); `vecRealloc_empty`/`vec64_empty` shortened to bare
 `cir_simp` and `sumCaller_correct` now opens with `cir_simp`.
 
-## Spec scaffolding (ROADMAP.md S4 — done)
+## Spec scaffolding (DELIVERED.md S4 — done)
 
 The emitter writes `out/<name>_Spec.lean` next to each forward file
 (39 stubs, one per golden; `tools/GenOut.lean` via `Circe.Emit.emitSpec`,

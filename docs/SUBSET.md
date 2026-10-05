@@ -8,7 +8,7 @@ In-subset divergence is P0; out-of-subset must reject loudly.
 
 `void`, `_Bool`, `i8/i16/i32/i64`, `u8/u16/u32/u64` (proved:
 loop-free `i32`/`u32` throughout plus 64-bit `add64`/`addu64` per
-`ROADMAP.md` S3b and the single-block `u64` heap shape
+`DELIVERED.md` S3b and the single-block `u64` heap shape
 (`vec_alloc_u64`, M1b); 8/16-bit promote to `i32` in CIRGen and are
 rejected with the promotion message; 64-bit loops/arrays/structs and
 multi-block `u64` heaps are future work), `T*` (disciplined only, see
@@ -61,7 +61,7 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
 1. `T*` params must be `__restrict__` or oracle-proven `noalias`.
    (C++ M2: `this` / `const&` params carry `nonnull + dereferenceable
    + noundef` instead — `this` cannot carry `restrict` / `noalias`;
-   see `ROADMAP.md` M2 and `PINS.md`.)
+   see `DELIVERED.md` M2 and `PINS.md`.)
    (N2c recovery: the single live array of an admitted reader shape
    (`sum` / `sum_caller` / `find_eq`, e.g. `sum_norestrict`) needs
    neither — singleton footprint + read-only CoreIR recover noalias

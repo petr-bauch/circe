@@ -81,11 +81,6 @@ A viable verification platform for modern C++: the subset of C++ that
 is amenable to Aeneas-style translation to Lean (value semantics +
 affine tokens, no aliasing in the common case), with tactic and
 spec-scaffolding support for proving properties of the emitted code.
-Short-term S0–S5 complete; M1 (heap generics) done (M1a–M1d); M2
-(C++-lite) done (M2a–M2c); M3 (shrinking oracle trust) done for C
-(M3a–M3c) and C++ (M3d); N2a (read-only sharing discipline,
-model-side: `Circe.ReadOnly` + `GoldenReadOnly`), N2b (per-cause
-rejection catalog: `GoldenRejectCatalog`), and N2c (`restrict`-recovery:
-`recoveredNoalias` + `sum_norestrict` corpus) done — N2 complete.
-L1 (scope/alloca evidence tracking, extract-only: `Circe.Scope` +
-`ScopeReport`) done. Details in `ROADMAP.md`.
+Delivered so far: S0–S5, M1–M3, N1–N4 (including the full `vector`
+growth composition), plus L1 lifetime evidence (extract-only).
+Details in `DELIVERED.md`; active work in `ROADMAP.md`.

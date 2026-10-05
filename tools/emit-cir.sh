@@ -27,7 +27,7 @@ done
 # M2 C++ corpus: same CIRGen capture, plus `-fno-exceptions` (pinned:
 # without it, dtor defs carry `cir.try` + `personality` and new/delete
 # carries `cleanup eh` regions; with it only `cleanup.scope` /
-# `cleanup normal` + `trap` remain — see docs/ROADMAP.md M2).
+# `cleanup normal` + `trap` remain — see docs/DELIVERED.md M2).
 # Empty until M2a lands (nullglob: no match expands to nothing).
 shopt -s nullglob
 for src in tests/cpp/*.cpp; do

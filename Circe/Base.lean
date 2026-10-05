@@ -1166,7 +1166,7 @@ theorem vecFillSumU32_correct (n : Nat) :
 
 /-- A uniquely-owned `u64` heap block (`malloc`/`free` functionalized).
     Monomorphized mirror of `Vec32` (M1b): no `Vec α` polymorphism
-    (width unification stays deferred, see docs/ROADMAP.md).
+    (width unification stays deferred, see docs/DELIVERED.md S3b).
     Capacity is `val.length` (fixed at creation, zero-initialized);
     `freed` is the affine token: `vecFree64` sets it, and every use checks
     it (`AssertFail` on use-after-free / double-free — incompleteness,

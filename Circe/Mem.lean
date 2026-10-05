@@ -5,7 +5,7 @@ M3a (C only): a flat block map with lightweight borrow tags, just strong
 enough for our three uniqueness sources (`__restrict__` / `noalias`
 attrs, disjoint `malloc` results, length-paired stride loops). No
 retag/protect generality beyond what the admitted shapes express (see
-docs/ROADMAP.md M3); full Stacked Borrows is an explicit non-goal.
+docs/DELIVERED.md M3); full Stacked Borrows is an explicit non-goal.
 
 State shape (locked): flat block map. `Mem` is a next-address counter +
 an `Addr → Block` list-map; a block is a tag (= allocating epoch, so

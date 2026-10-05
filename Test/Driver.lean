@@ -372,8 +372,9 @@ def contentAsserts : List (String × List (String × String)) :=
      -- NOTE: `tools/check-phase6.sh` is orphaned (nothing invokes it) and
      -- its `Stacked-Borrows` needle went stale when ROADMAP was reworded
      -- to `Stacked Borrows`. The live intent (docs pin the memory model)
-     -- is preserved with the corrected needle.
-     ("docs/ROADMAP.md", "Stacked Borrows"),
+     -- is preserved with the corrected needle. M3 (with its
+     -- `Stacked Borrows` non-goal) moved to `DELIVERED.md` (2026-10-05).
+     ("docs/DELIVERED.md", "Stacked Borrows"),
      ("docs/ROADMAP.md", "C++-lite"),
      ("docs/SUBSET.md", "cir.br")]),
    ("s1-bodies",
