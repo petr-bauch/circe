@@ -7,14 +7,12 @@
 --    oracle facts via `validateModule`: the 21 b1 leaf
 --    representatives emit byte-identical text to
 --    `tests/golden/VecGrow*.lean`, the admitted `_M_realloc_insert`,
---    `emplace_back`, and `push_back` composers emit byte-identical
---    text to `tests/golden/VecGrowComposerRealloc*.lean`,
---    `tests/golden/VecGrowComposerEmplace*.lean`, and
---    `tests/golden/VecGrowComposerPushBack*.lean`, the remaining
---    N4d-iv-b2 growth composer (entry)
---    rejects with the dedicated composer pin, and every other def
---    validates (52 ok / 1 composer-pinned, 53 total — the pinned
---    frontier).
+--    `emplace_back`, `push_back`, and entry composers emit
+--    byte-identical text to `tests/golden/VecGrowComposerRealloc*.lean`,
+--    `tests/golden/VecGrowComposerEmplace*.lean`,
+--    `tests/golden/VecGrowComposerPushBack*.lean`, and
+--    `tests/golden/VecGrowComposerEntry*.lean`, and every other def
+--    validates (53 ok, 53 total — the admitted frontier).
 -- 2. Rejection suite: call to an unknown vector callee (generic),
 --    double call into `max_size` (site-count pin), `check_len`
 --    called at the wrong arity (arity pin), bare vector pointer
@@ -109,11 +107,6 @@ def vecGrowLeaves : List (String × String) :=
    ("_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_", "VecGrowReloc"),
    ("_ZN9__gnu_cxx13new_allocatorIiEC2Ev", "VecGrowUnit")]
 
-/-- The remaining N4d-iv-b2 growth composer (deferred; must pin,
-    not emit). -/
-def vecGrowComposers : List String :=
-  ["_Z12vec_push_sumv"]
-
 /-- The admitted N4d-iv-b2 composers: corpus def name × golden stem
     (each validates to its composer `Func` and emits byte-identical
     text). -/
@@ -123,7 +116,9 @@ def vecGrowAdmitted : List (String × String) :=
    ("_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_",
     "VecGrowComposerEmplace"),
    ("_ZNSt6vectorIiSaIiEE9push_backEOi",
-    "VecGrowComposerPushBack")]
+    "VecGrowComposerPushBack"),
+   ("_Z12vec_push_sumv",
+    "VecGrowComposerEntry")]
 
 def checkVecGrowPipeline : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_push_sum.cir"
@@ -131,8 +126,8 @@ def checkVecGrowPipeline : IO Nat := do
   if res.length != 53 then
     throw (IO.userError s!"vec-grow frontier drift: {res.length} defs, expected 53")
   let errs := res.filter (fun (_, v) => !v.isOk)
-  if errs.length != 1 then
-    throw (IO.userError s!"vec-grow rejects drift: {errs.length} errors, expected 1 composer pin")
+  if errs.length != 0 then
+    throw (IO.userError s!"vec-grow rejects drift: {errs.length} errors, expected 0 (entry admitted)")
   for (name, g) in vecGrowLeaves do
     match res.find? (fun (m, _) => m == name) with
     | none =>
@@ -162,20 +157,8 @@ def checkVecGrowPipeline : IO Nat := do
         | .error _ => throw (IO.userError s!"spec emit failed for {g} ({name})")
       if gotSpec != wantSpec then
         throw (IO.userError s!"spec golden mismatch for {g} ({name})")
-  IO.println "PASS pipeline vec_push_sum (3 admitted composers byte-identical)"
-  let mut pinned := 0
-  for name in vecGrowComposers do
-    match res.find? (fun (m, _) => m == name) with
-    | none =>
-      throw (IO.userError s!"vec-grow composer missing from corpus: {name}")
-    | some (_, .ok _) =>
-      throw (IO.userError s!"vec-grow composer unexpectedly accepted: {name}")
-    | some (_, .error rej) =>
-      if !containsSubstr rej.message "N4d-iv-b2 growth composer" then
-        throw (IO.userError s!"vec-grow composer wrong pin: {name}: {rej.message}")
-      pinned := pinned + 1
-  IO.println "PASS pipeline vec_push_sum (remaining b2 composer pinned)"
-  pure (vecGrowLeaves.length + vecGrowAdmitted.length + pinned)
+  IO.println "PASS pipeline vec_push_sum (4 admitted composers byte-identical)"
+  pure (vecGrowLeaves.length + vecGrowAdmitted.length)
 
 /-- Adversarial case: inline CIR must reject with `code` in the message
     plus `substr`. -/

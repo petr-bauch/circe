@@ -1108,3 +1108,22 @@ theorem findEq_first_match (l : List (BitVec 32)) (n : Nat) (k : BitVec 32)
 theorem reallocPrefix_spec (n : Nat) :
     ((List.range (n + n)).take n) = List.range n := by
   simp
+
+/-! ## N4d-iv-b2 entry-scoped `operator[]` leaf: spec (Fwd level) -/
+
+/-- In-bounds index reads deliver the buffer word. -/
+theorem stdVecGrowIndex_correct_hit (b : Vec32) (len : Nat)
+    (n : BitVec 64)
+    (hlive : b.freed = false)
+    (x : BitVec 32)
+    (hget : b.val[n.toNat]? = some x)
+    (hlt : n.toNat < len) :
+    stdVecGrowIndexFwd b len n = .ok (.i32 x) := by
+  simp [stdVecGrowIndexFwd, hlive, hget, hlt]
+
+/-! ## N4d-iv-b2 `vec_push_sum` entry: spec (Fwd level) -/
+
+/-- The closed entry computes `1 + 2 + 3 = 6` (frozen by evaluating
+    `vecPushSumEntryFwd`). -/
+theorem vecPushSumEntry_correct :
+    vecPushSumEntryFwd = .ok (.i32 6) := rfl

@@ -680,6 +680,17 @@ def emitStdVecPushBackText (name : String) : String :=
   ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (x : BitVec 32) : Result Value :=\n"
   ++ "  stdVecPushBackFwd b len cap x\n"
 
+/-- Render the closed `vec_push_sum` entry: direct delegation to the
+    verified `vecPushSumEntryFwd` (default ctor, three pushes, three
+    reads, two adds, destructor; cf. `emitTranslateText` delegating to
+    the verified `Base` op). -/
+def emitVecPushSumEntryText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (closed entry over the proved growth composers). -/\n"
+  ++ s!"def {name}_fwd : Result Value :=\n"
+  ++ "  vecPushSumEntryFwd\n"
+
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/

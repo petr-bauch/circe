@@ -595,6 +595,31 @@ def matchFrag : Func → Option FragKind
               ["t", "x"])
         (.return_ (.var "r"))⟩ =>
     some .vecPushBack
+  | ⟨_, [], .i 32,
+      .seq (.callRet "v0" "_ZNSt6vectorIiSaIiEEC2Ev" [])
+      (.seq (.let_ "c0" (.i 32) (.lit (.i32 c0v)))
+      (.seq (.callProg "v1" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v0", "c0"])
+      (.seq (.let_ "c1" (.i 32) (.lit (.i32 c1v)))
+      (.seq (.callProg "v2" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v1", "c1"])
+      (.seq (.let_ "c2" (.i 32) (.lit (.i32 c2v)))
+      (.seq (.callProg "v3" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v2", "c2"])
+      (.seq (.let_ "n0" (.u 64) (.lit (.u64 n0v)))
+      (.seq (.callRet "e0" "_ZNSt6vectorIiSaIiEEixEm" ["v3", "n0"])
+      (.seq (.let_ "n1" (.u 64) (.lit (.u64 n1v)))
+      (.seq (.callRet "e1" "_ZNSt6vectorIiSaIiEEixEm" ["v3", "n1"])
+      (.seq (.let_ "n2" (.u 64) (.lit (.u64 n2v)))
+      (.seq (.callRet "e2" "_ZNSt6vectorIiSaIiEEixEm" ["v3", "n2"])
+      (.seq (.let_ "s1" (.i 32) (.add (.var "e0") (.var "e1")))
+      (.seq (.let_ "s2" (.i 32) (.add (.var "s1") (.var "e2")))
+      (.seq (.callRet "v4" "_ZNSt6vectorIiSaIiEED2Ev" ["v3"])
+        (.return_ (.var "s2")))))))))))))))))⟩ =>
+    -- Closed `vec_push_sum` script: the six element/index words are
+    -- pinned (`1, 2, 3` pushed; `0, 1, 2` read).
+    if c0v == BitVec.ofNat 32 1 && c1v == BitVec.ofNat 32 2 &&
+        c2v == BitVec.ofNat 32 3 && n0v == BitVec.ofNat 64 0 &&
+        n1v == BitVec.ofNat 64 1 && n2v == BitVec.ofNat 64 2 then
+      some .vecPushSumEntry
+    else none
   | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"x", .i 32, .owned⟩], _, body⟩ =>
     -- `emplace_back` composer: guard fused to `len`/`cap` + `.une`,
     -- fast arm over the frozen construct leaf, slow arm over the
@@ -692,3 +717,4 @@ theorem matchFrag_stdVecReloc : matchFrag stdVecRelocFunc = some .vecReloc := rf
 theorem matchFrag_stdVecGrowRealloc : matchFrag stdVecGrowReallocFunc = some .vecGrowRealloc := rfl
 theorem matchFrag_stdVecEmplaceBack : matchFrag stdVecEmplaceBackFunc = some .vecEmplaceBack := rfl
 theorem matchFrag_stdVecPushBack : matchFrag stdVecPushBackFunc = some .vecPushBack := rfl
+theorem matchFrag_vecPushSumEntry : matchFrag vecPushSumEntryFunc = some .vecPushSumEntry := rfl

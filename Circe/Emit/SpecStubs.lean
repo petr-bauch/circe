@@ -1330,6 +1330,28 @@ def emitStdVecPushBackSpecText (name : String) : String :=
   ++ s!"    | ((b, len, cap, x), expected) =>\n"
   ++ s!"      (repr ({name}_spec_fwd b len cap x)).pretty == (repr expected).pretty\n"
 
+/-- Spec stub for the closed `vec_push_sum` entry: the mirror delegates
+    to the verified `vecPushSumEntryFwd` (same forward as the emitted
+    entry, so the proved `vecPushSumEntry_correct` spec transfers
+    verbatim by body identity). -/
+def emitVecPushSumEntrySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}()` runs the closed push/read/sum script (three `push_back`, three `operator[]`, two adds, destructor).\n"
+  ++ s!"    Base body reference: the delegation itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecPushSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : Result Value :=\n"
+  ++ "  vecPushSumEntryFwd\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single closed run `1 + 2 + 3 = 6` (frozen by evaluating `vecPushSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × Result Value) :=\n"
+  ++ "  [((), .ok (.i32 (BitVec.ofNat 32 6)))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

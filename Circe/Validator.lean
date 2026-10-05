@@ -2172,6 +2172,49 @@ def isStdVecPushBackShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.cleanup"
   | _ => false
 
+/-- N4d-iv-b2 `vec_push_sum` entry shape: the closed corpus def (no
+    params, `!s32i` return; the default ctor, three `push_back`, three
+    non-const `operator[]`, and one destructor call; two `add`s; one
+    `cleanup` scope with the single normal-path dtor call and the
+    trailing unreachable `trap`). -/
+def isVecPushSumEntryShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "!s32i" &&
+  match raw.params with
+  | [] =>
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecCtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecCtorName ++ "(") == 1 &&
+    callsFunc raw.text stdVecPushBackName &&
+    opCount raw.text ("cir.call @" ++ stdVecPushBackName ++ "(") == 3 &&
+    callsFunc raw.text stdVecGrowIndexName &&
+    opCount raw.text ("cir.call @" ++ stdVecGrowIndexName ++ "(") == 3 &&
+    callsFunc raw.text stdVecDtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecDtorName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 8 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.store" == 4 &&
+    opCount raw.text "cir.load" == 4 &&
+    opCount raw.text "cir.const" == 9 &&
+    opCount raw.text "cir.add" == 2 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.cleanup.scope" == 1 &&
+    opCount raw.text "cir.trap" == 1 &&
+    containsSubstr raw.text "cleanup normal" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
 /-- Any N4d-iv-b1 growth-leaf shape (disjunction for the alias-gate
     carve-outs: a func matching one of these has exactly the pinned
     params, so the erased-offset params need no uniqueness). -/
@@ -3190,9 +3233,11 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     .ok { stdVecEmplaceBackFunc with name := raw.name }
   else if isStdVecPushBackShape raw then
     .ok { stdVecPushBackFunc with name := raw.name }
+  else if isVecPushSumEntryShape raw then
+    .ok { vecPushSumEntryFunc with name := raw.name }
   else if isVecGrowComposerText raw.text then
     reject raw.name .outOfSubset
-      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (the `vec_push_sum` entry over the admitted `push_back` forwarder: multi-call growth composition — checked length, fresh storage, value relocation): growth leaves and composers validate in N4d-iv-b1/N4d-iv-b2, the entry is deferred (see docs/ROADMAP.md N4d-iv-b)"
+      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (multi-call growth composition — checked length, fresh storage, value relocation): growth leaves and composers validate in N4d-iv-b1/N4d-iv-b2 (the `vec_push_sum` entry is admitted; further composers such as `reserve`/`insert`/`erase` are deferred — see docs/ROADMAP.md N4d-iv-b)"
   else match forbiddenOp raw.text with
   | some what =>
     reject raw.name .outOfSubset

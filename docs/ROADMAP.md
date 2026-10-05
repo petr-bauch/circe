@@ -15,8 +15,8 @@ M3d; N2a (read-only sharing discipline, model-side), N2b
 done — N4d-i (`std::array` reads) is done; N4d-ii (`optional`
 guarded deref) is done; N4d-iii (`span` index-sum) is done;
 N4d-iv-a (`vector` reads) is done; N4d-iv-b1 (`vector`
-growth leaves) is done; the active frontier is N4d-iv-b2
-(`vector` growth composition) / `string_view` range-for (same
+growth leaves) is done; N4d-iv-b2 (`vector` growth composition)
+is done; the active frontier is `string_view` range-for (same
 iterator reason as the span range-for pin).
 
 ## S0. Docs slim + harness rename — DONE (2026-09-27)
@@ -483,7 +483,14 @@ is not value-faithful):
   `memEvalProgFunc` + `memTransfer` green,
   `VecGrowComposerPushBack*.lean` goldens byte-identical, spec stub
   mirror-agreement check true; containment result — `push_back` is
-  IN, entry stays OUT with the composer pin).
+  IN, entry admitted next).
+  N4d-iv-b2 `vec_push_sum` entry — DONE (2026-10-05: the closed
+  17-site script over the proved composers via the shared
+  `vecGrowProg`, no inlining (fuel `6 ≤ F`, closed);
+  `evalProgFunc` + `memEvalProgFunc` + `memTransfer` green,
+  `VecGrowComposerEntry*.lean` goldens byte-identical, spec stub
+  mirror-agreement check true; containment result — the full
+  53-def frontier is IN, N4d-iv-b2 is complete).
   N4d-iii `std::string_view` range-for and N4d-iv-b `std::vector`
   growth (reallocation moves values) remain: each needs a probed
   lowering + a token/value model before admission. Probes so far:
@@ -514,7 +521,7 @@ done 2026-10-04) → N4d-iv-a (`vector` reads, done 2026-10-04) →
 N4d-iv-b1 (`vector` growth leaves, done 2026-10-04) →
 N4d-iv-b2 (`vector` growth composition: `_M_realloc_insert` done
 2026-10-05, `emplace_back` done 2026-10-05, `push_back` done
-2026-10-05; entry remains) /
+2026-10-05, entry done 2026-10-05) /
 `string_view` range-for.
 N2c opportunistically wherever a
 missing-attr rejection blocks an otherwise-amenable corpus entry.

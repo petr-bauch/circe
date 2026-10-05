@@ -465,10 +465,9 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `insert`/`erase`, `at()`.
 23. `std::vector<int32_t>` growth leaves (N4d-iv-b1): the 21
     call-free leaf bodies of the `vec_push_sum` frontier (53
-    defined defs; the remaining multi-call composer — entry —
-    stays OUT with the dedicated composer pin
-    (`_M_realloc_insert` graduated in 24, `emplace_back`
-    graduated in 25, `push_back` graduated in 26): default ctor (empty owned
+    defined defs; multi-call composition graduated in 24–27:
+    `_M_realloc_insert`, `emplace_back`, `push_back`, entry):
+    default ctor (empty owned
     triple), erased no-ops (allocator ctors/dtors, destroy range /
     element, allocator projection — all answer zero), dtor (frees
     iff `cap > 0`, else passthrough), `max_size` chain (the
@@ -494,9 +493,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     under per-def `.noalias` facts (erased `int*`/`s8*`/`void*`
     params need no uniqueness inside pinned shapes).
     Containment result: growth leaves are IN; multi-call growth
-    composition is OUT with the composer pin (N4d-iv-b2:
-    `emplace_back` / `push_back` / entry — `_M_realloc_insert`
-    graduated in 24).
+    composition is IN (N4d-iv-b2: all four composers graduated
+    in 24–27).
     Still deferred: `reserve`, `insert`/`erase`, `at()`.
 24. `std::vector<int32_t>` growth composition (N4d-iv-b2,
     `_M_realloc_insert`): the 16-site corpus def over the
@@ -511,8 +509,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     offset. Memory and layout thread through unchanged (every
     call runs on its own entry block); the only memory
     obligations are the two header loads (`hlive`-gated).
-    Containment result: `_M_realloc_insert` and `emplace_back`
-    are IN; `push_back` / entry stay OUT with the composer pin.
+    Containment result: `_M_realloc_insert`, `emplace_back`,
+    `push_back`, and entry are IN (24–27).
 25. `std::vector<int32_t>` `emplace_back` (N4d-iv-b2): the
     len/cap-guarded dispatch over the frozen b1 leaves and the
     shared `vecGrowProg` (no inlining) — fast `construct`-at-`len`
@@ -522,8 +520,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     to the direct `x`; `back()` + `__retval` fuse away (the C++
     reference functionalizes as triple threading). Fuel `F=F'+1`
     with `len+2 ≤ F`, closed under `cap < 2^64` + `len < buf.length`.
-    Containment result: `emplace_back` and `push_back` are IN;
-    entry stays OUT with the composer pin.
+    Containment result: `emplace_back`, `push_back`, and entry
+    are IN (25–27).
 26. `std::vector<int32_t>` `push_back` (N4d-iv-b2): the 8-site
     forwarder over the proved `emplace_back` composer — the
     `this` / `__x` spill+reload fuses to the direct `(t, x)` params,
@@ -531,8 +529,20 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     before the void return) is a `callProg` at depth `fuel - 1`,
     and the C++ `void` functionalizes as triple threading. Fuel
     `len + 3 ≤ F` (one more `callProg` depth than `emplace_back`).
-    Containment result: `push_back` is IN; entry stays OUT with the
-    composer pin.
+    Containment result: `push_back` and entry are IN (26–27).
+27. `vec_push_sum` entry (N4d-iv-b2): the closed 17-site script
+    over the proved composers — default ctor, three `push_back`
+    (single-`callProg` each at depth `fuel - 1`), three non-const
+    `operator[]` reads, two checked `add`s, the
+    `cleanup`-normal destructor, `return` of the sum. The
+    `ref.tmp` spill+reload fuses to direct `c0`/`c1`/`c2` lets,
+    the `cleanup` wrapper fuses away (`cir.trap` unmodeled,
+    pinned unreachable), `__retval` fuses to the direct return.
+    Fuel is closed (`6 ≤ F`); memory and layout thread through
+    unchanged (every call runs on its own entry block, footprints
+    stay `emptyMem`/`[]`). Evaluates to `1 + 2 + 3 = 6`.
+    Containment result: the full 53-def `vec_push_sum` frontier
+    is IN — N4d-iv-b2 (`vector` growth composition) is complete.
 
 ## Admitted CIR ops (raw CIRGen shape)
 
