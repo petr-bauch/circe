@@ -34,6 +34,7 @@ import DiffVec64
 import DiffVecLeak
 import DiffVecRead
 import DiffVecRealloc
+import DiffReserve
 import DiffView
 import DiffWidth
 import GoldenAcc
@@ -163,6 +164,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/opt_deref.cpp", "tests/diff/driver_opt_deref.cpp"], bin "circe_opt_deref_native"),
    ("c++", ["-std=c++20", "tests/cpp/span_sum.cpp", "tests/diff/driver_span_sum.cpp"], bin "circe_span_sum_native"),
    ("c++", ["-std=c++17", "tests/cpp/view_sum.cpp", "tests/diff/driver_view_sum.cpp"], bin "circe_view_sum_native"),
+   ("c++", ["-std=c++17", "tests/cpp/vec_reserve_sum.cpp", "tests/diff/driver_vec_reserve.cpp"], bin "circe_vec_reserve_native"),
    ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
@@ -296,6 +298,12 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecGrowComposerPushBack_Spec.lean", "out/VecGrowComposerPushBack_Spec.lean"),
    ("tests/golden/VecGrowComposerEntry.lean", "out/VecGrowComposerEntry.lean"),
    ("tests/golden/VecGrowComposerEntry_Spec.lean", "out/VecGrowComposerEntry_Spec.lean"),
+   ("tests/golden/VecGrowCapacity.lean", "out/VecGrowCapacity.lean"),
+   ("tests/golden/VecGrowCapacity_Spec.lean", "out/VecGrowCapacity_Spec.lean"),
+   ("tests/golden/VecGrowComposerReserve.lean", "out/VecGrowComposerReserve.lean"),
+   ("tests/golden/VecGrowComposerReserve_Spec.lean", "out/VecGrowComposerReserve_Spec.lean"),
+   ("tests/golden/VecGrowComposerReserveEntry.lean", "out/VecGrowComposerReserveEntry.lean"),
+   ("tests/golden/VecGrowComposerReserveEntry_Spec.lean", "out/VecGrowComposerReserveEntry_Spec.lean"),
    ("tests/golden/VecGrowUnit.lean", "out/VecGrowUnit.lean"),
    ("tests/golden/VecGrowUnit_Spec.lean", "out/VecGrowUnit_Spec.lean"),]
 
@@ -377,6 +385,9 @@ def emittedTypechecks : List String :=
    "out/VecGrowComposerEmplace.lean", "out/VecGrowComposerEmplace_Spec.lean",
    "out/VecGrowComposerPushBack.lean", "out/VecGrowComposerPushBack_Spec.lean",
    "out/VecGrowComposerEntry.lean", "out/VecGrowComposerEntry_Spec.lean",
+   "out/VecGrowCapacity.lean", "out/VecGrowCapacity_Spec.lean",
+   "out/VecGrowComposerReserve.lean", "out/VecGrowComposerReserve_Spec.lean",
+   "out/VecGrowComposerReserveEntry.lean", "out/VecGrowComposerReserveEntry_Spec.lean",
    "out/VecGrowUnit.lean", "out/VecGrowUnit_Spec.lean",]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
@@ -815,6 +826,29 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Eval/Core.lean", "theorem evalExpr_viewAt_some"),
      ("out/ViewSum.lean", "_Z8view_sumSt17basic_string_viewIcSt11char_traitsIcEE_fwd"),
      ("tests/golden/ViewBegin.lean", "_ZNKSt17basic_string_viewIcSt11char_traitsIcEE5beginEv_fwd")]),
+   ("n7b-reserve",
+    [("Circe/Validator/Shapes.lean", "def isStdVecGrowCapacityShape"),
+     ("Circe/Validator/GrowLeaves.lean", "def isStdVecReserveShape"),
+     ("Circe/Validator/GrowLeaves.lean", "def isVecReserveSumEntryShape"),
+     ("Circe/Validator/Gate.lean", "calls a known `std::vector` leaf"),
+     ("Circe/Emit/Match.lean", "some .vecCapacity"),
+     ("Circe/Emit/Match.lean", "some .vecReserve"),
+     ("Circe/Emit/Match.lean", "some .vecReserveSumEntry"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_stdVecReserve"),
+     ("Circe/Emit/VecCompose/Reserve.lean", "theorem evalProgFunc_stdVecReserve"),
+     ("Circe/Emit/VecCompose/Reserve.lean", "theorem evalProgFunc_vecReserveSumEntry"),
+     ("Circe/Transfer/GrowReserve.lean", "theorem memEvalProgFunc_stdVecReserve"),
+     ("Circe/Transfer/GrowReserve.lean", "theorem memTransfer_stdVecReserve"),
+     ("Circe/Transfer/GrowReserve.lean", "theorem memEvalProgFunc_vecReserveSumEntry"),
+     ("Circe/Transfer/GrowReserve.lean", "theorem memTransfer_vecReserveSumEntry"),
+     ("Circe/Transfer/GrowLeaves.lean", "theorem memTransfer_stdVecGrowCapacity"),
+     ("Circe/Derived.lean", "theorem bindMemArgs_stdVecReserve"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_vecReserveSumEntry"),
+     ("Circe/Specs.lean", "theorem stdVecReserve_correct_realloc"),
+     ("Circe/Specs.lean", "theorem vecReserveSumEntry_correct"),
+     ("Circe/Specs.lean", "theorem stdVecGrowCapacity_correct"),
+     ("out/VecGrowComposerReserve.lean", "_ZNSt6vectorIiSaIiEE7reserveEm_fwd"),
+     ("tests/golden/VecGrowCapacity.lean", "_ZNKSt6vectorIiSaIiEE8capacityEv_fwd")]),
    ("n4d-vecread",
     [("Circe/Validator/Shapes.lean", "def isStdVecSizeShape"),
      ("Circe/Validator/Shapes.lean", "def isStdVecIndexShape"),
@@ -971,8 +1005,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 89 then
-    throw (IO.userError s!"expected 89 spec stubs, found {stubs.length}")
+  if stubs.length != 92 then
+    throw (IO.userError s!"expected 92 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -1012,7 +1046,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials]),
    ("diff-span", DiffSpan.main [bin "circe_span_sum_native", trials]),
    ("diff-view", DiffView.main [bin "circe_view_sum_native", trials]),
-   ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials])]
+   ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
+   ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -1051,7 +1086,7 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
-   "DiffView", "DiffWidth", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",

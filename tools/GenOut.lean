@@ -98,6 +98,7 @@ def main : IO Unit := do
   let vecCheckLen ← emitOrDie stdVecCheckLenFunc
   let vecBegin ← emitOrDie stdVecBeginFunc
   let vecEnd ← emitOrDie stdVecEndFunc
+  let vecCapacity ← emitOrDie stdVecGrowCapacityFunc
   let vecBack ← emitOrDie stdVecBackFunc
   let vecIterId ← emitOrDie stdVecIterIdFunc
   let vecMinusEl ← emitOrDie stdVecMinusElFunc
@@ -111,6 +112,8 @@ def main : IO Unit := do
   let vecGrowEmplace ← emitOrDie stdVecEmplaceBackFunc
   let vecGrowPushBack ← emitOrDie stdVecPushBackFunc
   let vecGrowEntry ← emitOrDie vecPushSumEntryFunc
+  let vecGrowReserve ← emitOrDie stdVecReserveFunc
+  let vecGrowReserveEntry ← emitOrDie vecReserveSumEntryFunc
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
@@ -187,6 +190,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecGrowCheckLen.lean" (emitFileText (.ok vecCheckLen))
   IO.FS.writeFile "out/VecGrowBegin.lean" (emitFileText (.ok vecBegin))
   IO.FS.writeFile "out/VecGrowEnd.lean" (emitFileText (.ok vecEnd))
+  IO.FS.writeFile "out/VecGrowCapacity.lean" (emitFileText (.ok vecCapacity))
   IO.FS.writeFile "out/VecGrowBack.lean" (emitFileText (.ok vecBack))
   IO.FS.writeFile "out/VecGrowIterId.lean" (emitFileText (.ok vecIterId))
   IO.FS.writeFile "out/VecGrowMinusEl.lean" (emitFileText (.ok vecMinusEl))
@@ -200,6 +204,8 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecGrowComposerEmplace.lean" (emitFileText (.ok vecGrowEmplace))
   IO.FS.writeFile "out/VecGrowComposerPushBack.lean" (emitFileText (.ok vecGrowPushBack))
   IO.FS.writeFile "out/VecGrowComposerEntry.lean" (emitFileText (.ok vecGrowEntry))
+  IO.FS.writeFile "out/VecGrowComposerReserve.lean" (emitFileText (.ok vecGrowReserve))
+  IO.FS.writeFile "out/VecGrowComposerReserveEntry.lean" (emitFileText (.ok vecGrowReserveEntry))
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let chooseSpec ← specOrDie chooseFunc
@@ -276,6 +282,7 @@ def main : IO Unit := do
   let vecCheckLenSpec ← specOrDie stdVecCheckLenFunc
   let vecBeginSpec ← specOrDie stdVecBeginFunc
   let vecEndSpec ← specOrDie stdVecEndFunc
+  let vecCapacitySpec ← specOrDie stdVecGrowCapacityFunc
   let vecBackSpec ← specOrDie stdVecBackFunc
   let vecIterIdSpec ← specOrDie stdVecIterIdFunc
   let vecMinusElSpec ← specOrDie stdVecMinusElFunc
@@ -289,6 +296,8 @@ def main : IO Unit := do
   let vecGrowEmplaceSpec ← specOrDie stdVecEmplaceBackFunc
   let vecGrowPushBackSpec ← specOrDie stdVecPushBackFunc
   let vecGrowEntrySpec ← specOrDie vecPushSumEntryFunc
+  let vecGrowReserveSpec ← specOrDie stdVecReserveFunc
+  let vecGrowReserveEntrySpec ← specOrDie vecReserveSumEntryFunc
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
@@ -365,6 +374,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecGrowCheckLen_Spec.lean" vecCheckLenSpec
   IO.FS.writeFile "out/VecGrowBegin_Spec.lean" vecBeginSpec
   IO.FS.writeFile "out/VecGrowEnd_Spec.lean" vecEndSpec
+  IO.FS.writeFile "out/VecGrowCapacity_Spec.lean" vecCapacitySpec
   IO.FS.writeFile "out/VecGrowBack_Spec.lean" vecBackSpec
   IO.FS.writeFile "out/VecGrowIterId_Spec.lean" vecIterIdSpec
   IO.FS.writeFile "out/VecGrowMinusEl_Spec.lean" vecMinusElSpec
@@ -378,6 +388,8 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecGrowComposerEmplace_Spec.lean" vecGrowEmplaceSpec
   IO.FS.writeFile "out/VecGrowComposerPushBack_Spec.lean" vecGrowPushBackSpec
   IO.FS.writeFile "out/VecGrowComposerEntry_Spec.lean" vecGrowEntrySpec
+  IO.FS.writeFile "out/VecGrowComposerReserve_Spec.lean" vecGrowReserveSpec
+  IO.FS.writeFile "out/VecGrowComposerReserveEntry_Spec.lean" vecGrowReserveEntrySpec
   match choose.backward with
   | some _ => pure ()
   | none => throw (IO.userError "choose must have a backward definition")
@@ -495,4 +507,4 @@ def main : IO Unit := do
     throw (IO.userError "vecGrowPushBack must not have a backward definition")
   if vecGrowEntry.backward.isSome then
     throw (IO.userError "vecGrowEntry must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/ClsFall.lean out/ClsDense.lean out/ClsBreak.lean out/ClsAdd.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/ViewBegin.lean out/ViewEnd.lean out/ViewSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean out/VecGrowComposerRealloc.lean out/VecGrowComposerEmplace.lean out/VecGrowComposerPushBack.lean out/VecGrowComposerEntry.lean + 86 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/ClsFall.lean out/ClsDense.lean out/ClsBreak.lean out/ClsAdd.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/ViewBegin.lean out/ViewEnd.lean out/ViewSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean out/VecGrowComposerRealloc.lean out/VecGrowComposerEmplace.lean out/VecGrowComposerPushBack.lean out/VecGrowComposerEntry.lean out/VecGrowCapacity.lean out/VecGrowComposerReserve.lean out/VecGrowComposerReserveEntry.lean + 92 *_Spec.lean stubs"

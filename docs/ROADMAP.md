@@ -123,10 +123,12 @@ semantics changes.
   language gaps complete — remaining: N7 STD growth + Iris spike.
 - N7: STD growth — `string_view` range-for DONE (N7a:
   `begin`/`end` + chase-loop shape admits to an index fold over
-  `sext8` bytes; 393 jobs TEST-OK, CHECK-OK), then
-  `reserve`/`insert`/`erase` composers (`erase` needs
-  memmove-down leaves; reuse the no-inlining `vecGrowProg`
-  pattern).
+  `sext8` bytes; 393 jobs TEST-OK, CHECK-OK); `reserve` DONE
+  (N7b: `capacity` leaf + guarded composer + closed
+  `vec_reserve_sum` entry, 55-def corpus, DiffReserve pin;
+  gates pending), then `insert`/`erase` composers (`erase`
+  needs memmove-down leaves; reuse the no-inlining
+  `vecGrowProg` pattern).
 - Iris spike (time-boxed, alongside N5): evaluate `iris-lean`
   (Lean 4 Iris port: MoSeL proof interface today, full-logic
   port deferred upstream — see

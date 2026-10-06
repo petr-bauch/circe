@@ -523,6 +523,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     composition is IN (N4d-iv-b2: all four composers graduated
     in 24–27).
     Still deferred: `reserve`, `insert`/`erase`, `at()`.
+    (N7b: `reserve` graduated in 30; `insert`/`erase`, `at()`
+    still deferred.)
 24. `std::vector<int32_t>` growth composition (N4d-iv-b2,
     `_M_realloc_insert`): the 16-site corpus def over the
     frozen b1 leaves (`check_len` → `begin` → `mi` → `allocate` →
@@ -607,6 +609,19 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     without the triple) are rejected with dedicated messages
     (`callsViewWrongShape`, small-width, `escape-reject`, or
     `alias-reject`).
+30. `std::vector<int32_t>::reserve` + `capacity` (N7b): the
+    `capacity` leaf (the `end` twin — header word 1 fused into
+    the `vgrowCap` read) + the guarded `reserve` composer
+    (`max_size` throw past `max_size` lowers to `fail`;
+    `cap < n` runs allocate → relocate → deallocate over the
+    frozen b1 leaves and re-pins the length, otherwise the
+    triple passes through) + the closed `vec_reserve_sum` entry
+    (default ctor, `reserve(10)`, two fast-path `push_back`s,
+    two indexed reads, one `nsw` add, dtor, returns `3`).
+    Each validates under per-def `.noalias` facts (55-def
+    corpus); the bare reserve stub (any other call shape)
+    rejects `out-of-subset` ("outside the admitted call
+    shapes").
 
 ## Admitted CIR ops (raw CIRGen shape)
 

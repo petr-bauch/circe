@@ -53,6 +53,9 @@ verbatim.
 | `stdVecReloc_correct_nil` (N4d-iv-b1) | zero-word relocation is the identity | `stdVecRelocFwd …` (`stdVecBlitFold` nil) |
 | `viewBegin_correct` / `viewEnd_correct` (N7a) | erased `0` offset / reified length | const / `viewEndFwd l` (length read) |
 | `viewSum_correct_nil/cons/cons_err` (N7a) | checked-add fold over sign-extended bytes: nil is zero, cons threads `checkedAddI32` over `sext8`, error propagates | `viewSumFwd l` (fold from `0`) |
+| `stdVecGrowCapacity_correct` (N7b) | `capacity` reads header word 1 | `stdVecGrowCapacityFwd cap` (reified cap) |
+| `stdVecReserve_correct_passthrough/realloc/throw` (N7b) | passthrough when `n ≤ cap`; allocate → relocate → deallocate + length re-pin when `cap < n`; loud past `max_size` | `stdVecReserveFwd b len cap n` (composer over frozen leaves) |
+| `vecReserveSumEntry_correct` (N7b) | closed script: ctor + `reserve(10)` + two pushes + two reads + add + dtor returns `3` | `vecReserveSumEntryFwd` (const `3`) |
 
 Host assumption (N7a): x86 `char` is signed, so the `s8i`
 element load sign-extends (`viewAt` delivers

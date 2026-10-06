@@ -120,6 +120,103 @@ def vecGrowAdmitted : List (String × String) :=
    ("_Z12vec_push_sumv",
     "VecGrowComposerEntry")]
 
+/-- Per-def `.noalias` facts for the 55-def `vec_reserve_sum` frontier
+    (same discipline as `vecGrowFacts`: every defined def carries an
+    explicit fact; erased params need no uniqueness inside pinned
+    shapes). -/
+def vecReserveFacts : List OracleFact :=
+  [⟨"_Z15vec_reserve_sumv", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEEC2Ev", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE7reserveEm", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE9push_backEOi", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEEixEm", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEED2Ev", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEEC2Ev", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEE12_Vector_implC2Ev", .noalias⟩,
+   ⟨"_ZNSaIiEC2Ev", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEE17_Vector_impl_dataC2Ev", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx13new_allocatorIiEC2Ev", .noalias⟩,
+   ⟨"_ZSt8_DestroyIPiiEvT_S1_RSaIT0_E", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEE19_M_get_Tp_allocatorEv", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEED2Ev", .noalias⟩,
+   ⟨"_ZSt8_DestroyIPiEvT_S1_", .noalias⟩,
+   ⟨"_ZNSt12_Destroy_auxILb1EE9__destroyIPiEEvT_S3_", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEE13_M_deallocateEPim", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEE12_Vector_implD2Ev", .noalias⟩,
+   ⟨"_ZNSt16allocator_traitsISaIiEE10deallocateERS0_Pim", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx13new_allocatorIiE10deallocateEPim", .noalias⟩,
+   ⟨"_ZNSaIiED2Ev", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx13new_allocatorIiED2Ev", .noalias⟩,
+   ⟨"_ZNKSt6vectorIiSaIiEE8max_sizeEv", .noalias⟩,
+   ⟨"_ZNKSt6vectorIiSaIiEE8capacityEv", .noalias⟩,
+   ⟨"_ZNKSt6vectorIiSaIiEE4sizeEv", .noalias⟩,
+   ⟨"_ZNSt12_Vector_baseIiSaIiEE11_M_allocateEm", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE11_S_max_sizeERKS0_", .noalias⟩,
+   ⟨"_ZNKSt12_Vector_baseIiSaIiEE19_M_get_Tp_allocatorEv", .noalias⟩,
+   ⟨"_ZNSt16allocator_traitsISaIiEE8max_sizeERKS0_", .noalias⟩,
+   ⟨"_ZSt3minImERKT_S2_S2_", .noalias⟩,
+   ⟨"_ZNK9__gnu_cxx13new_allocatorIiE8max_sizeEv", .noalias⟩,
+   ⟨"_ZNK9__gnu_cxx13new_allocatorIiE11_M_max_sizeEv", .noalias⟩,
+   ⟨"_ZNSt16allocator_traitsISaIiEE8allocateERS0_m", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx13new_allocatorIiE8allocateEmPKv", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE14_S_do_relocateEPiS2_S2_RS0_St17integral_constantIbLb1EE", .noalias⟩,
+   ⟨"_ZSt12__relocate_aIPiS0_SaIiEET0_T_S3_S2_RT1_", .noalias⟩,
+   ⟨"_ZSt14__relocate_a_1IiiENSt9enable_ifIXsr3std24__is_bitwise_relocatableIT_EE5valueEPS1_E4typeES2_S2_S2_RSaIT0_E", .noalias⟩,
+   ⟨"_ZSt12__niter_baseIPiET_S1_", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_", .noalias⟩,
+   ⟨"_ZNSt16allocator_traitsISaIiEE9constructIiJiEEEvRS0_PT_DpOT0_", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT_", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE3endEv", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE4backEv", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx13new_allocatorIiE9constructIiJiEEEvPT_DpOT0_", .noalias⟩,
+   ⟨"_ZNKSt6vectorIiSaIiEE12_M_check_lenEmPKc", .noalias⟩,
+   ⟨"_ZN9__gnu_cxxmiIPiSt6vectorIiSaIiEEEENS_17__normal_iteratorIT_T0_E15difference_typeERKS8_SB_", .noalias⟩,
+   ⟨"_ZNSt6vectorIiSaIiEE5beginEv", .noalias⟩,
+   ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEE4baseEv", .noalias⟩,
+   ⟨"_ZNSt16allocator_traitsISaIiEE7destroyIiEEvRS0_PT_", .noalias⟩,
+   ⟨"_ZSt3maxImERKT_S2_S2_", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEC2ERKS1_", .noalias⟩,
+   ⟨"_ZN9__gnu_cxx13new_allocatorIiE7destroyIiEEvPT_", .noalias⟩,
+   ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEmiEl", .noalias⟩,
+   ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEdeEv", .noalias⟩]
+
+/-- The N7b admitted shapes: the `capacity` leaf, the `reserve`
+    composer, and the closed `vec_reserve_sum` entry (each validates
+    to its canonical `Func` and emits byte-identical text). -/
+def vecReserveAdmitted : List (String × String) :=
+  [("_ZNKSt6vectorIiSaIiEE8capacityEv", "VecGrowCapacity"),
+   ("_ZNSt6vectorIiSaIiEE7reserveEm", "VecGrowComposerReserve"),
+   ("_Z15vec_reserve_sumv", "VecGrowComposerReserveEntry")]
+
+def checkVecGrowReservePipeline : IO Nat := do
+  let text ← IO.FS.readFile "tests/cir/vec_reserve_sum.cir"
+  let res := validateModule text vecReserveFacts
+  if res.length != 55 then
+    throw (IO.userError s!"vec-reserve frontier drift: {res.length} defs, expected 55")
+  let errs := res.filter (fun (_, v) => !v.isOk)
+  if errs.length != 0 then
+    throw (IO.userError s!"vec-reserve rejects drift: {errs.length} errors, expected 0 (entry admitted)")
+  for (name, g) in vecReserveAdmitted do
+    match res.find? (fun (m, _) => m == name) with
+    | none =>
+      throw (IO.userError s!"vec-reserve admitted shape missing: {name}")
+    | some (_, .error rej) =>
+      throw (IO.userError s!"vec-reserve admitted shape rejected: {name}: {rej.message}")
+    | some (_, .ok f) =>
+      let want ← IO.FS.readFile s!"tests/golden/{g}.lean"
+      let got := emitFileText (emitFunc f)
+      if got != want then
+        throw (IO.userError s!"golden mismatch for {g} ({name})")
+      let wantSpec ← IO.FS.readFile s!"tests/golden/{g}_Spec.lean"
+      let gotSpec ← match emitSpec f with
+        | .ok s => pure s
+        | .error _ => throw (IO.userError s!"spec emit failed for {g} ({name})")
+      if gotSpec != wantSpec then
+        throw (IO.userError s!"spec golden mismatch for {g} ({name})")
+  IO.println "PASS pipeline vec_reserve_sum (capacity + reserve + entry byte-identical)"
+  pure vecReserveAdmitted.length
+
 def checkVecGrowPipeline : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_push_sum.cir"
   let res := validateModule text vecGrowFacts
@@ -218,6 +315,14 @@ def advBareVecPtr : String :=
   ++ "    %r = cir.call @" ++ maxSizeEv ++ "(%arg0) : (!cir.ptr<" ++ vecRec ++ ">) -> !u64i\n"
   ++ "    cir.return %r : !u64i\n  }\n}"
 
+/-- N7b pin (`reserve` call stub): `reserve` is no leaf — the
+    single-func stub rejects with the generic call-shape message
+    (only the full guarded composer body validates). -/
+def advReserveStub : String :=
+  "module {\n  cir.func @vrs(%arg0: !cir.ptr<" ++ vecRec ++ "> " ++ vecTriple ++ ") attributes {\"nothrow\"} {\n"
+  ++ "    cir.call @_ZNSt6vectorIiSaIiEE7reserveEm(%arg0) : (!cir.ptr<" ++ vecRec ++ ">) -> ()\n"
+  ++ "    cir.return\n  }\n}"
+
 /-- N4d-iv-b2 deferral pin (`push_back` call stub): growth composition
     rejects with the actionable composer message at single-func level. -/
 def advPushBackComposer : String :=
@@ -244,6 +349,11 @@ def main : IO Unit := do
   let r5 ← checkRejectVecGrow "vpb" advPushBackComposer
     "out-of-subset" "N4d-iv-b2 growth composer"
   passed := passed + r5
+  let c6 ← checkVecGrowReservePipeline
+  passed := passed + c6
+  let r6 ← checkRejectVecGrow "vrs" advReserveStub
+    "out-of-subset" "outside the admitted call shapes"
+  passed := passed + r6
   IO.println s!"GOLDENVECGROW-OK passed={passed}"
 
 end GoldenVecGrow
