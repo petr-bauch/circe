@@ -51,6 +51,16 @@ verbatim.
 | `stdVecDealloc_correct_ok/err` / `stdVecDeallocGuard_correct_zero/free` (N4d-iv-b1) | consume; free failure propagates; zero-count passthrough | `stdVecDeallocFwd` / `stdVecDeallocGuardFwd` (`vecFree`) |
 | `stdVecConstruct_correct_ok/oob` (N4d-iv-b1) | placement store; loud past storage | `stdVecConstructFwd b len cap p x` (`vecSet`) |
 | `stdVecReloc_correct_nil` (N4d-iv-b1) | zero-word relocation is the identity | `stdVecRelocFwd …` (`stdVecBlitFold` nil) |
+| `viewBegin_correct` / `viewEnd_correct` (N7a) | erased `0` offset / reified length | const / `viewEndFwd l` (length read) |
+| `viewSum_correct_nil/cons/cons_err` (N7a) | checked-add fold over sign-extended bytes: nil is zero, cons threads `checkedAddI32` over `sext8`, error propagates | `viewSumFwd l` (fold from `0`) |
+
+Host assumption (N7a): x86 `char` is signed, so the `s8i`
+element load sign-extends (`viewAt` delivers
+`x.signExtend 32`). The model bakes this in; the high-bit diff
+edges (`0xFF` sums as `-1`, `0x80` as `-128`) check it against
+native on every run. On an unsigned-`char` platform the native
+binary would disagree — the `DiffView` mismatch would fire as P0,
+which is the honest signal (not silent soundness).
 
 Body identity enforced two ways: `native_decide` golden linkage in
 `Circe.Emit` (+ `diff` in `tools/check.sh`) and emitted-body `grep`

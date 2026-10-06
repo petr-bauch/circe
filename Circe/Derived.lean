@@ -487,6 +487,70 @@ theorem oracleNoalias_spanSum (l : List (BitVec 32)) :
   have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-- View binding pins the `(1 + length)`-word
+    `[(BitVec.ofNat 32 length)] ++ zero-extended-bytes` block (one
+    byte per word cell, the word-level abstraction; N7a). -/
+theorem bindMemArgs_viewVal (nm : String) (ty : CType)
+    (l : List (BitVec 8)) :
+    bindMemArgs
+      [{ name := nm, ty := ty, role := .sharedBorrow }]
+      [.viewVal l] emptyMem =
+      some ([(nm, .viewVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+        [(nm, 0, 0)]) := by
+  rfl
+
+/-- `begin` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_viewBegin (l : List (BitVec 8)) :
+    oracleNoalias viewBeginFunc [.viewVal l] := by
+  have hb : bindMemArgs viewBeginFunc.args [.viewVal l] emptyMem =
+      some ([("s", .viewVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := viewObjTy, role := .sharedBorrow }]
+      [.viewVal l] emptyMem = _
+    exact bindMemArgs_viewVal "s" viewObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `end` footprints are a singleton (trivially disjoint). -/
+theorem oracleNoalias_viewEnd (l : List (BitVec 8)) :
+    oracleNoalias viewEndFunc [.viewVal l] := by
+  have hb : bindMemArgs viewEndFunc.args [.viewVal l] emptyMem =
+      some ([("s", .viewVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := viewObjTy, role := .sharedBorrow }]
+      [.viewVal l] emptyMem = _
+    exact bindMemArgs_viewVal "s" viewObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `view_sum` footprints are a singleton (the loop runs after
+    entry over the read-only view). -/
+theorem oracleNoalias_viewSum (l : List (BitVec 8)) :
+    oracleNoalias viewSumFunc [.viewVal l] := by
+  have hb : bindMemArgs viewSumFunc.args [.viewVal l] emptyMem =
+      some ([("s", .viewVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := viewObjTy, role := .sharedBorrow }]
+      [.viewVal l] emptyMem = _
+    exact bindMemArgs_viewVal "s" viewObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-- Vector binding pins the `(1 + length)`-word
     `[(BitVec.ofNat 32 length)] ++ l` block (the heap-triple
     snapshot model: word `0` is the length, words `1+i` are the

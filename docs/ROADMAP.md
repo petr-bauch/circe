@@ -13,8 +13,11 @@ moves, templates, `array`/`optional`/`span` reads, `vector` reads,
 composition (N4d-iv-b2: `_M_realloc_insert`, `emplace_back`,
 `push_back`, `vec_push_sum` entry, 355 jobs TEST-OK, CHECK-OK).
 Delivered milestones moved to `DELIVERED.md`. The active frontier is
-`string_view` range-for (same iterator reason as the span range-for
-pin); the lifetime-evidence track (L) is in progress.
+N7b–d (`reserve`/`insert`/`erase` composers over the admitted N4d
+`vector<int>` core); the lifetime-evidence track (L) is in progress.
+N7a (`string_view` range-for) is done — the one range-for shape
+admitted so far (span range-for stays OUT, same iterator lowering
+but a different monomorph).
 
 Guiding principle (locked): admit exactly the C++ that is amenable to
 Aeneas-style translation — value semantics + affine tokens, lifetime
@@ -26,17 +29,19 @@ corpus (real CIRGen, `cir-opt` VERIFY-OK) → shape gate → proof →
 golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 `check.sh` stage → `CHECK-OK`.
 
-### N4 remainder: `std::string_view` range-for
+### N4 remainder: `std::string_view` range-for — DONE (N7a)
 
-`string_view` range-for is `cir.scope` + `cir.for` with `begin`/`end`
-as `get_member` projections; needs a probed lowering + a token/value
-model before admission. Probes so far: `optional::value` lowers to
-`cir.trap` (throw path, still deferred).
+`string_view` range-for was `cir.scope` + `cir.for` with `begin`/`end`
+as `get_member` projections; the admitted shape normalizes the
+pointer chase to an index fold over erased `u64` offsets with
+`sext8` byte reads (`tests/lean/GoldenView.lean`). Probes so far:
+`optional::value` lowers to `cir.trap` (throw path, still deferred).
 Deferral pins live in `tests/lean/GoldenArray.lean` (`optional`
 graduated to `tests/lean/GoldenOptional.lean`, `span` index-sum
 graduated to `tests/lean/GoldenSpan.lean`, `vector` reads
 graduated to `tests/lean/GoldenVecRead.lean`, `vector`
-growth leaves graduated to `tests/lean/GoldenVecGrow.lean`).
+growth leaves graduated to `tests/lean/GoldenVecGrow.lean`,
+`string_view` range-for graduated to `tests/lean/GoldenView.lean`).
 
 Non-goals (platform-level): inheritance/vtables, exceptions, RTTI,
 concurrency, allocators, iterator invalidation reasoning beyond
@@ -116,9 +121,9 @@ semantics changes.
   (wrapping `y + 1` / `y + 2` / `y`, `uadd` if-chain, dedicated
   compute-body rejection for the rest; 23/23 `GoldenFlow`). N6
   language gaps complete — remaining: N7 STD growth + Iris spike.
-- N7: STD growth — `string_view` range-for (shares the span
-  iterator blocker: `begin`/`end` + pointer-chasing; needs a
-  probed lowering + a token/value model), then
+- N7: STD growth — `string_view` range-for DONE (N7a:
+  `begin`/`end` + chase-loop shape admits to an index fold over
+  `sext8` bytes; 393 jobs TEST-OK, CHECK-OK), then
   `reserve`/`insert`/`erase` composers (`erase` needs
   memmove-down leaves; reuse the no-inlining `vecGrowProg`
   pattern).

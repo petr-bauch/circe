@@ -729,6 +729,141 @@ def spanLeafCallees : List String :=
 def callsSpanWrongShape (raw : RawFunc) : Bool :=
   spanLeafCallees.any (callsFunc raw.text)
 
+/-! ## N7a: `std::string_view` range-for sum shapes -/
+
+/-- Canonical signed-8 spellings (`!s8i` alias or long form) — the
+    viewed byte type (cf. `isI32`). -/
+def isS8 (t : String) : Bool :=
+  t == "!s8i" || t == "!cir.int<s, 8>" || t == "!cir.int<s,8>"
+
+/-- The `std::string_view` object type (CIRGen's
+    `!rec_std3A3Abasic_string_view…` alias; the `char` /
+    `char_traits<char>` instantiation is part of the admitted
+    monomorph, the N4c monomorphization precedent). -/
+def isViewType (t : String) : Bool :=
+  containsSubstr t "string_view"
+
+/-- The `begin` iterator leaf: single `const&` to the view object
+    with the single-reference triple, pointer-to-`s8` return, the
+    single `get_member` (`_M_str`) projection with the base load,
+    no calls, no control flow, no stride. -/
+def isViewBeginShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef && isViewType this.ctype &&
+    (match ptrInner raw.ret with | some inner => isS8 inner | none => false) &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "_M_str" &&
+    opCount raw.text "cir.load" == 3 &&
+    opCount raw.text "cir.call @" == 0 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `end` iterator leaf: single `const&` with the
+    single-reference triple, pointer-to-`s8` return, the two
+    `get_member` projections (`_M_str` + `_M_len`) with the base /
+    length loads fused by the single `u64`-stride `ptr_stride`,
+    no calls, no control flow. -/
+def isViewEndShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef && isViewType this.ctype &&
+    (match ptrInner raw.ret with | some inner => isS8 inner | none => false) &&
+    opCount raw.text "cir.get_member" == 2 &&
+    containsSubstr raw.text "_M_str" &&
+    containsSubstr raw.text "_M_len" &&
+    opCount raw.text "cir.load" == 4 &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    containsSubstr raw.text "(!cir.ptr<!s8i>, !u64i)" &&
+    opCount raw.text "cir.call @" == 0 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- The `view_sum` range-for entry: the view **by value** (no
+    pointer, no aliasing question on the object itself — the viewed
+    bytes are a `sharedBorrow` snapshot downstream), `i32` return,
+    exactly two call sites (`begin` + `end`), the single `cir.for`
+    with the pointer `ne` comparison, the `s32`-stride advance, the
+    `s8i` element load + integral `s8i -> s32i` sext, and the one
+    `nsw` accumulation add. Two `cir.const` (the `0` init + the
+    stray `1` stride, both live), no projections of its own. -/
+def isViewSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s] =>
+    noBreakContinueSwitch raw.text &&
+    !isPtrType s.ctype && isViewType s.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text viewBeginName &&
+    callsFunc raw.text viewEndName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp ne" &&
+    containsSubstr raw.text "!cir.ptr<!s8i>" &&
+    opCount raw.text "cir.condition" == 1 &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    containsSubstr raw.text "(!cir.ptr<!s8i>, !s32i)" &&
+    opCount raw.text "cir.load align(1)" == 2 &&
+    opCount raw.text "cir.cast" == 1 &&
+    containsSubstr raw.text "!s8i -> !s32i" &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 2 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr"
+  | _ => false
+
+/-- Known `std::string_view` leaf callees (mangled): the `begin` /
+    `end` iterator leaves. Entry gates admit calls into the
+    (name, arity, site-count) pairs named in `validate` below; this
+    registry names every known view leaf for the wrong-shape
+    rejection. -/
+def viewLeafCallees : List String :=
+  [viewBeginName, viewEndName]
+
+/-- Calls a known `std::string_view` leaf but not with an admitted
+    (name, arity, site-count) shape: dedicated rejection naming the
+    admitted shapes. -/
+def callsViewWrongShape (raw : RawFunc) : Bool :=
+  viewLeafCallees.any (callsFunc raw.text)
+
 /-- The `std::vector<int32_t>` object type (the `_M_start` /
     `_M_finish` / `_M_end_of_storage` triple). -/
 def isStdVectorType (t : String) : Bool :=

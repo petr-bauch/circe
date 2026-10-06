@@ -80,6 +80,9 @@ def main : IO Unit := do
   let spanSize ← emitOrDie spanSizeFunc
   let spanIndex ← emitOrDie spanIndexFunc
   let spanSum ← emitOrDie spanSumFunc
+  let viewBegin ← emitOrDie viewBeginFunc
+  let viewEnd ← emitOrDie viewEndFunc
+  let viewSum ← emitOrDie viewSumFunc
   let vecSize ← emitOrDie stdVecSizeFunc
   let vecIndex ← emitOrDie stdVecIndexFunc
   let vecReadSum ← emitOrDie stdVecReadSumFunc
@@ -166,6 +169,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/SpanSize.lean" (emitFileText (.ok spanSize))
   IO.FS.writeFile "out/SpanIndex.lean" (emitFileText (.ok spanIndex))
   IO.FS.writeFile "out/SpanSum.lean" (emitFileText (.ok spanSum))
+  IO.FS.writeFile "out/ViewBegin.lean" (emitFileText (.ok viewBegin))
+  IO.FS.writeFile "out/ViewEnd.lean" (emitFileText (.ok viewEnd))
+  IO.FS.writeFile "out/ViewSum.lean" (emitFileText (.ok viewSum))
   IO.FS.writeFile "out/VecSize.lean" (emitFileText (.ok vecSize))
   IO.FS.writeFile "out/VecIndex.lean" (emitFileText (.ok vecIndex))
   IO.FS.writeFile "out/VecReadSum.lean" (emitFileText (.ok vecReadSum))
@@ -252,6 +258,9 @@ def main : IO Unit := do
   let spanSizeSpec ← specOrDie spanSizeFunc
   let spanIndexSpec ← specOrDie spanIndexFunc
   let spanSumSpec ← specOrDie spanSumFunc
+  let viewBeginSpec ← specOrDie viewBeginFunc
+  let viewEndSpec ← specOrDie viewEndFunc
+  let viewSumSpec ← specOrDie viewSumFunc
   let vecSizeSpec ← specOrDie stdVecSizeFunc
   let vecIndexSpec ← specOrDie stdVecIndexFunc
   let vecReadSumSpec ← specOrDie stdVecReadSumFunc
@@ -338,6 +347,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/SpanSize_Spec.lean" spanSizeSpec
   IO.FS.writeFile "out/SpanIndex_Spec.lean" spanIndexSpec
   IO.FS.writeFile "out/SpanSum_Spec.lean" spanSumSpec
+  IO.FS.writeFile "out/ViewBegin_Spec.lean" viewBeginSpec
+  IO.FS.writeFile "out/ViewEnd_Spec.lean" viewEndSpec
+  IO.FS.writeFile "out/ViewSum_Spec.lean" viewSumSpec
   IO.FS.writeFile "out/VecSize_Spec.lean" vecSizeSpec
   IO.FS.writeFile "out/VecIndex_Spec.lean" vecIndexSpec
   IO.FS.writeFile "out/VecReadSum_Spec.lean" vecReadSumSpec
@@ -483,4 +495,4 @@ def main : IO Unit := do
     throw (IO.userError "vecGrowPushBack must not have a backward definition")
   if vecGrowEntry.backward.isSome then
     throw (IO.userError "vecGrowEntry must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/ClsFall.lean out/ClsDense.lean out/ClsBreak.lean out/ClsAdd.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean out/VecGrowComposerRealloc.lean out/VecGrowComposerEmplace.lean out/VecGrowComposerPushBack.lean out/VecGrowComposerEntry.lean + 86 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/ClsFall.lean out/ClsDense.lean out/ClsBreak.lean out/ClsAdd.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/ViewBegin.lean out/ViewEnd.lean out/ViewSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean out/VecGrowComposerRealloc.lean out/VecGrowComposerEmplace.lean out/VecGrowComposerPushBack.lean out/VecGrowComposerEntry.lean + 86 *_Spec.lean stubs"

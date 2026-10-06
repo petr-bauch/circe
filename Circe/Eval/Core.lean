@@ -45,6 +45,7 @@ inductive Value : Type
   | structVal : String → List (String × BitVec 32) → Value
   | optVal : Option (BitVec 32) → Value
   | spanVal : List (BitVec 32) → Value
+  | viewVal : List (BitVec 8) → Value
   | stdVecVal : List (BitVec 32) → Value
   | stdVecOwned : Vec32 → Nat → Nat → Value
   deriving DecidableEq, Repr
@@ -440,6 +441,23 @@ def evalExpr : CExpr → Env → Result Value
       | .ok (.u64 i) =>
         match l[i.toNat]? with
         | some x => .ok (.i32 x)
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .viewLen s, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.viewVal l) => .ok (.u64 (BitVec.ofNat 64 l.length))
+    | some _ => .error .AssertFail
+  | .viewAt s ie, ρ =>
+    match envLookup ρ s with
+    | none => .error .Uninit
+    | some (.viewVal l) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        match l[i.toNat]? with
+        | some x => .ok (.i32 (x.signExtend 32))
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
@@ -932,6 +950,52 @@ theorem evalExpr_spanAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
     (ρ : Env)
     (hs : envLookup ρ s = some (.i32 v)) :
     evalExpr (.spanAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `viewLen` of a view delivers its length as a `u64` word. -/
+theorem evalExpr_viewLen_some (s : String) (ρ : Env)
+    (l : List (BitVec 8))
+    (hs : envLookup ρ s = some (.viewVal l)) :
+    evalExpr (.viewLen s) ρ = .ok (.u64 (BitVec.ofNat 64 l.length)) := by
+  simp [evalExpr, hs]
+
+/-- `viewLen` of a non-view is rejected, never silently modeled. -/
+theorem evalExpr_viewLen_notval (s : String) (v : BitVec 32) (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.viewLen s) ρ = .error .AssertFail := by
+  simp [evalExpr, hs]
+
+/-- `viewAt` in bounds delivers the sign-extended byte. -/
+theorem evalExpr_viewAt_some (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 8)) (i : BitVec 64) (x : BitVec 8)
+    (hs : envLookup ρ s = some (.viewVal l))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hget : l[i.toNat]? = some x) :
+    evalExpr (.viewAt s ie) ρ = .ok (.i32 (x.signExtend 32)) := by
+  simp [evalExpr, hs, hi, hget]
+
+/-- `viewAt` off the end is `OOB` (mirrors `spanAt`). -/
+theorem evalExpr_viewAt_oob (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 8)) (i : BitVec 64)
+    (hs : envLookup ρ s = some (.viewVal l))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hget : l[i.toNat]? = none) :
+    evalExpr (.viewAt s ie) ρ = .error .OOB := by
+  simp [evalExpr, hs, hi, hget]
+
+/-- `viewAt` with a non-`u64` index is rejected. -/
+theorem evalExpr_viewAt_nonu64 (s : String) (ie : CExpr) (ρ : Env)
+    (l : List (BitVec 8)) (v : BitVec 32)
+    (hs : envLookup ρ s = some (.viewVal l))
+    (hi : evalExpr ie ρ = .ok (.i32 v)) :
+    evalExpr (.viewAt s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hs, hi]
+
+/-- `viewAt` of a non-view is rejected, never silently modeled. -/
+theorem evalExpr_viewAt_notval (s : String) (ie : CExpr) (v : BitVec 32)
+    (ρ : Env)
+    (hs : envLookup ρ s = some (.i32 v)) :
+    evalExpr (.viewAt s ie) ρ = .error .AssertFail := by
   simp [evalExpr, hs]
 
 /-- `stdVecLen` of a vector delivers its length as a `u64` word. -/

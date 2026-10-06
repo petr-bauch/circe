@@ -368,6 +368,41 @@ def emitSpanSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the `begin` leaf forward definition: the erased `0`
+    offset (the tag-erased `viewBeginFwd`). -/
+def emitViewBeginText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_str` load fuses to the erased `0` offset). -/\n"
+  ++ s!"def {name}_fwd : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 0\n"
+
+/-- Render the `end` leaf forward definition: the reified length
+    as a `u64` word (the tag-erased `viewEndFwd`). -/
+def emitViewEndText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_str` / `_M_len` loads + `ptr_stride` fuse to the length offset). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 8)) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 l.length\n"
+
+/-- Render the `view_sum` entry forward definition: the
+    checked-add fold over the reified bytes (the tag-erased
+    `viewSumFwd`; the local `go` mirrors `viewFold` arm for arm,
+    each byte sign-extended at the head, `nsw` errors
+    short-circuit through the `do`). -/
+def emitViewSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (range-sum over the reified bytes; `nsw` overflow is loud). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 8)) : Result (BitVec 32) :=\n"
+  ++ "  go l 0\n"
+  ++ "where go : List (BitVec 8) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | [], acc => .ok acc\n"
+  ++ "  | x :: xs, acc => do\n"
+  ++ "      let a ← checkedAddI32 acc (x.signExtend 32)\n"
+  ++ "      go xs a\n"
+
 /-- Render the vector `size` leaf forward definition: the reified
     length as a `u64` word (the tag-erased `stdVecSizeFwd`). -/
 def emitStdVecSizeText (name : String) : String :=

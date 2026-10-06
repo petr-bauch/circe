@@ -7,6 +7,7 @@ import Circe.CoreIR
 import Circe.Parser
 import Circe.Oracle
 import Circe.Emit
+import Circe.Emit.View
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose
 import Circe.Validator.GrowLeaves
@@ -1379,6 +1380,15 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if callsSpanWrongShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' calls a known `std::span` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_extent` extent leaf (`span_extent`), the single-site `size` delegation (`span_size`), the single-site `operator[]` fused leaf with the dead assert skeleton (`span_index`), and the 2-site `span_sum` index-loop entry (`span_sum`) only (known span leaves `{spanExtentName}` / `{spanSizeName}` / `{spanIndexName}`; see docs/SUBSET.md)"
+      else if isViewBeginShape raw then
+        .ok { viewBeginFunc with name := raw.name }
+      else if isViewEndShape raw then
+        .ok { viewEndFunc with name := raw.name }
+      else if isViewSumShape raw then
+        .ok { viewSumFunc with name := raw.name }
+      else if callsViewWrongShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls a known `std::string_view` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_str` `begin` leaf (`view_begin`), the `_M_str` + `_M_len` `end` leaf (`view_end`), and the 2-site `view_sum` range-for entry (`view_sum`) only (known view leaves `{viewBeginName}` / `{viewEndName}`; see docs/SUBSET.md)"
       else if isStdVecSizeShape raw then
         .ok { stdVecSizeFunc with name := raw.name }
       else if isStdVecIndexShape raw then

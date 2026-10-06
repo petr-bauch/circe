@@ -629,6 +629,38 @@ theorem spanSum_correct_cons_err (x : BitVec 32) (xs : List (BitVec 32))
     spanSumFwd (x :: xs) = .error e := by
   simp [spanSumFwd, spanFold, h, i32_map_error]
 
+/-! ## N7a: `std::string_view` range-for sum (one property per new shape) -/
+
+/-- The `begin` leaf reports the erased `0` offset. -/
+theorem viewBegin_correct (l : List (BitVec 8)) :
+    viewBeginFwd = .ok (.u64 (BitVec.ofNat 64 0)) :=
+  rfl
+
+/-- The `end` leaf reports the reified length. -/
+theorem viewEnd_correct (l : List (BitVec 8)) :
+    viewEndFwd l = .ok (.u64 (BitVec.ofNat 64 l.length)) :=
+  rfl
+
+/-- The `view_sum` entry sums the empty view to zero. -/
+theorem viewSum_correct_nil :
+    viewSumFwd [] = .ok (.i32 (BitVec.ofNat 32 0)) := by
+  simp [viewSumFwd, viewFold, i32_map_ok]
+
+/-- The `view_sum` entry threads the sign-extended head byte
+    through the checked add. -/
+theorem viewSum_correct_cons (x : BitVec 8) (xs : List (BitVec 8))
+    (a : BitVec 32)
+    (h : checkedAddI32 (BitVec.ofNat 32 0) (x.signExtend 32) = .ok a) :
+    viewSumFwd (x :: xs) = .i32 <$> viewFold xs a := by
+  simp [viewSumFwd, viewFold, h]
+
+/-- The `view_sum` entry reports a head-byte overflow loudly. -/
+theorem viewSum_correct_cons_err (x : BitVec 8) (xs : List (BitVec 8))
+    (e : Panic)
+    (h : checkedAddI32 (BitVec.ofNat 32 0) (x.signExtend 32) = .error e) :
+    viewSumFwd (x :: xs) = .error e := by
+  simp [viewSumFwd, viewFold, h, i32_map_error]
+
 /-! ## N4d-iv-a: `std::vector<int32_t>` reads (one property per new shape) -/
 
 /-- The `size` leaf reports the reified length. -/

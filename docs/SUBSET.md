@@ -329,12 +329,14 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `operator[]`, wrong site counts into the entry, bare array
     pointers without the triple) are rejected with dedicated
     messages (`callsArrayWrongShape`, or `alias-reject`).
-    Deferred with pins (`tests/lean/GoldenArray.lean`): `string_view`
-    (iterators return raw pointers), `vector` (operator-`new` +
-    60-def allocator bloat). (`optional` graduated to item 20;
-    only the `value` throw path stays deferred. `span` index-sum
-    graduated to item 21 — `-std=c++20` scoped to `span_*` in
-    `tools/emit-cir.sh`; only range-for stays out.)
+    Deferred with pins (`tests/lean/GoldenArray.lean`):
+    `vector` (operator-`new` + 60-def allocator bloat).
+    (`optional` graduated to item 20; only the `value` throw path
+    stays deferred. `span` index-sum graduated to item 21 —
+    `-std=c++20` scoped to `span_*` in `tools/emit-cir.sh`; only
+    range-for stays out. `string_view` range-for graduated to
+    item 29 — `-std=c++17` scoped to `view_*` in
+    `tools/emit-cir.sh`.)
 20. `std::optional<int32_t>` guarded deref (N4d-ii): the depth-3
     call chain (`opt_deref` → `operator*` → impl `_M_get` →
     payload `_M_get`) functionalizes with fused edges (the N4d-i
@@ -439,8 +441,10 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     the range-for form is OUT (it lowers to `begin`/`end`
     iterator calls plus pointer-chasing, outside the admitted call
     shapes — pinned in `tests/lean/GoldenSpan.lean`).
-    Still deferred: `string_view` range-for (same iterator reason),
-    `vector` growth (N4d-iv-b).
+    Still deferred: `vector` growth (N4d-iv-b). (`string_view`
+    range-for graduated to item 29: same lowering, but the view
+    monomorph admits exactly the `begin`/`end` + chase-loop shape;
+    span range-for stays OUT.)
 22. `std::vector<int32_t>` reads (N4d-iv-a): the depth-2 call
     chain (`vec_read_sum` → `size` → the `_M_finish` / `_M_start`
     loads + `ptr_diff` + `cast`; `vec_read_sum` → `operator[]` →
@@ -582,6 +586,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     keeps width-mixed signatures on their existing routing, and
     `nsw`-less `cir.minus` stays out to protect the `vec_push_sum`
     iterator helper).
+29. `std::string_view` range-for sum (N7a): the `begin` iterator
+    leaf (single `const&` with the single-reference triple,
+    pointer-to-`s8` return, one `_M_str` projection, no stride) +
+    the `end` iterator leaf (same receiver, two projections
+    (`_M_str` + `_M_len`) fused by one `u64`-stride `ptr_stride`)
+    + the by-value `view_sum` range-for entry (one `begin` site +
+    one `end` site, single `cir.for` with the pointer `ne`
+    comparison, `s32`-stride advance, `s8i` load + integral
+    `s8i -> s32i` sext, one `nsw` add). Positions erase to `u64`
+    offsets (`begin` to `0`, `end` to `len` — the N4d-iv-b1
+    iterator precedent); the chase loop normalizes to an index
+    fold over `viewLen`/`viewAt`, each byte sign-extended at the
+    head (x86 `char` is signed — pinned by high-bit diff cases;
+    see `docs/VERIFYING.md`). The entry validates under ONE
+    explicit oracle fact (by value — the M2b int-only-entry
+    precedent); both leaves validate under synthetic `unknown`
+    facts. Misshapen uses (double `begin`/`end` calls, strided
+    `begin` bodies, sext-less `s8i` loops, bare view pointers
+    without the triple) are rejected with dedicated messages
+    (`callsViewWrongShape`, small-width, `escape-reject`, or
+    `alias-reject`).
 
 ## Admitted CIR ops (raw CIRGen shape)
 

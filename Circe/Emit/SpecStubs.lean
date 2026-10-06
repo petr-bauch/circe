@@ -703,6 +703,74 @@ def emitSpanSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `begin` shape (N7a iterator leaf). The
+    mirror is the tag-erased `viewBeginFwd` (the erased `0`
+    offset); the single edge is ground truth. -/
+def emitViewBeginSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s)` loads the `_M_str` base pointer.\n"
+  ++ s!"    Base body reference: the erased `0` offset (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `viewBeginFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the offset is definitionally `0`. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 64) :=\n"
+  ++ "  [0]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr {name}_spec_fwd).pretty == (repr t).pretty\n"
+
+/-- Spec stub for the `end` shape (N7a iterator leaf). The mirror
+    is the tag-erased `viewEndFwd`; edges carry ground truth
+    (empty, singleton, longer views). -/
+def emitViewEndSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s)` advances `_M_str` by `_M_len`.\n"
+  ++ s!"    Base body reference: the reified length itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `viewEndFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 8)) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 l.length\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, singleton, longer views. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 8) × BitVec 64) :=\n"
+  ++ "  [([], 0), ([7], 1), ([1, 2, 3], 3)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the `view_sum` shape (N7a range-for entry).
+    The mirror is the tag-erased `viewSumFwd`; edges carry ground
+    truth (empty sum, small sums, sign-extended high-bit bytes). -/
+def emitViewSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s)` sums the viewed bytes (sign-extended).\n"
+  ++ s!"    Base body reference: the checked-add fold itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `viewSumFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 8)) : Result (BitVec 32) :=\n"
+  ++ "  go l 0\n"
+  ++ "where go : List (BitVec 8) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | [], acc => .ok acc\n"
+  ++ "  | x :: xs, acc => do\n"
+  ++ "      let a ← checkedAddI32 acc (x.signExtend 32)\n"
+  ++ "      go xs a\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty sum, small sums, sign-extended bytes (`nsw` overflow needs more bytes than an edge can list; it is proof-covered by `evalFuncFuel_viewSum`). -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 8) × Result (BitVec 32)) :=\n"
+  ++ "  [([], .ok 0), ([1, 2, 3], .ok 6), ([0xFF], .ok (-1)), ([0x7F, 0x7F], .ok 254)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the vector `size` shape (N4d-iv-a projection
     leaf). The mirror is the tag-erased `stdVecSizeFwd`; edges carry
     ground truth (empty, singleton, longer vectors). -/

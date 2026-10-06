@@ -98,6 +98,9 @@ inductive FragKind : Type
   | spanSize
   | spanIndex
   | spanSum
+  | viewBegin
+  | viewEnd
+  | viewSum
   | vecSize
   | vecIndex
   | vecReadSum

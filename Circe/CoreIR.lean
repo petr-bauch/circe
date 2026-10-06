@@ -115,6 +115,12 @@ inductive CLit : Type
     store fused: `e` must be an `i32`); `boxGet b` is `p->x`
     (`cir.get_member` + `cir.load` fused: `b` must be a `boxVal`;
     use-after-`delete` is `AssertFail`).
+    `viewLen s` reads the length of `std::string_view` `s`
+    (`begin`/`end` fused: `s` must be a `viewVal`, delivered as a
+    `u64` word); `viewAt s ie` is bounded indexing over the reified
+    bytes (`ie` must be a `u64`, `OOB` off the end, mirroring
+    `spanAt` — the `s8i` load + `s8i -> s32i` sext fuse into the
+    read, delivered as a sign-extended `i32`).
     Each constructor requires per-op `Eval`/`Emit` lemmas before admission
     (see docs/PIPELINE.md). -/
 inductive CExpr : Type
@@ -136,6 +142,8 @@ inductive CExpr : Type
   | optGet : String → CExpr
   | spanLen : String → CExpr
   | spanAt : String → CExpr → CExpr
+  | viewLen : String → CExpr
+  | viewAt : String → CExpr → CExpr
   | stdVecLen : String → CExpr
   | stdVecAt : String → CExpr → CExpr
   | vgrowLen : String → CExpr

@@ -22,6 +22,7 @@ import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.Optional
 import Circe.Emit.Span
+import Circe.Emit.View
 import Circe.Emit.VecRead
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose
@@ -465,6 +466,28 @@ def matchFrag : Func → Option FragKind
       if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
           one == BitVec.ofNat 64 1 then some .spanSum else none
     | _ => none
+  | ⟨_, [⟨"s", .struct "std::string_view<char>" [.u 64, .u 64],
+         .sharedBorrow⟩], _,
+      .return_ (.lit (.u64 z0))⟩ =>
+    if z0 == BitVec.ofNat 64 0 then some .viewBegin else none
+  | ⟨_, [⟨"s", .struct "std::string_view<char>" [.u 64, .u 64],
+         .sharedBorrow⟩], _,
+      .return_ (.viewLen "s")⟩ =>
+    some .viewEnd
+  | ⟨_, [⟨"s", .struct "std::string_view<char>" [.u 64, .u 64],
+         .sharedBorrow⟩], _, body⟩ =>
+    match body with
+    | .seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
+      (.seq (.while_ (.ult (.var "i") (.viewLen "s"))
+              (.seq (.assign "t"
+                      (.add (.var "t") (.viewAt "s" (.var "i"))))
+                (.assign "i"
+                  (.uadd (.var "i") (.lit (.u64 one))))))
+            (.return_ (.var "t")))) =>
+      if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
+          one == BitVec.ofNat 64 1 then some .viewSum else none
+    | _ => none
   | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .return_ (.stdVecLen "s")⟩ =>
@@ -744,6 +767,9 @@ theorem matchFrag_spanExtent : matchFrag spanExtentFunc = some .spanExtent := rf
 theorem matchFrag_spanSize : matchFrag spanSizeFunc = some .spanSize := rfl
 theorem matchFrag_spanIndex : matchFrag spanIndexFunc = some .spanIndex := rfl
 theorem matchFrag_spanSum : matchFrag spanSumFunc = some .spanSum := rfl
+theorem matchFrag_viewBegin : matchFrag viewBeginFunc = some .viewBegin := rfl
+theorem matchFrag_viewEnd : matchFrag viewEndFunc = some .viewEnd := rfl
+theorem matchFrag_viewSum : matchFrag viewSumFunc = some .viewSum := rfl
 theorem matchFrag_stdVecSize : matchFrag stdVecSizeFunc = some .vecSize := rfl
 theorem matchFrag_stdVecIndex : matchFrag stdVecIndexFunc = some .vecIndex := rfl
 theorem matchFrag_stdVecReadSum : matchFrag stdVecReadSumFunc = some .vecReadSum := rfl

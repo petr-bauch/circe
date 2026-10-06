@@ -1395,6 +1395,284 @@ theorem memTransfer_spanSum (F : Nat) (l : List (BitVec 32))
   rw [memEvalFuncFuel_spanSum F l hl64 hF, evalFuncFuel_spanSum F l hl64 hF]
 
 
+/-! ## N7a `std::string_view` transfers: length and bytes agree -/
+
+/-- Memory condition for the view loop: the `u64` index against
+    the reified length (mirrors `memSpanCond_eval`). -/
+theorem memViewCond_eval (l : List (BitVec 8)) (k : Nat)
+    (acc : BitVec 32) (m : Mem) (π : Layout) (a : Addr) (t : Nat)
+    (hk64 : k < 2 ^ 64) (hl64 : l.length < 2 ^ 64)
+    (hlay : layoutLookup π "s" = some (a, t))
+    (hmemlen : memLoad m a t 0 = .ok (BitVec.ofNat 32 l.length)) :
+    memEvalExpr (.ult (.var "i") (.viewLen "s")) (mkViewEnv l k acc)
+      m π = .ok (.b (decide (k < l.length))) := by
+  have hi := mkViewEnv_i l k acc
+  have hs := mkViewEnv_s l k acc
+  have hlen : (BitVec.ofNat 64 l.length).toNat = l.length :=
+    ofNat64_toNat _ hl64
+  simp only [memEvalExpr, hi, hs, hlay, hmemlen, hlen,
+    ofNat64_ult k _ hk64, beq_self_eq_true, ↓reduceIte]
+
+/-- Memory body with a successful add: accumulate and step, memory
+    untouched (any fuel) — mirrors `memSpanBody_step_ok`. -/
+theorem memViewBody_step_ok (F : Nat) (l : List (BitVec 8)) (k : Nat)
+    (acc : BitVec 32) (b : BitVec 8) (a : BitVec 32)
+    (m : Mem) (π : Layout) (ad : Addr) (t : Nat)
+    (_hk : k < l.length) (hk64 : k < 2 ^ 64) (_hl64 : l.length < 2 ^ 64)
+    (hget : l[k]? = some b)
+    (hc : checkedAddI32 acc (b.signExtend 32) = .ok a)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (_hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 8),
+      l[j]? = some y →
+        memLoad m ad t (j + 1) = .ok (BitVec.ofNat 32 y.toNat)) :
+    memEvalStmtFuel F viewBody (mkViewEnv l k acc) m π =
+      .ok (((mkViewEnv l (k + 1) a, m, π)), .fellThrough) := by
+  have hi := mkViewEnv_i l k acc
+  have ht := mkViewEnv_t l k acc
+  have hs := mkViewEnv_s l k acc
+  have htn : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk64
+  have hadd : memEvalExpr
+      (.add (.var "t") (.viewAt "s" (.var "i")))
+        (mkViewEnv l k acc) m π = .ok (.i32 a) := by
+    simp only [memEvalExpr, ht, hi, hs, hlay, htn, hget,
+      hmemall k b hget, hc, Except.map, beq_self_eq_true, ↓reduceIte]
+  have hincr : memEvalExpr
+      (.uadd (.var "i") (.lit (.u64 (BitVec.ofNat 64 1))))
+        (mkViewEnv l k a) m π =
+        .ok (.u64 (BitVec.ofNat 64 (k + 1))) := by
+    simp only [memEvalExpr, litVal, mkViewEnv_i l k a, ofNat64_add_one]
+  have up1 := viewEnv_update_t l k acc a
+  have up2 := viewEnv_update_i l k (k + 1) a
+  cases F <;>
+    simp [viewBody, memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hadd, hincr, up1, up2]
+
+/-- Memory body with an overflowing add: the `nsw` error is loud
+    (any fuel) — mirrors `memSpanBody_step_err`. -/
+theorem memViewBody_step_err (F : Nat) (l : List (BitVec 8)) (k : Nat)
+    (acc : BitVec 32) (b : BitVec 8) (e : Panic)
+    (m : Mem) (π : Layout) (ad : Addr) (t : Nat)
+    (_hk : k < l.length) (hk64 : k < 2 ^ 64) (_hl64 : l.length < 2 ^ 64)
+    (hget : l[k]? = some b)
+    (hc : checkedAddI32 acc (b.signExtend 32) = .error e)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (_hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 8),
+      l[j]? = some y →
+        memLoad m ad t (j + 1) = .ok (BitVec.ofNat 32 y.toNat)) :
+    memEvalStmtFuel F viewBody (mkViewEnv l k acc) m π = .error e := by
+  have hi := mkViewEnv_i l k acc
+  have ht := mkViewEnv_t l k acc
+  have hs := mkViewEnv_s l k acc
+  have htn : (BitVec.ofNat 64 k).toNat = k := ofNat64_toNat k hk64
+  have hadd : memEvalExpr
+      (.add (.var "t") (.viewAt "s" (.var "i")))
+        (mkViewEnv l k acc) m π = .error e := by
+    simp only [memEvalExpr, ht, hi, hs, hlay, htn, hget,
+      hmemall k b hget, hc, Except.map, beq_self_eq_true, ↓reduceIte]
+  cases F <;>
+    simp [viewBody, memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hadd]
+
+/-- Memory loop correctness: folds the checked-add suffix with the
+    memory cross-checked at every step, exits with `i = length`
+    (fuel-generalized — the S3a `memSkipWhile_correct` shape). -/
+theorem memViewWhile_correct (l : List (BitVec 8))
+    (F k : Nat) (acc : BitVec 32) (m : Mem) (π : Layout)
+    (ad : Addr) (t : Nat)
+    (hk : k ≤ l.length) (hl64 : l.length < 2 ^ 64)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 8),
+      l[j]? = some y →
+        memLoad m ad t (j + 1) = .ok (BitVec.ofNat 32 y.toNat))
+    (hF : l.length - k + 1 ≤ F) :
+    memEvalStmtFuel F viewWhile (mkViewEnv l k acc) m π =
+      match viewFold (l.drop k) acc with
+      | .error e => .error e
+      | .ok acc' => .ok (((mkViewEnv l l.length acc', m, π)),
+        .fellThrough) := by
+  induction F generalizing k acc with
+  | zero => omega
+  | succ F ih =>
+    by_cases hlt : k < l.length
+    · have hk64 : k < 2 ^ 64 := by omega
+      have hget : l[k]? = some l[k] := List.getElem?_eq_getElem hlt
+      have hcond : memEvalExpr (.ult (.var "i") (.viewLen "s"))
+            (mkViewEnv l k acc) m π = .ok (.b true) := by
+        simpa [hlt] using
+          (memViewCond_eval l k acc m π ad t hk64 hl64 hlay hmemlen)
+      have hunfold := viewFold_step l k acc l[k] hget
+      cases hc : checkedAddI32 acc ((l[k]).signExtend 32) with
+      | error e =>
+        have hbody := memViewBody_step_err F l k acc l[k] e m π ad t
+          hlt hk64 hl64 hget hc hlay hmemlen hmemall
+        have hstep :
+            memEvalStmtFuel (F + 1) viewWhile (mkViewEnv l k acc) m π
+            = .error e := by
+          simp [viewWhile, memEvalStmtFuel, memEvalSuccHandler,
+            memEvalStmtWith, hcond, hbody]
+        rw [hstep, hunfold, hc]
+      | ok a =>
+        have hbody := memViewBody_step_ok F l k acc l[k] a m π ad t
+          hlt hk64 hl64 hget hc hlay hmemlen hmemall
+        have hstep :
+            memEvalStmtFuel (F + 1) viewWhile (mkViewEnv l k acc) m π
+            = memEvalStmtFuel F viewWhile (mkViewEnv l (k + 1) a) m π := by
+          simp [viewWhile, memEvalStmtFuel, memEvalSuccHandler,
+            memEvalStmtWith, hcond, hbody]
+        rw [hstep, hunfold, hc]
+        exact ih (k + 1) a (by omega) (by omega)
+    · have hkk : k = l.length := by omega
+      subst hkk
+      have hcond : memEvalExpr (.ult (.var "i") (.viewLen "s"))
+            (mkViewEnv l l.length acc) m π = .ok (.b false) := by
+        have hfalse : (decide (l.length < l.length)) = false := by
+          simp
+        have hk64 : l.length < 2 ^ 64 := hl64
+        have h := memViewCond_eval l l.length acc m π ad t hk64 hl64
+          hlay hmemlen
+        rwa [hfalse] at h
+      have hnil : viewFold [] acc = .ok acc := rfl
+      simp [viewWhile, memEvalStmtFuel, memEvalSuccHandler,
+        memEvalStmtWith, hcond, hnil]
+
+/-- `memEval` for `view_sum`, fuel-generalized — mirrors
+    `memEvalFuncFuel_spanSum`. -/
+theorem memEvalFuncFuel_viewSum (F : Nat) (l : List (BitVec 8))
+    (hl64 : l.length < 2 ^ 64) (hF : l.length + 1 ≤ F) :
+    memEvalFuncFuel F viewSumFunc [.viewVal l] = viewSumFwd l := by
+  have hbf : viewSumFunc.args =
+      [{ name := "s", ty := viewObjTy, role := .sharedBorrow }] := rfl
+  have hbody : viewSumFunc.body =
+      .seq (.let_ "t" (.i 32) (.lit (.i32 (BitVec.ofNat 32 0))))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      (.seq viewWhile
+            (.return_ (.var "t")))) := rfl
+  have hb : bindMemArgs
+      [{ name := "s", ty := viewObjTy, role := .sharedBorrow }]
+      [.viewVal l] emptyMem =
+      some ([("s", .viewVal l)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+          l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_viewVal "s" viewObjTy l
+  have henv : [("i", .u64 (BitVec.ofNat 64 0)),
+        ("t", .i32 (BitVec.ofNat 32 0)),
+        ("s", .viewVal l)]
+      = mkViewEnv l 0 (BitVec.ofNat 32 0) := rfl
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmemlen : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+        l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmemall : ∀ (j : Nat) (y : BitVec 8),
+      l[j]? = some y →
+      memLoad ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+        l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+        0 0 (j + 1) = .ok (BitVec.ofNat 32 y.toNat) := by
+    intro j y hget
+    simp [memLoad, memFind, hget]
+  have hsret : ∀ acc' : BitVec 32,
+      envLookup (mkViewEnv l l.length acc') "t" = some (.i32 acc') :=
+    fun acc' => mkViewEnv_t l l.length acc'
+  cases hfold : viewFold l (BitVec.ofNat 32 0) with
+  | error e =>
+    have hsum0 : viewSumFwd l = .error e := viewSumFwd_err l e hfold
+    cases F with
+    | zero =>
+      have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
+            viewWhile (mkViewEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+              l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+            [("s", 0, 0)] = .error e := by
+        have h := memViewWhile_correct l 0 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopH0, hsum0]
+    | succ F =>
+      have hloopS :
+          memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+            viewWhile (mkViewEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+              l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+            [("s", 0, 0)] = .error e := by
+        have h := memViewWhile_correct l (F + 1) 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp only [memEvalStmtFuel, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopS, hsum0]
+  | ok acc' =>
+    have hsum' : viewSumFwd l = .ok (.i32 acc') :=
+      viewSumFwd_ok l acc' hfold
+    cases F with
+    | zero =>
+      have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
+            viewWhile (mkViewEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+              l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+            [("s", 0, 0)] =
+            .ok ((((mkViewEnv l l.length acc',
+              ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+                l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+              [("s", 0, 0)]))), .fellThrough) := by
+        have h := memViewWhile_correct l 0 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      have hsret' := hsret acc'
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopH0, hsret', hsum']
+    | succ F =>
+      have hloopS :
+          memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+            viewWhile (mkViewEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+              l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+            [("s", 0, 0)] =
+            .ok ((((mkViewEnv l l.length acc',
+              ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+                l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩,
+              [("s", 0, 0)]))), .fellThrough) := by
+        have h := memViewWhile_correct l (F + 1) 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat)⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      have hsret' := hsret acc'
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp only [memEvalStmtFuel, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopS, hsret', hsum']
+
+/-- Transfer for `view_sum`: both sides equal `viewSumFwd`. -/
+theorem memTransfer_viewSum (F : Nat) (l : List (BitVec 8))
+    (hl64 : l.length < 2 ^ 64) (hF : l.length + 1 ≤ F)
+    (_h : oracleNoalias viewSumFunc [.viewVal l]) :
+    memEvalFuncFuel F viewSumFunc [.viewVal l] =
+      evalFuncFuel F viewSumFunc [.viewVal l] := by
+  rw [memEvalFuncFuel_viewSum F l hl64 hF, evalFuncFuel_viewSum F l hl64 hF]
+
+
 /-! ## N4d-iv-a `std::vector` transfers: length and words agree -/
 
 /-- `memEval` for `size` (fused projection pair + `ptr_diff` + `cast`). -/

@@ -559,6 +559,32 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | _, _ => .error .AssertFail
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
+  | .viewLen s, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memLoad m a t 0, envLookup ρ s with
+      | .ok w, some (.viewVal l) =>
+        if w == BitVec.ofNat 32 l.length then
+          .ok (.u64 (BitVec.ofNat 64 l.length))
+        else .error .AssertFail
+      | .error e, _ => .error e
+      | _, _ => .error .AssertFail
+  | .viewAt s ie, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memEvalExpr ie ρ m π, envLookup ρ s with
+      | .ok (.u64 i), some (.viewVal l) =>
+        match memLoad m a t (i.toNat + 1), l[i.toNat]? with
+        | .ok w, some x =>
+          if w == BitVec.ofNat 32 x.toNat then
+            .ok (.i32 (x.signExtend 32))
+          else .error .AssertFail
+        | .error e, _ => .error e
+        | _, _ => .error .AssertFail
+      | .ok _, _ => .error .AssertFail
+      | .error e, _ => .error e
   | .stdVecLen s, ρ, m, π =>
     match layoutLookup π s with
     | none => .error .AssertFail
@@ -867,6 +893,48 @@ theorem memEvalExpr_spanAt_oob (s : String) (ie : CExpr) (ρ : Env)
     (hmem : memLoad m a t (i.toNat + 1) = .error .OOB)
     (hval : l[i.toNat]? = none) :
     memEvalExpr (.spanAt s ie) ρ m π = evalExpr (.spanAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval]
+
+/-- `viewLen` agreement: the length word in memory matches the
+    `viewVal` length, so both sides report the same `u64` word. -/
+theorem memEvalExpr_viewLen_hit (s : String) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 8)) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.viewVal l))
+    (hmem : memLoad m a t 0 = .ok (BitVec.ofNat 32 l.length)) :
+    memEvalExpr (.viewLen s) ρ m π = evalExpr (.viewLen s) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hs, hmem, beq_self_eq_true,
+    ↓reduceIte]
+
+/-- `viewAt` agreement on an in-bounds index: the memory word holds
+    the zero-extended byte (one byte per word cell, the word-level
+    abstraction — native packs bytes, the model does not), so both
+    sides deliver the sign-extended `i32`. -/
+theorem memEvalExpr_viewAt_hit (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 8)) (i : BitVec 64)
+    (x : BitVec 8) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.viewVal l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t (i.toNat + 1) = .ok (BitVec.ofNat 32 x.toNat))
+    (hval : l[i.toNat]? = some x) :
+    memEvalExpr (.viewAt s ie) ρ m π = evalExpr (.viewAt s ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval,
+    beq_self_eq_true, ↓reduceIte]
+
+/-- `viewAt` OOB agreement: the memory load itself fails `OOB`
+    past the reified bytes, so both sides fail `OOB` loudly. -/
+theorem memEvalExpr_viewAt_oob (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 8)) (i : BitVec 64)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hs : envLookup ρ s = some (.viewVal l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t (i.toNat + 1) = .error .OOB)
+    (hval : l[i.toNat]? = none) :
+    memEvalExpr (.viewAt s ie) ρ m π = evalExpr (.viewAt s ie) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval]
 
 /-- `stdVecLen` agreement: the length word in memory matches the
@@ -1437,6 +1505,14 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
         -- words `1+i` are the viewed elements; N4d-iii).
         let (m'', a) := memAllocData m' ((BitVec.ofNat 32 l.length) :: l)
         some (((p.name, .spanVal l) :: ρ), m'', (p.name, a, a) :: π)
+      | .viewVal l =>
+        -- The reified bytes plus the 32-bit length word up front
+        -- (one byte per word cell, zero-extended — the word-level
+        -- abstraction, matching `memEvalExpr_viewAt_hit`; N7a).
+        let (m'', a) := memAllocData m'
+          ((BitVec.ofNat 32 l.length) ::
+            l.map (fun x => BitVec.ofNat 32 x.toNat))
+        some (((p.name, .viewVal l) :: ρ), m'', (p.name, a, a) :: π)
       | .stdVecVal l =>
         -- The reified elements plus the 32-bit length word up front
         -- (the heap-triple snapshot model: word 0 is the length,
