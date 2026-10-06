@@ -1435,3 +1435,103 @@ theorem evalFuncFuel_stdVecReloc (F : Nat) (bS : Vec32)
           ((evalStmtFuel_seq_fallthrough F _ _ _ _ hloopO).trans
             (evalStmtFuel_return F _ _ _ hvar)))
     simp [evalFuncFuel, hbind, hstmt, hfwd]
+
+/-! ## N7c: iterator `operator+` / `operator==` leaves -/
+
+/-- Mangled name of iterator `operator+` (`plEl`). -/
+def stdVecPlusElName : String :=
+  "_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEplEl"
+
+/-- Mangled name of const-iterator `operator==`. -/
+def stdVecIterEqName : String :=
+  "_ZN9__gnu_cxxeqIPKiSt6vectorIiSaIiEEEEbRKNS_17__normal_iteratorIT_T0_EESB_"
+
+/-- Canonical CoreIR for `plEl`: the `ptr_stride` fuses to wrapping
+    `uadd` (the `miEl` twin; the `s64` step arrives as the same bits
+    in a `u64`). -/
+def stdVecPlusElFunc : Func :=
+  ⟨stdVecPlusElName,
+   [{ name := "it", ty := .u 64, role := .owned },
+    { name := "n", ty := .u 64, role := .owned }],
+   .u 64,
+   .return_ (.uadd (.var "it") (.var "n"))⟩
+
+/-- Value-level forward for `plEl`. -/
+def stdVecPlusElFwd (it n : BitVec 64) : Result Value :=
+  .ok (.u64 (it + n))
+
+/-- Env facts for the `plEl` shape. -/
+theorem envLookup_stdVecPlusEl_it (it n : BitVec 64) :
+    envLookup [("it", .u64 it), ("n", .u64 n)] "it" =
+      some (.u64 it) := by
+  simp [envLookup]
+
+theorem envLookup_stdVecPlusEl_n (it n : BitVec 64) :
+    envLookup [("it", .u64 it), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+  simp [envLookup, show ("n" : String) ≠ "it" by decide]
+
+/-- `emit_correct` for `plEl` (any fuel). -/
+theorem evalFuncFuel_stdVecPlusEl (F : Nat) (it n : BitVec 64) :
+    evalFuncFuel F stdVecPlusElFunc [.u64 it, .u64 n] =
+      stdVecPlusElFwd it n := by
+  have hbind : bindArgs stdVecPlusElFunc.args [.u64 it, .u64 n] =
+      some [("it", .u64 it), ("n", .u64 n)] := rfl
+  have hbody : stdVecPlusElFunc.body =
+      .return_ (.uadd (.var "it") (.var "n")) := rfl
+  have hit := envLookup_stdVecPlusEl_it it n
+  have hn := envLookup_stdVecPlusEl_n it n
+  have hvit : evalExpr (.var "it") [("it", .u64 it), ("n", .u64 n)] =
+      .ok (.u64 it) := by
+    simp [evalExpr, hit]
+  have hvn : evalExpr (.var "n") [("it", .u64 it), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hadd : evalExpr (.uadd (.var "it") (.var "n"))
+      [("it", .u64 it), ("n", .u64 n)] = .ok (.u64 (it + n)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hvit hvn
+  cases F <;>
+    simp only [evalFuncFuel, hbind, hbody, evalStmtFuel, evalStmtZero,
+      evalStmtWith, hadd, stdVecPlusElFwd]
+
+/-- Canonical CoreIR for const-iterator `operator==`: the double
+    `base` + `cir.cmp` fuse to `ueq` over erased offsets. -/
+def stdVecIterEqFunc : Func :=
+  ⟨stdVecIterEqName,
+   [{ name := "a", ty := .u 64, role := .owned },
+    { name := "b", ty := .u 64, role := .owned }],
+   .bool,
+   .return_ (.ueq (.var "a") (.var "b"))⟩
+
+/-- Value-level forward for iterator equality. -/
+def stdVecIterEqFwd (a b : BitVec 64) : Result Value :=
+  .ok (.b (a == b))
+
+/-- Env facts for the `eq` shape. -/
+theorem envLookup_stdVecIterEq_a (a b : BitVec 64) :
+    envLookup [("a", .u64 a), ("b", .u64 b)] "a" =
+      some (.u64 a) := by
+  simp [envLookup]
+
+theorem envLookup_stdVecIterEq_b (a b : BitVec 64) :
+    envLookup [("a", .u64 a), ("b", .u64 b)] "b" =
+      some (.u64 b) := by
+  simp [envLookup, show ("b" : String) ≠ "a" by decide]
+
+/-- `emit_correct` for iterator equality (any fuel). -/
+theorem evalFuncFuel_stdVecIterEq (F : Nat) (a b : BitVec 64) :
+    evalFuncFuel F stdVecIterEqFunc [.u64 a, .u64 b] =
+      stdVecIterEqFwd a b := by
+  have hbind : bindArgs stdVecIterEqFunc.args [.u64 a, .u64 b] =
+      some [("a", .u64 a), ("b", .u64 b)] := rfl
+  have hbody : stdVecIterEqFunc.body =
+      .return_ (.ueq (.var "a") (.var "b")) := rfl
+  have ha := envLookup_stdVecIterEq_a a b
+  have hb := envLookup_stdVecIterEq_b a b
+  have heq : evalExpr (.ueq (.var "a") (.var "b"))
+      [("a", .u64 a), ("b", .u64 b)] = .ok (.b (a == b)) := by
+    simp [evalExpr, ha, hb]
+  cases F <;>
+    simp only [evalFuncFuel, hbind, hbody, evalStmtFuel, evalStmtZero,
+      evalStmtWith, heq, stdVecIterEqFwd]
+

@@ -298,6 +298,117 @@ def stdVecReserveFunc : Func :=
            (.return_ (.vgrowSetLen "tR" (.var "lenOld")))))))))
        (.return_ (.var "t")))⟩
 
+/-- Mangled names fused into the backward shift: `move_backward` /
+    `__copy_move_backward_a` / `_a1` / `_a2` (single-call
+    forwarders through `__miter_base` / `__niter_base` /
+    `__niter_wrap`) / `__copy_move_b` (the guarded `memmove`
+    terminal). -/
+def stdVecShiftBackName : String :=
+  "_ZSt13move_backwardIPiS0_ET0_T_S2_S1_"
+def stdVecShiftBackAName : String :=
+  "_ZSt22__copy_move_backward_aILb1EPiS0_ET1_T0_S2_S1_"
+def stdVecShiftBackA1Name : String :=
+  "_ZSt23__copy_move_backward_a1ILb1EPiS0_ET1_T0_S2_S1_"
+def stdVecShiftBackA2Name : String :=
+  "_ZSt23__copy_move_backward_a2ILb1EPiS0_ET1_T0_S2_S1_"
+def stdVecShiftBackBName : String :=
+  "_ZNSt22__copy_move_backwardILb1ELb1ESt26random_access_iterator_tagE13__copy_move_bIiEEPT_PKS3_S6_S4_"
+
+/-- Mangled name of `_M_insert_aux` (construct-last + shift + assign). -/
+def stdVecInsertAuxName : String :=
+  "_ZNSt6vectorIiSaIiEE13_M_insert_auxIiEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEOT_"
+
+/-- Mangled name of `_M_insert_rval` (the 2-arm router). -/
+def stdVecInsertRvalName : String :=
+  "_ZNSt6vectorIiSaIiEE14_M_insert_rvalEN9__gnu_cxx17__normal_iteratorIPKiS1_EEOi"
+
+/-- Mangled name of the `insert(const_iterator, T&&)` forwarder. -/
+def stdVecInsertName : String :=
+  "_ZNSt6vectorIiSaIiEE6insertEN9__gnu_cxx17__normal_iteratorIPKiS1_EEOi"
+
+/-- Descending copy body: `k = k - 1; t[doff + k] = t[first + k]`
+    (the decrement runs first so the top word moves first). -/
+def stdVecShiftBackBody : CStmt :=
+  .seq (.assign "k" (.usub (.var "k") (.lit (.u64 (BitVec.ofNat 64 1)))))
+    (.vgrowSet "t"
+      (.uadd (.var "doff") (.var "k"))
+      (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
+
+/-- Loop: `while (0 < k)` with `k` descending from `n`. -/
+def stdVecShiftBackWhile : CStmt :=
+  .while_ (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.var "k"))
+    stdVecShiftBackBody
+
+/-- Canonical CoreIR for the backward shift: `k = n = last - first`,
+    `doff = result - n`, descending walk, return the triple. -/
+def stdVecShiftBackFunc : Func :=
+  ⟨stdVecShiftBackName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "first", ty := .u 64, role := .owned },
+    { name := "last", ty := .u 64, role := .owned },
+    { name := "result", ty := .u 64, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "k" (.u 64) (.usub (.var "last") (.var "first")))
+   (.seq (.let_ "n" (.u 64) (.usub (.var "last") (.var "first")))
+   (.seq (.let_ "doff" (.u 64) (.usub (.var "result") (.var "n")))
+   (.seq stdVecShiftBackWhile
+     (.return_ (.var "t")))))⟩
+
+/-- Canonical CoreIR for `_M_insert_aux`: copy the last word to the
+    fresh finish slot, bump the length, shift `[pos, len)` right by
+    one, write `x` at `pos` (caller guarantees `len + 1 ≤ cap`). -/
+def stdVecInsertAuxFunc : Func :=
+  ⟨stdVecInsertAuxName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "pos", ty := .u 64, role := .owned },
+    { name := "x", ty := .i 32, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+   (.seq (.let_ "last" (.u 64)
+           (.usub (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+   (.seq (.let_ "lw" (.i 32) (.vgrowAt "t" (.var "last")))
+   (.seq (.callRet "t1" stdVecTraitsConstructName ["t", "len", "lw"])
+   (.seq (.let_ "lenp1" (.u 64)
+           (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))
+   (.seq (.let_ "t2" (.vecBlock)
+           (.vgrowSetLen "t1" (.var "lenp1")))
+   (.seq (.callRet "t3" stdVecShiftBackName
+           ["t2", "pos", "len", "lenp1"])
+   (.seq (.callRet "t4" stdVecTraitsConstructName ["t3", "pos", "x"])
+     (.return_ (.var "t4")))))))))⟩
+
+/-- Canonical CoreIR for `_M_insert_rval`: with room, construct at
+    `end()` when `pos == len`, else `_M_insert_aux`; full routes to
+    `_M_realloc_insert` at `end()`. -/
+def stdVecInsertRvalFunc : Func :=
+  ⟨stdVecInsertRvalName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "pos", ty := .u 64, role := .owned },
+    { name := "x", ty := .i 32, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+   (.if_ (.ult (.var "len") (.vgrowCap "t"))
+     (.if_ (.ueq (.var "pos") (.var "len"))
+       (.seq (.callRet "t1" stdVecTraitsConstructName ["t", "pos", "x"])
+         (.return_ (.vgrowSetLen "t1"
+           (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))))
+       (.seq (.callProg "t2" stdVecInsertAuxName ["t", "pos", "x"])
+         (.return_ (.var "t2"))))
+     (.seq (.callProg "t3" stdVecGrowReallocName ["t", "len", "x"])
+       (.return_ (.var "t3"))))⟩
+
+/-- Canonical CoreIR for the `insert` forwarder: delegate to
+    `_M_insert_rval`, return the grown triple (the iterator return
+    drops — it recomputes to `pos`). -/
+def stdVecInsertFunc : Func :=
+  ⟨stdVecInsertName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "pos", ty := .u 64, role := .owned },
+    { name := "x", ty := .i 32, role := .owned }],
+   .vecBlock,
+   .seq (.callProg "t1" stdVecInsertRvalName ["t", "pos", "x"])
+     (.return_ (.var "t1"))⟩
+
 
 /-- The shared growth program: the frozen b1 leaves the composers
     call into (name-stamped exactly as the corpus defines them, so
@@ -312,4 +423,6 @@ def vecGrowProg : Prog :=
     stdVecAllocFunc, stdVecConstructFunc, stdVecRelocFunc,
     stdVecDeallocGuardFunc, stdVecGrowReallocFunc, stdVecEndFunc,
     stdVecEmplaceBackFunc, stdVecPushBackFunc, stdVecGrowIndexFunc,
-    stdVecEmptyCtorFunc, stdVecDtorFunc, stdVecReserveFunc]
+    stdVecEmptyCtorFunc, stdVecDtorFunc, stdVecReserveFunc,
+    stdVecShiftBackFunc, stdVecPlusElFunc, stdVecIterEqFunc,
+    stdVecInsertAuxFunc, stdVecInsertRvalFunc, stdVecInsertFunc]

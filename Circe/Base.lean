@@ -1820,6 +1820,29 @@ def stdVecBlitFold (src : List (BitVec 32)) (lenS : Nat) (freeS : Bool)
           stdVecBlitFold src lenS freeS dst' (doff + 1) (soff + 1) k
     else .error .OOB
 
+/-- Backward blit: copy `n` words of `[soff, soff + n)` to
+    `[doff, doff + n)` processing the top word first (N7c: the
+    `move_backward` / `__copy_move_backward_a` / `_a1` / `_a2` /
+    `__copy_move_b` chain fuses to the guarded `memmove`, which is
+    this descending walk — read slot `soff + k` is never a previously
+    written slot when `soff < doff`, so overlapping right-shifts are
+    sound). Single triple (`src = dst`); `len` is the vector length
+    (reads below it are live). -/
+def stdVecBlitBackFold (b : Vec32) (len : Nat) (doff soff n : Nat) :
+    Result Vec32 :=
+  match n with
+  | 0 => .ok b
+  | k + 1 =>
+    if b.freed then .error .AssertFail
+    else if soff + k < len then
+      match b.val[soff + k]? with
+      | none => .error .OOB
+      | some x =>
+        match vecSet b (doff + k) x with
+        | .error e => .error e
+        | .ok b' => stdVecBlitBackFold b' len doff soff k
+    else .error .OOB
+
 /-- Whole-program bridge: allocate/fill/realloc/fill-extension/sum/free
     equals the `range (n + n)` prefix sum (the spec world). -/
 theorem vecReallocFillSumU32_correct (n : Nat) :

@@ -1,6 +1,10 @@
-# circe
-
+<p><div style="text-align: center">
 <img src="static/circe.jpg" alt="circe" width="240">
+<figcaption>
+Circe Invidiosa, John William Waterhouse, 1892
+</figcaption>
+</div>
+</p>
 
 CIR → Lean 4 verification pipeline for C and STL-free C++-lite, Aeneas-style:
 source → ClangIR (CIR, raw `CIRGen` output) → pure, memory-free Lean 4

@@ -17,3 +17,4 @@ import Circe.Emit.VecCompose.Realloc
 import Circe.Emit.VecCompose.Emplace
 import Circe.Emit.VecCompose.Entry
 import Circe.Emit.VecCompose.Reserve
+import Circe.Emit.VecCompose.Insert
