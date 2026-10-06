@@ -566,6 +566,15 @@ def emitStdVecEndText (name : String) : String :=
   ++ s!"def {name}_fwd (len : Nat) : BitVec 64 :=\n"
   ++ "  BitVec.ofNat 64 len\n"
 
+/-- Render the `capacity` forward definition (the tag-erased
+    `stdVecGrowCapacityFwd`). -/
+def emitStdVecCapacityText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `_M_end_of_storage` load fuses to the `cap` offset). -/\n"
+  ++ s!"def {name}_fwd (cap : Nat) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 cap\n"
+
 /-- Render the `back` forward definition (the tag-erased
     `stdVecBackFwd`). -/
 def emitStdVecBackText (name : String) : String :=
@@ -689,6 +698,27 @@ def emitStdVecGrowReallocText (name : String) : String :=
   ++ "  .ok (.stdVecOwned bR2\n"
   ++ "    ((BitVec.ofNat 64 len + BitVec.ofNat 64 1).toNat) capR2)\n"
 
+/-- Render the `reserve` growth composition (the tag-erased
+    `stdVecReserveFwd`: the `max_size` throw arm fuses to `fail`, the
+    `capacity < n` arm threads the owned triple through the frozen
+    allocate / relocate / deallocate leaves, otherwise passthrough). -/
+def emitStdVecReserveText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the guarded composition over the frozen leaf forwards). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (n : BitVec 64) : Result Value :=\n"
+  ++ "  if stdVecMaxDiffBV.ult n then .error .AssertFail\n"
+  ++ "  else if (BitVec.ofNat 64 cap).ult n then\n"
+  ++ "    (stdVecAllocFwd n).bind fun alv =>\n"
+  ++ "    (vecGrowOwned alv).bind fun (bNew, lenA, capA) =>\n"
+  ++ "    (stdVecRelocFwd b len cap bNew lenA capA (BitVec.ofNat 64 0)\n"
+  ++ "      (BitVec.ofNat 64 len) (BitVec.ofNat 64 0)).bind fun rlv =>\n"
+  ++ "    (vecGrowOwned rlv).bind fun (bR, _lenR, capR) =>\n"
+  ++ "    (stdVecDeallocGuardFwd b len cap\n"
+  ++ "      (BitVec.ofNat 64 cap)).bind fun _ =>\n"
+  ++ "    .ok (.stdVecOwned bR ((BitVec.ofNat 64 len).toNat) capR)\n"
+  ++ "  else .ok (.stdVecOwned b len cap)\n"
+
 /-- Render the `emplace_back` composer (the tag-erased
     `stdVecEmplaceBackFwd`: capacity dispatch — slow arm is the
     realloc bind chain at `pos = len`, fast arm is the construct
@@ -743,6 +773,17 @@ def emitVecPushSumEntryText (name : String) : String :=
   ++ s!"/-- Pure translation of `{name}` (closed entry over the proved growth composers). -/\n"
   ++ s!"def {name}_fwd : Result Value :=\n"
   ++ "  vecPushSumEntryFwd\n"
+
+/-- Render the closed `vec_reserve_sum` entry: direct delegation to the
+    verified `vecReserveSumEntryFwd` (default ctor, `reserve(10)`, two
+    pushes, two reads, one add, destructor; cf. `emitVecPushSumEntryText`
+    delegating to the verified `vecPushSumEntryFwd`). -/
+def emitVecReserveSumEntryText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (closed entry over the proved growth composers). -/\n"
+  ++ s!"def {name}_fwd : Result Value :=\n"
+  ++ "  vecReserveSumEntryFwd\n"
 
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;

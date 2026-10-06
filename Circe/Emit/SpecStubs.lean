@@ -1107,6 +1107,27 @@ def emitStdVecEndSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `capacity` (N7b `cap` offset). The mirror is the
+    tag-erased `stdVecGrowCapacityFwd`; edges carry ground truth (empty,
+    longer). -/
+def emitStdVecCapacitySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t)` returns the storage-end offset.\n"
+  ++ s!"    Base body reference: the `cap` offset itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecGrowCapacityFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (cap : Nat) : BitVec 64 :=\n"
+  ++ "  BitVec.ofNat 64 cap\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, longer. -/\n"
+  ++ s!"def {name}_spec_edges : List (Nat × BitVec 64) :=\n"
+  ++ "  [(0, BitVec.ofNat 64 0), (3, BitVec.ofNat 64 3)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `back` (N4d-iv-b1 `len - 1` offset). The mirror is
     the tag-erased `stdVecBackFwd`; edges carry ground truth
     (singleton, longer). -/
@@ -1364,6 +1385,46 @@ def emitStdVecGrowReallocSpecText (name : String) : String :=
   ++ s!"    | ((b, len, cap, pos, x), expected) =>\n"
   ++ s!"      (repr ({name}_spec_fwd b len cap pos x)).pretty == (repr expected).pretty\n"
 
+/-- Spec stub for the `reserve` growth composition (N7b: the `max_size`
+    throw arm, the `capacity < n` arm over the frozen b1 allocate /
+    relocate / deallocate leaves, and the passthrough arm; mismatch
+    shapes fail loudly through the `vecGrow*` projectors, cf.
+    `stdVecReserveFwd`). -/
+def emitStdVecReserveSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, n)` grows capacity to `n` (no-op when\n"
+  ++ s!"    `capacity ≥ n`; `length_error` when `n` exceeds `max_size`).\n"
+  ++ s!"    Base body reference: the guarded bind chain itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecReserveFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (n : BitVec 64) : Result Value :=\n"
+  ++ "  if stdVecMaxDiffBV.ult n then .error .AssertFail\n"
+  ++ "  else if (BitVec.ofNat 64 cap).ult n then\n"
+  ++ "    (stdVecAllocFwd n).bind fun alv =>\n"
+  ++ "    (vecGrowOwned alv).bind fun (bNew, lenA, capA) =>\n"
+  ++ "    (stdVecRelocFwd b len cap bNew lenA capA (BitVec.ofNat 64 0)\n"
+  ++ "      (BitVec.ofNat 64 len) (BitVec.ofNat 64 0)).bind fun rlv =>\n"
+  ++ "    (vecGrowOwned rlv).bind fun (bR, _lenR, capR) =>\n"
+  ++ "    (stdVecDeallocGuardFwd b len cap\n"
+  ++ "      (BitVec.ofNat 64 cap)).bind fun _ =>\n"
+  ++ "    .ok (.stdVecOwned bR ((BitVec.ofNat 64 len).toNat) capR)\n"
+  ++ "  else .ok (.stdVecOwned b len cap)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: passthrough, fresh allocation, `max_size` failure (frozen by evaluating `stdVecReserveFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 64) × Result Value) :=\n"
+  ++ "  [(((⟨[], false⟩, 0, 10, BitVec.ofNat 64 10)), .ok (.stdVecOwned ⟨[], false⟩ 0 10)),\n"
+  ++ "   (((⟨[], false⟩, 0, 0, BitVec.ofNat 64 1)), .ok (.stdVecOwned ⟨[(0 : BitVec 32)], false⟩ 0 1)),\n"
+  ++ "   (((⟨[], false⟩, 0, 0, BitVec.ofNat 64 (stdVecMaxDiff + 1))), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equations `stdVecReserve_correct_passthrough` /\n"
+  ++ s!"    `stdVecReserve_correct_realloc` / `stdVecReserve_correct_throw` (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, n), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap n)).pretty == (repr expected).pretty\n"
+
 /-- Spec stub for the `emplace_back` composer (N4d-iv-b2: capacity
     dispatch — slow arm is the realloc bind chain at `pos = len`,
     fast arm is the construct forward at `len`; edge values frozen
@@ -1467,6 +1528,30 @@ def emitVecPushSumEntrySpecText (name : String) : String :=
   ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
   ++ "    TODO (user): strengthen to the gallery equation `vecPushSumEntry_correct`\n"
   ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the closed `vec_reserve_sum` entry: the mirror delegates
+    to the verified `vecReserveSumEntryFwd` (same forward as the emitted
+    entry, so the proved `vecReserveSumEntry_correct` spec transfers
+    verbatim by body identity). -/
+def emitVecReserveSumEntrySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}()` runs the closed reserve/push/read/sum script (`reserve(10)`, two `push_back`, two `operator[]`, one add, destructor).\n"
+  ++ s!"    Base body reference: the delegation itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecReserveSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : Result Value :=\n"
+  ++ "  vecReserveSumEntryFwd\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single closed run `1 + 2 = 3` (frozen by evaluating `vecReserveSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × Result Value) :=\n"
+  ++ "  [((), .ok (.i32 (BitVec.ofNat 32 3)))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equation `vecReserveSumEntry_correct`\n"
+  ++ s!"    (proved by hand in `Circe.Specs`). -/\n"
   ++ s!"def {name}_spec_check : Bool :=\n"
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"

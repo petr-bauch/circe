@@ -904,6 +904,43 @@ def isStdVecSizeShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.derived_class_addr"
   | _ => false
 
+/-- The `capacity` projection leaf: the size twin — single `const&`
+    to the vector object with the single-reference triple, `u64`
+    return, no calls at all, the double `_M_impl` projection pair
+    (`_M_end_of_storage` + `_M_start` loads, never `_M_finish`) with
+    exactly one `ptr_diff` and one integral `cast` (`s64 → u64`), no
+    control flow. -/
+def isStdVecGrowCapacityShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    isU64 raw.ret &&
+    opCount raw.text "cir.call @" == 0 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.base_class_addr" == 4 &&
+    opCount raw.text "cir.get_member" == 4 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_end_of_storage" &&
+    containsSubstr raw.text "_M_start" &&
+    !containsSubstr raw.text "_M_finish" &&
+    opCount raw.text "cir.ptr_diff" == 1 &&
+    containsSubstr raw.text "cir.cast integral" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
 /-- The `operator[]` fused leaf: the vector `const&` (with the
     single-reference triple) plus the `u64` index, pointer-to-`i32`
     return, no calls at all (no assert skeleton — unchecked indexing

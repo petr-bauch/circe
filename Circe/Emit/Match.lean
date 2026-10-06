@@ -569,6 +569,27 @@ def matchFrag : Func → Option FragKind
       if maxdiff == stdVecMaxDiffBV &&
           cap1 == stdVecMaxDiffBV && cap2 == stdVecMaxDiffBV &&
           cap3 == stdVecMaxDiffBV then some .vecCheckLen else none
+    | .if_ (.ult (.lit (.u64 maxdiff)) (.var "n"))
+        .fail
+        (.if_ (.ult (.vgrowCap "t") (.var "n"))
+          (.seq (.let_ "zero" _ (.lit (.u64 zero)))
+          (.seq (.let_ "lenOld" _ (.vgrowLen "t"))
+          (.seq (.let_ "capOld" _ (.vgrowCap "t"))
+          (.seq (.callRet "tA" "_ZNSt12_Vector_baseIiSaIiEE11_M_allocateEm"
+                   ["n"])
+          (.seq (.callRet "tR" "_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_"
+                   ["t", "tA", "zero", "lenOld", "zero"])
+          (.seq (.callRet "tDead" "_ZNSt12_Vector_baseIiSaIiEE13_M_deallocateEPim"
+                   ["t", "capOld"])
+                (.return_ (.vgrowSetLen "tR" (.var "lenOld")))))))))
+        (.return_ (.var "t"))) =>
+      -- `reserve` composer: the `max_size` throw arm fused to `fail`,
+      -- the `capacity < n` arm over the frozen allocate / relocate /
+      -- deallocate leaves with the length re-pinned (`stdVecReserveFunc`;
+      -- the `matchFrag` `rfl` below keeps them in sync).
+      if maxdiff == stdVecMaxDiffBV && zero == BitVec.ofNat 64 0 then
+        some .vecReserve
+      else none
     | _ => none
   | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
       .return_ (.lit (.u64 zero))⟩ =>
@@ -576,6 +597,9 @@ def matchFrag : Func → Option FragKind
   | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
       .return_ (.vgrowLen "t")⟩ =>
     some .vecEnd
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
+      .return_ (.vgrowCap "t")⟩ =>
+    some .vecCapacity
   | ⟨_, [⟨"t", .vecBlock, .owned⟩], _,
       .return_ (.usub (.vgrowLen "t") (.lit (.u64 one)))⟩ =>
     if one == BitVec.ofNat 64 1 then some .vecBack else none
@@ -691,6 +715,28 @@ def matchFrag : Func → Option FragKind
         n1v == BitVec.ofNat 64 1 && n2v == BitVec.ofNat 64 2 then
       some .vecPushSumEntry
     else none
+  | ⟨_, [], .i 32,
+      .seq (.callRet "v0" "_ZNSt6vectorIiSaIiEEC2Ev" [])
+      (.seq (.let_ "n" (.u 64) (.lit (.u64 nv)))
+      (.seq (.callProg "v1" "_ZNSt6vectorIiSaIiEE7reserveEm" ["v0", "n"])
+      (.seq (.let_ "c0" (.i 32) (.lit (.i32 c0v)))
+      (.seq (.callProg "v2" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v1", "c0"])
+      (.seq (.let_ "c1" (.i 32) (.lit (.i32 c1v)))
+      (.seq (.callProg "v3" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v2", "c1"])
+      (.seq (.let_ "n0" (.u 64) (.lit (.u64 n0v)))
+      (.seq (.callRet "e0" "_ZNSt6vectorIiSaIiEEixEm" ["v3", "n0"])
+      (.seq (.let_ "n1" (.u 64) (.lit (.u64 n1v)))
+      (.seq (.callRet "e1" "_ZNSt6vectorIiSaIiEEixEm" ["v3", "n1"])
+      (.seq (.let_ "s" (.i 32) (.add (.var "e0") (.var "e1")))
+      (.seq (.callRet "v4" "_ZNSt6vectorIiSaIiEED2Ev" ["v3"])
+        (.return_ (.var "s"))))))))))))))⟩ =>
+    -- Closed `vec_reserve_sum` script: `reserve(10)`, the two pushed
+    -- words (`1, 2`), and the two read indices (`0, 1`) are pinned.
+    if nv == BitVec.ofNat 64 10 && c0v == BitVec.ofNat 32 1 &&
+        c1v == BitVec.ofNat 32 2 && n0v == BitVec.ofNat 64 0 &&
+        n1v == BitVec.ofNat 64 1 then
+      some .vecReserveSumEntry
+    else none
   | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"x", .i 32, .owned⟩], _, body⟩ =>
     -- `emplace_back` composer: guard fused to `len`/`cap` + `.une`,
     -- fast arm over the frozen construct leaf, slow arm over the
@@ -785,6 +831,7 @@ theorem matchFrag_stdVecMin : matchFrag stdVecMinFunc = some .vecMin := rfl
 theorem matchFrag_stdVecCheckLen : matchFrag stdVecCheckLenFunc = some .vecCheckLen := rfl
 theorem matchFrag_stdVecBegin : matchFrag stdVecBeginFunc = some .vecBegin := rfl
 theorem matchFrag_stdVecEnd : matchFrag stdVecEndFunc = some .vecEnd := rfl
+theorem matchFrag_stdVecGrowCapacity : matchFrag stdVecGrowCapacityFunc = some .vecCapacity := rfl
 theorem matchFrag_stdVecBack : matchFrag stdVecBackFunc = some .vecBack := rfl
 theorem matchFrag_stdVecIterId : matchFrag stdVecIterIdFunc = some .vecIterId := rfl
 theorem matchFrag_stdVecMinusEl : matchFrag stdVecMinusElFunc = some .vecMinusEl := rfl
@@ -797,4 +844,6 @@ theorem matchFrag_stdVecReloc : matchFrag stdVecRelocFunc = some .vecReloc := rf
 theorem matchFrag_stdVecGrowRealloc : matchFrag stdVecGrowReallocFunc = some .vecGrowRealloc := rfl
 theorem matchFrag_stdVecEmplaceBack : matchFrag stdVecEmplaceBackFunc = some .vecEmplaceBack := rfl
 theorem matchFrag_stdVecPushBack : matchFrag stdVecPushBackFunc = some .vecPushBack := rfl
+theorem matchFrag_stdVecReserve : matchFrag stdVecReserveFunc = some .vecReserve := rfl
 theorem matchFrag_vecPushSumEntry : matchFrag vecPushSumEntryFunc = some .vecPushSumEntry := rfl
+theorem matchFrag_vecReserveSumEntry : matchFrag vecReserveSumEntryFunc = some .vecReserveSumEntry := rfl

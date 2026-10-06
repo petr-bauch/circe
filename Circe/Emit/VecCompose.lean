@@ -10,9 +10,10 @@ Value model: inherited from `Circe.Emit.VecGrow` (`stdVecOwned`
 triples, iterators as `u64` offsets). The two composer-only pure
 expression forms (`vgrowSetLen`, `u64ofI64` — see `Circe.CoreIR`)
 appear only here, never in leaf bodies.
-Aggregator: the shared prelude lives in `Circe.Emit.VecCompose.Base`, composers in `Realloc` / `Emplace` / `Entry`.
+Aggregator: the shared prelude lives in `Circe.Emit.VecCompose.Base`, composers in `Realloc` / `Emplace` / `Entry` / `Reserve`.
 -/
 import Circe.Emit.VecCompose.Base
 import Circe.Emit.VecCompose.Realloc
 import Circe.Emit.VecCompose.Emplace
 import Circe.Emit.VecCompose.Entry
+import Circe.Emit.VecCompose.Reserve

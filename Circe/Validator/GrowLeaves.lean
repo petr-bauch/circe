@@ -85,7 +85,7 @@ def isVecDtorExemptText (text : String) : Bool :=
     `validate` below; this registry names every known vector leaf
     for the wrong-shape rejection. -/
 def stdVecLeafCallees : List String :=
-  [stdVecSizeName, stdVecIndexName,
+  [stdVecSizeName, stdVecCapacityName, stdVecIndexName,
    stdVecCtorName, stdVecBaseCtorName, stdVecImplCtorName,
    stdVecImplDataCtorName, stdVecNewAllocCtorName, stdVecAllocCtorName,
    stdVecDtorName, stdVecBaseDtorName, stdVecImplDtorName,
@@ -1096,6 +1096,118 @@ def isVecPushSumEntryShape (raw : RawFunc) : Bool :=
     opCount raw.text "cir.load" == 4 &&
     opCount raw.text "cir.const" == 9 &&
     opCount raw.text "cir.add" == 2 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.cleanup.scope" == 1 &&
+    opCount raw.text "cir.trap" == 1 &&
+    containsSubstr raw.text "cleanup normal" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- N7b `reserve` composer shape: the 8-site corpus def (`this` +
+    `u64` width, void return; the `max_size` throw guard fused from
+    the `get_global` + `array_to_ptrdecay` + `throw_length_error`
+    sites, the `capacity < n` guard over the `capacity` + `size`
+    calls, then the inline allocate → relocate (over the stateless
+    `_M_get_Tp_allocator` site) → deallocate + header re-pin). -/
+def isStdVecReserveShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "" &&
+  match raw.params with
+  | [this, n] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecMaxSizeName &&
+    opCount raw.text ("cir.call @" ++ stdVecMaxSizeName ++ "(") == 1 &&
+    callsFunc raw.text "_ZSt20__throw_length_errorPKc" &&
+    opCount raw.text "cir.call @_ZSt20__throw_length_errorPKc(" == 1 &&
+    callsFunc raw.text stdVecCapacityName &&
+    opCount raw.text ("cir.call @" ++ stdVecCapacityName ++ "(") == 1 &&
+    callsFunc raw.text stdVecSizeName &&
+    opCount raw.text ("cir.call @" ++ stdVecSizeName ++ "(") == 1 &&
+    callsFunc raw.text stdVecAllocateName &&
+    opCount raw.text ("cir.call @" ++ stdVecAllocateName ++ "(") == 1 &&
+    callsFunc raw.text stdVecGetTpName &&
+    opCount raw.text ("cir.call @" ++ stdVecGetTpName ++ "(") == 1 &&
+    callsFunc raw.text stdVecRelocName &&
+    opCount raw.text ("cir.call @" ++ stdVecRelocName ++ "(") == 1 &&
+    callsFunc raw.text stdVecDeallocName &&
+    opCount raw.text ("cir.call @" ++ stdVecDeallocName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 8 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.base_class_addr" == 21 &&
+    opCount raw.text "cir.get_member" == 18 &&
+    opCount raw.text "cir.ptr_diff" == 1 &&
+    containsSubstr raw.text "cir.cast integral" &&
+    opCount raw.text "cir.ptr_stride" == 2 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.store" == 7 &&
+    opCount raw.text "cir.load" == 15 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.scope" == 3 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_finish" &&
+    containsSubstr raw.text "_M_start" &&
+    containsSubstr raw.text "_M_end_of_storage" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.cleanup" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
+/-- N7b `vec_reserve_sum` entry shape: the closed corpus def (no
+    params, `!s32i` return; the default ctor, one `reserve(10)`, two
+    `push_back`, two non-const `operator[]`, and one destructor call;
+    one `nsw` add; one `cleanup` scope with the single normal-path
+    dtor call and the trailing unreachable `trap`). -/
+def isVecReserveSumEntryShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "!s32i" &&
+  match raw.params with
+  | [] =>
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecCtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecCtorName ++ "(") == 1 &&
+    callsFunc raw.text stdVecReserveName &&
+    opCount raw.text ("cir.call @" ++ stdVecReserveName ++ "(") == 1 &&
+    callsFunc raw.text stdVecPushBackName &&
+    opCount raw.text ("cir.call @" ++ stdVecPushBackName ++ "(") == 2 &&
+    callsFunc raw.text stdVecGrowIndexName &&
+    opCount raw.text ("cir.call @" ++ stdVecGrowIndexName ++ "(") == 2 &&
+    callsFunc raw.text stdVecDtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecDtorName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 7 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.store" == 3 &&
+    opCount raw.text "cir.load" == 3 &&
+    opCount raw.text "cir.const" == 8 &&
+    opCount raw.text "cir.add" == 1 &&
+    containsSubstr raw.text "#cir.int<10>" &&
     opCount raw.text "cir.return" == 1 &&
     opCount raw.text "cir.cleanup.scope" == 1 &&
     opCount raw.text "cir.trap" == 1 &&
