@@ -903,6 +903,15 @@ def emitClsBreakText (name : String) : String :=
   ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  .ok (if x == 0 then 10 else if x == 1 then 20 else 99)\n"
 
+/-- Render the `cls_add` forward definition (compute cases as wrapping
+    adds, value-level). -/
+def emitClsAddText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`switch` with compute bodies, value-level). -/\n"
+  ++ s!"def {name}_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (if x == 0 then y + 1 else if x == 1 then y + 2 else y)\n"
+
 /-- Project an emission to its forward text (`""` on rejection, so a
     rejection also fails the golden examples below). Top-level def so
     `native_decide` can compile it. -/

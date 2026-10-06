@@ -106,6 +106,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .clsFall => .ok (emitClsFallSpecText f.name)
   | some .clsDense => .ok (emitClsDenseSpecText f.name)
   | some .clsBreak => .ok (emitClsBreakSpecText f.name)
+  | some .clsAdd => .ok (emitClsAddSpecText f.name)
   | none => .error (.notFragment s!"not in the admitted fragment: {f.name}")
 
 /-- The emitter: accepted fragment renders to file text; everything else
@@ -192,6 +193,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .clsFall => .ok ⟨emitClsFallText f.name, none⟩
   | some .clsDense => .ok ⟨emitClsDenseText f.name, none⟩
   | some .clsBreak => .ok ⟨emitClsBreakText f.name, none⟩
+  | some .clsAdd => .ok ⟨emitClsAddText f.name, none⟩
   | none => .error (.notFragment s!"not in the admitted fragment: {f.name}")
 
 /-- Rejection is loud and names the function. -/

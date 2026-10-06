@@ -3,17 +3,18 @@
 --
 -- Run from the repo root: `lake env lean --run tests/lean/GoldenFlow.lean`
 -- 1. Corpus pipeline: `tests/cir/{nested_sum,skip_sum,find_eq,cls,
---    cls_fall,cls_dense,cls_break}.cir` parse, validate under their
---    `tests/oracle/verdicts.txt` verdicts, and emit byte-identical text
---    to `tests/golden/{NestedSum,SkipSum,FindEq,Cls,ClsFall,ClsDense,
---    ClsBreak}.lean`.
+--    cls_fall,cls_dense,cls_break,cls_add}.cir` parse, validate under
+--    their `tests/oracle/verdicts.txt` verdicts, and emit byte-identical
+--    text to `tests/golden/{NestedSum,SkipSum,FindEq,Cls,ClsFall,
+--    ClsDense,ClsBreak,ClsAdd}.lean`.
 -- 2. Rejection suite: misshapen control flow (break outside a loop,
 --    non-lowerable switch, lowerable switch with wrong signature,
 --    break inside nested loops, single-return search loop, range-case
 --    switch, unsigned arithmetic in a case body, permuted const mapping,
 --    double-`10` mapping matching neither `cls` nor `cls_fall` pins,
 --    break-switch with `default`, fallthrough into a `break` case,
---    break-switch text with wrong signature)
+--    break-switch text with wrong signature, compute-body switch with
+--    wrong signature, signed-`nsw` compute bodies, `mul` compute bodies)
 --    hits exact codes + message substrings, so the new `validate`
 --    branches are exercised. Mismatch policy: any in-subset
 --    divergence is P0; out-of-subset must reject loudly.
@@ -121,6 +122,23 @@ def advSwitchBreakDefault : String :=
 def advSwitchBreakFall : String :=
   "module {\n  cir.func @sbf(%arg0: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        cir.yield\n      }\n      cir.case(equal, [#cir.int<1> : !u32i]) {\n        %b = cir.const #cir.int<10> : !u32i\n        cir.store %b, %arg0 : !u32i, !cir.ptr<!u32i>\n        cir.break\n      }\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
 
+/-- Compute-body switch with the wrong signature (three params):
+    passes the `forbiddenOp` exemption (the text is `cls_add`-lowerable),
+    then fails shape admission with the dedicated compute-body message. -/
+def advSwitchAddArity : String :=
+  "module {\n  cir.func @saa(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}, %arg2: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        %a = cir.load align(4) %arg1 : !u32i\n        %b = cir.const #cir.int<1> : !u32i\n        %c = cir.add %a, %b : !u32i\n        cir.return %c : !u32i\n      }\n      cir.case(equal, [#cir.int<1> : !u32i]) {\n        %d = cir.load align(4) %arg1 : !u32i\n        %e = cir.const #cir.int<2> : !u32i\n        %f = cir.add %d, %e : !u32i\n        cir.return %f : !u32i\n      }\n      cir.case(default, []) {\n        %g = cir.load align(4) %arg1 : !u32i\n        cir.return %g : !u32i\n      }\n      cir.yield\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
+
+/-- Compute-body switch with a signed `nsw` add: the `nsw` marker
+    defeats the wrapping-only `cls_add` pins, so the `forbiddenOp`
+    switch branch fires (signed compute bodies are deferred). -/
+def advSwitchAddSigned : String :=
+  "module {\n  cir.func @sas(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !s32i) {\n      cir.case(equal, [#cir.int<0> : !s32i]) {\n        %c = cir.add nsw %arg0, %arg1 : !s32i\n        cir.return %c : !s32i\n      }\n      cir.case(equal, [#cir.int<1> : !s32i]) {\n        %d = cir.add nsw %arg0, %arg1 : !s32i\n        cir.return %d : !s32i\n      }\n      cir.case(default, []) {\n        cir.return %arg1 : !s32i\n      }\n      cir.yield\n    }\n    cir.return %arg0 : !s32i\n  }\n}"
+
+/-- Compute-body switch with `cir.mul`: the multiply defeats the
+    add-only region pins, so the `forbiddenOp` switch branch fires. -/
+def advSwitchAddMul : String :=
+  "module {\n  cir.func @sam(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    cir.switch(%arg0 : !u32i) {\n      cir.case(equal, [#cir.int<0> : !u32i]) {\n        %c = cir.mul %arg0, %arg1 : !u32i\n        cir.return %c : !u32i\n      }\n      cir.case(equal, [#cir.int<1> : !u32i]) {\n        %d = cir.mul %arg0, %arg1 : !u32i\n        cir.return %d : !u32i\n      }\n      cir.case(default, []) {\n        cir.return %arg1 : !u32i\n      }\n      cir.yield\n    }\n    cir.return %arg0 : !u32i\n  }\n}"
+
 /-- Break-switch text with the wrong signature (two params): passes the
     `forbiddenOp` exemption, then fails shape admission with the
     switch-specific message. -/
@@ -152,6 +170,9 @@ def main : IO Unit := do
   let c7 ← checkFlowPipeline verdicts "tests/cir/cls_break.cir"
     "tests/golden/ClsBreak.lean" "cls_break"
   passed := passed + c7
+  let c8 ← checkFlowPipeline verdicts "tests/cir/cls_add.cir"
+    "tests/golden/ClsAdd.lean" "cls_add"
+  passed := passed + c8
   let r1 ← checkRejectFlow "bn" advBreakNoLoop .unknown
     "out-of-subset" "`break`/`continue`"
   passed := passed + r1
@@ -188,6 +209,15 @@ def main : IO Unit := do
   let r12 ← checkRejectFlow "sba" advSwitchBreakArity .unknown
     "out-of-subset" "admitted `cls` shape"
   passed := passed + r12
+  let r13 ← checkRejectFlow "saa" advSwitchAddArity .unknown
+    "out-of-subset" "admitted `cls_add` shape"
+  passed := passed + r13
+  let r14 ← checkRejectFlow "sas" advSwitchAddSigned .unknown
+    "out-of-subset" "`cir.switch`"
+  passed := passed + r14
+  let r15 ← checkRejectFlow "sam" advSwitchAddMul .unknown
+    "out-of-subset" "`cir.switch`"
+  passed := passed + r15
   IO.println s!"GOLDENFLOW-OK passed={passed}"
 
 end GoldenFlow

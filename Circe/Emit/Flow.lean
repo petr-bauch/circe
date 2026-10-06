@@ -1515,3 +1515,65 @@ theorem evalFuncFuel_clsBreak (F : Nat) (x : BitVec 32) :
 theorem emit_correct_clsBreak (x : BitVec 32) :
     evalFunc clsBreakFunc [.u32 x] = clsBreakFwd x :=
   evalFuncFuel_clsBreak EVAL_FUEL x
+/-! ### `cls_add`: switch with compute bodies (N6b-iii) -/
+
+/-- Canonical CoreIR for `tests/c/cls_add.c`: equality cases on
+    `0`/`1` plus `default`; the compute cases answer `y + 1` / `y + 2`
+    (wrapping `uadd` — the CIR holds plain unsigned `cir.add`, total in
+    C and in the model), `default` answers `y`. The validator admits
+    exactly this lowered shape (`isClsAddShape`). -/
+def clsAddFunc : Func :=
+  ⟨"cls_add",
+   [{ name := "x", ty := .u 32, role := .owned },
+    { name := "y", ty := .u 32, role := .owned }],
+   .u 32,
+   .if_ (.ueq (.var "x") (.lit (.u32 0)))
+     (.return_ (.uadd (.var "y") (.lit (.u32 1))))
+     (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+       (.return_ (.uadd (.var "y") (.lit (.u32 2))))
+       (.return_ (.var "y")))⟩
+
+/-- Value-level forward for `cls_add` (cf. rendered `cls_add_fwd`). -/
+def clsAddFwd (x y : BitVec 32) : Result Value :=
+  if x == 0 then .ok (.u32 (y + 1))
+  else if x == 1 then .ok (.u32 (y + 2))
+  else .ok (.u32 y)
+
+/-- `emit_correct` for `cls_add` (loop-free: any fuel). -/
+theorem evalFuncFuel_clsAdd (F : Nat) (x y : BitVec 32) :
+    evalFuncFuel F clsAddFunc [.u32 x, .u32 y] = clsAddFwd x y := by
+  have hbind : bindArgs clsAddFunc.args [.u32 x, .u32 y] =
+      some [("x", .u32 x), ("y", .u32 y)] := rfl
+  have hbody : clsAddFunc.body =
+      .if_ (.ueq (.var "x") (.lit (.u32 0)))
+        (.return_ (.uadd (.var "y") (.lit (.u32 1))))
+        (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+          (.return_ (.uadd (.var "y") (.lit (.u32 2))))
+          (.return_ (.var "y"))) := rfl
+  have hx : envLookup [("x", .u32 x), ("y", .u32 y)] "x" =
+      some (.u32 x) := envExtend_hit _ _ _
+  have hyx : ("y" : String) ≠ "x" := by decide
+  have hy : envLookup [("x", .u32 x), ("y", .u32 y)] "y" =
+      some (.u32 y) := by simp [envLookup, hyx]
+  by_cases h0 : x = 0
+  · subst h0
+    cases F <;>
+      simp [evalFuncFuel, clsAddFunc, bindArgs, evalStmtFuel, evalStmtZero,
+        evalStmtWith, evalExpr, litVal, envLookup, clsAddFwd, hy]
+  · have h0' : x ≠ 0#32 := h0
+    have e0 : (x == 0#32) = false := by simp [h0']
+    by_cases h1 : x = 1
+    · subst h1
+      cases F <;>
+        simp [evalFuncFuel, clsAddFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, clsAddFwd, e0, hy]
+    · have h1' : x ≠ 1#32 := h1
+      have e1 : (x == 1#32) = false := by simp [h1']
+      cases F <;>
+        simp [evalFuncFuel, clsAddFunc, bindArgs, evalStmtFuel, evalStmtZero,
+          evalStmtWith, evalExpr, litVal, envLookup, clsAddFwd, e0, e1, hy]
+
+/-- `emit_correct` for `cls_add` at the default fuel. -/
+theorem emit_correct_clsAdd (x y : BitVec 32) :
+    evalFunc clsAddFunc [.u32 x, .u32 y] = clsAddFwd x y :=
+  evalFuncFuel_clsAdd EVAL_FUEL x y

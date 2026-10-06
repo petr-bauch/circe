@@ -681,6 +681,26 @@ theorem oracleNoalias_clsBreak (x : BitVec 32) :
     exact bindMemArgs_clsBreak x
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
+/-- `cls_add` binding pins nothing (two owned scalars; the switch is an
+    if-chain over pure comparisons and wrapping adds). -/
+theorem bindMemArgs_clsAdd (x y : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .u 32, role := .owned },
+        { name := "y", ty := .u 32, role := .owned }]
+      [.u32 x, .u32 y] emptyMem =
+      some ([("x", .u32 x), ("y", .u32 y)], emptyMem, []) := by
+  rfl
+
+/-- `cls_add` entry footprints are trivially disjoint. -/
+theorem oracleNoalias_clsAdd (x y : BitVec 32) :
+    oracleNoalias clsAddFunc [.u32 x, .u32 y] := by
+  have hb : bindMemArgs clsAddFunc.args [.u32 x, .u32 y] emptyMem =
+      some ([("x", .u32 x), ("y", .u32 y)], emptyMem, []) := by
+    show bindMemArgs [{ name := "x", ty := .u 32, role := .owned },
+        { name := "y", ty := .u 32, role := .owned }]
+      [.u32 x, .u32 y] emptyMem = _
+    exact bindMemArgs_clsAdd x y
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
 /-- `translate` binding pins nothing (the struct crosses by value —
     copy semantics — plus two owned scalars). -/
 theorem bindMemArgs_translate (px py dx dy : BitVec 32) :

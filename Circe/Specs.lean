@@ -306,6 +306,15 @@ theorem clsBreak_correct (x : BitVec 32) :
       .ok (.u32 (if x == 0 then 10 else if x == 1 then 20 else 99)) := by
   by_cases h0 : x = 0 <;> by_cases h1 : x = 1 <;> cir_simp <;> simp_all
 
+/-! ## `cls_add`: compute cases over the operand (N6b-iii, N3a) -/
+
+/-- `cls_add` dispatches exhaustively: the compute cases answer
+    `y + 1` / `y + 2` (wrapping), `default` answers `y`. -/
+theorem clsAdd_correct (x y : BitVec 32) :
+    clsAddFwd x y =
+      .ok (.u32 (if x == 0 then y + 1 else if x == 1 then y + 2 else y)) := by
+  by_cases h0 : x = 0 <;> by_cases h1 : x = 1 <;> cir_simp <;> simp_all
+
 /-! ## `add64` / `addu64`: 64-bit addition (S3b, N3a) -/
 
 /-- `add64` success delivers the mathematical sum with the `nsw`

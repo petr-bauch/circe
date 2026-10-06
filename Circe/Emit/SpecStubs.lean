@@ -1795,6 +1795,26 @@ def emitClsBreakSpecText (name : String) : String :=
   ++ s!"    (repr ({name}_spec_fwd x)).pretty\n"
   ++ "      == (repr (((Except.ok (if x == (0 : BitVec 32) then (10 : BitVec 32) else if x == (1 : BitVec 32) then (20 : BitVec 32) else (99 : BitVec 32))) : Result (BitVec 32)))).pretty\n"
 
+/-- Spec stub for the `cls_add` shape (N6b-iii compute bodies). -/
+def emitClsAddSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t x, uint32_t y)` (`switch` on 0/1 + default: `y + 1` / `y + 2` / `y`, wrapping).\n"
+  ++ s!"    Base body reference: the `uadd` if-chain (cf. emitted `{name}_fwd`, `emit_correct_clsAdd`). -/\n"
+  ++ s!"def {name}_spec_fwd (x y : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (if x == 0 then y + 1 else if x == 1 then y + 2 else y)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: both compute cases, the direct path, wrap-around, max. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (0, 5), (1, 5), (1, 0xFFFFFFFF), (0, 0xFFFFFFFF), (2, 7), (0xFFFFFFFF, 0xFFFFFFFF)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the class equation holds on every edge (this one is\n"
+  ++ "    already the spec — the `uadd` if-chain is the whole body). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2)).pretty\n"
+  ++ "      == (repr (((Except.ok (if t.1 == (0 : BitVec 32) then (t.2 + (1 : BitVec 32)) else if t.1 == (1 : BitVec 32) then (t.2 + (2 : BitVec 32)) else t.2)) : Result (BitVec 32)))).pretty\n"
+
 /-- Spec stub for the `cls_dense` shape (N6b-i eight-case switch). -/
 def emitClsDenseSpecText (name : String) : String :=
   emitSpecHeader

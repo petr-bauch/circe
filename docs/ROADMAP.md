@@ -112,7 +112,10 @@ semantics changes.
   old whole-text `cls` pins; 15/15 `GoldenFlow`); N6b-ii done
   (2026-10-06): `cls_break` (`0`/`1`, no `default`, store + `break`
   per case, `99` initializer) as guarded assigns over a local
-  (19/19 `GoldenFlow`); N6b-iii (compute bodies) remains.
+  (19/19 `GoldenFlow`); N6b-iii done (2026-10-06): `cls_add`
+  (wrapping `y + 1` / `y + 2` / `y`, `uadd` if-chain, dedicated
+  compute-body rejection for the rest; 23/23 `GoldenFlow`). N6
+  language gaps complete — remaining: N7 STD growth + Iris spike.
 - N7: STD growth — `string_view` range-for (shares the span
   iterator blocker: `begin`/`end` + pointer-chasing; needs a
   probed lowering + a token/value model), then

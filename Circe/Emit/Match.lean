@@ -60,6 +60,14 @@ def matchFrag : Func → Option FragKind
       .return_ (.neg (.var "x"))⟩ => some .neg
   | ⟨_, [⟨"a", .i 32, .owned⟩, ⟨"b", .i 32, .owned⟩], _,
       .return_ (.sdiv (.var "a") (.var "b"))⟩ => some .sdiv
+  | ⟨_, [⟨"x", .u 32, .owned⟩, ⟨"y", .u 32, .owned⟩], _,
+      .if_ (.ueq (.var "x") (.lit (.u32 c0)))
+        (.return_ (.uadd (.var "y") (.lit (.u32 k0))))
+        (.if_ (.ueq (.var "x") (.lit (.u32 c1)))
+          (.return_ (.uadd (.var "y") (.lit (.u32 k1))))
+          (.return_ (.var "y")))⟩ =>
+    if c0 == 0 && k0 == 1 && c1 == 1 && k1 == 2 then some .clsAdd
+    else none
   | ⟨_, [⟨"p", .i 32, .mutBorrow _⟩], _,
       .return_ (.add (.var "p") (.lit (.i32 one)))⟩ =>
     if one == 1 then some .incr else none
@@ -722,6 +730,7 @@ theorem matchFrag_cls : matchFrag clsFunc = some .cls := rfl
 theorem matchFrag_clsFall : matchFrag clsFallFunc = some .clsFall := rfl
 theorem matchFrag_clsDense : matchFrag clsDenseFunc = some .clsDense := rfl
 theorem matchFrag_clsBreak : matchFrag clsBreakFunc = some .clsBreak := rfl
+theorem matchFrag_clsAdd : matchFrag clsAddFunc = some .clsAdd := rfl
 theorem matchFrag_arrayRef : matchFrag arrayRefFunc = some .arrayRef := rfl
 theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
 theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl

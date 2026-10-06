@@ -27,6 +27,7 @@ cls unknown
 cls_fall unknown
 cls_dense unknown
 cls_break unknown
+cls_add unknown
 add64 unknown
 addu64 unknown
 sum_norestrict unknown

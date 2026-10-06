@@ -2,7 +2,7 @@
 -- `nested_sum` / `skip_sum` / `find_eq` / `cls` (evaluation + forwards)
 -- vs the native C binaries.
 --
--- Run: `lake env lean --run tests/lean/DiffFlow.lean <nested> <skip> <find> <cls> <cls_fall> <cls_dense> <cls_break> [trials]`
+-- Run: `lake env lean --run tests/lean/DiffFlow.lean <nested> <skip> <find> <cls> <cls_fall> <cls_dense> <cls_break> <cls_add> [trials]`
 -- Every trial asserts evaluated `evalFuncFuel` agrees with the value
 -- forward (runtime composition check) and both agree with native
 -- (fuel-sufficient, in-range cases; fuel-exhausted / OOB cases only
@@ -184,6 +184,30 @@ def checkClsBreak (clsBreakBin : String) (x : BitVec 32) : IO Nat := do
   else
     throw (IO.userError s!"cls_break eval/fwd mismatch (emit_correct violated at runtime)")
 
+/-- Directed `cls_add` inputs: both compute cases (including wrap-around
+    on `y = MAX`), the direct path, large values. Unsigned wrapping is
+    total in C, so native always agrees. -/
+def clsAddEdges : List (BitVec 32 × BitVec 32) :=
+  [(0, 0), (0, 5), (1, 5), (1, 0), (0, 0xFFFFFFFF), (1, 0xFFFFFFFF),
+   (2, 7), (2, 0xFFFFFFFF), (0xFFFFFFFF, 0xFFFFFFFF), (0, 1), (1, 1)]
+
+def checkClsAdd (clsAddBin : String) (x y : BitVec 32) : IO Nat := do
+  let fwd := clsAddFwd x y
+  let ev := evalFunc clsAddFunc [.u32 x, .u32 y]
+  if (repr fwd).pretty == (repr ev).pretty then
+    match fwd with
+    | .ok (.u32 r) =>
+      let native ← runNative clsAddBin #[toString x.toNat, toString y.toNat]
+      match native.toNat? with
+      | none => throw (IO.userError s!"cls_add native unparsable: {native}")
+      | some v =>
+        if v != r.toNat then
+          throw (IO.userError s!"cls_add mismatch: x={x.toNat} y={y.toNat} lean={r.toNat} native={v}")
+        pure 1
+    | _ => throw (IO.userError s!"cls_add eval shape unexpected")
+  else
+    throw (IO.userError s!"cls_add eval/fwd mismatch (emit_correct violated at runtime)")
+
 def main (args : List String) : IO Unit := do
   let nestBin := args.getD 0 "/tmp/opencode/circe_nested_native"
   let skipBin := args.getD 1 "/tmp/opencode/circe_skip_native"
@@ -192,7 +216,8 @@ def main (args : List String) : IO Unit := do
   let clsFallBin := args.getD 4 "/tmp/opencode/circe_cls_fall_native"
   let clsDenseBin := args.getD 5 "/tmp/opencode/circe_cls_dense_native"
   let clsBreakBin := args.getD 6 "/tmp/opencode/circe_cls_break_native"
-  let trials := (args.getD 7 "1000").toNat?.getD 1000
+  let clsAddBin := args.getD 7 "/tmp/opencode/circe_cls_add_native"
+  let trials := (args.getD 8 "1000").toNat?.getD 1000
   let mut passed := 0
   for (n, m) in nestedEdges do
     let c ← checkNested nestBin n m
@@ -214,6 +239,9 @@ def main (args : List String) : IO Unit := do
     passed := passed + c
   for x in clsBreakEdges do
     let c ← checkClsBreak clsBreakBin x
+    passed := passed + c
+  for (x, y) in clsAddEdges do
+    let c ← checkClsAdd clsAddBin x y
     passed := passed + c
   let mut s := 0x9E3779B97F4A7C15
   for _ in List.range trials do
@@ -253,6 +281,13 @@ def main (args : List String) : IO Unit := do
     passed := passed + c
     s := lcgNext s
     let c ← checkClsBreak clsBreakBin (BitVec.ofNat 32 s)
+    passed := passed + c
+    -- Small scrutinee (hits both compute arms + default) × full-range
+    -- operand (wrapping: always agrees).
+    s := lcgNext s
+    let xx := BitVec.ofNat 32 (s % 5)
+    s := lcgNext s
+    let c ← checkClsAdd clsAddBin xx (BitVec.ofNat 32 s)
     passed := passed + c
   IO.println s!"DIFFFLOW-OK passed={passed} (edges + {trials} random trials)"
 

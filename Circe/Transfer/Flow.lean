@@ -414,6 +414,55 @@ theorem memTransfer_clsBreak (F : Nat) (x : BitVec 32)
           memEvalExpr, evalExpr, litVal, envLookup, envExtend, e0, e1,
           hlk]
 
+/-- Transfer for `cls_add` (any fuel): the `uadd` if-chain is pure,
+    so memory is untouched and both sides classify identically. -/
+theorem memTransfer_clsAdd (F : Nat) (x y : BitVec 32)
+    (_h : oracleNoalias clsAddFunc [.u32 x, .u32 y]) :
+    memEvalFuncFuel F clsAddFunc [.u32 x, .u32 y] =
+      evalFuncFuel F clsAddFunc [.u32 x, .u32 y] := by
+  have hbf : clsAddFunc.args =
+      [{ name := "x", ty := .u 32, role := .owned },
+       { name := "y", ty := .u 32, role := .owned }] := rfl
+  have hbody : clsAddFunc.body =
+      .if_ (.ueq (.var "x") (.lit (.u32 0)))
+        (.return_ (.uadd (.var "y") (.lit (.u32 1))))
+        (.if_ (.ueq (.var "x") (.lit (.u32 1)))
+          (.return_ (.uadd (.var "y") (.lit (.u32 2))))
+          (.return_ (.var "y"))) := rfl
+  have hb : bindMemArgs
+      [{ name := "x", ty := .u 32, role := .owned },
+       { name := "y", ty := .u 32, role := .owned }]
+      [.u32 x, .u32 y] emptyMem =
+      some ([("x", .u32 x), ("y", .u32 y)], emptyMem, []) := rfl
+  have hx : envLookup [("x", .u32 x), ("y", .u32 y)] "x" =
+      some (.u32 x) := envExtend_hit _ _ _
+  have hyx : ("y" : String) ≠ "x" := by decide
+  have hy : envLookup [("x", .u32 x), ("y", .u32 y)] "y" =
+      some (.u32 y) := by simp [envLookup, hyx]
+  by_cases h0 : x = 0
+  · subst h0
+    simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        evalStmtFuel, evalStmtZero, evalStmtWith,
+        memEvalExpr, evalExpr, litVal, envLookup, hy]
+  · have h0' : x ≠ 0#32 := h0
+    have e0 : (x == 0#32) = false := by simp [h0']
+    by_cases h1 : x = 1
+    · subst h1
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup, hy, e0]
+    · have h1' : x ≠ 1#32 := h1
+      have e1 : (x == 1#32) = false := by simp [h1']
+      simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+      cases F <;>
+        simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+          evalStmtFuel, evalStmtZero, evalStmtWith,
+          memEvalExpr, evalExpr, litVal, envLookup, hy, e0, e1]
+
 /-- Transfer for `translate` (any fuel): field projection + checked
     adds + struct construction are all pure (the struct crosses by
     value), so memory rides alongside untouched. The `Eval` side reuses
