@@ -1371,6 +1371,38 @@ theorem oracleNoalias_stdVecEnd (b : Vec32) (len cap : Nat) :
   have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-- `capacity` binding pins the owned triple (the `end` twin: same
+    single-argument shape, so the same memory). -/
+theorem bindMemArgs_stdVecGrowCapacity (b : Vec32) (len cap : Nat) :
+    bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- `capacity` footprints are a singleton. -/
+theorem oracleNoalias_stdVecGrowCapacity (b : Vec32) (len cap : Nat) :
+    oracleNoalias stdVecGrowCapacityFunc [.stdVecOwned b len cap] := by
+  have hb : bindMemArgs stdVecGrowCapacityFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecGrowCapacity b len cap
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-- `back` binding pins the owned triple. -/
 theorem bindMemArgs_stdVecBack (b : Vec32) (len cap : Nat) :
     bindMemArgs
@@ -1780,6 +1812,46 @@ theorem oracleNoalias_stdVecPushBack (b : Vec32) (len cap : Nat)
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-! ## N7b `reserve` composer: entry binding + footprint -/
+
+/-- Reserve binding pins the owned triple (same `(t, n)` params as the
+    index leaf: the composer takes the old triple by value plus the
+    requested capacity word). -/
+theorem bindMemArgs_stdVecReserve (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) :
+    bindMemArgs stdVecReserveFunc.args
+      [.stdVecOwned b len cap, .u64 n] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Reserve footprints are a singleton (the old triple is owned; the
+    requested capacity word is pure). -/
+theorem oracleNoalias_stdVecReserve (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) :
+    oracleNoalias stdVecReserveFunc
+      [.stdVecOwned b len cap, .u64 n] := by
+  have hb : bindMemArgs stdVecReserveFunc.args
+      [.stdVecOwned b len cap, .u64 n] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecReserve b len cap n
+  have hn : LayoutNoAlias [("t", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## N4d-iv-b2 entry-scoped `operator[]` leaf: entry binding + footprint -/
 
 /-- Index binding pins the owned triple (the leaf takes the triple by
@@ -1830,6 +1902,18 @@ theorem bindMemArgs_vecPushSumEntry :
 theorem oracleNoalias_vecPushSumEntry :
     oracleNoalias vecPushSumEntryFunc [] := by
   exact ⟨_, _, _, bindMemArgs_vecPushSumEntry, layoutNoAlias_nil⟩
+
+/-! ## N7b `vec_reserve_sum` entry: entry binding + footprint -/
+
+/-- Entry binding: no arguments, empty footprint. -/
+theorem bindMemArgs_vecReserveSumEntry :
+    bindMemArgs vecReserveSumEntryFunc.args [] emptyMem =
+      some ([], emptyMem, []) := rfl
+
+/-- Entry footprints are trivially disjoint (nothing pinned). -/
+theorem oracleNoalias_vecReserveSumEntry :
+    oracleNoalias vecReserveSumEntryFunc [] := by
+  exact ⟨_, _, _, bindMemArgs_vecReserveSumEntry, layoutNoAlias_nil⟩
 
 /-! ## Cache bridge (discharged by the executable check) -/
 

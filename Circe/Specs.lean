@@ -871,6 +871,12 @@ theorem stdVecEnd_correct (len : Nat) :
     stdVecEndFwd len = .ok (.u64 (BitVec.ofNat 64 len)) :=
   rfl
 
+/-- `capacity` is the reified storage end (N7b: the `end` twin over
+    the second header word). -/
+theorem stdVecGrowCapacity_correct (cap : Nat) :
+    stdVecGrowCapacityFwd cap = .ok (.u64 (BitVec.ofNat 64 cap)) :=
+  rfl
+
 /-- `back` is one before the length. -/
 theorem stdVecBack_correct (len : Nat) :
     stdVecBackFwd len = .ok (.u64 (BitVec.ofNat 64 len - 1)) :=
@@ -1166,6 +1172,42 @@ theorem stdVecPushBack_correct_ok_fast (b : Vec32) (len cap : Nat)
   unfold stdVecPushBackFwd
   exact stdVecEmplaceBack_correct_ok_fast b len cap x bC hlc h
 
+/-! ## N7b `reserve`: composer spec (Fwd level) -/
+
+/-- Below `max_size` with sufficient capacity the triple passes
+    through untouched. -/
+theorem stdVecReserve_correct_passthrough (b : Vec32) (len cap : Nat)
+    (n : BitVec 64)
+    (hmax : stdVecMaxDiffBV.ult n = false)
+    (hcap : (BitVec.ofNat 64 cap).ult n = false) :
+    stdVecReserveFwd b len cap n = .ok (.stdVecOwned b len cap) := by
+  simp only [stdVecReserveFwd, hmax, hcap, ite_false, reduceCtorEq]
+
+/-- Over `max_size` the `length_error` arm fails loudly. -/
+theorem stdVecReserve_correct_throw (b : Vec32) (len cap : Nat)
+    (n : BitVec 64)
+    (hmax : stdVecMaxDiffBV.ult n = true) :
+    stdVecReserveFwd b len cap n = .error .AssertFail := by
+  simp only [stdVecReserveFwd, hmax, ite_true, reduceCtorEq]
+
+/-- The reallocation arm threads the owned triple through allocate →
+    relocate → deallocate and re-pins the length (leaf-hypothesis style
+    like `stdVecGrowRealloc_correct_ok`). -/
+theorem stdVecReserve_correct_realloc (b : Vec32) (len cap : Nat)
+    (n : BitVec 64) (bNew bR : Vec32) (v : Value)
+    (hmax : stdVecMaxDiffBV.ult n = false)
+    (hcap : (BitVec.ofNat 64 cap).ult n = true)
+    (hal : stdVecAllocFwd n = .ok (.stdVecOwned bNew 0 n.toNat))
+    (hrlv : stdVecRelocFwd b len cap bNew 0 n.toNat
+      (BitVec.ofNat 64 0) (BitVec.ofNat 64 len)
+      (BitVec.ofNat 64 0) = .ok (.stdVecOwned bR 0 n.toNat))
+    (hgd : stdVecDeallocGuardFwd b len cap (BitVec.ofNat 64 cap) =
+      .ok v) :
+    stdVecReserveFwd b len cap n =
+      .ok (.stdVecOwned bR ((BitVec.ofNat 64 len).toNat) n.toNat) := by
+  simp only [stdVecReserveFwd, hmax, hcap, ite_false, ite_true, reduceCtorEq, hal,
+    hrlv, hgd, vecGrow_bind_ok, vecGrowOwned]
+
 /-! ## N3c gallery: worked properties beyond the admitted-shape specs -/
 
 /-- The index fill is sorted: `vec` writes `k` at slot `k`, so the
@@ -1228,3 +1270,10 @@ theorem stdVecGrowIndex_correct_hit (b : Vec32) (len : Nat)
     `vecPushSumEntryFwd`). -/
 theorem vecPushSumEntry_correct :
     vecPushSumEntryFwd = .ok (.i32 6) := rfl
+
+/-! ## N7b `vec_reserve_sum` entry: spec (Fwd level) -/
+
+/-- The closed entry computes `1 + 2 = 3` (frozen by evaluating
+    `vecReserveSumEntryFwd`). -/
+theorem vecReserveSumEntry_correct :
+    vecReserveSumEntryFwd = .ok (.i32 3) := rfl

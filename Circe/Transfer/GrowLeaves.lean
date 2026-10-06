@@ -427,6 +427,49 @@ theorem memTransfer_stdVecEnd (F : Nat) (b : Vec32) (len cap : Nat)
   rw [memEvalFuncFuel_stdVecEnd F b len cap hlive,
     evalFuncFuel_stdVecEnd F b len cap]
 
+/-- `memEval` for `capacity` (liveness as in `end`: the header read
+    needs a live block; the capacity word sits at header index `1`). -/
+theorem memEvalFuncFuel_stdVecGrowCapacity (F : Nat) (b : Vec32)
+    (len cap : Nat) (hlive : b.freed = false) :
+    memEvalFuncFuel F stdVecGrowCapacityFunc [.stdVecOwned b len cap] =
+      stdVecGrowCapacityFwd cap := by
+  have hb : bindMemArgs stdVecGrowCapacityFunc.args [.stdVecOwned b len cap]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap)],
+        (tripleMem b len cap),
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned }]
+      [.stdVecOwned b len cap] emptyMem = _
+    exact bindMemArgs_stdVecGrowCapacity b len cap
+  have hbody : stdVecGrowCapacityFunc.body = .return_ (.vgrowCap "t") := rfl
+  have ht := envLookup_stdVecGrowCapacity_t b len cap
+  have hcap : evalExpr (.vgrowCap "t") [("t", .stdVecOwned b len cap)] =
+      .ok (.u64 (BitVec.ofNat 64 cap)) :=
+    evalExpr_vgrowCap_some "t" _ b len cap ht
+  have hlay : layoutLookup [("t", 0, 0)] "t" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      (tripleMem b len cap)
+      0 0 1 = .ok (BitVec.ofNat 32 cap) := by
+    simp [tripleMem, memLoad, memFind, hlive]
+  have hagree := memEvalExpr_vgrowCap_hit "t" _ _ _ b len cap 0 0
+    hlay ht hmem
+  have hret := memEvalStmtFuel_return F (.vgrowCap "t") _ _ _ _
+    hagree hcap
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [stdVecGrowCapacityFwd]
+
+/-- Transfer for `capacity`. -/
+theorem memTransfer_stdVecGrowCapacity (F : Nat) (b : Vec32) (len cap : Nat)
+    (hlive : b.freed = false)
+    (_h : oracleNoalias stdVecGrowCapacityFunc [.stdVecOwned b len cap]) :
+    memEvalFuncFuel F stdVecGrowCapacityFunc [.stdVecOwned b len cap] =
+      evalFuncFuel F stdVecGrowCapacityFunc [.stdVecOwned b len cap] := by
+  rw [memEvalFuncFuel_stdVecGrowCapacity F b len cap hlive,
+    evalFuncFuel_stdVecGrowCapacity F b len cap]
+
 /-- `memEval` for `back` (liveness as in `end`: the header read
     needs a live block). -/
 theorem memEvalFuncFuel_stdVecBack (F : Nat) (b : Vec32)
