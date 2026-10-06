@@ -271,6 +271,34 @@ def stdVecGrowIndexFunc : Func :=
    .i 32,
    .return_ (.vgrowAt "t" (.var "n"))⟩
 
+/-- Mangled name of `reserve`. -/
+def stdVecReserveName : String :=
+  "_ZNSt6vectorIiSaIiEE7reserveEm"
+
+/-- Canonical CoreIR for `reserve`: the `max_size` throw arm fuses
+    to `fail`; the `capacity < n` arm threads the owned triple
+    through allocate → relocate → deallocate and re-pins the length
+    (`len` unchanged, capacity becomes `n`); otherwise the triple
+    passes through. -/
+def stdVecReserveFunc : Func :=
+  ⟨stdVecReserveName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "n", ty := .u 64, role := .owned }],
+   .vecBlock,
+   .if_ (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
+     .fail
+     (.if_ (.ult (.vgrowCap "t") (.var "n"))
+       (.seq (.let_ "zero" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+         (.seq (.let_ "lenOld" (.u 64) (.vgrowLen "t"))
+         (.seq (.let_ "capOld" (.u 64) (.vgrowCap "t"))
+         (.seq (.callRet "tA" stdVecAllocateName ["n"])
+         (.seq (.callRet "tR" stdVecRelocName
+                  ["t", "tA", "zero", "lenOld", "zero"])
+         (.seq (.callRet "tDead" stdVecDeallocName ["t", "capOld"])
+           (.return_ (.vgrowSetLen "tR" (.var "lenOld")))))))))
+       (.return_ (.var "t")))⟩
+
+
 /-- The shared growth program: the frozen b1 leaves the composers
     call into (name-stamped exactly as the corpus defines them, so
     `findFunc` resolves every composer `callRet`), plus the
@@ -284,4 +312,4 @@ def vecGrowProg : Prog :=
     stdVecAllocFunc, stdVecConstructFunc, stdVecRelocFunc,
     stdVecDeallocGuardFunc, stdVecGrowReallocFunc, stdVecEndFunc,
     stdVecEmplaceBackFunc, stdVecPushBackFunc, stdVecGrowIndexFunc,
-    stdVecEmptyCtorFunc, stdVecDtorFunc]
+    stdVecEmptyCtorFunc, stdVecDtorFunc, stdVecReserveFunc]
