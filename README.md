@@ -1,5 +1,7 @@
 # circe
 
+<img src="static/circe.jpg" alt="circe" width="240">
+
 CIR → Lean 4 verification pipeline for C and STL-free C++-lite, Aeneas-style:
 source → ClangIR (CIR, raw `CIRGen` output) → pure, memory-free Lean 4
 via a verified emitter, with functional-correctness proofs as pure equations.
