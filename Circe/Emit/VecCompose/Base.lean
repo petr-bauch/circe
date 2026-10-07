@@ -410,6 +410,94 @@ def stdVecInsertFunc : Func :=
    .seq (.callProg "t1" stdVecInsertRvalName ["t", "pos", "x"])
      (.return_ (.var "t1"))⟩
 
+/-- Mangled names fused into the forward shift: `std::move` /
+    `__copy_move_a` / `_a1` / `_a2` (single-call forwarders
+    through `__miter_base` / `__niter_base` / `__niter_wrap`) /
+    `__copy_m` (the guarded `memmove` terminal). -/
+def stdVecShiftDownName : String :=
+  "_ZSt4moveIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET0_T_S8_S7_"
+def stdVecShiftDownAName : String :=
+  "_ZSt13__copy_move_aILb1EN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET1_T0_S8_S7_"
+def stdVecShiftDownA1Name : String :=
+  "_ZSt14__copy_move_a1ILb1EPiS0_ET1_T0_S2_S1_"
+def stdVecShiftDownA2Name : String :=
+  "_ZSt14__copy_move_a2ILb1EPiS0_ET1_T0_S2_S1_"
+def stdVecShiftDownBName : String :=
+  "_ZNSt11__copy_moveILb1ELb1ESt26random_access_iterator_tagE8__copy_mIiEEPT_PKS3_S6_S4_"
+
+/-- Mangled names of the iterator move-forms: `__miter_base`
+    (by-value iterator identity), `__niter_base` (iterator to
+    pointer through `base`), `__niter_wrap` (iterator + pointer
+    to iterator through `__niter_base` + `operator+`). -/
+def stdVecMIterBaseMoveName : String :=
+  "_ZSt12__miter_baseIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEEET_S7_"
+def stdVecNIterBaseMoveName : String :=
+  "_ZSt12__niter_baseIPiSt6vectorIiSaIiEEET_N9__gnu_cxx17__normal_iteratorIS4_T0_EE"
+def stdVecNIterWrapMoveName : String :=
+  "_ZSt12__niter_wrapIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES2_ET_S7_T0_"
+
+/-- Mangled name of `_M_erase` (guarded shift-down + shrink). -/
+def stdVecEraseCoreName : String :=
+  "_ZNSt6vectorIiSaIiEE8_M_eraseEN9__gnu_cxx17__normal_iteratorIPiS1_EE"
+
+/-- Mangled name of the `erase(const_iterator)` forwarder. -/
+def stdVecEraseName : String :=
+  "_ZNSt6vectorIiSaIiEE5eraseEN9__gnu_cxx17__normal_iteratorIPKiS1_EE"
+
+/-- Canonical CoreIR for the forward shift: `k = 0`, `n = last -
+    first`, ascending walk `t[result + k] = t[first + k]`, return
+    the triple (dual of `stdVecShiftBackFunc`). -/
+def stdVecShiftDownFunc : Func :=
+  ⟨stdVecShiftDownName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "first", ty := .u 64, role := .owned },
+    { name := "last", ty := .u 64, role := .owned },
+    { name := "result", ty := .u 64, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "k" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+   (.seq (.let_ "n" (.u 64) (.usub (.var "last") (.var "first")))
+   (.seq (.while_ (.ult (.var "k") (.var "n"))
+           (.seq (.vgrowSet "t" (.uadd (.var "result") (.var "k"))
+                   (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
+             (.assign "k" (.uadd (.var "k")
+               (.lit (.u64 (BitVec.ofNat 64 1)))))))
+     (.return_ (.var "t"))))⟩
+
+/-- Canonical CoreIR for `_M_erase`: `npos = pos + 1`; when it
+    differs from `len`, shift `[npos, len)` down to `pos`, then
+    shrink to `len - 1` (the per-element `destroy` is trivial for
+    `int`, so the shrink is the whole effect). -/
+def stdVecEraseCoreFunc : Func :=
+  ⟨stdVecEraseCoreName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "pos", ty := .u 64, role := .owned }],
+   .vecBlock,
+   .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+   (.seq (.let_ "npos" (.u 64)
+           (.uadd (.var "pos") (.lit (.u64 (BitVec.ofNat 64 1)))))
+   (.if_ (.une (.var "npos") (.var "len"))
+     (.seq (.callProg "t1" stdVecShiftDownName
+             ["t", "npos", "len", "pos"])
+       (.seq (.let_ "t2" (.vecBlock)
+               (.vgrowSetLen "t1"
+                 (.usub (.var "len") (.lit (.u64 (BitVec.ofNat 64 1))))))
+         (.return_ (.var "t2"))))
+     (.seq (.let_ "t3" (.vecBlock)
+             (.vgrowSetLen "t"
+               (.usub (.var "len") (.lit (.u64 (BitVec.ofNat 64 1))))))
+       (.return_ (.var "t3")))))⟩
+
+/-- Canonical CoreIR for the `erase` forwarder: delegate to
+    `_M_erase`, return the shrunk triple (the iterator return
+    drops — it recomputes to `pos`). -/
+def stdVecEraseFunc : Func :=
+  ⟨stdVecEraseName,
+   [{ name := "t", ty := .vecBlock, role := .owned },
+    { name := "pos", ty := .u 64, role := .owned }],
+   .vecBlock,
+   .seq (.callProg "t1" stdVecEraseCoreName ["t", "pos"])
+     (.return_ (.var "t1"))⟩
+
 
 /-- The shared growth program: the frozen b1 leaves the composers
     call into (name-stamped exactly as the corpus defines them, so
@@ -426,4 +514,5 @@ def vecGrowProg : Prog :=
     stdVecEmplaceBackFunc, stdVecPushBackFunc, stdVecGrowIndexFunc,
     stdVecEmptyCtorFunc, stdVecDtorFunc, stdVecReserveFunc,
     stdVecShiftBackFunc, stdVecPlusElFunc, stdVecIterEqFunc,
-    stdVecInsertAuxFunc, stdVecInsertRvalFunc, stdVecInsertFunc]
+    stdVecInsertAuxFunc, stdVecInsertRvalFunc, stdVecInsertFunc,
+    stdVecShiftDownFunc, stdVecEraseCoreFunc, stdVecEraseFunc]

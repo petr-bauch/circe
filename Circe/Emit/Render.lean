@@ -630,6 +630,15 @@ def emitStdVecIterEqText (name : String) : String :=
   ++ s!"def {name}_fwd (a b : BitVec 64) : Bool :=\n"
   ++ "  a == b\n"
 
+/-- Render the inequality forward definition (the tag-erased
+    `stdVecIterNeFwd`: `une` of erased offsets). -/
+def emitStdVecIterNeText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (inequality of erased offsets). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 64) : Bool :=\n"
+  ++ "  a != b\n"
+
 /-- Render the allocate forward definition (the tag-erased
     `stdVecAllocFwd`: `n > maxDiff` is loud, `n == 0` is the empty
     triple, else fresh storage). -/
@@ -853,6 +862,44 @@ def emitVecInsertSumEntryText (name : String) : String :=
   ++ s!"/-- Pure translation of `{name}` (closed entry over the proved growth composers). -/\n"
   ++ s!"def {name}_fwd : Result Value :=\n"
   ++ "  vecInsertSumEntryFwd\n"
+
+/-- Render the forward-shift composition (the tag-erased
+    `stdVecShiftDownFwd`: the ascending blit over the owned triple). -/
+def emitStdVecShiftDownText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the guarded `memmove` chain fuses to the ascending blit). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (first last result : BitVec 64) : Result Value :=\n"
+  ++ "  stdVecShiftDownFwd b len cap first last result\n"
+
+/-- Render the `_M_erase` composition (the tag-erased
+    `stdVecEraseCoreFwd`: guarded shift-down + shrink). -/
+def emitStdVecEraseCoreText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (last-position fast arm, shift-down slow arm). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) : Result Value :=\n"
+  ++ "  stdVecEraseCoreFwd b len cap pos\n"
+
+/-- Render the `erase` forwarder (the tag-erased `stdVecEraseFwd`:
+    single delegation into the proved `_M_erase` composer). -/
+def emitStdVecEraseText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (single-`callProg` forwarder into the proved `erase` core). -/\n"
+  ++ s!"def {name}_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) : Result Value :=\n"
+  ++ "  stdVecEraseFwd b len cap pos\n"
+
+/-- Render the closed `vec_erase_sum` entry: direct delegation to the
+    verified `vecEraseSumEntryFwd` (default ctor, `reserve(10)`,
+    three pushes, `begin` + one step, one `erase`, two reads, one
+    add, destructor). -/
+def emitVecEraseSumEntryText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- Pure translation of `{name}` (closed entry over the proved growth composers). -/\n"
+  ++ s!"def {name}_fwd : Result Value :=\n"
+  ++ "  vecEraseSumEntryFwd\n"
 
 /-- Render the `translate` forward definition: direct delegation to the
     verified `Base` op `pointTranslate` (field-wise checked addition;

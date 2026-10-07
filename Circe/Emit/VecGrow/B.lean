@@ -1529,6 +1529,21 @@ def stdVecIterEqFunc : Func :=
    .bool,
    .return_ (.ueq (.var "a") (.var "b"))⟩
 
+/-- Mangled name fused into non-const iterator `operator!=` (N7d):
+    the double non-const `base` + `cmp ne` fuse to `une` over
+    erased offsets. -/
+def stdVecIterNeName : String :=
+  "_ZN9__gnu_cxxneIPiSt6vectorIiSaIiEEEEbRKNS_17__normal_iteratorIT_T0_EESA_"
+
+/-- Canonical CoreIR for non-const iterator `operator!=`: the
+    double `base` + `cir.cmp` fuse to `une` over erased offsets. -/
+def stdVecIterNeFunc : Func :=
+  ⟨stdVecIterNeName,
+   [{ name := "a", ty := .u 64, role := .owned },
+    { name := "b", ty := .u 64, role := .owned }],
+   .bool,
+   .return_ (.une (.var "a") (.var "b"))⟩
+
 /-- Value-level forward for iterator equality. -/
 def stdVecIterEqFwd (a b : BitVec 64) : Result Value :=
   .ok (.b (a == b))

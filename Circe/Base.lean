@@ -1843,6 +1843,29 @@ def stdVecBlitBackFold (b : Vec32) (len : Nat) (doff soff n : Nat) :
         | .ok b' => stdVecBlitBackFold b' len doff soff k
     else .error .OOB
 
+/-- Forward blit: copy `n` words of `[soff, soff + n)` to
+    `[doff, doff + n)` processing the bottom word first (N7d: the
+    `std::move` / `__copy_move_a` / `_a1` / `_a2` / `__copy_m`
+    chain fuses to the guarded `memmove`, which is this ascending
+    walk — read slot `soff + (n - k)` is never a previously written
+    slot when `doff < soff`, so overlapping left-shifts are
+    sound). Single triple (`src = dst`); `len` is the vector length
+    (reads below it are live). -/
+def stdVecBlitFwdFold (b : Vec32) (len : Nat) (doff soff n : Nat) :
+    Result Vec32 :=
+  match n with
+  | 0 => .ok b
+  | k + 1 =>
+    if b.freed then .error .AssertFail
+    else if soff < len then
+      match b.val[soff]? with
+      | none => .error .OOB
+      | some x =>
+        match vecSet b doff x with
+        | .error e => .error e
+        | .ok b' => stdVecBlitFwdFold b' len (doff + 1) (soff + 1) k
+    else .error .OOB
+
 /-- Whole-program bridge: allocate/fill/realloc/fill-extension/sum/free
     equals the `range (n + n)` prefix sum (the spec world). -/
 theorem vecReallocFillSumU32_correct (n : Nat) :

@@ -18,3 +18,4 @@ import Circe.Emit.VecCompose.Emplace
 import Circe.Emit.VecCompose.Entry
 import Circe.Emit.VecCompose.Reserve
 import Circe.Emit.VecCompose.Insert
+import Circe.Emit.VecCompose.Erase

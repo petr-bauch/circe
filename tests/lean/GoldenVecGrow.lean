@@ -371,6 +371,154 @@ def advPlusElStub : String :=
   ++ "    cir.call @_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEplEl(%arg0) : (!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>) -> (!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E)\n"
   ++ "    cir.return\n  }\n}"
 
+/-- N7d pin (`_M_erase` call stub): composer calls outside the
+    admitted shapes reject loudly at single-func level. -/
+def advEraseStub : String :=
+  "module {\n  cir.func @ver(%arg0: !cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E> {llvm.align = 8 : i64, llvm.dereferenceable = 24 : i64, llvm.nonnull, llvm.noundef}) attributes {\"nothrow\"} {\n"
+  ++ "    cir.call @_ZNSt6vectorIiSaIiEE8_M_eraseEN9__gnu_cxx17__normal_iteratorIPiS1_EE(%arg0) : (!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>) -> ()\n"
+  ++ "    cir.return\n  }\n}"
+
+
+
+/-- Per-def `.noalias` facts for the 72-def `vec_erase_sum` frontier
+    (same discipline as `vecInsertFacts`: every defined def carries an
+    explicit fact; erased params need no uniqueness inside pinned
+    shapes, and the shift chain is covered by `isVecGrowShape`). -/
+def vecEraseFacts : List OracleFact :=
+  [⟨"_Z13vec_erase_sumv", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx13new_allocatorIiE10deallocateEPim", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx13new_allocatorIiE7destroyIiEEvPT_", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx13new_allocatorIiE8allocateEmPKv", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx13new_allocatorIiE9constructIiJiEEEvPT_DpOT0_", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx13new_allocatorIiEC2Ev", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx13new_allocatorIiED2Ev", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx17__normal_iteratorIPKiSt6vectorIiSaIiEEEC2ERKS2_", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx17__normal_iteratorIPKiSt6vectorIiSaIiEEEC2IPiEERKNS0_IT_NS_11__enable_ifIXsr3std10__are_sameIS9_S8_EE7__valueES5_E6__typeEEE", .noalias⟩,
+  ⟨"_ZN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEC2ERKS1_", .noalias⟩,
+  ⟨"_ZN9__gnu_cxxmiIPKiSt6vectorIiSaIiEEEENS_17__normal_iteratorIT_T0_E15difference_typeERKS9_SC_", .noalias⟩,
+  ⟨"_ZN9__gnu_cxxmiIPiSt6vectorIiSaIiEEEENS_17__normal_iteratorIT_T0_E15difference_typeERKS8_SB_", .noalias⟩,
+  ⟨"_ZN9__gnu_cxxneIPiSt6vectorIiSaIiEEEEbRKNS_17__normal_iteratorIT_T0_EESA_", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx13new_allocatorIiE11_M_max_sizeEv", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx13new_allocatorIiE8max_sizeEv", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPKiSt6vectorIiSaIiEEE4baseEv", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEE4baseEv", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEdeEv", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEmiEl", .noalias⟩,
+  ⟨"_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEplEl", .noalias⟩,
+  ⟨"_ZNKSt12_Vector_baseIiSaIiEE19_M_get_Tp_allocatorEv", .noalias⟩,
+  ⟨"_ZNKSt6vectorIiSaIiEE12_M_check_lenEmPKc", .noalias⟩,
+  ⟨"_ZNKSt6vectorIiSaIiEE4sizeEv", .noalias⟩,
+  ⟨"_ZNKSt6vectorIiSaIiEE6cbeginEv", .noalias⟩,
+  ⟨"_ZNKSt6vectorIiSaIiEE8capacityEv", .noalias⟩,
+  ⟨"_ZNKSt6vectorIiSaIiEE8max_sizeEv", .noalias⟩,
+  ⟨"_ZNSaIiEC2Ev", .noalias⟩,
+  ⟨"_ZNSaIiED2Ev", .noalias⟩,
+  ⟨"_ZNSt11__copy_moveILb1ELb1ESt26random_access_iterator_tagE8__copy_mIiEEPT_PKS3_S6_S4_", .noalias⟩,
+  ⟨"_ZNSt12_Destroy_auxILb1EE9__destroyIPiEEvT_S3_", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEE11_M_allocateEm", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEE12_Vector_implC2Ev", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEE12_Vector_implD2Ev", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEE13_M_deallocateEPim", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEE17_Vector_impl_dataC2Ev", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEE19_M_get_Tp_allocatorEv", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEEC2Ev", .noalias⟩,
+  ⟨"_ZNSt12_Vector_baseIiSaIiEED2Ev", .noalias⟩,
+  ⟨"_ZNSt16allocator_traitsISaIiEE10deallocateERS0_Pim", .noalias⟩,
+  ⟨"_ZNSt16allocator_traitsISaIiEE7destroyIiEEvRS0_PT_", .noalias⟩,
+  ⟨"_ZNSt16allocator_traitsISaIiEE8allocateERS0_m", .noalias⟩,
+  ⟨"_ZNSt16allocator_traitsISaIiEE8max_sizeERKS0_", .noalias⟩,
+  ⟨"_ZNSt16allocator_traitsISaIiEE9constructIiJiEEEvRS0_PT_DpOT0_", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE11_S_max_sizeERKS0_", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE12emplace_backIJiEEERiDpOT_", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE14_S_do_relocateEPiS2_S2_RS0_St17integral_constantIbLb1EE", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE17_M_realloc_insertIJiEEEvN9__gnu_cxx17__normal_iteratorIPiS1_EEDpOT_", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE3endEv", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE4backEv", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE5beginEv", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE5eraseEN9__gnu_cxx17__normal_iteratorIPKiS1_EE", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE7reserveEm", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE8_M_eraseEN9__gnu_cxx17__normal_iteratorIPiS1_EE", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEE9push_backEOi", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEEC2Ev", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEED2Ev", .noalias⟩,
+  ⟨"_ZNSt6vectorIiSaIiEEixEm", .noalias⟩,
+  ⟨"_ZSt12__miter_baseIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEEET_S7_", .noalias⟩,
+  ⟨"_ZSt12__niter_baseIPiET_S1_", .noalias⟩,
+  ⟨"_ZSt12__niter_baseIPiSt6vectorIiSaIiEEET_N9__gnu_cxx17__normal_iteratorIS4_T0_EE", .noalias⟩,
+  ⟨"_ZSt12__niter_wrapIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES2_ET_S7_T0_", .noalias⟩,
+  ⟨"_ZSt12__relocate_aIPiS0_SaIiEET0_T_S3_S2_RT1_", .noalias⟩,
+  ⟨"_ZSt13__copy_move_aILb1EN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET1_T0_S8_S7_", .noalias⟩,
+  ⟨"_ZSt14__copy_move_a1ILb1EPiS0_ET1_T0_S2_S1_", .noalias⟩,
+  ⟨"_ZSt14__copy_move_a2ILb1EPiS0_ET1_T0_S2_S1_", .noalias⟩,
+  ⟨"_ZSt14__relocate_a_1IiiENSt9enable_ifIXsr3std24__is_bitwise_relocatableIT_EE5valueEPS1_E4typeES2_S2_S2_RSaIT0_E", .noalias⟩,
+  ⟨"_ZSt3maxImERKT_S2_S2_", .noalias⟩,
+  ⟨"_ZSt3minImERKT_S2_S2_", .noalias⟩,
+  ⟨"_ZSt4moveIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET0_T_S8_S7_", .noalias⟩,
+  ⟨"_ZSt8_DestroyIPiEvT_S1_", .noalias⟩,
+  ⟨"_ZSt8_DestroyIPiiEvT_S1_RSaIT0_E", .noalias⟩]
+
+/-- The N7d admitted shapes: each new `vec_erase_sum` corpus def and
+    the canonical-fragment kind it validates to (move-chain layers
+    stamp the shared shift-down blit; the iterator move-forms stamp
+    the shared identity). -/
+def vecEraseKinds : List (String × FragKind) :=
+  [("_Z13vec_erase_sumv", .vecEraseSumEntry),
+   ("_ZN9__gnu_cxxneIPiSt6vectorIiSaIiEEEEbRKNS_17__normal_iteratorIT_T0_EESA_",
+    .vecIterNe),
+   ("_ZSt4moveIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET0_T_S8_S7_",
+    .vecShiftDown),
+   ("_ZSt13__copy_move_aILb1EN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET1_T0_S8_S7_",
+    .vecShiftDown),
+   ("_ZSt14__copy_move_a1ILb1EPiS0_ET1_T0_S2_S1_", .vecShiftDown),
+   ("_ZSt14__copy_move_a2ILb1EPiS0_ET1_T0_S2_S1_", .vecShiftDown),
+   ("_ZNSt11__copy_moveILb1ELb1ESt26random_access_iterator_tagE8__copy_mIiEEPT_PKS3_S6_S4_",
+    .vecShiftDown),
+   ("_ZSt12__miter_baseIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEEET_S7_",
+    .vecIterId),
+   ("_ZSt12__niter_baseIPiSt6vectorIiSaIiEEET_N9__gnu_cxx17__normal_iteratorIS4_T0_EE",
+    .vecIterId),
+   ("_ZSt12__niter_wrapIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES2_ET_S7_T0_",
+    .vecIterId),
+   ("_ZNSt6vectorIiSaIiEE5eraseEN9__gnu_cxx17__normal_iteratorIPKiS1_EE",
+    .vecErase),
+   ("_ZNSt6vectorIiSaIiEE8_M_eraseEN9__gnu_cxx17__normal_iteratorIPiS1_EE",
+    .vecEraseCore)]
+
+/-- N7d gate: the 72-def `vec_erase_sum` frontier validates with no
+    rejects, and every new def maps to its expected fragment kind
+    (with `emitFunc` / `emitSpec` succeeding — golden byte-identity
+    is pinned in N7d-iii). -/
+def checkVecEraseGate : IO Nat := do
+  let text ← IO.FS.readFile "tests/cir/vec_erase_sum.cir"
+  let res := validateModule text vecEraseFacts
+  if res.length != 72 then
+    throw (IO.userError s!"vec-erase frontier drift: {res.length} defs, expected 72")
+  let errs := res.filter (fun (_, v) => !v.isOk)
+  for (name, v) in errs do
+    match v with
+    | .error rej => IO.println s!"vec-erase reject {name}: {rej.message}"
+    | .ok _ => pure ()
+  if errs.length != 0 then
+    throw (IO.userError s!"vec-erase rejects drift: {errs.length} errors, expected 0 (entry admitted)")
+  for (name, want) in vecEraseKinds do
+    match res.find? (fun (m, _) => m == name) with
+    | none =>
+      throw (IO.userError s!"vec-erase admitted shape missing: {name}")
+    | some (_, .error rej) =>
+      throw (IO.userError s!"vec-erase admitted shape rejected: {name}: {rej.message}")
+    | some (_, .ok f) =>
+      if !decide (matchFrag f = some want) then
+        throw (IO.userError s!"vec-erase kind mismatch for {name}")
+      match emitFunc f with
+      | .ok _ => pure ()
+      | .error _ => throw (IO.userError s!"func emit failed for {name}")
+      match emitSpec f with
+      | .ok _ => pure ()
+      | .error _ => throw (IO.userError s!"spec emit failed for {name}")
+  IO.println "PASS gate vec_erase_sum (12 shapes pinned to fragment kinds)"
+  pure vecEraseKinds.length
+
 def checkVecGrowPipeline : IO Nat := do
   let text ← IO.FS.readFile "tests/cir/vec_push_sum.cir"
   let res := validateModule text vecGrowFacts
@@ -510,9 +658,14 @@ def main : IO Unit := do
   passed := passed + r6
   let c7 ← checkVecInsertGate
   passed := passed + c7
+  let c8 ← checkVecEraseGate
+  passed := passed + c8
   let r7 ← checkRejectVecGrow "vple" advPlusElStub
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r7
+  let r8 ← checkRejectVecGrow "ver" advEraseStub
+    "out-of-subset" "outside the admitted call shapes"
+  passed := passed + r8
   IO.println s!"GOLDENVECGROW-OK passed={passed}"
 
 end GoldenVecGrow

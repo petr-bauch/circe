@@ -618,6 +618,9 @@ def matchFrag : Func → Option FragKind
   | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
       .return_ (.ueq (.var "a") (.var "b"))⟩ =>
     some .vecIterEq
+  | ⟨_, [⟨"a", .u 64, .owned⟩, ⟨"b", .u 64, .owned⟩], _,
+      .return_ (.une (.var "a") (.var "b"))⟩ =>
+    some .vecIterNe
   | ⟨_, [⟨"n", .u 64, .owned⟩], _, body⟩ =>
     match body with
     | .if_ (.ult (.lit (.u64 zero)) (.var "n"))
@@ -726,6 +729,51 @@ def matchFrag : Func → Option FragKind
     -- `insert` forwarder: single-`callProg` delegation into
     -- `_M_insert_rval` (`stdVecInsertFunc`).
     some .vecInsert
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"first", .u 64, .owned⟩,
+         ⟨"last", .u 64, .owned⟩, ⟨"result", .u 64, .owned⟩], _,
+      .seq (.let_ "k" (.u 64) (.lit (.u64 zero)))
+      (.seq (.let_ "n" (.u 64) (.usub (.var "last") (.var "first")))
+      (.seq (.while_ (.ult (.var "k") (.var "n"))
+              (.seq (.vgrowSet "t" (.uadd (.var "result") (.var "k"))
+                      (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
+                (.assign "k" (.uadd (.var "k")
+                      (.lit (.u64 one))))))
+        (.return_ (.var "t"))))⟩ =>
+    -- Forward-shift composer: the ascending blit (`k = 0`,
+    -- `n = last - first`; `stdVecShiftDownFunc`).
+    if zero == BitVec.ofNat 64 0 && one == BitVec.ofNat 64 1 then
+      some .vecShiftDown
+    else none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"pos", .u 64, .owned⟩], _,
+      .seq (.let_ "len" (.u 64) (.vgrowLen "t"))
+      (.seq (.let_ "npos" (.u 64)
+              (.uadd (.var "pos") (.lit (.u64 one))))
+      (.if_ (.une (.var "npos") (.var "len"))
+        (.seq (.callProg "t1"
+                "_ZSt4moveIN9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEES6_ET0_T_S8_S7_"
+                ["t", "npos", "len", "pos"])
+          (.seq (.let_ "t2" (.vecBlock)
+                  (.vgrowSetLen "t1"
+                    (.usub (.var "len") (.lit (.u64 one2)))))
+            (.return_ (.var "t2"))))
+        (.seq (.let_ "t3" (.vecBlock)
+                (.vgrowSetLen "t"
+                  (.usub (.var "len") (.lit (.u64 one3)))))
+          (.return_ (.var "t3")))))⟩ =>
+    -- `_M_erase` composer: guarded shift-down + shrink
+    -- (`stdVecEraseCoreFunc`).
+    if one == BitVec.ofNat 64 1 && one2 == BitVec.ofNat 64 1 &&
+        one3 == BitVec.ofNat 64 1 then
+      some .vecEraseCore
+    else none
+  | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"pos", .u 64, .owned⟩], _,
+      .seq (.callProg "t1"
+              "_ZNSt6vectorIiSaIiEE8_M_eraseEN9__gnu_cxx17__normal_iteratorIPiS1_EE"
+              ["t", "pos"])
+        (.return_ (.var "t1"))⟩ =>
+    -- `erase` forwarder: single-`callProg` delegation into
+    -- `_M_erase` (`stdVecEraseFunc`).
+    some .vecErase
   | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"pos", .u 64, .owned⟩,
          ⟨"x", .i 32, .owned⟩], _, body⟩ =>
     -- `_M_realloc_insert` composer: the 8-site growth composition
@@ -852,6 +900,40 @@ def matchFrag : Func → Option FragKind
         n1v == BitVec.ofNat 64 1 && n2v == BitVec.ofNat 64 2 then
       some .vecInsertSumEntry
     else none
+  | ⟨_, [], .i 32,
+      .seq (.callRet "v0" "_ZNSt6vectorIiSaIiEEC2Ev" [])
+      (.seq (.let_ "n" (.u 64) (.lit (.u64 nv)))
+      (.seq (.callProg "v1" "_ZNSt6vectorIiSaIiEE7reserveEm" ["v0", "n"])
+      (.seq (.let_ "c0" (.i 32) (.lit (.i32 c0v)))
+      (.seq (.callProg "v2" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v1", "c0"])
+      (.seq (.let_ "c1" (.i 32) (.lit (.i32 c1v)))
+      (.seq (.callProg "v3" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v2", "c1"])
+      (.seq (.let_ "c2" (.i 32) (.lit (.i32 c2v)))
+      (.seq (.callProg "v4" "_ZNSt6vectorIiSaIiEE9push_backEOi" ["v3", "c2"])
+      (.seq (.callRet "bpos" "_ZNSt6vectorIiSaIiEE5beginEv" ["v4"])
+      (.seq (.let_ "one" (.u 64) (.lit (.u64 onev)))
+      (.seq (.callRet "p1"
+              "_ZNK9__gnu_cxx17__normal_iteratorIPiSt6vectorIiSaIiEEEplEl"
+              ["bpos", "one"])
+      (.seq (.callProg "v5"
+              "_ZNSt6vectorIiSaIiEE5eraseEN9__gnu_cxx17__normal_iteratorIPKiS1_EE"
+              ["v4", "p1"])
+      (.seq (.let_ "n0" (.u 64) (.lit (.u64 n0v)))
+      (.seq (.callRet "e0" "_ZNSt6vectorIiSaIiEEixEm" ["v5", "n0"])
+      (.seq (.let_ "n1" (.u 64) (.lit (.u64 n1v)))
+      (.seq (.callRet "e1" "_ZNSt6vectorIiSaIiEEixEm" ["v5", "n1"])
+      (.seq (.let_ "s" (.i 32) (.add (.var "e0") (.var "e1")))
+      (.seq (.callRet "v6" "_ZNSt6vectorIiSaIiEED2Ev" ["v5"])
+        (.return_ (.var "s"))))))))))))))))))))⟩ =>
+    -- Closed `vec_erase_sum` script: `reserve(10)`, the three pushed
+    -- words (`1, 2, 3`), `begin` + one step, the `erase` (at
+    -- position `1`), and the two read indices (`0, 1`) are pinned.
+    if nv == BitVec.ofNat 64 10 && c0v == BitVec.ofNat 32 1 &&
+        c1v == BitVec.ofNat 32 2 && c2v == BitVec.ofNat 32 3 &&
+        onev == BitVec.ofNat 64 1 && n0v == BitVec.ofNat 64 0 &&
+        n1v == BitVec.ofNat 64 1 then
+      some .vecEraseSumEntry
+    else none
   | ⟨_, [⟨"t", .vecBlock, .owned⟩, ⟨"x", .i 32, .owned⟩], _, body⟩ =>
     -- `emplace_back` composer: guard fused to `len`/`cap` + `.une`,
     -- fast arm over the frozen construct leaf, slow arm over the
@@ -969,3 +1051,8 @@ theorem matchFrag_stdVecReserve : matchFrag stdVecReserveFunc = some .vecReserve
 theorem matchFrag_vecPushSumEntry : matchFrag vecPushSumEntryFunc = some .vecPushSumEntry := rfl
 theorem matchFrag_vecReserveSumEntry : matchFrag vecReserveSumEntryFunc = some .vecReserveSumEntry := rfl
 theorem matchFrag_vecInsertSumEntry : matchFrag vecInsertSumEntryFunc = some .vecInsertSumEntry := rfl
+theorem matchFrag_stdVecShiftDown : matchFrag stdVecShiftDownFunc = some .vecShiftDown := rfl
+theorem matchFrag_stdVecIterNe : matchFrag stdVecIterNeFunc = some .vecIterNe := rfl
+theorem matchFrag_stdVecEraseCore : matchFrag stdVecEraseCoreFunc = some .vecEraseCore := rfl
+theorem matchFrag_stdVecErase : matchFrag stdVecEraseFunc = some .vecErase := rfl
+theorem matchFrag_vecEraseSumEntry : matchFrag vecEraseSumEntryFunc = some .vecEraseSumEntry := rfl
