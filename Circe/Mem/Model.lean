@@ -1059,6 +1059,16 @@ theorem memEvalExpr_une_agree (a b : CExpr) (ρ : Env) (m : Mem)
   simp only [memEvalExpr, evalExpr, ha, hb]
   rfl
 
+/-- `ueq` agreement: both sides compare the same words
+    (N7c: the const-iterator `operator==`). -/
+theorem memEvalExpr_ueq_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.ueq a b) ρ m π = evalExpr (.ueq a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
 /-- `tif` agreement on a true condition: both sides take the
     then-branch. -/
 theorem memEvalExpr_tif_true (c t e : CExpr) (ρ : Env) (m : Mem)
@@ -1625,6 +1635,16 @@ theorem memEvalProgStmt_cleanup (prog : Prog) (fuel : Nat) (body : CStmt)
     (ρ : Env) (m : Mem) (π : Layout) :
     memEvalProgStmt prog fuel (.cleanup body) ρ m π =
       memEvalProgStmt prog fuel body ρ m π := by
+  simp only [memEvalProgStmt]
+
+/-- Prog-level `let_` runs the call-free memory evaluator (the fallback
+    arm of `memEvalProgStmt`; cf. `memEvalProgStmt_return` delegating to
+    `memEvalStmtFuel_return`, and `evalProgStmt_let_fb` on the value
+    side). -/
+theorem memEvalProgStmt_let_fb (prog : Prog) (fuel : Nat) (x : String)
+    (ty : CType) (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) :
+    memEvalProgStmt prog fuel (.let_ x ty e) ρ m π =
+      memEvalStmtFuel fuel (.let_ x ty e) ρ m π := by
   simp only [memEvalProgStmt]
 
 /-- `callRet` with resolved actuals + callee runs the callee. -/

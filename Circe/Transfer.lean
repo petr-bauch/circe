@@ -18,7 +18,9 @@ import Circe.Transfer.Slice
 import Circe.Transfer.Acc
 import Circe.Transfer.GrowLeaves
 import Circe.Transfer.GrowReloc
+import Circe.Transfer.GrowShift
 import Circe.Transfer.GrowRealloc
+import Circe.Transfer.GrowInsert
 import Circe.Transfer.GrowEmplace
 import Circe.Transfer.GrowEntry
 import Circe.Transfer.GrowReserve

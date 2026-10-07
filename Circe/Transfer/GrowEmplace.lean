@@ -764,13 +764,3 @@ theorem memTransfer_stdVecGrowIndex (F : Nat) (b : Vec32)
   rw [memEvalFuncFuel_stdVecGrowIndex F b len cap n hlive x hget hlt,
     evalFuncFuel_stdVecGrowIndex F b len cap n hlive x hget hlt]
 
-/-- Prog-level `let_` runs the call-free memory evaluator (the fallback
-    arm of `memEvalProgStmt`; cf. `memEvalProgStmt_return` delegating to
-    `memEvalStmtFuel_return`, and `evalProgStmt_let_fb` on the value
-    side). -/
-theorem memEvalProgStmt_let_fb (prog : Prog) (fuel : Nat) (x : String)
-    (ty : CType) (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) :
-    memEvalProgStmt prog fuel (.let_ x ty e) ρ m π =
-      memEvalStmtFuel fuel (.let_ x ty e) ρ m π := by
-  simp only [memEvalProgStmt]
-

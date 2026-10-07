@@ -1277,3 +1277,11 @@ theorem vecPushSumEntry_correct :
     `vecReserveSumEntryFwd`). -/
 theorem vecReserveSumEntry_correct :
     vecReserveSumEntryFwd = .ok (.i32 3) := rfl
+
+/-! ## N7c `vec_insert_sum` entry: spec (Fwd level) -/
+
+/-- The closed entry computes `1 + 2 + 3 = 6` (frozen by evaluating
+    `vecInsertSumEntryFwd`; the middle insert lands `3` at index `1`
+    before the reads). -/
+theorem vecInsertSumEntry_correct :
+    vecInsertSumEntryFwd = .ok (.i32 6) := rfl

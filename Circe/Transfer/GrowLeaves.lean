@@ -341,6 +341,98 @@ theorem memTransfer_stdVecMinus (F : Nat) (a b : BitVec 64)
       evalFuncFuel F stdVecMinusFunc [.u64 a, .u64 b] := by
   rw [memEvalFuncFuel_stdVecMinus F a b, evalFuncFuel_stdVecMinus F a b]
 
+/-- `memEval` for `plEl` (wrapping `uadd` agrees on both sides). -/
+theorem memEvalFuncFuel_stdVecPlusEl (F : Nat) (it n : BitVec 64) :
+    memEvalFuncFuel F stdVecPlusElFunc [.u64 it, .u64 n] =
+      stdVecPlusElFwd it n := by
+  have hb : bindMemArgs stdVecPlusElFunc.args [.u64 it, .u64 n] emptyMem =
+      some ([("it", .u64 it), ("n", .u64 n)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "it", ty := .u 64, role := .owned },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.u64 it, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecPlusEl it n
+  have hbody : stdVecPlusElFunc.body =
+      .return_ (.uadd (.var "it") (.var "n")) := rfl
+  have hit := envLookup_stdVecPlusEl_it it n
+  have hn := envLookup_stdVecPlusEl_n it n
+  have hvit : evalExpr (.var "it") [("it", .u64 it), ("n", .u64 n)] =
+      .ok (.u64 it) := by
+    simp [evalExpr, hit]
+  have hvn : evalExpr (.var "n") [("it", .u64 it), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hadd : evalExpr (.uadd (.var "it") (.var "n"))
+      [("it", .u64 it), ("n", .u64 n)] = .ok (.u64 (it + n)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hvit hvn
+  have hmit : memEvalExpr (.var "it") [("it", .u64 it), ("n", .u64 n)]
+      emptyMem [] = evalExpr (.var "it")
+        [("it", .u64 it), ("n", .u64 n)] :=
+    memEvalExpr_var _ _ _ _
+  have hmn : memEvalExpr (.var "n") [("it", .u64 it), ("n", .u64 n)]
+      emptyMem [] = evalExpr (.var "n")
+        [("it", .u64 it), ("n", .u64 n)] :=
+    memEvalExpr_var _ _ _ _
+  have hagree := memEvalExpr_uadd_agree (.var "it") (.var "n") _ _ _ hmit hmn
+  have hret := memEvalStmtFuel_return F
+    (.uadd (.var "it") (.var "n")) _ _ _ _ hagree hadd
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [stdVecPlusElFwd]
+
+/-- Transfer for `plEl`. -/
+theorem memTransfer_stdVecPlusEl (F : Nat) (it n : BitVec 64)
+    (_h : oracleNoalias stdVecPlusElFunc [.u64 it, .u64 n]) :
+    memEvalFuncFuel F stdVecPlusElFunc [.u64 it, .u64 n] =
+      evalFuncFuel F stdVecPlusElFunc [.u64 it, .u64 n] := by
+  rw [memEvalFuncFuel_stdVecPlusEl F it n,
+    evalFuncFuel_stdVecPlusEl F it n]
+
+/-- `memEval` for const-iterator `operator==` (`ueq` agrees on both
+    sides). -/
+theorem memEvalFuncFuel_stdVecIterEq (F : Nat) (a b : BitVec 64) :
+    memEvalFuncFuel F stdVecIterEqFunc [.u64 a, .u64 b] =
+      stdVecIterEqFwd a b := by
+  have hb : bindMemArgs stdVecIterEqFunc.args [.u64 a, .u64 b] emptyMem =
+      some ([("a", .u64 a), ("b", .u64 b)], emptyMem, []) := by
+    show bindMemArgs
+      [{ name := "a", ty := .u 64, role := .owned },
+       { name := "b", ty := .u 64, role := .owned }]
+      [.u64 a, .u64 b] emptyMem = _
+    exact bindMemArgs_stdVecIterEq a b
+  have hbody : stdVecIterEqFunc.body =
+      .return_ (.ueq (.var "a") (.var "b")) := rfl
+  have ha := envLookup_stdVecIterEq_a a b
+  have hbb := envLookup_stdVecIterEq_b a b
+  have hva : evalExpr (.var "a") [("a", .u64 a), ("b", .u64 b)] =
+      .ok (.u64 a) := by
+    simp [evalExpr, ha]
+  have hvb : evalExpr (.var "b") [("a", .u64 a), ("b", .u64 b)] =
+      .ok (.u64 b) := by
+    simp [evalExpr, hbb]
+  have heq : evalExpr (.ueq (.var "a") (.var "b"))
+      [("a", .u64 a), ("b", .u64 b)] = .ok (.b (a == b)) := by
+    simp [evalExpr, ha, hbb]
+  have hma : memEvalExpr (.var "a") [("a", .u64 a), ("b", .u64 b)]
+      emptyMem [] = evalExpr (.var "a") [("a", .u64 a), ("b", .u64 b)] :=
+    memEvalExpr_var _ _ _ _
+  have hmb : memEvalExpr (.var "b") [("a", .u64 a), ("b", .u64 b)]
+      emptyMem [] = evalExpr (.var "b") [("a", .u64 a), ("b", .u64 b)] :=
+    memEvalExpr_var _ _ _ _
+  have hagree := memEvalExpr_ueq_agree (.var "a") (.var "b") _ _ _ hma hmb
+  have hret := memEvalStmtFuel_return F
+    (.ueq (.var "a") (.var "b")) _ _ _ _ hagree heq
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hret]
+  simp [stdVecIterEqFwd]
+
+/-- Transfer for const-iterator `operator==`. -/
+theorem memTransfer_stdVecIterEq (F : Nat) (a b : BitVec 64)
+    (_h : oracleNoalias stdVecIterEqFunc [.u64 a, .u64 b]) :
+    memEvalFuncFuel F stdVecIterEqFunc [.u64 a, .u64 b] =
+      evalFuncFuel F stdVecIterEqFunc [.u64 a, .u64 b] := by
+  rw [memEvalFuncFuel_stdVecIterEq F a b, evalFuncFuel_stdVecIterEq F a b]
+
 /-- `memEval` for `begin` (pure `0` literal; the pinned triple is
     ignored on both sides). -/
 theorem memEvalFuncFuel_stdVecBegin (F : Nat) (b : Vec32)
