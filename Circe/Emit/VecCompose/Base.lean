@@ -444,6 +444,19 @@ def stdVecEraseCoreName : String :=
 def stdVecEraseName : String :=
   "_ZNSt6vectorIiSaIiEE5eraseEN9__gnu_cxx17__normal_iteratorIPKiS1_EE"
 
+/-- Ascending copy body: `t[result + k] = t[first + k]`;
+    `k = k + 1` (the increment runs last so the bottom word moves
+    first). -/
+def stdVecShiftDownBody : CStmt :=
+  .seq (.vgrowSet "t" (.uadd (.var "result") (.var "k"))
+          (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
+    (.assign "k" (.uadd (.var "k")
+      (.lit (.u64 (BitVec.ofNat 64 1)))))
+
+/-- Loop: `while (k < n)` with `k` ascending from `0`. -/
+def stdVecShiftDownWhile : CStmt :=
+  .while_ (.ult (.var "k") (.var "n")) stdVecShiftDownBody
+
 /-- Canonical CoreIR for the forward shift: `k = 0`, `n = last -
     first`, ascending walk `t[result + k] = t[first + k]`, return
     the triple (dual of `stdVecShiftBackFunc`). -/
@@ -456,11 +469,7 @@ def stdVecShiftDownFunc : Func :=
    .vecBlock,
    .seq (.let_ "k" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
    (.seq (.let_ "n" (.u 64) (.usub (.var "last") (.var "first")))
-   (.seq (.while_ (.ult (.var "k") (.var "n"))
-           (.seq (.vgrowSet "t" (.uadd (.var "result") (.var "k"))
-                   (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
-             (.assign "k" (.uadd (.var "k")
-               (.lit (.u64 (BitVec.ofNat 64 1)))))))
+   (.seq stdVecShiftDownWhile
      (.return_ (.var "t"))))⟩
 
 /-- Canonical CoreIR for `_M_erase`: `npos = pos + 1`; when it
