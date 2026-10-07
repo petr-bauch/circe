@@ -125,9 +125,13 @@ semantics changes.
   `begin`/`end` + chase-loop shape admits to an index fold over
   `sext8` bytes; 393 jobs TEST-OK, CHECK-OK); `reserve` DONE
   (N7b: `capacity` leaf + guarded composer + closed
-  `vec_reserve_sum` entry, 55-def corpus, DiffReserve pin;
-  gates pending), then `insert`/`erase` composers (`erase`
-  needs memmove-down leaves; reuse the no-inlining
+  `vec_reserve_sum` entry, 55-def corpus, DiffReserve pin);
+  `insert` DONE (N7c: descending-blit shift + `_M_insert_aux` /
+  `_M_insert_rval` / forwarder composers + closed `vec_insert_sum`
+  entry, 73-def corpus, `memTransfer` to `6`, DiffInsert pin —
+  shift spare-slot, aux result, rval/insert router matrix incl. the
+  full arm; 408 jobs TEST-OK, CHECK-OK), then `erase`
+  (`erase` needs memmove-down leaves; reuse the no-inlining
   `vecGrowProg` pattern).
 - Iris spike (time-boxed, alongside N5): evaluate `iris-lean`
   (Lean 4 Iris port: MoSeL proof interface today, full-logic
