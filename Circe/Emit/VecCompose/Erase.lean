@@ -24,6 +24,8 @@ Iterator leaf: `ne` (`une` over erased offsets).
 import Circe.Emit.Fragment
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose.Base
+import Circe.Emit.VecCompose.Emplace
+import Circe.Emit.VecCompose.Reserve
 
 /-- Value-level forward for the ascending shift. -/
 def stdVecShiftDownFwd (b : Vec32) (len cap : Nat)
@@ -1444,6 +1446,100 @@ theorem evalProgFunc_stdVecErase (F : Nat) (b : Vec32)
         hret
     simp only [evalProgFunc, hbind, hstmt, hfwd]
 
+/-! ## N7d-ii-c: `vec_erase_sum` entry forward + eval -/
+
+/-- Value-level forward for `vec_erase_sum`: `reserve(10)` over the
+    empty triple, three fast-path pushes (`1`, `2`, `3`), `begin` +
+    one step, the `erase` forwarder at position `1`, two indexed
+    reads, `checkedAddI32` once, destructor, return `4`. -/
+def vecEraseSumEntryFwd : Result Value :=
+  (stdVecReserveFwd ⟨[], false⟩ 0 0 (BitVec.ofNat 64 10)).bind fun v1 =>
+  (vecGrowOwned v1).bind fun (b1, l1, c1) =>
+  (stdVecPushBackFwd b1 l1 c1 (BitVec.ofNat 32 1)).bind fun v2 =>
+  (vecGrowOwned v2).bind fun (b2, l2, c2) =>
+  (stdVecPushBackFwd b2 l2 c2 (BitVec.ofNat 32 2)).bind fun v3 =>
+  (vecGrowOwned v3).bind fun (b3, l3, c3) =>
+  (stdVecPushBackFwd b3 l3 c3 (BitVec.ofNat 32 3)).bind fun v4 =>
+  (vecGrowOwned v4).bind fun (b4, l4, c4) =>
+  (stdVecBeginFwd).bind fun bgv =>
+  (vecGrowU64 bgv).bind fun bpos =>
+  (stdVecPlusElFwd bpos (BitVec.ofNat 64 1)).bind fun p1v =>
+  (vecGrowU64 p1v).bind fun p1 =>
+  (stdVecEraseFwd b4 l4 c4 p1).bind fun v5 =>
+  (vecGrowOwned v5).bind fun (b5, l5, c5) =>
+  (stdVecGrowIndexFwd b5 l5 (BitVec.ofNat 64 0)).bind fun e0v =>
+  (vecGrowI32 e0v).bind fun e0 =>
+  (stdVecGrowIndexFwd b5 l5 (BitVec.ofNat 64 1)).bind fun e1v =>
+  (vecGrowI32 e1v).bind fun e1 =>
+  (checkedAddI32 e0 e1).bind fun s =>
+  (stdVecDtorFwd b5 l5 c5).bind fun _ =>
+  .ok (.i32 s)
+
+/-- Iterator advance computes `0 + 1` (composer-local twin of
+    `vecInsertPlusEl_eq`: the same closed computation, restated so
+    `Erase` does not import the whole insert slice). -/
+theorem vecErasePlusEl_eq :
+    stdVecPlusElFwd (BitVec.ofNat 64 0) (BitVec.ofNat 64 1) =
+      .ok (.u64 (BitVec.ofNat 64 1)) := rfl
+
+/-- Third fast-path push writes `3` at index `2`. -/
+theorem vecErasePush3_eq :
+    stdVecPushBackFwd
+      ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2), false⟩ 2 10
+      (BitVec.ofNat 32 3) =
+      .ok (.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10) := rfl
+
+/-- The `erase` at position `1` shifts `[2, 3)` down and shrinks to
+    length `2` (the surviving prefix is `[1, 3]`). -/
+theorem vecEraseStep_eq :
+    stdVecEraseFwd
+      ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩ 3 10
+      (BitVec.ofNat 64 1) =
+      .ok (.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10) := rfl
+
+/-- Indexed reads pin the two surviving words. -/
+theorem vecEraseRead0_eq :
+    stdVecGrowIndexFwd
+      ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+        (BitVec.ofNat 32 3), false⟩ 2
+      (BitVec.ofNat 64 0) =
+      .ok (.i32 (BitVec.ofNat 32 1)) := rfl
+
+/-- Indexed reads pin the two surviving words. -/
+theorem vecEraseRead1_eq :
+    stdVecGrowIndexFwd
+      ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+        (BitVec.ofNat 32 3), false⟩ 2
+      (BitVec.ofNat 64 1) =
+      .ok (.i32 (BitVec.ofNat 32 3)) := rfl
+
+/-- The single `nsw` add computes `1 + 3 = 4`. -/
+theorem vecEraseAdd_eq :
+    checkedAddI32 (BitVec.ofNat 32 1) (BitVec.ofNat 32 3) =
+      .ok (BitVec.ofNat 32 4) := rfl
+
+/-- The destructor frees the two-word triple. -/
+theorem vecEraseDtor_eq :
+    stdVecDtorFwd
+      ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+        (BitVec.ofNat 32 3), false⟩ 2 10 =
+      .ok (.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), true⟩
+        2 10) := rfl
+
 /-- Mangled name of the closed `vec_erase_sum` entry. -/
 def vecEraseSumEntryName : String := "_Z13vec_erase_sumv"
 
@@ -1474,3 +1570,1167 @@ def vecEraseSumEntryFunc : Func :=
    (.seq (.let_ "s" (.i 32) (.add (.var "e0") (.var "e1")))
    (.seq (.callRet "v6" stdVecDtorName ["v5"])
      (.return_ (.var "s"))))))))))))))))))))⟩
+
+set_option maxRecDepth 8192 in
+/-- `emit_correct` for `vec_erase_sum`: the closed entry over the
+    grown program agrees with the compute-to-`4` forward. Fuel covers
+    the five sequential `callProg` depths (`6 ≤ F`). -/
+theorem evalProgFunc_vecEraseSumEntry (F : Nat) (hF : 6 ≤ F) :
+    evalProgFunc vecGrowProg F vecEraseSumEntryFunc [] =
+      vecEraseSumEntryFwd := by
+  obtain ⟨F', rfl, hF'⟩ := fuel_step_down 5 hF
+  have hbind : bindArgs vecEraseSumEntryFunc.args [] = some [] := rfl
+  have hbody : vecEraseSumEntryFunc.body =
+      .seq (.callRet "v0" stdVecCtorName [])
+      (.seq (.let_ "n" (.u 64) (.lit (.u64 (BitVec.ofNat 64 10))))
+      (.seq (.callProg "v1" stdVecReserveName ["v0", "n"])
+      (.seq (.let_ "c0" (.i 32) (.lit (.i32 (BitVec.ofNat 32 1))))
+      (.seq (.callProg "v2" stdVecPushBackName ["v1", "c0"])
+      (.seq (.let_ "c1" (.i 32) (.lit (.i32 (BitVec.ofNat 32 2))))
+      (.seq (.callProg "v3" stdVecPushBackName ["v2", "c1"])
+      (.seq (.let_ "c2" (.i 32) (.lit (.i32 (BitVec.ofNat 32 3))))
+      (.seq (.callProg "v4" stdVecPushBackName ["v3", "c2"])
+      (.seq (.callRet "bpos" stdVecBeginName ["v4"])
+      (.seq (.let_ "one" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+      (.seq (.callRet "p1" stdVecPlusElName ["bpos", "one"])
+      (.seq (.callProg "v5" stdVecEraseName ["v4", "p1"])
+      (.seq (.let_ "n0" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      (.seq (.callRet "e0" stdVecGrowIndexName ["v5", "n0"])
+      (.seq (.let_ "n1" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+      (.seq (.callRet "e1" stdVecGrowIndexName ["v5", "n1"])
+      (.seq (.let_ "s" (.i 32) (.add (.var "e0") (.var "e1")))
+      (.seq (.callRet "v6" stdVecDtorName ["v5"])
+        (.return_ (.var "s")))))))))))))))))))) := rfl
+  -- Step 1: the default ctor.
+  have hargs0 : lookupArgs ([] : Env) [] = some [] := rfl
+  have hcall0 : evalFuncFuel (F' + 1) stdVecEmptyCtorFunc [] =
+      .ok (.stdVecOwned ⟨[], false⟩ 0 0) :=
+    evalFuncFuel_stdVecEmptyCtor _
+  have hstepV0 := evalProgStmt_callRet_ok vecGrowProg (F' + 1) "v0"
+    stdVecCtorName [] ([] : Env) _ stdVecEmptyCtorFunc
+    (.stdVecOwned ⟨[], false⟩ 0 0)
+    hargs0 findFunc_stdVecEmptyCtor hcall0
+  -- Step 2: `n = 10`.
+  have hlitN : evalExpr (.lit (.u64 (BitVec.ofNat 64 10)))
+      [("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.u64 (BitVec.ofNat 64 10)) := by
+    simp [evalExpr, litVal]
+  have hstepN : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "n" (.u 64) (.lit (.u64 (BitVec.ofNat 64 10))))
+      [("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([("n", .u64 (BitVec.ofNat 64 10)),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitN
+  -- Step 3: `reserve(10)` takes the reallocation arm over the empty
+  -- triple (zero words relocated, ten-word spare buffer).
+  have hargsR : lookupArgs
+      [((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v0", "n"] =
+      some [.stdVecOwned ⟨[], false⟩ 0 0,
+        .u64 (BitVec.ofNat 64 10)] := by
+    simp [lookupArgs, envLookup,
+      show ("v0" : String) ≠ "n" by decide]
+  have hcallR : evalProgFunc vecGrowProg F' stdVecReserveFunc
+      [.stdVecOwned ⟨[], false⟩ 0 0, .u64 (BitVec.ofNat 64 10)] =
+      stdVecReserveFwd ⟨[], false⟩ 0 0 (BitVec.ofNat 64 10) :=
+    evalProgFunc_stdVecReserve F' _ 0 0 _ rfl (by decide)
+      (Nat.zero_le _) (by decide) (by decide) (by omega)
+  have hcallR' : evalProgFunc vecGrowProg F' stdVecReserveFunc
+      [.stdVecOwned ⟨[], false⟩ 0 0, .u64 (BitVec.ofNat 64 10)] =
+      .ok (.stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10) := by
+    rw [hcallR, vecReserveStep_eq]
+  have hstepV1 := evalProgStmt_callProg_ok vecGrowProg F' "v1"
+    stdVecReserveName ["v0", "n"] _ _ stdVecReserveFunc
+    (.stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10)
+    hargsR findFunc_stdVecReserve hcallR'
+  -- Step 4: `c0 = 1`.
+  have hlitC0 : evalExpr (.lit (.i32 (BitVec.ofNat 32 1)))
+      [((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.i32 (BitVec.ofNat 32 1)) := by
+    simp [evalExpr, litVal]
+  have hstepC0 : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "c0" (.i 32) (.lit (.i32 (BitVec.ofNat 32 1))))
+      [((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitC0
+  -- Step 5: first push (fast path into the spare triple).
+  have hargs1 : lookupArgs
+      [((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v1", "c0"] =
+      some [.stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10,
+        .i32 (BitVec.ofNat 32 1)] := by
+    simp [lookupArgs, envLookup,
+      show ("v1" : String) ≠ "c0" by decide]
+  have hcallP1 : evalProgFunc vecGrowProg F' stdVecPushBackFunc
+      [.stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10,
+        .i32 (BitVec.ofNat 32 1)] =
+      stdVecPushBackFwd ⟨List.replicate 10 0, false⟩ 0 10
+        (BitVec.ofNat 32 1) :=
+    evalProgFunc_stdVecPushBack F' _ 0 10 _ rfl (by decide)
+      (by decide) (by decide) (by decide) (by omega)
+  have hcallP1' : evalProgFunc vecGrowProg F' stdVecPushBackFunc
+      [.stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10,
+        .i32 (BitVec.ofNat 32 1)] =
+      .ok (.stdVecOwned
+        ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩ 1 10) := by
+    rw [hcallP1, vecReservePush1_eq]
+  have hstepV2 := evalProgStmt_callProg_ok vecGrowProg F' "v2"
+    stdVecPushBackName ["v1", "c0"] _ _ stdVecPushBackFunc
+    (.stdVecOwned
+      ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩ 1 10)
+    hargs1 findFunc_stdVecPushBack hcallP1'
+  -- Step 6: `c1 = 2`.
+  have hlitC1 : evalExpr (.lit (.i32 (BitVec.ofNat 32 2)))
+      [((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.i32 (BitVec.ofNat 32 2)) := by
+    simp [evalExpr, litVal]
+  have hstepC1 : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "c1" (.i 32) (.lit (.i32 (BitVec.ofNat 32 2))))
+      [((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitC1
+  -- Step 7: second push (`2` at index `1`).
+  have hargs2 : lookupArgs
+      [((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v2", "c1"] =
+      some [.stdVecOwned
+        ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+        1 10,
+        .i32 (BitVec.ofNat 32 2)] := by
+    simp [lookupArgs, envLookup,
+      show ("v2" : String) ≠ "c1" by decide]
+  have hcallP2 : evalProgFunc vecGrowProg F' stdVecPushBackFunc
+      [.stdVecOwned
+        ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+        1 10,
+        .i32 (BitVec.ofNat 32 2)] =
+      stdVecPushBackFwd
+        ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+        1 10 (BitVec.ofNat 32 2) :=
+    evalProgFunc_stdVecPushBack F' _ 1 10 _ rfl (by decide)
+      (by decide) (by decide) (by decide) (by omega)
+  have hcallP2' : evalProgFunc vecGrowProg F' stdVecPushBackFunc
+      [.stdVecOwned
+        ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+        1 10,
+        .i32 (BitVec.ofNat 32 2)] =
+      .ok (.stdVecOwned
+        ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2), false⟩ 2 10) := by
+    rw [hcallP2, vecReservePush2_eq]
+  have hstepV3 := evalProgStmt_callProg_ok vecGrowProg F' "v3"
+    stdVecPushBackName ["v2", "c1"] _ _ stdVecPushBackFunc
+    (.stdVecOwned
+      ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2), false⟩ 2 10)
+    hargs2 findFunc_stdVecPushBack hcallP2'
+  -- Step 8: `c2 = 3`.
+  have hlitC2 : evalExpr (.lit (.i32 (BitVec.ofNat 32 3)))
+      [((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.i32 (BitVec.ofNat 32 3)) := by
+    simp [evalExpr, litVal]
+  have hstepC2 : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "c2" (.i 32) (.lit (.i32 (BitVec.ofNat 32 3))))
+      [((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitC2
+  -- Step 9: third push (`3` at index `2`).
+  have hargs3 : lookupArgs
+      [((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v3", "c2"] =
+      some [.stdVecOwned
+        ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2), false⟩ 2 10,
+        .i32 (BitVec.ofNat 32 3)] := by
+    simp [lookupArgs, envLookup,
+      show ("v3" : String) ≠ "c2" by decide]
+  have hcallP3 : evalProgFunc vecGrowProg F' stdVecPushBackFunc
+      [.stdVecOwned
+        ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2), false⟩ 2 10,
+        .i32 (BitVec.ofNat 32 3)] =
+      stdVecPushBackFwd
+        ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2), false⟩
+        2 10 (BitVec.ofNat 32 3) :=
+    evalProgFunc_stdVecPushBack F' _ 2 10 _ rfl (by decide)
+      (by decide) (by decide) (by decide) (by omega)
+  have hcallP3' : evalProgFunc vecGrowProg F' stdVecPushBackFunc
+      [.stdVecOwned
+        ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2), false⟩ 2 10,
+        .i32 (BitVec.ofNat 32 3)] =
+      .ok (.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10) := by
+    rw [hcallP3, vecErasePush3_eq]
+  have hstepV4 := evalProgStmt_callProg_ok vecGrowProg F' "v4"
+    stdVecPushBackName ["v3", "c2"] _ _ stdVecPushBackFunc
+    (.stdVecOwned
+      ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+      3 10)
+    hargs3 findFunc_stdVecPushBack hcallP3'
+  -- Step 10: `begin` reads the base offset (`0`).
+  have hargsB : lookupArgs
+      [((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v4"] =
+      some [.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10] := by
+    simp [lookupArgs, envLookup]
+  have hcallB : evalFuncFuel (F' + 1) stdVecBeginFunc
+      [.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10] =
+      stdVecBeginFwd :=
+    evalFuncFuel_stdVecBegin _ _ _ _
+  have hcallB' : evalFuncFuel (F' + 1) stdVecBeginFunc
+      [.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10] =
+      .ok (.u64 (BitVec.ofNat 64 0)) := by
+    rw [hcallB]; rfl
+  have hstepBpos := evalProgStmt_callRet_ok vecGrowProg (F' + 1)
+      "bpos" stdVecBeginName ["v4"] _ _ stdVecBeginFunc
+      (.u64 (BitVec.ofNat 64 0))
+      hargsB findFunc_stdVecBegin hcallB'
+  -- Step 11: `one = 1`.
+  have hlitOne : evalExpr (.lit (.u64 (BitVec.ofNat 64 1)))
+      [((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.u64 (BitVec.ofNat 64 1)) := by
+    simp [evalExpr, litVal]
+  have hstepOne : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "one" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+      [((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitOne
+  -- Step 12: `begin() + 1` advances to position `1`.
+  have hargsP1 : lookupArgs
+      [((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["bpos", "one"] =
+      some [.u64 (BitVec.ofNat 64 0), .u64 (BitVec.ofNat 64 1)] := by
+    simp [lookupArgs, envLookup,
+      show ("bpos" : String) ≠ "one" by decide]
+  have hcallP1x : evalFuncFuel (F' + 1) stdVecPlusElFunc
+      [.u64 (BitVec.ofNat 64 0), .u64 (BitVec.ofNat 64 1)] =
+      stdVecPlusElFwd (BitVec.ofNat 64 0) (BitVec.ofNat 64 1) :=
+    evalFuncFuel_stdVecPlusEl _ _ _
+  have hcallP1x' : evalFuncFuel (F' + 1) stdVecPlusElFunc
+      [.u64 (BitVec.ofNat 64 0), .u64 (BitVec.ofNat 64 1)] =
+      .ok (.u64 (BitVec.ofNat 64 1)) := by
+    rw [hcallP1x]; rfl
+  have hstepP1 := evalProgStmt_callRet_ok vecGrowProg (F' + 1)
+      "p1" stdVecPlusElName ["bpos", "one"] _ _ stdVecPlusElFunc
+      (.u64 (BitVec.ofNat 64 1))
+      hargsP1 findFunc_stdVecPlusEl hcallP1x'
+  -- Step 13: the `erase` at position `1` (shift arm: `pos + 1 ≠ len`).
+  have hargsV5 : lookupArgs
+      [((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v4", "p1"] =
+      some [.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10,
+        .u64 (BitVec.ofNat 64 1)] := by
+    simp [lookupArgs, envLookup,
+      show ("v4" : String) ≠ "p1" by decide,
+      show ("v4" : String) ≠ "one" by decide,
+      show ("v4" : String) ≠ "bpos" by decide]
+  have hcallV5 : evalProgFunc vecGrowProg F' stdVecEraseFunc
+      [.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10,
+        .u64 (BitVec.ofNat 64 1)] =
+      stdVecEraseFwd
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10 (BitVec.ofNat 64 1) :=
+    evalProgFunc_stdVecErase F' _ 3 10 _ rfl (by decide)
+      (by decide) (by decide) (by decide) (by omega)
+  have hcallV5' : evalProgFunc vecGrowProg F' stdVecEraseFunc
+      [.stdVecOwned
+        ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+        3 10,
+        .u64 (BitVec.ofNat 64 1)] =
+      .ok (.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10) := by
+    rw [hcallV5, vecEraseStep_eq]
+  have hstepV5 := evalProgStmt_callProg_ok vecGrowProg F' "v5"
+    stdVecEraseName ["v4", "p1"] _ _ stdVecEraseFunc
+    (.stdVecOwned
+      ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+        (BitVec.ofNat 32 3), false⟩ 2 10)
+    hargsV5 findFunc_stdVecErase hcallV5'
+  -- Step 14: `n0 = 0`.
+  have hlitN0 : evalExpr (.lit (.u64 (BitVec.ofNat 64 0)))
+      [((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.u64 (BitVec.ofNat 64 0)) := by
+    simp [evalExpr, litVal]
+  have hstepN0 : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "n0" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      [((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitN0
+  -- Step 15: first read pins `1`.
+  have hargsE0 : lookupArgs
+      [((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v5", "n0"] =
+      some [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10,
+        .u64 (BitVec.ofNat 64 0)] := by
+    simp [lookupArgs, envLookup,
+      show ("v5" : String) ≠ "n0" by decide]
+  have hget0 : (((((List.replicate 10 0).set 0
+      (BitVec.ofNat 32 1)).set 1 (BitVec.ofNat 32 2)).set 2
+      (BitVec.ofNat 32 3)).set 1
+      (BitVec.ofNat 32 3))[(BitVec.ofNat 64 0).toNat]? =
+      some (BitVec.ofNat 32 1) := by decide
+  have hlt0 : (BitVec.ofNat 64 0).toNat < 2 := by decide
+  have hcallE0 : evalFuncFuel (F' + 1) stdVecGrowIndexFunc
+      [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10,
+        .u64 (BitVec.ofNat 64 0)] =
+      stdVecGrowIndexFwd
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2
+        (BitVec.ofNat 64 0) :=
+    evalFuncFuel_stdVecGrowIndex _ _ 2 10 _ rfl _ hget0 hlt0
+  have hcallE0' : evalFuncFuel (F' + 1) stdVecGrowIndexFunc
+      [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10,
+        .u64 (BitVec.ofNat 64 0)] =
+      .ok (.i32 (BitVec.ofNat 32 1)) := by
+    rw [hcallE0, vecEraseRead0_eq]
+  have hstepE0 := evalProgStmt_callRet_ok vecGrowProg (F' + 1) "e0"
+    stdVecGrowIndexName ["v5", "n0"] _ _ stdVecGrowIndexFunc
+    (.i32 (BitVec.ofNat 32 1))
+    hargsE0 findFunc_stdVecGrowIndex hcallE0'
+  -- Step 16: `n1 = 1`.
+  have hlitN1 : evalExpr (.lit (.u64 (BitVec.ofNat 64 1)))
+      [((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.u64 (BitVec.ofNat 64 1)) := by
+    simp [evalExpr, litVal]
+  have hstepN1 : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "n1" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+      [((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hlitN1
+  -- Step 17: second read pins `3`.
+  have hargsE1 : lookupArgs
+      [((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v5", "n1"] =
+      some [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10,
+        .u64 (BitVec.ofNat 64 1)] := by
+    simp [lookupArgs, envLookup,
+      show ("v5" : String) ≠ "n1" by decide,
+      show ("v5" : String) ≠ "e0" by decide,
+      show ("v5" : String) ≠ "n0" by decide]
+  have hget1 : (((((List.replicate 10 0).set 0
+      (BitVec.ofNat 32 1)).set 1 (BitVec.ofNat 32 2)).set 2
+      (BitVec.ofNat 32 3)).set 1
+      (BitVec.ofNat 32 3))[(BitVec.ofNat 64 1).toNat]? =
+      some (BitVec.ofNat 32 3) := by decide
+  have hlt1 : (BitVec.ofNat 64 1).toNat < 2 := by decide
+  have hcallE1 : evalFuncFuel (F' + 1) stdVecGrowIndexFunc
+      [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10,
+        .u64 (BitVec.ofNat 64 1)] =
+      stdVecGrowIndexFwd
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2
+        (BitVec.ofNat 64 1) :=
+    evalFuncFuel_stdVecGrowIndex _ _ 2 10 _ rfl _ hget1 hlt1
+  have hcallE1' : evalFuncFuel (F' + 1) stdVecGrowIndexFunc
+      [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10,
+        .u64 (BitVec.ofNat 64 1)] =
+      .ok (.i32 (BitVec.ofNat 32 3)) := by
+    rw [hcallE1, vecEraseRead1_eq]
+  have hstepE1 := evalProgStmt_callRet_ok vecGrowProg (F' + 1) "e1"
+    stdVecGrowIndexName ["v5", "n1"] _ _ stdVecGrowIndexFunc
+    (.i32 (BitVec.ofNat 32 3))
+    hargsE1 findFunc_stdVecGrowIndex hcallE1'
+  -- Step 18: `s = e0 + e1 = 4`.
+  have he0 : envLookup
+      [((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] "e0" =
+      some (.i32 (BitVec.ofNat 32 1)) := by
+    simp [envLookup,
+      show ("e0" : String) ≠ "e1" by decide,
+      show ("e0" : String) ≠ "n1" by decide]
+  have he1 : envLookup
+      [((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] "e1" =
+      some (.i32 (BitVec.ofNat 32 3)) := by
+    simp [envLookup]
+  have hsE : evalExpr (.add (.var "e0") (.var "e1"))
+      [((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.i32 (BitVec.ofNat 32 4)) := by
+    cir_step evalExpr [he0, he1, vecEraseAdd_eq]
+  have hstepS : evalProgStmt vecGrowProg (F' + 1)
+      (.let_ "s" (.i 32) (.add (.var "e0") (.var "e1")))
+      [((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("s", .i32 (BitVec.ofNat 32 4)))),
+        ((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)], .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact evalStmtFuel_let_ _ _ _ _ _ _ hsE
+  -- Step 19: destructor frees the triple.
+  have hargsD : lookupArgs
+      [((("s", .i32 (BitVec.ofNat 32 4)))),
+        ((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] ["v5"] =
+      some [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10] := by
+    simp [lookupArgs, envLookup,
+      show ("v5" : String) ≠ "s" by decide,
+      show ("v5" : String) ≠ "e1" by decide,
+      show ("v5" : String) ≠ "n1" by decide,
+      show ("v5" : String) ≠ "e0" by decide,
+      show ("v5" : String) ≠ "n0" by decide]
+  have hcallD : evalFuncFuel (F' + 1) stdVecDtorFunc
+      [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10] =
+      stdVecDtorFwd
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2
+        10 :=
+    evalFuncFuel_stdVecDtor _ _ _ _ (by decide)
+  have hcallD' : evalFuncFuel (F' + 1) stdVecDtorFunc
+      [.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), false⟩ 2 10] =
+      .ok (.stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), true⟩
+        2 10) := by
+    rw [hcallD, vecEraseDtor_eq]
+  have hstepV6 := evalProgStmt_callRet_ok vecGrowProg (F' + 1) "v6"
+    stdVecDtorName ["v5"] _ _ stdVecDtorFunc
+    (.stdVecOwned
+      ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+        (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+        (BitVec.ofNat 32 3), true⟩
+      2 10)
+    hargsD findFunc_stdVecDtor hcallD'
+  -- Step 20: return `4`.
+  have hrE : evalExpr (.var "s")
+      [((("v6", .stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), true⟩
+        2 10))),
+        ((("s", .i32 (BitVec.ofNat 32 4)))),
+        ((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok (.i32 (BitVec.ofNat 32 4)) := by
+    simp [evalExpr, envLookup]
+  have hret : evalProgStmt vecGrowProg (F' + 1)
+      (.return_ (.var "s"))
+      [((("v6", .stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), true⟩
+        2 10))),
+        ((("s", .i32 (BitVec.ofNat 32 4)))),
+        ((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)] =
+      .ok ([((("v6", .stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), true⟩
+        2 10))),
+        ((("s", .i32 (BitVec.ofNat 32 4)))),
+        ((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)],
+        .returned (.i32 (BitVec.ofNat 32 4))) :=
+    evalProgStmt_return _ _ _ _ _ hrE
+  have hstmt : evalProgStmt vecGrowProg (F' + 1)
+      vecEraseSumEntryFunc.body [] =
+      .ok ([((("v6", .stdVecOwned
+        ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+          (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+          (BitVec.ofNat 32 3), true⟩
+        2 10))),
+        ((("s", .i32 (BitVec.ofNat 32 4)))),
+        ((("e1", .i32 (BitVec.ofNat 32 3)))),
+        ((("n1", .u64 (BitVec.ofNat 64 1)))),
+        ((("e0", .i32 (BitVec.ofNat 32 1)))),
+        ((("n0", .u64 (BitVec.ofNat 64 0)))),
+        ((("v5", .stdVecOwned
+          ⟨((((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3)).set 1
+            (BitVec.ofNat 32 3), false⟩ 2 10))),
+        ((("p1", .u64 (BitVec.ofNat 64 1)))),
+        ((("one", .u64 (BitVec.ofNat 64 1)))),
+        ((("bpos", .u64 (BitVec.ofNat 64 0)))),
+        ((("v4", .stdVecOwned
+          ⟨(((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2)).set 2 (BitVec.ofNat 32 3), false⟩
+          3 10))),
+        ((("c2", .i32 (BitVec.ofNat 32 3)))),
+        ((("v3", .stdVecOwned
+          ⟨((List.replicate 10 0).set 0 (BitVec.ofNat 32 1)).set 1
+            (BitVec.ofNat 32 2), false⟩ 2 10))),
+        ((("c1", .i32 (BitVec.ofNat 32 2)))),
+        ((("v2", .stdVecOwned
+          ⟨(List.replicate 10 0).set 0 (BitVec.ofNat 32 1), false⟩
+          1 10))),
+        ((("c0", .i32 (BitVec.ofNat 32 1)))),
+        ((("v1", .stdVecOwned ⟨List.replicate 10 0, false⟩ 0 10))),
+        ((("n", .u64 (BitVec.ofNat 64 10)))),
+        ("v0", .stdVecOwned ⟨[], false⟩ 0 0)],
+        .returned (.i32 (BitVec.ofNat 32 4))) := by
+    rw [hbody]
+    exact (evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV0).trans
+      ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepN).trans
+        ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV1).trans
+          ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepC0).trans
+            ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV2).trans
+              ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepC1).trans
+                ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV3).trans
+                  ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepC2).trans
+                    ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV4).trans
+                      ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepBpos).trans
+                        ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepOne).trans
+                          ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepP1).trans
+                            ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV5).trans
+                              ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepN0).trans
+                                ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepE0).trans
+                                  ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepN1).trans
+                                    ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepE1).trans
+                                      ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepS).trans
+                                        ((evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV6).trans
+                                          hret))))))))))))))))))
+  have hfwd : vecEraseSumEntryFwd = .ok (.i32 (BitVec.ofNat 32 4)) := by
+    simp only [vecEraseSumEntryFwd, vecReserveStep_eq,
+      vecReservePush1_eq, vecReservePush2_eq, vecErasePush3_eq,
+      vecErasePlusEl_eq, vecEraseStep_eq, vecEraseRead0_eq,
+      vecEraseRead1_eq, vecEraseAdd_eq, vecEraseDtor_eq,
+      vecGrow_bind_ok, vecGrowOwned, vecGrowU64, vecGrowI32,
+      stdVecBeginFwd]
+  simp only [evalProgFunc, hbind, hstmt, hfwd]
+

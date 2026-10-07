@@ -82,6 +82,37 @@ theorem findFunc_stdVecPushBack :
     findFunc_miss _ _ _ (by decide)]
   exact findFunc_hit _ _
 
+/-- `findFunc` resolves the `begin` leaf in the grown program. -/
+theorem findFunc_stdVecBegin :
+    findFunc vecGrowProg stdVecBeginName =
+      some stdVecBeginFunc := by
+  unfold vecGrowProg
+  rw [findFunc_miss _ _ _ (by decide)]
+  exact findFunc_hit _ _
+
+/-- `findFunc` resolves the iterator-advance leaf in the grown program. -/
+theorem findFunc_stdVecPlusEl :
+    findFunc vecGrowProg stdVecPlusElName =
+      some stdVecPlusElFunc := by
+  unfold vecGrowProg
+  rw [findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide),
+    findFunc_miss _ _ _ (by decide)]
+  exact findFunc_hit _ _
+
 /-- `findFunc` resolves the entry-scoped index leaf. -/
 theorem findFunc_stdVecGrowIndex :
     findFunc vecGrowProg stdVecGrowIndexName =
