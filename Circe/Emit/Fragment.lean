@@ -132,6 +132,13 @@ inductive FragKind : Type
   | vecCapacity
   | vecReserve
   | vecReserveSumEntry
+  | vecPlusEl
+  | vecIterEq
+  | vecShiftBack
+  | vecInsertAux
+  | vecInsertRval
+  | vecInsert
+  | vecInsertSumEntry
   deriving DecidableEq, Repr
 
 

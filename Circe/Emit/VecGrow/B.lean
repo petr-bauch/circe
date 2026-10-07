@@ -38,6 +38,32 @@ def stdVecMinusElName : String :=
 def stdVecMinusName : String :=
   "_ZN9__gnu_cxxmiIPiSt6vectorIiSaIiEEEENS_17__normal_iteratorIT_T0_E15difference_typeERKS8_SB_"
 
+/-- Mangled names fused into the const-iterator family (N7c): the
+    `const_iterator` default/copy ctor (stores the pointed-to pointer
+    into `_M_current`), the converting ctor (fused as the identity
+    offset copy through the non-const `base`), const `base` (the
+    address-of-field collapsing to the value), const `mi` (the double
+    const-`base` + `ptr_diff` fuse), `cbegin` / `cend` (the
+    `_M_start` / `_M_finish` loads through the const-iterator ctor),
+    `__miter_base` (call-free identity), and `__niter_wrap` (drops
+    the iterator, keeps the pointer). -/
+def stdVecConstIterCtorName : String :=
+  "_ZN9__gnu_cxx17__normal_iteratorIPKiSt6vectorIiSaIiEEEC2ERKS2_"
+def stdVecConstIterConvCtorName : String :=
+  "_ZN9__gnu_cxx17__normal_iteratorIPKiSt6vectorIiSaIiEEEC2IPiEERKNS0_IT_NS_11__enable_ifIXsr3std10__are_sameIS9_S8_EE7__valueES5_E6__typeEEE"
+def stdVecConstIterBaseName : String :=
+  "_ZNK9__gnu_cxx17__normal_iteratorIPKiSt6vectorIiSaIiEEE4baseEv"
+def stdVecConstMinusName : String :=
+  "_ZN9__gnu_cxxmiIPKiSt6vectorIiSaIiEEEENS_17__normal_iteratorIT_T0_E15difference_typeERKS9_SC_"
+def stdVecCBeginName : String :=
+  "_ZNKSt6vectorIiSaIiEE6cbeginEv"
+def stdVecCEndName : String :=
+  "_ZNKSt6vectorIiSaIiEE4cendEv"
+def stdVecMIterBaseName : String :=
+  "_ZSt12__miter_baseIPiET_S1_"
+def stdVecNIterWrapName : String :=
+  "_ZSt12__niter_wrapIPiET_RKS1_S1_"
+
 /-- Canonical CoreIR for `begin`: the `_M_start` load + iterator-C2
     call fuse to the `0` offset. -/
 def stdVecBeginFunc : Func :=

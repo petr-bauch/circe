@@ -312,7 +312,7 @@ def stdVecShiftBackA1Name : String :=
 def stdVecShiftBackA2Name : String :=
   "_ZSt23__copy_move_backward_a2ILb1EPiS0_ET1_T0_S2_S1_"
 def stdVecShiftBackBName : String :=
-  "_ZNSt22__copy_move_backwardILb1ELb1ESt26random_access_iterator_tagE13__copy_move_bIiEEPT_PKS3_S6_S4_"
+  "_ZNSt20__copy_move_backwardILb1ELb1ESt26random_access_iterator_tagE13__copy_move_bIiEEPT_PKS3_S6_S4_"
 
 /-- Mangled name of `_M_insert_aux` (construct-last + shift + assign). -/
 def stdVecInsertAuxName : String :=
@@ -379,7 +379,8 @@ def stdVecInsertAuxFunc : Func :=
 
 /-- Canonical CoreIR for `_M_insert_rval`: with room, construct at
     `end()` when `pos == len`, else `_M_insert_aux`; full routes to
-    `_M_realloc_insert` at `end()`. -/
+    `_M_realloc_insert` at `pos` (the corpus passes `begin() + n`,
+    never `end()`). -/
 def stdVecInsertRvalFunc : Func :=
   ⟨stdVecInsertRvalName,
    [{ name := "t", ty := .vecBlock, role := .owned },
@@ -394,7 +395,7 @@ def stdVecInsertRvalFunc : Func :=
            (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))))
        (.seq (.callProg "t2" stdVecInsertAuxName ["t", "pos", "x"])
          (.return_ (.var "t2"))))
-     (.seq (.callProg "t3" stdVecGrowReallocName ["t", "len", "x"])
+     (.seq (.callProg "t3" stdVecGrowReallocName ["t", "pos", "x"])
        (.return_ (.var "t3"))))⟩
 
 /-- Canonical CoreIR for the `insert` forwarder: delegate to

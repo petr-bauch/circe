@@ -7,7 +7,8 @@ convert-and-delegate into `_M_insert_rval`; the router is a 2-arm
 composer over erased `u64` positions:
 - space (`len < cap`): at-end (`pos == len`) constructs at `len`,
   else `_M_insert_aux` (construct-last, bump, shift, assign);
-- full (`len == cap`): `_M_realloc_insert` at `end()` (admitted N4d).
+- full (`len == cap`): `_M_realloc_insert` at `pos` (the corpus
+  passes `begin() + n`, never `end()`; admitted N4d).
 
 The fast-path shift (`move_backward` → `__copy_move_backward_a` →
 `_a1` → `_a2` → `__copy_move_b`, with `__miter_base` / `__niter_wrap`
@@ -1676,7 +1677,7 @@ def stdVecInsertRvalFwd (b : Vec32) (len cap : Nat) (pos : BitVec 64)
       (vecGrowOwned cv).bind fun (bC, _, _) =>
       .ok (.stdVecOwned bC (len + 1) cap)
     else stdVecInsertAuxFwd b len cap pos x
-  else stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x
+  else stdVecGrowReallocFwd b len cap pos x
 
 /-- `emit_correct` for `_M_insert_rval`: the program over the frozen
     leaves plus the proved aux / realloc composers agrees with the
@@ -1718,7 +1719,7 @@ theorem evalProgFunc_stdVecInsertRval (F : Nat) (b : Vec32)
               (.uadd (.var "len") (.lit (.u64 (BitVec.ofNat 64 1)))))))
           (.seq (.callProg "t2" stdVecInsertAuxName ["t", "pos", "x"])
             (.return_ (.var "t2"))))
-        (.seq (.callProg "t3" stdVecGrowReallocName ["t", "len", "x"])
+        (.seq (.callProg "t3" stdVecGrowReallocName ["t", "pos", "x"])
           (.return_ (.var "t3"))))) := rfl
   have ht0 : envLookup [("t", .stdVecOwned b len cap),
       ("pos", .u64 pos), ("x", .i32 x)] "t" =
@@ -2014,27 +2015,27 @@ theorem evalProgFunc_stdVecInsertRval (F : Nat) (b : Vec32)
         [(("len", .u64 (BitVec.ofNat 64 len))),
           ("t", .stdVecOwned b len cap),
           ("pos", .u64 pos), ("x", .i32 x)]
-        ["t", "len", "x"] =
-        some [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len),
-          .i32 x] := by
+        ["t", "pos", "x"] =
+        some [.stdVecOwned b len cap, .u64 pos, .i32 x] := by
       simp [lookupArgs, envLookup,
         show ("t" : String) ≠ "len" by decide,
+        show ("pos" : String) ≠ "len" by decide,
+        show ("pos" : String) ≠ "t" by decide,
         show ("x" : String) ≠ "len" by decide,
-        show ("x" : String) ≠ "t" by decide]
+        show ("x" : String) ≠ "t" by decide,
+        show ("x" : String) ≠ "pos" by decide]
     have hcallR : evalProgFunc vecGrowProg F' stdVecGrowReallocFunc
-        [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len), .i32 x] =
-        stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x :=
-      evalProgFunc_stdVecGrowRealloc F' b len cap (BitVec.ofNat 64 len)
-        x hlive hmax (by rw [hlenT]; exact Nat.le_refl _) (by omega)
-        hS64 (by rw [hlenT]; omega) (by rw [hlenT]; omega)
-    cases hR : stdVecGrowReallocFwd b len cap (BitVec.ofNat 64 len) x with
+        [.stdVecOwned b len cap, .u64 pos, .i32 x] =
+        stdVecGrowReallocFwd b len cap pos x :=
+      evalProgFunc_stdVecGrowRealloc F' b len cap pos x hlive hmax
+        hpos (by omega) hS64 (by omega) (by omega)
+    cases hR : stdVecGrowReallocFwd b len cap pos x with
     | error e =>
       have hcallR' : evalProgFunc vecGrowProg F' stdVecGrowReallocFunc
-          [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len),
-            .i32 x] = .error e := by
+          [.stdVecOwned b len cap, .u64 pos, .i32 x] = .error e := by
         rw [hcallR, hR]
       have hstepT3 := evalProgStmt_callProg_err vecGrowProg F' "t3"
-          stdVecGrowReallocName ["t", "len", "x"] _ _
+          stdVecGrowReallocName ["t", "pos", "x"] _ _
           stdVecGrowReallocFunc e hargsT3 findFunc_stdVecGrowRealloc
           hcallR'
       have hfwd : stdVecInsertRvalFwd b len cap pos x = .error e := by
@@ -2050,11 +2051,10 @@ theorem evalProgFunc_stdVecInsertRval (F : Nat) (b : Vec32)
       simp only [evalProgFunc, hbind, hstmt, hfwd]
     | ok v =>
       have hcallR' : evalProgFunc vecGrowProg F' stdVecGrowReallocFunc
-          [.stdVecOwned b len cap, .u64 (BitVec.ofNat 64 len),
-            .i32 x] = .ok v := by
+          [.stdVecOwned b len cap, .u64 pos, .i32 x] = .ok v := by
         rw [hcallR, hR]
       have hstepT3 := evalProgStmt_callProg_ok vecGrowProg F' "t3"
-          stdVecGrowReallocName ["t", "len", "x"] _ _
+          stdVecGrowReallocName ["t", "pos", "x"] _ _
           stdVecGrowReallocFunc v hargsT3 findFunc_stdVecGrowRealloc
           hcallR'
       have hvarT3 : evalExpr (.var "t3")

@@ -41,6 +41,25 @@ def isVecGrowIterParam (p : RawParam) : Bool :=
     "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
   !p.singleRef && !p.noalias
 
+/-- By-value const-iterator param (N7c): the exact
+    `__normal_iterator<const int*, vector<int>>` record alias, passed
+    by value with neither the single-reference triple nor `noalias`
+    (same erasure rationale as `isVecGrowIterParam`: the value model
+    erases it to a `u64` offset). -/
+def isVecGrowConstIterParam (p : RawParam) : Bool :=
+  p.ctype ==
+    "!rec___gnu_cxx3A3A__normal_iterator3Cconst_int_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+  !p.singleRef && !p.noalias
+
+/-- Single-reference const-iterator param (N7c): the exact
+    `__normal_iterator<const int*, vector<int>>` record alias behind
+    the borrowed-pointer triple (the `const&` / `this` spelling of the
+    const-iterator leaves). -/
+def isVecGrowConstIterRef (p : RawParam) : Bool :=
+  isVecGrowRef
+    "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cconst_int_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+    p
+
 /-- N4d-iv-b2 composer anchor: the `_M_realloc_insert` name (own
     signature or a call site), a call into `emplace_back`, or a call
     into `push_back`. No b1 leaf calls these (checked against the
@@ -99,6 +118,10 @@ def stdVecLeafCallees : List String :=
    stdVecBeginName, stdVecEndName, stdVecBackName,
    stdVecIterCtorName, stdVecNIterBaseName, stdVecIterBaseName,
    stdVecIterDerefName, stdVecMinusElName, stdVecMinusName,
+   stdVecPlusElName, stdVecIterEqName, stdVecConstIterCtorName,
+   stdVecConstIterConvCtorName, stdVecConstIterBaseName,
+   stdVecConstMinusName, stdVecCBeginName, stdVecCEndName,
+   stdVecMIterBaseName, stdVecNIterWrapName,
    stdVecAllocateName, stdVecTraitsAllocName, stdVecNewAllocName,
    stdVecDeallocName, stdVecTraitsDeallocName, stdVecNewDeallocName,
    stdVecTraitsConstructName, stdVecNewConstructName,
@@ -488,7 +511,10 @@ def isStdVecCheckLenShape (raw : RawFunc) : Bool :=
 
 /-- `begin` / `end`: the `_M_start` / `_M_finish` load fused with
     the single iterator-ctor call (offsets `0` / `len`). The loaded
-    field is the only begin/end difference. -/
+    field is the only begin/end difference (N7c: plus the `cbegin` /
+    `cend` twins, which return the const-iterator record through the
+    const-iterator ctor — same loads, same single call; both stamp
+    the shared `begin` / `end` canonical `Func`). -/
 def isStdVecBeginShape (raw : RawFunc) : Bool :=
   noBreakContinueSwitch raw.text &&
   !containsSubstr raw.text "realloc" &&
@@ -498,8 +524,10 @@ def isStdVecBeginShape (raw : RawFunc) : Bool :=
     isVecGrowRef
       "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
       this &&
-    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
-    callsFunc raw.text stdVecIterCtorName &&
+    ((raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+      callsFunc raw.text stdVecIterCtorName) ||
+     (raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cconst_int_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+      callsFunc raw.text stdVecConstIterCtorName)) &&
     opCount raw.text "cir.call @" == 1 &&
     !callsFunc raw.text raw.name &&
     opCount raw.text "cir.get_member" == 2 &&
@@ -528,8 +556,10 @@ def isStdVecEndShape (raw : RawFunc) : Bool :=
     isVecGrowRef
       "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
       this &&
-    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
-    callsFunc raw.text stdVecIterCtorName &&
+    ((raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+      callsFunc raw.text stdVecIterCtorName) ||
+     (raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cconst_int_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+      callsFunc raw.text stdVecConstIterCtorName)) &&
     opCount raw.text "cir.call @" == 1 &&
     !callsFunc raw.text raw.name &&
     opCount raw.text "cir.get_member" == 2 &&
@@ -581,7 +611,12 @@ def isStdVecBackShape (raw : RawFunc) : Bool :=
     pointer into `_M_current`), `__niter_base` (call-free identity),
     `base` (the address-of-field collapsing to the value), and
     `operator*` (the stored pointer is the offset). All erase to the
-    `u64` identity (`stdVecIterIdFunc`). -/
+    `u64` identity (`stdVecIterIdFunc`). N7c: plus the const-iterator
+    twins — const `base`, the const-iterator default ctor, the
+    converting ctor (fused as the identity offset copy through the
+    non-const `base`), and `__niter_wrap` (drops the iterator, keeps
+    the pointer) — all stamping the shared identity canonical
+    `Func`. -/
 def isStdVecIterIdShape (raw : RawFunc) : Bool :=
   noBreakContinueSwitch raw.text &&
   !containsSubstr raw.text "realloc" &&
@@ -597,14 +632,37 @@ def isStdVecIterIdShape (raw : RawFunc) : Bool :=
   !containsSubstr raw.text "cir.ptr_diff" &&
   match raw.params with
   | [this, pp] =>
-    raw.ret == "" &&
-    isVecGrowRef
-      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
-      this &&
-    isVecGrowRef "!cir.ptr<!cir.ptr<!s32i>>" pp &&
-    opCount raw.text "cir.call @" == 0 &&
-    opCount raw.text "cir.get_member" == 1 &&
-    containsSubstr raw.text "_M_current"
+    (raw.ret == "" &&
+      isVecGrowRef
+        "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+        this &&
+      isVecGrowRef "!cir.ptr<!cir.ptr<!s32i>>" pp &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.get_member" == 1 &&
+      containsSubstr raw.text "_M_current") ||
+    (raw.ret == "" &&
+      isVecGrowConstIterRef this &&
+      isVecGrowRef "!cir.ptr<!cir.ptr<!s32i>>" pp &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.get_member" == 1 &&
+      containsSubstr raw.text "_M_current") ||
+    (raw.ret == "" &&
+      isVecGrowConstIterRef this &&
+      isVecGrowRef
+        "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+        pp &&
+      callsFunc raw.text stdVecIterBaseName &&
+      opCount raw.text ("cir.call @" ++ stdVecIterBaseName ++ "(") == 1 &&
+      opCount raw.text "cir.call @" == 1 &&
+      !callsFunc raw.text raw.name &&
+      opCount raw.text "cir.get_member" == 1 &&
+      containsSubstr raw.text "_M_current") ||
+    (raw.ret == "!cir.ptr<!s32i>" &&
+      isVecGrowRef "!cir.ptr<!cir.ptr<!s32i>>" this &&
+      isErasedIntPtr pp &&
+      opCount raw.text "cir.call @" == 0 &&
+      !containsSubstr raw.text "cir.get_member" &&
+      !containsSubstr raw.text "_M_current")
   | [p] =>
     (isErasedIntPtr p && raw.ret == "!cir.ptr<!s32i>" &&
       opCount raw.text "cir.call @" == 0 &&
@@ -614,6 +672,11 @@ def isStdVecIterIdShape (raw : RawFunc) : Bool :=
       p &&
       (raw.ret == "!cir.ptr<!cir.ptr<!s32i>>" ||
        raw.ret == "!cir.ptr<!s32i>") &&
+      opCount raw.text "cir.call @" == 0 &&
+      opCount raw.text "cir.get_member" == 1 &&
+      containsSubstr raw.text "_M_current") ||
+    (isVecGrowConstIterRef p &&
+      raw.ret == "!cir.ptr<!cir.ptr<!s32i>>" &&
       opCount raw.text "cir.call @" == 0 &&
       opCount raw.text "cir.get_member" == 1 &&
       containsSubstr raw.text "_M_current")
@@ -649,22 +712,27 @@ def isStdVecMinusElShape (raw : RawFunc) : Bool :=
   | _ => false
 
 /-- `mi`: the double `base` + `ptr_diff` fuse to bit-exact `s64diff`
-    → `stdVecMinusFunc`. -/
+    → `stdVecMinusFunc` (N7c: plus the const-iterator twin, over the
+    double const-`base` — same fuse, same stamp). -/
 def isStdVecMinusShape (raw : RawFunc) : Bool :=
   noBreakContinueSwitch raw.text &&
   !containsSubstr raw.text "realloc" &&
   !containsSubstr raw.text "cir.get_global" &&
   match raw.params with
   | [a, b] =>
-    isVecGrowRef
+    isI64 raw.ret &&
+    ((isVecGrowRef
       "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
       a &&
-    isVecGrowRef
-      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
-      b &&
-    isI64 raw.ret &&
-    callsFunc raw.text stdVecIterBaseName &&
-    opCount raw.text ("cir.call @" ++ stdVecIterBaseName ++ "(") == 2 &&
+      isVecGrowRef
+        "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+        b &&
+      callsFunc raw.text stdVecIterBaseName &&
+      opCount raw.text ("cir.call @" ++ stdVecIterBaseName ++ "(") == 2) ||
+     (isVecGrowConstIterRef a &&
+      isVecGrowConstIterRef b &&
+      callsFunc raw.text stdVecConstIterBaseName &&
+      opCount raw.text ("cir.call @" ++ stdVecConstIterBaseName ++ "(") == 2)) &&
     opCount raw.text "cir.call @" == 2 &&
     !callsFunc raw.text raw.name &&
     opCount raw.text "cir.ptr_diff" == 1 &&
@@ -677,6 +745,64 @@ def isStdVecMinusShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.for" &&
     !containsSubstr raw.text "cir.get_member" &&
     !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- N7c `plEl` (non-const `operator+`): the `miEl` twin — `base` +
+    `ptr_stride` fuse to wrapping `uadd` (the `s64` step arrives as
+    the same bits in a `u64`) → `stdVecPlusElFunc`. -/
+def isStdVecPlusElShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [it, n] =>
+    isVecGrowRef
+      "!cir.ptr<!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E>"
+      it &&
+    isI64 n.ctype && !isPtrType n.ctype &&
+    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+    callsFunc raw.text stdVecIterCtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterCtorName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.get_member" == 1 &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.minus" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- N7c const-iterator `operator==`: the double const-`base` + `cmp`
+    fuse to `ueq` over erased offsets → `stdVecIterEqFunc`. -/
+def isStdVecIterEqShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [a, b] =>
+    isVecGrowConstIterRef a &&
+    isVecGrowConstIterRef b &&
+    raw.ret == "!cir.bool" &&
+    callsFunc raw.text stdVecConstIterBaseName &&
+    opCount raw.text ("cir.call @" ++ stdVecConstIterBaseName ++ "(") == 2 &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.cmp" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
   | _ => false
 
 /-- The allocate chain: `_M_allocate` (the `n != 0` ternary kept),
@@ -1226,6 +1352,293 @@ def isVecReserveSumEntryShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_diff"
   | _ => false
 
+/-- N7c backward-shift chain: `move_backward` (double
+    `__miter_base` + `__copy_move_backward_a`), `_a` (triple
+    `__niter_base` + `__niter_wrap` + `_a1`), `_a1` / `_a2`
+    (single-call forwarders), and `__copy_move_b` (the guarded
+    `memmove` terminal: one `if`, two strides, one diff, one const).
+    All five layers erase to the descending blit
+    (`stdVecShiftBackFunc`). -/
+def isStdVecShiftBackShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  !containsSubstr raw.text "cir.call @malloc" &&
+  !containsSubstr raw.text "cir.call @free(" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.switch" &&
+  !containsSubstr raw.text "cir.cond_br" &&
+  !containsSubstr raw.text "cir.while" &&
+  !containsSubstr raw.text "cir.do" &&
+  !containsSubstr raw.text "cir.unreachable" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.derived_class_addr" &&
+  match raw.params with
+  | [f, l, r] =>
+    isErasedIntPtr f && isErasedIntPtr l && isErasedIntPtr r &&
+    raw.ret == "!cir.ptr<!s32i>" &&
+    !callsFunc raw.text raw.name &&
+    ((callsFunc raw.text stdVecMIterBaseName &&
+      opCount raw.text ("cir.call @" ++ stdVecMIterBaseName ++ "(") == 2 &&
+      callsFunc raw.text stdVecShiftBackAName &&
+      opCount raw.text ("cir.call @" ++ stdVecShiftBackAName ++ "(") == 1 &&
+      opCount raw.text "cir.call @" == 3 &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" &&
+      !containsSubstr raw.text "cir.const" &&
+      !containsSubstr raw.text "cir.ptr_stride") ||
+     (callsFunc raw.text stdVecNIterBaseName &&
+      opCount raw.text ("cir.call @" ++ stdVecNIterBaseName ++ "(") == 3 &&
+      callsFunc raw.text stdVecNIterWrapName &&
+      opCount raw.text ("cir.call @" ++ stdVecNIterWrapName ++ "(") == 1 &&
+      callsFunc raw.text stdVecShiftBackA1Name &&
+      opCount raw.text ("cir.call @" ++ stdVecShiftBackA1Name ++ "(") == 1 &&
+      opCount raw.text "cir.call @" == 5 &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" &&
+      !containsSubstr raw.text "cir.const" &&
+      !containsSubstr raw.text "cir.ptr_stride") ||
+     (callsFunc raw.text stdVecShiftBackA2Name &&
+      opCount raw.text ("cir.call @" ++ stdVecShiftBackA2Name ++ "(") == 1 &&
+      opCount raw.text "cir.call @" == 1 &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" &&
+      !containsSubstr raw.text "cir.const" &&
+      !containsSubstr raw.text "cir.ptr_stride") ||
+     (callsFunc raw.text stdVecShiftBackBName &&
+      opCount raw.text ("cir.call @" ++ stdVecShiftBackBName ++ "(") == 1 &&
+      opCount raw.text "cir.call @" == 1 &&
+      !containsSubstr raw.text "cir.cmp" &&
+      !containsSubstr raw.text "cir.if" &&
+      !containsSubstr raw.text "cir.const" &&
+      !containsSubstr raw.text "cir.ptr_stride") ||
+     (callsFunc raw.text "memmove" &&
+      opCount raw.text "cir.call @memmove(" == 1 &&
+      opCount raw.text "cir.call @" == 1 &&
+      opCount raw.text "cir.if" == 1 &&
+      opCount raw.text "cir.ptr_stride" == 2 &&
+      opCount raw.text "cir.ptr_diff" == 1 &&
+      opCount raw.text "cir.const" == 1 &&
+      containsSubstr raw.text "cir.cast integral" &&
+      opCount raw.text "cir.minus" == 2))
+  | _ => false
+
+/-- N7c `_M_insert_aux` composer: the 4-site corpus def (`this` +
+    by-value position + `x`, void return; `base` + deref + traits
+    `construct` (copy-last-to-finish) + `move_backward` (shift right
+    by one); the final assign is inlined stores). -/
+def isStdVecInsertAuxShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  raw.ret == "" &&
+  match raw.params with
+  | [this, pos, x] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isVecGrowIterParam pos &&
+    isVecGrowRef "!cir.ptr<!s32i>" x &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecIterBaseName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterBaseName ++ "(") == 1 &&
+    callsFunc raw.text stdVecIterDerefName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterDerefName ++ "(") == 1 &&
+    callsFunc raw.text stdVecTraitsConstructName &&
+    opCount raw.text ("cir.call @" ++ stdVecTraitsConstructName ++ "(") == 1 &&
+    callsFunc raw.text stdVecShiftBackName &&
+    opCount raw.text ("cir.call @" ++ stdVecShiftBackName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.get_member" == 11 &&
+    opCount raw.text "cir.base_class_addr" == 12 &&
+    opCount raw.text "cir.ptr_stride" == 4 &&
+    opCount raw.text "cir.const" == 4 &&
+    opCount raw.text "cir.minus" == 3 &&
+    opCount raw.text "cir.store" == 5 &&
+    opCount raw.text "cir.load" == 9 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 3 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_finish" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.cleanup" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
+/-- N7c `_M_insert_rval` composer: the 12-site corpus def (`this` +
+    by-value const position + `x`, iterator return; the `pos == len`
+    fast path over traits `construct`, the `_M_insert_aux` slow
+    path over `cbegin` / `cend` / `mi` / `plEl` / `eq` / `begin`, the
+    full-capacity path over `_M_realloc_insert`). -/
+def isStdVecInsertRvalShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this, pos, x] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isVecGrowConstIterParam pos &&
+    isVecGrowRef "!cir.ptr<!s32i>" x &&
+    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecIterCtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterCtorName ++ "(") == 1 &&
+    callsFunc raw.text stdVecIterEqName &&
+    opCount raw.text ("cir.call @" ++ stdVecIterEqName ++ "(") == 1 &&
+    callsFunc raw.text stdVecConstMinusName &&
+    opCount raw.text ("cir.call @" ++ stdVecConstMinusName ++ "(") == 1 &&
+    callsFunc raw.text stdVecPlusElName &&
+    opCount raw.text ("cir.call @" ++ stdVecPlusElName ++ "(") == 2 &&
+    callsFunc raw.text stdVecCEndName &&
+    opCount raw.text ("cir.call @" ++ stdVecCEndName ++ "(") == 1 &&
+    callsFunc raw.text stdVecCBeginName &&
+    opCount raw.text ("cir.call @" ++ stdVecCBeginName ++ "(") == 1 &&
+    callsFunc raw.text stdVecTraitsConstructName &&
+    opCount raw.text ("cir.call @" ++ stdVecTraitsConstructName ++ "(") == 1 &&
+    callsFunc raw.text stdVecInsertAuxName &&
+    opCount raw.text ("cir.call @" ++ stdVecInsertAuxName ++ "(") == 1 &&
+    callsFunc raw.text stdVecGrowReallocName &&
+    opCount raw.text ("cir.call @" ++ stdVecGrowReallocName ++ "(") == 1 &&
+    callsFunc raw.text stdVecBeginName &&
+    opCount raw.text ("cir.call @" ++ stdVecBeginName ++ "(") == 2 &&
+    opCount raw.text "cir.call @" == 12 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.get_member" == 11 &&
+    opCount raw.text "cir.base_class_addr" == 12 &&
+    opCount raw.text "cir.ptr_stride" == 2 &&
+    opCount raw.text "cir.const" == 1 &&
+    opCount raw.text "cir.scope" == 2 &&
+    opCount raw.text "cir.alloca" == 12 &&
+    opCount raw.text "cir.store" == 12 &&
+    opCount raw.text "cir.load" == 15 &&
+    opCount raw.text "cir.return" == 1 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_finish" &&
+    containsSubstr raw.text "_M_start" &&
+    containsSubstr raw.text "_M_end_of_storage" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.cleanup" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
+/-- N7c `insert` forwarder: the single-site corpus def (`this` +
+    by-value const position + `x`, iterator return; delegates to
+    `_M_insert_rval`, the iterator return drops). -/
+def isStdVecInsertShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  !containsSubstr raw.text "realloc" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  match raw.params with
+  | [this, pos, x] =>
+    isVecGrowRef
+      "!cir.ptr<!rec_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E>"
+      this &&
+    isVecGrowConstIterParam pos &&
+    isVecGrowRef "!cir.ptr<!s32i>" x &&
+    raw.ret == "!rec___gnu_cxx3A3A__normal_iterator3Cint_2A2C_std3A3Avector3Cint2C_std3A3Aallocator3Cint3E3E3E" &&
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecInsertRvalName &&
+    opCount raw.text ("cir.call @" ++ stdVecInsertRvalName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.store" == 4 &&
+    opCount raw.text "cir.load" == 4 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
+/-- N7c `vec_insert_sum` entry shape: the closed corpus def (no
+    params, `!s32i` return; the default ctor, one `reserve(10)`, two
+    `push_back` (`1`, `3`), `begin` + one `operator+` step, one
+    `insert` (`2` at position `1`), three `operator[]`, two `nsw`
+    adds, and one destructor call; one `cleanup` scope with the
+    single normal-path dtor call and the trailing unreachable
+    `trap`). -/
+def isVecInsertSumEntryShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  raw.ret == "!s32i" &&
+  match raw.params with
+  | [] =>
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text stdVecCtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecCtorName ++ "(") == 1 &&
+    callsFunc raw.text stdVecReserveName &&
+    opCount raw.text ("cir.call @" ++ stdVecReserveName ++ "(") == 1 &&
+    callsFunc raw.text stdVecPushBackName &&
+    opCount raw.text ("cir.call @" ++ stdVecPushBackName ++ "(") == 2 &&
+    callsFunc raw.text stdVecBeginName &&
+    opCount raw.text ("cir.call @" ++ stdVecBeginName ++ "(") == 1 &&
+    callsFunc raw.text stdVecPlusElName &&
+    opCount raw.text ("cir.call @" ++ stdVecPlusElName ++ "(") == 1 &&
+    callsFunc raw.text stdVecConstIterConvCtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecConstIterConvCtorName ++ "(") == 1 &&
+    callsFunc raw.text stdVecInsertName &&
+    opCount raw.text ("cir.call @" ++ stdVecInsertName ++ "(") == 1 &&
+    callsFunc raw.text stdVecGrowIndexName &&
+    opCount raw.text ("cir.call @" ++ stdVecGrowIndexName ++ "(") == 3 &&
+    callsFunc raw.text stdVecDtorName &&
+    opCount raw.text ("cir.call @" ++ stdVecDtorName ++ "(") == 1 &&
+    opCount raw.text "cir.call @" == 12 &&
+    opCount raw.text "cir.alloca" == 9 &&
+    opCount raw.text "cir.store" == 7 &&
+    opCount raw.text "cir.load" == 5 &&
+    opCount raw.text "cir.const" == 13 &&
+    opCount raw.text "cir.add" == 2 &&
+    containsSubstr raw.text "#cir.int<10>" &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.cleanup.scope" == 1 &&
+    opCount raw.text "cir.trap" == 1 &&
+    containsSubstr raw.text "cleanup normal" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff"
+  | _ => false
+
 /-- Any N4d-iv-b1 growth-leaf shape (disjunction for the alias-gate
     carve-outs: a func matching one of these has exactly the pinned
     params, so the erased-offset params need no uniqueness). -/
@@ -1240,7 +1653,7 @@ def isVecGrowShape (raw : RawFunc) : Bool :=
   isStdVecMinusElShape raw || isStdVecMinusShape raw ||
   isStdVecAllocShape raw || isStdVecDeallocShape raw ||
   isStdVecDeallocGuardShape raw || isStdVecConstructShape raw ||
-  isStdVecRelocShape raw
+  isStdVecRelocShape raw || isStdVecShiftBackShape raw
 
 /-- A param whose missing `llvm.noalias` needs no recovery: a borrowed
     erased-offset pointer inside a pinned b1 shape (cf.

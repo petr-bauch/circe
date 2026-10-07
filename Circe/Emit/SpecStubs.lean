@@ -1191,6 +1191,48 @@ def emitStdVecMinusElSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `plEl` (N7c wrapping `uadd`, the `s64` step erased
+    to the 64-bit word). The mirror is the tag-erased
+    `stdVecPlusElFwd`; edges carry ground truth (exact, wrap). -/
+def emitStdVecPlusElSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(it, n)` advances the offset.\n"
+  ++ s!"    Base body reference: wrapping `uadd` itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecPlusElFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (it n : BitVec 64) : BitVec 64 :=\n"
+  ++ "  it + n\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: exact, wrap. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × BitVec 64) :=\n"
+  ++ "  [((10, 3), 13), ((18446744073709551615, 18446744073709551615), 18446744073709551614)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for const-iterator `operator==` (N7c `ueq` over erased
+    offsets). The mirror is the tag-erased `stdVecIterEqFwd`; edges
+    carry ground truth (equal, distinct). -/
+def emitStdVecIterEqSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b)` compares erased offsets.\n"
+  ++ s!"    Base body reference: `ueq` itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecIterEqFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 64) : Bool :=\n"
+  ++ "  a == b\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: equal, distinct. -/\n"
+  ++ s!"def {name}_spec_edges : List ((BitVec 64 × BitVec 64) × Bool) :=\n"
+  ++ "  [((10, 10), true), ((10, 3), false)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `mi` (N4d-iv-b1 bit-exact `s64diff`, `s64` erased
     to the 64-bit word). The mirror is the tag-erased
     `stdVecMinusFwd`; edges carry ground truth (exact, wrap). -/
@@ -1508,6 +1550,113 @@ def emitStdVecPushBackSpecText (name : String) : String :=
   ++ s!"    | ((b, len, cap, x), expected) =>\n"
   ++ s!"      (repr ({name}_spec_fwd b len cap x)).pretty == (repr expected).pretty\n"
 
+/-- Spec stub for the backward shift (N7c: the guarded `memmove`
+    chain over the frozen blit forward; mismatch shapes fail loudly
+    through the `vecGrow*` projectors, cf. `stdVecShiftBackFwd`). -/
+def emitStdVecShiftBackSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, first, last, result)` shifts `[first, last)` right to end at `result`.\n"
+  ++ s!"    Base body reference: the descending blit itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecShiftBackFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (first last result : BitVec 64) : Result Value :=\n"
+  ++ "  stdVecShiftBackFwd b len cap first last result\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: one-word shift right (frozen by evaluating `stdVecShiftBackFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 64 × BitVec 64 × BitVec 64) × Result Value) :=\n"
+  ++ "  [(((⟨[(1 : BitVec 32), 3, 0, 0, 0, 0, 0, 0, 0, 0], false⟩, 2, 10, 0, 2, 3)),\n"
+  ++ "    .ok (.stdVecOwned ⟨[(1 : BitVec 32), 1, 3, 0, 0, 0, 0, 0, 0, 0], false⟩ 2 10))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equation for the shift blit\n"
+  ++ s!"    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, first, last, result), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap first last result)).pretty == (repr expected).pretty\n"
+
+/-- Spec stub for `_M_insert_aux` (N7c: copy-last-to-finish + shift +
+    assign over the frozen leaf forwards; cf.
+    `stdVecInsertAuxFwd`). -/
+def emitStdVecInsertAuxSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, pos, x)` inserts `x` at `pos` (caller guarantees room).\n"
+  ++ s!"    Base body reference: the guarded bind chain itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecInsertAuxFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) (x : BitVec 32) : Result Value :=\n"
+  ++ "  stdVecInsertAuxFwd b len cap pos x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: middle insert (frozen by evaluating `stdVecInsertAuxFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 64 × BitVec 32) × Result Value) :=\n"
+  ++ "  [(((⟨[(1 : BitVec 32), 3, 0, 0, 0, 0, 0, 0, 0, 0], false⟩, 2, 10, 1, 2)),\n"
+  ++ "    .ok (.stdVecOwned ⟨[(1 : BitVec 32), 2, 3, 0, 0, 0, 0, 0, 0, 0], false⟩ 3 10))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equation for `_M_insert_aux`\n"
+  ++ s!"    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, pos, x), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap pos x)).pretty == (repr expected).pretty\n"
+
+/-- Spec stub for `_M_insert_rval` (N7c: the 2-arm router over the
+    frozen construct / aux / realloc forwards; cf.
+    `stdVecInsertRvalFwd`). -/
+def emitStdVecInsertRvalSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, pos, x)` inserts `x` at `pos` (room/fast, room/slow, full arms).\n"
+  ++ s!"    Base body reference: the guarded bind chain itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecInsertRvalFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) (x : BitVec 32) : Result Value :=\n"
+  ++ "  stdVecInsertRvalFwd b len cap pos x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: end insert with room, full-capacity realloc (frozen by evaluating `stdVecInsertRvalFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 64 × BitVec 32) × Result Value) :=\n"
+  ++ "  [(((⟨[(1 : BitVec 32), 3, 0, 0, 0, 0, 0, 0, 0, 0], false⟩, 2, 10, 2, 9)),\n"
+  ++ "    .ok (.stdVecOwned ⟨[(1 : BitVec 32), 3, 9, 0, 0, 0, 0, 0, 0, 0], false⟩ 3 10)),\n"
+  ++ "   (((⟨[(1 : BitVec 32), 3], false⟩, 2, 2, 1, 2)),\n"
+  ++ "    .ok (.stdVecOwned ⟨[(1 : BitVec 32), 2, 3, 0], false⟩ 3 4))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equation for `_M_insert_rval`\n"
+  ++ s!"    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, pos, x), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap pos x)).pretty == (repr expected).pretty\n"
+
+/-- Spec stub for the `insert` forwarder (N7c: single delegation
+    into the verified `_M_insert_rval` composer, so the proved
+    `stdVecInsert_correct` spec transfers verbatim by body
+    identity). -/
+def emitStdVecInsertSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, pos, x)` forwards to `_M_insert_rval`.\n"
+  ++ s!"    Base body reference: the delegation itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecInsertFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (b : Vec32) (len cap : Nat) (pos : BitVec 64) (x : BitVec 32) : Result Value :=\n"
+  ++ "  stdVecInsertFwd b len cap pos x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: middle insert (frozen by evaluating `stdVecInsertFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List ((Vec32 × Nat × Nat × BitVec 64 × BitVec 32) × Result Value) :=\n"
+  ++ "  [(((⟨[(1 : BitVec 32), 3, 0, 0, 0, 0, 0, 0, 0, 0], false⟩, 2, 10, 1, 2)),\n"
+  ++ "    .ok (.stdVecOwned ⟨[(1 : BitVec 32), 2, 3, 0, 0, 0, 0, 0, 0, 0], false⟩ 3 10))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equation `stdVecInsert_correct`\n"
+  ++ s!"    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match t with\n"
+  ++ s!"    | ((b, len, cap, pos, x), expected) =>\n"
+  ++ s!"      (repr ({name}_spec_fwd b len cap pos x)).pretty == (repr expected).pretty\n"
+
 /-- Spec stub for the closed `vec_push_sum` entry: the mirror delegates
     to the verified `vecPushSumEntryFwd` (same forward as the emitted
     entry, so the proved `vecPushSumEntry_correct` spec transfers
@@ -1556,6 +1705,31 @@ def emitVecReserveSumEntrySpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the closed `vec_insert_sum` entry: the mirror delegates
+    to the verified `vecInsertSumEntryFwd` (same forward as the emitted
+    entry, so the proved `vecInsertSumEntry_correct` spec transfers
+    verbatim by body identity). -/
+def emitVecInsertSumEntrySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
+  ++ s!"/-- C++ signature: `{name}()` runs the closed insert script (`reserve(10)`, two `push_back`,\n"
+  ++ s!"    `begin` + one step, one `insert`, three `operator[]`, two adds, destructor).\n"
+  ++ s!"    Base body reference: the delegation itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecInsertSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : Result Value :=\n"
+  ++ "  vecInsertSumEntryFwd\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the single closed run `1 + 3 + 2 = 6` (frozen by evaluating `vecInsertSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_edges : List (Unit × Result Value) :=\n"
+  ++ "  [((), .ok (.i32 (BitVec.ofNat 32 6)))]\n"
+  ++ "\n"
+  ++ s!"/-- Mirror-agreement entry: the stub mirror agrees with the verified forward on every edge.\n"
+  ++ s!"    TODO (user): strengthen to the gallery equation `vecInsertSumEntry_correct`\n"
+  ++ s!"    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t.2).pretty\n"
+  ++ "\n"
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader

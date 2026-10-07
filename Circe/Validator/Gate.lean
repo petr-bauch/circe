@@ -1286,9 +1286,19 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     .ok { stdVecReserveFunc with name := raw.name }
   else if isVecReserveSumEntryShape raw then
     .ok { vecReserveSumEntryFunc with name := raw.name }
+  else if isStdVecShiftBackShape raw then
+    .ok { stdVecShiftBackFunc with name := raw.name }
+  else if isStdVecInsertAuxShape raw then
+    .ok { stdVecInsertAuxFunc with name := raw.name }
+  else if isStdVecInsertRvalShape raw then
+    .ok { stdVecInsertRvalFunc with name := raw.name }
+  else if isStdVecInsertShape raw then
+    .ok { stdVecInsertFunc with name := raw.name }
+  else if isVecInsertSumEntryShape raw then
+    .ok { vecInsertSumEntryFunc with name := raw.name }
   else if isVecGrowComposerText raw.text then
     reject raw.name .outOfSubset
-      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (multi-call growth composition — checked length, fresh storage, value relocation): growth leaves and composers validate in N4d-iv-b1/N4d-iv-b2 (the `vec_push_sum` and `vec_reserve_sum` entries are admitted; further composers such as `insert`/`erase` are deferred — see docs/ROADMAP.md N4d-iv-b)"
+      s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (multi-call growth composition — checked length, fresh storage, value relocation): growth leaves and composers validate in N4d-iv-b1/N4d-iv-b2 (the `vec_push_sum`, `vec_reserve_sum`, and `vec_insert_sum` entries are admitted; further composers such as `erase` are deferred — see docs/ROADMAP.md N4d-iv-b)"
   else match forbiddenOp raw.text with
   | some what =>
     reject raw.name .outOfSubset
@@ -1433,6 +1443,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecMinusElFunc with name := raw.name }
       else if isStdVecMinusShape raw then
         .ok { stdVecMinusFunc with name := raw.name }
+      else if isStdVecPlusElShape raw then
+        .ok { stdVecPlusElFunc with name := raw.name }
+      else if isStdVecIterEqShape raw then
+        .ok { stdVecIterEqFunc with name := raw.name }
       else if isStdVecAllocShape raw then
         .ok { stdVecAllocFunc with name := raw.name }
       else if isStdVecDeallocShape raw then
@@ -1445,7 +1459,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecRelocFunc with name := raw.name }
       else if callsStdVecWrongShape raw then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the `capacity` projection leaf (`vec_capacity`), the call-free `operator[]` fused leaf (`vec_index`), the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`), and the N4d-iv-b1 growth leaves (ctor chain `vec_empty_ctor`, empty-effect `vec_unit`, dtor `vec_dtor`, destroy `vec_destroy_noop` / `vec_destroy_ptr`, allocator projection `vec_get_tp`, max-size `vec_diffmax`, `vec_max` / `vec_min`, `vec_check_len`, `vec_begin` / `vec_end` / `vec_back`, iterator identities `vec_iter_id`, `vec_minus_el` / `vec_minus`, allocate `vec_alloc`, deallocate `vec_dealloc` / `vec_dealloc_guard`, construct `vec_construct`, relocate `vec_reloc`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}` + the b1 registry; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the `capacity` projection leaf (`vec_capacity`), the call-free `operator[]` fused leaf (`vec_index`), the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`), and the N4d-iv-b1 growth leaves (ctor chain `vec_empty_ctor`, empty-effect `vec_unit`, dtor `vec_dtor`, destroy `vec_destroy_noop` / `vec_destroy_ptr`, allocator projection `vec_get_tp`, max-size `vec_diffmax`, `vec_max` / `vec_min`, `vec_check_len`, `vec_begin` / `vec_end` / `vec_back`, iterator identities `vec_iter_id`, `vec_minus_el` / `vec_minus`, `vec_plus_el`, const-iterator `operator==` (`vec_iter_eq`), the const-iterator twins (`cbegin` / `cend`, const `base` / `mi`, const-iterator ctors, `__miter_base` / `__niter_wrap`), allocate `vec_alloc`, deallocate `vec_dealloc` / `vec_dealloc_guard`, construct `vec_construct`, relocate `vec_reloc`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}` + the b1 registry; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then
