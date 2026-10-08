@@ -2129,6 +2129,133 @@ theorem oracleNoalias_vecInsertSumEntry :
     oracleNoalias vecInsertSumEntryFunc [] := by
   exact ⟨_, _, _, bindMemArgs_vecInsertSumEntry, layoutNoAlias_nil⟩
 
+/-! ## N7d forward shift: entry binding + footprint -/
+
+/-- Shift-down binding pins the owned triple (the words are pure offsets). -/
+theorem bindMemArgs_stdVecShiftDown (b : Vec32) (len cap : Nat)
+    (first last result : BitVec 64) :
+    bindMemArgs stdVecShiftDownFunc.args
+      [.stdVecOwned b len cap, .u64 first, .u64 last, .u64 result]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("first", .u64 first),
+        ("last", .u64 last), ("result", .u64 result)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Shift-down footprints are a singleton (the triple is owned; the words
+    are pure). -/
+theorem oracleNoalias_stdVecShiftDown (b : Vec32) (len cap : Nat)
+    (first last result : BitVec 64) :
+    oracleNoalias stdVecShiftDownFunc
+      [.stdVecOwned b len cap, .u64 first, .u64 last,
+        .u64 result] := by
+  have hb : bindMemArgs stdVecShiftDownFunc.args
+      [.stdVecOwned b len cap, .u64 first, .u64 last, .u64 result]
+      emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("first", .u64 first),
+        ("last", .u64 last), ("result", .u64 result)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "first", ty := .u 64, role := .owned },
+       { name := "last", ty := .u 64, role := .owned },
+       { name := "result", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 first, .u64 last, .u64 result]
+      emptyMem = _
+    exact bindMemArgs_stdVecShiftDown b len cap first last result
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-! ## N7d erase composers: entry bindings + footprints -/
+
+/-- Erase-core binding pins the owned triple (position is pure). -/
+theorem bindMemArgs_stdVecEraseCore (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) :
+    bindMemArgs stdVecEraseCoreFunc.args
+      [.stdVecOwned b len cap, .u64 pos] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("pos", .u64 pos)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Erase-core footprints are a singleton. -/
+theorem oracleNoalias_stdVecEraseCore (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) :
+    oracleNoalias stdVecEraseCoreFunc
+      [.stdVecOwned b len cap, .u64 pos] := by
+  have hb : bindMemArgs stdVecEraseCoreFunc.args
+      [.stdVecOwned b len cap, .u64 pos] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("pos", .u64 pos)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "pos", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 pos] emptyMem = _
+    exact bindMemArgs_stdVecEraseCore b len cap pos
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Erase-forwarder binding pins the owned triple (position is pure). -/
+theorem bindMemArgs_stdVecErase (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) :
+    bindMemArgs stdVecEraseFunc.args
+      [.stdVecOwned b len cap, .u64 pos] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("pos", .u64 pos)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+  rfl
+
+/-- Erase-forwarder footprints are a singleton. -/
+theorem oracleNoalias_stdVecErase (b : Vec32) (len cap : Nat)
+    (pos : BitVec 64) :
+    oracleNoalias stdVecEraseFunc
+      [.stdVecOwned b len cap, .u64 pos] := by
+  have hb : bindMemArgs stdVecEraseFunc.args
+      [.stdVecOwned b len cap, .u64 pos] emptyMem =
+      some ([("t", .stdVecOwned b len cap), ("pos", .u64 pos)],
+        ⟨1, [(0, ⟨0, !b.freed, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩),
+          (0, ⟨0, true, (BitVec.ofNat 32 len) ::
+          (BitVec.ofNat 32 cap) :: b.val⟩)], []⟩,
+        [("t", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "t", ty := .vecBlock, role := .owned },
+       { name := "pos", ty := .u 64, role := .owned }]
+      [.stdVecOwned b len cap, .u64 pos] emptyMem = _
+    exact bindMemArgs_stdVecErase b len cap pos
+  have hn : LayoutNoAlias [("t", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-! ## N7d `vec_erase_sum` entry: entry binding + footprint -/
+
+/-- Entry binding: no arguments, empty footprint. -/
+theorem bindMemArgs_vecEraseSumEntry :
+    bindMemArgs vecEraseSumEntryFunc.args [] emptyMem =
+      some ([], emptyMem, []) := rfl
+
+/-- Entry footprints are trivially disjoint (nothing pinned). -/
+theorem oracleNoalias_vecEraseSumEntry :
+    oracleNoalias vecEraseSumEntryFunc [] := by
+  exact ⟨_, _, _, bindMemArgs_vecEraseSumEntry, layoutNoAlias_nil⟩
+
 /-! ## Cache bridge (discharged by the executable check) -/
 
 /-- Bridge: on a `noalias` verdict the gate admits. The premise

@@ -1285,3 +1285,11 @@ theorem vecReserveSumEntry_correct :
     before the reads). -/
 theorem vecInsertSumEntry_correct :
     vecInsertSumEntryFwd = .ok (.i32 6) := rfl
+
+/-! ## N7d `vec_erase_sum` entry: spec (Fwd level) -/
+
+/-- The closed entry computes `1 + 3 = 4` (frozen by evaluating
+    `vecEraseSumEntryFwd`; the erase at position `1` drops the `2`
+    before the reads). -/
+theorem vecEraseSumEntry_correct :
+    vecEraseSumEntryFwd = .ok (.i32 4) := rfl
