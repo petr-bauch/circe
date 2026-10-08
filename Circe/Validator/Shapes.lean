@@ -292,18 +292,178 @@ def isArraySumShape (raw : RawFunc) : Bool :=
   | _ => false
 
 /-- Known `std::array` leaf callees (mangled): the `_S_ref`
-    unchecked-index leaf and the `operator[]` delegation entry. Entry
-    gates admit calls into the (name, arity, site-count) pairs named in
-    `validate` below; this registry names every known array leaf for
-    the wrong-shape rejection. -/
+    unchecked-index leaf and the `operator[]` delegation entry, plus
+    the N9 u32 monomorph (`_S_ref`, mutating `operator[]`,
+    `insertion_sort`, `array_sort_sum` entry). Entry gates admit calls
+    into the (name, arity, site-count) pairs named in `validate` below;
+    this registry names every known array leaf for the wrong-shape
+    rejection. -/
 def arrayLeafCallees : List String :=
-  [arrayRefName, arrayAtName]
+  [arrayRefName, arrayAtName, arrayRefU32Name, arrayAtU32Name,
+    insertionSortName, arraySortSumName]
 
 /-- Calls a known `std::array` leaf but not with an admitted (name,
     arity, site-count) shape: dedicated rejection naming the admitted
     triples. -/
 def callsArrayWrongShape (raw : RawFunc) : Bool :=
   arrayLeafCallees.any (callsFunc raw.text)
+
+/-! ## N9: `std::array<uint32_t, 4>` sort shapes -/
+
+/-- The N9 `std::array<unsigned int, 4UL>` object type (CIRGen's
+    `!rec_std3A3Aarray3Cunsigned_int2C_4UL3E` alias; a separate
+    monomorph from the N4d-i `int` one — the `unsigned` pin keeps
+    them disjoint, the N4c monomorphization precedent). -/
+def isStdArrayU4Type (t : String) : Bool :=
+  containsSubstr t "array" && containsSubstr t "4UL" &&
+    containsSubstr t "unsigned"
+
+/-- The u32 `_S_ref` unchecked-index leaf: single `const&` to the raw
+    4-word `u32` array with the single-reference triple, `u64` index,
+    pointer-to-`u32` return, one `cir.get_element`, no calls, no
+    arithmetic, no control flow (mirrors `isArrayRefShape`). -/
+def isArrayRefU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [t, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType t.ctype && t.singleRef &&
+    isPrefixOfList "!cir.ptr<!cir.array<!u32i".toList t.ctype.toList &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    (match ptrInner raw.ret with | some inner => isU32 inner | none => false) &&
+    containsSubstr raw.text "cir.get_element" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- The mutating `operator[]` single-delegation entry: single `&mut`
+    to the `std::array<uint32_t, 4>` object with the single-reference
+    triple, `u64` index, pointer-to-`u32` return, exactly one call site
+    to the u32 `_S_ref` leaf (the `_M_elems` projection + call fuse
+    into the `idxu` read downstream; the store path fuses into
+    `arrSet` instead), one `cir.get_member`, no local indexing or
+    arithmetic. -/
+def isArrayAtU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdArrayU4Type a.ctype &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    (match ptrInner raw.ret with | some inner => isU32 inner | none => false) &&
+    callsFunc raw.text arrayRefU32Name &&
+    opCount raw.text "cir.call @" == 1 &&
+    !callsFunc raw.text raw.name &&
+    containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `insertion_sort` loop: single `&mut` to the
+    `std::array<uint32_t, 4>` object with the single-reference triple
+    (exactly one live array — the containment story: no second
+    reference can collide), void return, one `cir.for` (`i in [1,4)`),
+    one `cir.while` (short-circuit `&&` via one `cir.ternary`),
+    exactly six call sites into the mutating `operator[]` (two in the
+    condition, four in the swap), three `cir.cmp` (`lt` bound, `gt`
+    counter, `gt` elements), three `cir.sub` (`j - 1` × 3), one
+    `cir.dec` (fused to `usub`-one downstream), no heap calls, no
+    other control flow. -/
+def isInsertionSortShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdArrayU4Type a.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text arrayAtU32Name &&
+    opCount raw.text ("cir.call @" ++ arrayAtU32Name ++ "(") == 6 &&
+    opCount raw.text "cir.call @" == 6 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.condition" == 2 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.cmp gt" == 2 &&
+    opCount raw.text "cir.sub" == 3 &&
+    opCount raw.text "cir.dec" == 1 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.store" == 8 &&
+    opCount raw.text "cir.load" == 22 &&
+    opCount raw.text "cir.const" == 13 &&
+    opCount raw.text "cir.yield" == 5 &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.div" &&
+    !containsSubstr raw.text "cir.trap"
+  | _ => false
+
+/-- The `array_sort_sum` closed entry: no params, `u32` return, exactly
+    one call into `insertion_sort` plus four into the mutating
+    `operator[]`, const-record init (three words +
+    `trailing_zeros`), three wrapping `u32` adds, no control flow or
+    projection ops of its own. -/
+def isArraySortSumShape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  isU32 raw.ret &&
+  match raw.params with
+  | [] =>
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text insertionSortName &&
+    opCount raw.text ("cir.call @" ++ insertionSortName ++ "(") == 1 &&
+    callsFunc raw.text arrayAtU32Name &&
+    opCount raw.text ("cir.call @" ++ arrayAtU32Name ++ "(") == 4 &&
+    opCount raw.text "cir.call @" == 5 &&
+    opCount raw.text "cir.const_record" == 1 &&
+    opCount raw.text "cir.const_array" == 1 &&
+    opCount raw.text "trailing_zeros" == 1 &&
+    opCount raw.text "cir.add" == 3 &&
+    -- `cir.const` is a substring of `cir.const_record`/`cir.const_array`
+    -- above, so this counts 9 plain consts + those 2 lines.
+    opCount raw.text "cir.const" == 11 &&
+    opCount raw.text "cir.alloca" == 2 &&
+    opCount raw.text "cir.store" == 2 &&
+    opCount raw.text "cir.load" == 5 &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.dec" &&
+    !containsSubstr raw.text "cir.sub" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.cmp"
+  | _ => false
 
 /-! ## N4d-ii: `std::optional<int32_t>` guarded-deref shapes -/
 

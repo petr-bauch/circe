@@ -512,6 +512,18 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | _, _ => .error .AssertFail
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
+  | .idxu arr ie, ρ, m, π =>
+    match layoutLookup π arr with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memEvalExpr ie ρ m π, envLookup ρ arr with
+      | .ok (.u64 i), some (.arr32 l) =>
+        match memLoad m a t i.toNat, l[i.toNat]? with
+        | .ok w, some v => if w == v then .ok (.u32 v) else .error .AssertFail
+        | .error e, _ => .error e
+        | _, _ => .error .AssertFail
+      | .ok _, _ => .error .AssertFail
+      | .error e, _ => .error e
   | .optHas o, ρ, m, π =>
     match layoutLookup π o with
     | none => .error .AssertFail
@@ -810,6 +822,35 @@ theorem memEvalExpr_idxi_oob (arr : String) (ie : CExpr) (ρ : Env)
     (hmem : memLoad m a t i.toNat = .error .OOB)
     (hval : l[i.toNat]? = none) :
     memEvalExpr (.idxi arr ie) ρ m π = evalExpr (.idxi arr ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval]
+
+/-- `idxu` agreement under consistency (N9: the unsigned array read
+    for the insertion-sort element comparison) — mirrors `idxi`, with
+    the word delivered as `u32`. -/
+theorem memEvalExpr_idxu_hit (arr : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (i : BitVec 64)
+    (x : BitVec 32) (a : Addr) (t : Nat)
+    (hlay : layoutLookup π arr = some (a, t))
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t i.toNat = .ok x)
+    (hval : l[i.toNat]? = some x) :
+    memEvalExpr (.idxu arr ie) ρ m π = evalExpr (.idxu arr ie) ρ := by
+  simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval,
+    beq_self_eq_true, ↓reduceIte]
+
+/-- `idxu` OOB agreement (mirrors `evalExpr_idxu_oob`). -/
+theorem memEvalExpr_idxu_oob (arr : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (l : List (BitVec 32)) (i : BitVec 64)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π arr = some (a, t))
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hie : memEvalExpr ie ρ m π = evalExpr ie ρ)
+    (hieval : evalExpr ie ρ = .ok (.u64 i))
+    (hmem : memLoad m a t i.toNat = .error .OOB)
+    (hval : l[i.toNat]? = none) :
+    memEvalExpr (.idxu arr ie) ρ m π = evalExpr (.idxu arr ie) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, harr, hmem, hval]
 
 /-- `optHas` agreement: the engaged-bit word in memory matches the
@@ -1370,6 +1411,23 @@ def memEvalStmtWith
         | some ρ' => .ok ((ρ', m', π), .fellThrough)
       | .error e, _ => .error e
       | _, .error e => .error e
+    | .ok _, .ok _, _, _ => .error .AssertFail
+    | .error e, _, _, _ => .error e
+    | _, .error e, _, _ => .error e
+  | .arrSet x ie ve, ρ, m, π =>
+    match memEvalExpr ie ρ m π, memEvalExpr ve ρ m π,
+        envLookup ρ x, layoutLookup π x with
+    | .ok (.u64 i), .ok (.u32 xv), some (.arr32 l),
+        some (a, t) =>
+      match l[i.toNat]? with
+      | none => .error .OOB
+      | some _ =>
+        match memStore m a t i.toNat xv with
+        | .error e => .error e
+        | .ok m' =>
+          match envUpdate ρ x (.arr32 (l.set i.toNat xv)) with
+          | none => .error .Uninit
+          | some ρ' => .ok ((ρ', m', π), .fellThrough)
     | .ok _, .ok _, _, _ => .error .AssertFail
     | .error e, _, _, _ => .error e
     | _, .error e, _, _ => .error e

@@ -257,6 +257,65 @@ def emitArraySumText (name : String) : String :=
   ++ "     let u ← checkedAddI32 t c\n"
   ++ "     checkedAddI32 u d\n"
 
+/-- Render the u32 `_S_ref` leaf forward definition: the word at `u64`
+    index `n`, `OOB` off the end (the tag-erased `arrayRefU32Fwd`). -/
+def emitArrayRefU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (unchecked `u64` index into the 4-word `u32` array). -/\n"
+  ++ s!"def {name}_fwd (t : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match t[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+
+/-- Render the mutating u32 `operator[]` forward definition: the same
+    read (the call edge is fused, so the rendering is the leaf
+    rendering by definition, cf. `arrayAtU32Fwd_is_call`). -/
+def emitArrayAtU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (delegates to the u32 `_S_ref` unchecked-index body). -/\n"
+  ++ s!"def {name}_fwd (a : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match a[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+
+/-- Render the `insertion_sort` forward definition: insertion before
+    the first strictly greater word (equal words keep their relative
+    order, matching the loop which swaps only on strict `>`), folded
+    over the array (the tag-erased `insertionSortFwd`). The helpers
+    are emitted inline under the entry-name prefix so the file stays
+    self-contained (house style: cf. the `arrayAt` inlining above). -/
+def emitInsertionSortText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (insertion sort over the 4-word `u32` array). -/\n"
+  ++ s!"def {name}_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => [x]\n"
+  ++ s!"  | y :: ys => if x.ult y then x :: y :: ys else y :: {name}_insert x ys\n"
+  ++ s!"def {name}_sort : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => []\n"
+  ++ s!"  | x :: xs => {name}_insert x ({name}_sort xs)\n"
+  ++ s!"def {name}_fwd (a : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ s!"  .ok ({name}_sort a)\n"
+
+/-- Render the `array_sort_sum` entry forward definition: sort
+    `[3, 1, 2, 0]`, add the four words (wrapping; the tag-erased
+    `arraySortSumEntryFwd`). Helpers inlined under the entry-name
+    prefix, cf. `emitInsertionSortText`. -/
+def emitArraySortSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (sort `[3, 1, 2, 0]`, three wrapping adds). -/\n"
+  ++ s!"def {name}_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => [x]\n"
+  ++ s!"  | y :: ys => if x.ult y then x :: y :: ys else y :: {name}_insert x ys\n"
+  ++ s!"def {name}_sort : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => []\n"
+  ++ s!"  | x :: xs => {name}_insert x ({name}_sort xs)\n"
+  ++ s!"def {name}_fwd : Result (BitVec 32) :=\n"
+  ++ s!"  .ok ((({name}_sort [3, 1, 2, 0]).foldl (· + ·) 0))\n"
+
 /-- Render the `_M_is_engaged` leaf forward definition: the engaged
     bit of the optional (the tag-erased `optHasFwd`, value tags
     dropped). -/

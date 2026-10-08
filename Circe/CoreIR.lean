@@ -42,6 +42,7 @@ inductive CLit : Type
   | i64 : BitVec 64 → CLit
   | u64 : BitVec 64 → CLit
   | b : Bool → CLit
+  | arr32 : List (BitVec 32) → CLit
   deriving DecidableEq, Repr
 
 /-- C expressions for the admitted fragment. `add` is signed `nsw`-checked
@@ -153,6 +154,7 @@ inductive CExpr : Type
   | vgrowSetLen : String → CExpr → CExpr
   | u64ofI64 : CExpr → CExpr
   | idxi : String → CExpr → CExpr
+  | idxu : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | vget : String → CExpr → CExpr
   | boxNew : CExpr → CExpr
@@ -212,6 +214,7 @@ inductive CStmt : Type
   | boxFree (box : String)
   | vgrowSet (t : String) (idx val : CExpr)
   | vgrowFree (t : String)
+  | arrSet (arr : String) (idx val : CExpr)
   | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)

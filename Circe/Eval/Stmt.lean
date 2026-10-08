@@ -188,6 +188,22 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .arrSet x ie ve, ρ =>
+    match evalExpr ie ρ, evalExpr ve ρ with
+    | .ok (.u64 i), .ok (.u32 xv) =>
+      match envLookup ρ x with
+      | none => .error .Uninit
+      | some (.arr32 l) =>
+        match l[i.toNat]? with
+        | none => .error .OOB
+        | some _ =>
+          match envUpdate ρ x (.arr32 (l.set i.toNat xv)) with
+          | none => .error .Uninit
+          | some ρ' => .ok (ρ', .fellThrough)
+      | some _ => .error .AssertFail
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .vgrowFree x, ρ =>
     match envLookup ρ x with
     | none => .error .Uninit
@@ -385,6 +401,32 @@ theorem evalStmtFuel_vgrowSet_err (f : Nat) (x : String) (ie ve : CExpr)
     evalStmtFuel f (.vgrowSet x ie ve) ρ = .error e := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hset]
+
+/-- `arrSet` writes the word and threads the env (any fuel; N9: the
+    fused subscript-call + `cir.store` for the insertion-sort swap). -/
+theorem evalStmtFuel_arrSet (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (l : List (BitVec 32)) (w : BitVec 32) (ρ' : Env)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.u32 xv))
+    (harr : envLookup ρ x = some (.arr32 l))
+    (hget : l[i.toNat]? = some w)
+    (hu : envUpdate ρ x (.arr32 (l.set i.toNat xv)) = some ρ') :
+    evalStmtFuel f (.arrSet x ie ve) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hget, hu]
+
+/-- `arrSet` out-of-bounds reports `OOB` (any fuel). -/
+theorem evalStmtFuel_arrSet_oob (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (l : List (BitVec 32))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.u32 xv))
+    (harr : envLookup ρ x = some (.arr32 l))
+    (hget : l[i.toNat]? = none) :
+    evalStmtFuel f (.arrSet x ie ve) ρ = .error .OOB := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hget]
 
 /-- `vgrowFree` consumes the triple's buffer token and updates the
     binding, keeping `len`/`cap` (any fuel; N4d-iv-b1:

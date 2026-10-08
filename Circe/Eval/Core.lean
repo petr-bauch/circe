@@ -295,6 +295,7 @@ def litVal : CLit → Value
   | .i64 v => .i64 v
   | .u64 v => .u64 v
   | .b v => .b v
+  | .arr32 l => .arr32 l
 
 /-- Field lookup in a flat struct value (fields are `BitVec 32`;
     S2 `Point` is `i32`-only). Missing field is `none` (loud
@@ -445,6 +446,18 @@ def evalExpr : CExpr → Env → Result Value
       | .ok (.u64 i) =>
         match l[i.toNat]? with
         | some x => .ok (.i32 x)
+        | none => .error .OOB
+      | .ok _ => .error .AssertFail
+    | some _ => .error .AssertFail
+  | .idxu arr ie, ρ =>
+    match envLookup ρ arr with
+    | none => .error .Uninit
+    | some (.arr32 l) =>
+      match evalExpr ie ρ with
+      | .error e => .error e
+      | .ok (.u64 i) =>
+        match l[i.toNat]? with
+        | some x => .ok (.u32 x)
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
@@ -901,6 +914,31 @@ theorem evalExpr_idxi_notarray (arr : String) (v : BitVec 32) (i : BitVec 64)
     (ρ : Env)
     (harr : envLookup ρ arr = some (.i32 v)) :
     evalExpr (.idxi arr (.lit (.u64 i))) ρ = .error .AssertFail := by
+  simp [evalExpr, harr]
+
+/-- In-bounds `u32`-flavored indexing succeeds (N9: unsigned array
+    reads for the insertion-sort element comparison). -/
+theorem evalExpr_idxu_hit (arr : String) (l : List (BitVec 32)) (i : BitVec 64)
+    (ρ : Env) (x : BitVec 32)
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hidx : l[i.toNat]? = some x) :
+    evalExpr (.idxu arr (.lit (.u64 i))) ρ = .ok (.u32 x) := by
+  simp [evalExpr, litVal, harr, hidx]
+
+/-- Out-of-bounds `u32`-flavored indexing reports `OOB`. -/
+theorem evalExpr_idxu_oob (arr : String) (l : List (BitVec 32)) (i : BitVec 64)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.arr32 l))
+    (hidx : l[i.toNat]? = none) :
+    evalExpr (.idxu arr (.lit (.u64 i))) ρ = .error .OOB := by
+  simp [evalExpr, litVal, harr, hidx]
+
+/-- `u32`-flavored indexing of a non-array is rejected, never silently
+    modeled. -/
+theorem evalExpr_idxu_notarray (arr : String) (v : BitVec 32) (i : BitVec 64)
+    (ρ : Env)
+    (harr : envLookup ρ arr = some (.i32 v)) :
+    evalExpr (.idxu arr (.lit (.u64 i))) ρ = .error .AssertFail := by
   simp [evalExpr, harr]
 
 /-- Engaged `optVal` reports `true`. -/

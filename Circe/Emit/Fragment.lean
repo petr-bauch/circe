@@ -39,6 +39,10 @@ import Circe.Eval
     `std::array<int, 4>` reads (`arrayRef` = the `_S_ref`
     unchecked-index leaf, `arrayAt` = the `operator[]`
     single-delegation entry, `arraySum` = the 4-call entry), and in
+    N9 with `std::array<uint32_t, 4>` insertion sort (`arrayRefU32` =
+    the u32 `_S_ref` leaf, `arrayAtU32` = the mutating `operator[]`
+    entry, `insertionSort` = the sort loop, `arraySortSum` = the
+    closed entry), and in
     N4d-ii with `std::optional<int32_t>` guarded dereference
     (`optHas` = the `_M_is_engaged` engaged-bit leaf, `optGet` =
     the payload `_M_get` leaf, `optHasValue` = the `has_value`
@@ -88,6 +92,10 @@ inductive FragKind : Type
   | arrayRef
   | arrayAt
   | arraySum
+  | arrayRefU32
+  | arrayAtU32
+  | insertionSort
+  | arraySortSum
   | optHas
   | optGet
   | optHasValue

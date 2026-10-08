@@ -475,6 +475,112 @@ def emitArraySumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2.1 t.2.2.2.1)).pretty == (repr t.2.2.2.2).pretty\n"
 
+/-- Spec stub for the u32 `_S_ref` shape (N9 unchecked-index leaf).
+    The mirror is the tag-erased `arrayRefU32Fwd`; edges carry ground
+    truth (hits at every index, `OOB` off the end). -/
+def emitArrayRefU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(t, n)` reads the word at `u64` index `n`.\n"
+  ++ s!"    Base body reference: the index read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `arrayRefU32Fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (t : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match t[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hits at every index, `OOB` off the end. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 64 × Result (BitVec 32)) :=\n"
+  ++ "  [([10, 20, 30, 40], 0, .ok 10), ([10, 20, 30, 40], 3, .ok 40),\n"
+  ++ "   ([10, 20, 30, 40], 4, .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1)).pretty == (repr t.2.2).pretty\n"
+
+/-- Spec stub for the mutating u32 `operator[]` shape (N9
+    single-delegation entry). Same mirror as the u32 `_S_ref` (the
+    call edge is fused, cf. `arrayAtU32Fwd_is_call`); edges carry
+    ground truth likewise. -/
+def emitArrayAtU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, n)` delegates to the u32 `_S_ref` unchecked-index body.\n"
+  ++ s!"    Base body reference: the index read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `arrayAtU32Fwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (a : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match a[n.toNat]? with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hits at every index, `OOB` off the end. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × BitVec 64 × Result (BitVec 32)) :=\n"
+  ++ "  [([10, 20, 30, 40], 1, .ok 20), ([10, 20, 30, 40], 2, .ok 30),\n"
+  ++ "   ([10, 20, 30, 40], 7, .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1)).pretty == (repr t.2.2).pretty\n"
+
+/-- Spec stub for the `insertion_sort` shape (N9 sort loop). The mirror
+    is the tag-erased `insertionSortFwd` (helpers inlined, cf.
+    `emitInsertionSortText`); edges carry ground truth (sorted,
+    reverse, duplicates). -/
+def emitInsertionSortSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a)` sorts the 4-word `u32` array in place.\n"
+  ++ s!"    Base body reference: insertion sort itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `insertionSortFwd`). -/\n"
+  ++ s!"def {name}_spec_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => [x]\n"
+  ++ s!"  | y :: ys => if x.ult y then x :: y :: ys else y :: {name}_spec_insert x ys\n"
+  ++ s!"def {name}_spec_sort : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => []\n"
+  ++ s!"  | x :: xs => {name}_spec_insert x ({name}_spec_sort xs)\n"
+  ++ s!"def {name}_spec_fwd (a : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ s!"  .ok ({name}_spec_sort a)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: sorted, reverse, duplicates. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × List (BitVec 32)) :=\n"
+  ++ "  [([1, 2, 3, 4], [1, 2, 3, 4]), ([4, 3, 2, 1], [1, 2, 3, 4]),\n"
+  ++ "   ([3, 1, 2, 1], [1, 1, 2, 3])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr (.ok t.2 : Result (List (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `array_sort_sum` shape (N9 closed entry). The
+    mirror sorts `[3, 1, 2, 0]` and adds the four words (wrapping; the
+    tag-erased `arraySortSumEntryFwd`); the edge carries ground truth
+    (`0 + 1 + 2 + 3 = 6`). -/
+def emitArraySortSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}()` sorts `[3, 1, 2, 0]`, sums the words.\n"
+  ++ s!"    Base body reference: sort-then-wrapping-add (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `arraySortSumEntryFwd`). -/\n"
+  ++ s!"def {name}_spec_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => [x]\n"
+  ++ s!"  | y :: ys => if x.ult y then x :: y :: ys else y :: {name}_spec_insert x ys\n"
+  ++ s!"def {name}_spec_sort : List (BitVec 32) → List (BitVec 32)\n"
+  ++ "  | [] => []\n"
+  ++ s!"  | x :: xs => {name}_spec_insert x ({name}_spec_sort xs)\n"
+  ++ s!"def {name}_spec_fwd : Result (BitVec 32) :=\n"
+  ++ s!"  .ok ((({name}_spec_sort [3, 1, 2, 0]).foldl (· + ·) 0))\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the entry input sorts to `[0, 1, 2, 3]`, sums to `6`. -/\n"
+  ++ s!"def {name}_spec_edges : List (Result (BitVec 32)) :=\n"
+  ++ "  [.ok 6]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr {name}_spec_fwd).pretty == (repr t).pretty\n"
+
 /-- Spec stub for the `_M_is_engaged` shape (N4d-ii engaged-bit
     leaf). The mirror is the tag-erased `optHasFwd`; with no deeper
     `Base` op to compare against, edges carry ground truth (engaged

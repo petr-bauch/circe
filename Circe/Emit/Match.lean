@@ -20,6 +20,7 @@ import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Move
 import Circe.Emit.Array
+import Circe.Emit.ArraySort
 import Circe.Emit.Optional
 import Circe.Emit.Span
 import Circe.Emit.View
@@ -401,6 +402,46 @@ def matchFrag : Func → Option FragKind
                (.var "e2")) (.var "e3")))))))))) =>
       if l0 == 0 && l1 == 1 && l2 == 2 && l3 == 3 then
         some .arraySum
+      else none
+    | _ => none
+  | ⟨_, [⟨"t", .array (.u 32) 4, .sharedBorrow⟩,
+         ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.idxu "t" (.var "n"))⟩ =>
+    some .arrayRefU32
+  | ⟨_, [⟨"a", .array (.u 32) 4, .mutBorrow 0⟩,
+         ⟨"n", .u 64, .owned⟩], _,
+      .return_ (.idxu "a" (.var "n"))⟩ =>
+    some .arrayAtU32
+  | ⟨_, [⟨"a", .array (.u 32) 4, .mutBorrow 0⟩], _, body⟩ =>
+    -- Sort loop: body matched separately (nested `.seq`/`.while_`
+    -- patterns inside `⟨⟩` hit the parser quirk, cf. `arraySum`).
+    match body with
+    | .seq (.let_ "i" _ (.lit (.u64 one)))
+      (.seq (.while_ (.ult (.var "i") (.lit (.u64 four))) _)
+        (.return_ (.var "a"))) =>
+      if one == 1 && four == 4 then
+        some .insertionSort
+      else none
+    | _ => none
+  | ⟨_, [], _, .seq (.let_ "a" _ (.lit (.arr32 init))) rest⟩ =>
+    -- One `.seq` level in the outer pattern (deeper nesting inside
+    -- `⟨⟩` hits the parser quirk); the tail matches at `CStmt` level.
+    match rest with
+    | .seq (.callProg "s" "_Z14insertion_sortRSt5arrayIjLm4EE" ["a"])
+      (.seq (.let_ "i0" _ (.lit (.u64 l0)))
+      (.seq (.callRet "e0" "_ZNSt5arrayIjLm4EEixEm" ["s", "i0"])
+      (.seq (.let_ "i1" _ (.lit (.u64 l1)))
+      (.seq (.callRet "e1" "_ZNSt5arrayIjLm4EEixEm" ["s", "i1"])
+      (.seq (.let_ "i2" _ (.lit (.u64 l2)))
+      (.seq (.callRet "e2" "_ZNSt5arrayIjLm4EEixEm" ["s", "i2"])
+      (.seq (.let_ "i3" _ (.lit (.u64 l3)))
+      (.seq (.callRet "e3" "_ZNSt5arrayIjLm4EEixEm" ["s", "i3"])
+             (.return_ (.uadd (.uadd (.uadd (.var "e0") (.var "e1"))
+               (.var "e2")) (.var "e3"))))))))))) =>
+      if l0 == 0 && l1 == 1 && l2 == 2 && l3 == 3 &&
+        init == [BitVec.ofNat 32 3, BitVec.ofNat 32 1,
+          BitVec.ofNat 32 2, BitVec.ofNat 32 0] then
+        some .arraySortSum
       else none
     | _ => none
   | ⟨_, [⟨"b", .struct "std::optional<int>" [.i 32, .bool],
@@ -1000,6 +1041,10 @@ theorem matchFrag_clsAdd : matchFrag clsAddFunc = some .clsAdd := rfl
 theorem matchFrag_arrayRef : matchFrag arrayRefFunc = some .arrayRef := rfl
 theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
 theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl
+theorem matchFrag_arrayRefU32 : matchFrag arrayRefU32Func = some .arrayRefU32 := rfl
+theorem matchFrag_arrayAtU32 : matchFrag arrayAtU32Func = some .arrayAtU32 := rfl
+theorem matchFrag_insertionSort : matchFrag insertionSortFunc = some .insertionSort := rfl
+theorem matchFrag_arraySortSum : matchFrag arraySortSumEntryFunc = some .arraySortSum := rfl
 theorem matchFrag_optHas : matchFrag optHasFunc = some .optHas := rfl
 theorem matchFrag_optHasValue : matchFrag optHasValueFunc = some .optHasValue := rfl
 theorem matchFrag_optGet : matchFrag optGetFunc = some .optGet := rfl

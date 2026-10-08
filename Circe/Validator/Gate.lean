@@ -1376,9 +1376,17 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { arrayAtFunc with name := raw.name }
       else if isArraySumShape raw then
         .ok { arraySumFunc with name := raw.name }
+      else if isArrayRefU32Shape raw then
+        .ok { arrayRefU32Func with name := raw.name }
+      else if isArrayAtU32Shape raw then
+        .ok { arrayAtU32Func with name := raw.name }
+      else if isInsertionSortShape raw then
+        .ok { insertionSortFunc with name := raw.name }
+      else if isArraySortSumShape raw then
+        .ok { arraySortSumEntryFunc with name := raw.name }
       else if callsArrayWrongShape raw then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls a known `std::array` leaf but not with an admitted (name, arity, site-count) shape: admitted callers are the single-site `operator[]` delegation into `{arrayRefName}` (`array_at` shape) and the 4-site `array_sum` entry into `{arrayAtName}` (`array_sum` shape) only (known array leaves `{arrayRefName}` / `{arrayAtName}`; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' calls a known `std::array` leaf but not with an admitted (name, arity, site-count) shape: admitted callers are the single-site `operator[]` delegation into `{arrayRefName}` (`array_at` shape), the 4-site `array_sum` entry into `{arrayAtName}` (`array_sum` shape), the single-site u32 `operator[]` delegation into `{arrayRefU32Name}` (`array_at_u32` shape), the single-site mutating `operator[]` delegation into `{arrayRefU32Name}` (`array_at_mut_u32` shape), the `insertion_sort` loop (`insertion_sort` shape), and the closed `array_sort_sum` entry (`array_sort_sum` shape) only (known array leaves `{arrayRefName}` / `{arrayAtName}` / `{arrayRefU32Name}` / `{arrayAtU32Name}`; see docs/SUBSET.md)"
       else if isOptHasShape raw then
         .ok { optHasFunc with name := raw.name }
       else if isOptGetShape raw then
