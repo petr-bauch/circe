@@ -74,6 +74,20 @@ instance : DecidableEq (Result Value) := fun a b => by
       | isTrue h => exact isTrue (by rw [h])
       | isFalse h => exact isFalse (fun h' => by cases h'; exact h rfl)
 
+/-- Closed entry evaluation (N8c): `native_decide` as a named adoption
+    point for closed `evalProgFunc` / `memEvalProgFunc` entry goals.
+    Both sides must be closed terms at concrete fuel (entries are
+    stated at the fuel their script needs); `rfl` cannot see through
+    the well-founded recursion in the program evaluators, while native
+    compilation evaluates closed entries in ~1s. Needs the
+    `DecidableEq (Result Value)` instance above. Process: verify a
+    new use with `#eval` on both sides (a `/tmp` probe) before
+    deleting any hand proof, and leave an argument comment at the use
+    site (opacity decision: collapse is fine, unexplained collapse is
+    not). Lives here (not `Circe.Tactics`) because `Tactics` imports
+    `Emit` — entry files cannot import it back. -/
+macro "cir_eval_closed" : tactic => `(tactic| native_decide)
+
 /-- Function outcome: a returned value, loop-scoped `break_`/`continue_`
     signals, or fall-through. `broke`/`continued` escaping a function body
     is `AssertFail` (`evalFuncFuel`); `validate` admits them only inside

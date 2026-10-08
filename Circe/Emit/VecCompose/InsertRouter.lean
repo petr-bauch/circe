@@ -793,4 +793,4 @@ theorem vecInsertDtor_eq :
 theorem evalProgFunc_vecInsertSumEntry :
     evalProgFunc vecGrowProg 6 vecInsertSumEntryFunc [] =
       vecInsertSumEntryFwd := by
-  native_decide
+  cir_eval_closed

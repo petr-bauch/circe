@@ -17,7 +17,10 @@ tactics beside it: `cir_fuel` (fuel automation) and `cir_choose`
 more: `fuel_step_down` (composer fuel split: `k + 1 ≤ F` gives
 `F = F' + 1` with `k ≤ F'` in one `obtain`) and `cir_step`
 (registered program-step cascade: evaluator unfolding + `Except.map`
-normalization with per-step hypotheses as arguments). Plain `simp` /
+normalization with per-step hypotheses as arguments). Stage 4 (N8)
+adds `cir_eval_closed` (closed-entry `native_decide`; lives in
+`Circe.Eval.Core` beside its `DecidableEq` instance because entry
+files cannot import `Tactics` back). Plain `simp` /
 `omega` / `bv_decide` suffice in the common case; `cir_simp` just
 saves re-listing the set.
 -/

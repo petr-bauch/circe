@@ -1588,4 +1588,4 @@ def vecEraseSumEntryFunc : Func :=
 theorem evalProgFunc_vecEraseSumEntry :
     evalProgFunc vecGrowProg 6 vecEraseSumEntryFunc [] =
       vecEraseSumEntryFwd := by
-  native_decide
+  cir_eval_closed

@@ -939,14 +939,10 @@ def contentAsserts : List (String × List (String × String)) :=
    ("n5-ergonomics",
     [("Circe/Eval/Stmt.lean", "theorem fuel_step_down"),
      ("Circe/Eval/Stmt.lean", "elab \"cir_step \""),
-     ("Circe/Emit/VecCompose/Entry.lean", "fuel_step_down"),
      ("Circe/Emit/VecCompose/Emplace.lean", "fuel_step_down"),
      ("Circe/Transfer/GrowEmplace.lean", "fuel_step_down"),
-     ("Circe/Transfer/GrowEntry.lean", "fuel_step_down"),
      ("Circe/Emit/Span.lean", "cir_step evalExpr"),
      ("Circe/Emit/VecRead.lean", "cir_step evalExpr"),
-     ("Circe/Emit/VecCompose/Entry.lean", "cir_step evalExpr"),
-     ("Circe/Transfer/GrowEntry.lean", "cir_step evalExpr"),
      ("tests/golden/VecGrowComposerRealloc_Spec.lean", "TODO (user)"),
      ("tests/golden/VecGrowComposerEmplace_Spec.lean", "TODO (user)"),
      ("tests/golden/VecGrowComposerPushBack_Spec.lean", "TODO (user)"),
@@ -981,6 +977,25 @@ def checkNoManualFuelSplit : IO Unit := do
   let hits := (out.splitOn "\n").filter (· != "")
   if hits != ["Circe/Eval/Stmt.lean"] then
     throw (IO.userError s!"manual fuel split outside fuel_step_down: {hits}")
+
+/-- N8c adoption gate: every collapsed closed-entry proof goes through
+    the `cir_eval_closed` macro (single adoption point over
+    `native_decide`; new entries must use it too). -/
+def closedEntryFiles : List String :=
+  ["Circe/Emit/VecCompose/Erase.lean",
+   "Circe/Emit/VecCompose/InsertRouter.lean",
+   "Circe/Emit/VecCompose/Entry.lean",
+   "Circe/Emit/VecCompose/Reserve.lean",
+   "Circe/Transfer/GrowErase.lean",
+   "Circe/Transfer/GrowInsert.lean",
+   "Circe/Transfer/GrowEntry.lean",
+   "Circe/Transfer/GrowReserve.lean"]
+
+def checkClosedEvalAdoption : IO Unit := do
+  for f in closedEntryFiles do
+    let text ← IO.FS.readFile f
+    if !containsSubstr text "cir_eval_closed" then
+      throw (IO.userError s!"no `cir_eval_closed` adoption in {f}")
 
 /-- M2 setup gate: no `cir.cleanup`/`cir.trap` in C corpus `.cir` files
     (C++ files excluded by construction). -/
@@ -1147,6 +1162,7 @@ def main (args : List String) : IO Unit := do
         ("m2-setup-gate", checkM2SetupGate),
         ("cir-fuel-adoption", checkCirFuelAdoption),
         ("n5-no-manual-fuel-split", checkNoManualFuelSplit),
+        ("n8-closed-eval-adoption", checkClosedEvalAdoption),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

@@ -1798,7 +1798,7 @@ theorem memTransfer_stdVecErase (F : Nat) (b : Vec32)
 theorem memEvalProgFunc_vecEraseSumEntry :
     memEvalProgFunc vecGrowProg 6 vecEraseSumEntryFunc [] =
       vecEraseSumEntryFwd := by
-  native_decide
+  cir_eval_closed
 
 
 /-- Transfer for `vec_erase_sum`: memory execution agrees with value

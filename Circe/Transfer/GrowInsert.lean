@@ -1665,7 +1665,7 @@ theorem memTransfer_stdVecInsert (F : Nat) (b : Vec32)
 theorem memEvalProgFunc_vecInsertSumEntry :
     memEvalProgFunc vecGrowProg 6 vecInsertSumEntryFunc [] =
       vecInsertSumEntryFwd := by
-  native_decide
+  cir_eval_closed
 
 
 /-- Transfer for `vec_insert_sum`: memory execution agrees with value
