@@ -54,6 +54,26 @@ inductive Value : Type
     lives in the companion `LoanState` (Aeneas §4 regions, value-only). -/
 abbrev Env : Type := List (String × Value)
 
+/-- Decidable equality on evaluator results (N8a: enables
+    `native_decide` on closed entry goals. Structural and lawful, not
+    trusted — `native_decide` certificates are kernel-checked). -/
+instance : DecidableEq (Result Value) := fun a b => by
+  cases a with
+  | ok x =>
+    cases b with
+    | ok y =>
+      match decEq x y with
+      | isTrue h => exact isTrue (by rw [h])
+      | isFalse h => exact isFalse (fun h' => by cases h'; exact h rfl)
+    | error _ => exact isFalse (fun h => by cases h)
+  | error e =>
+    cases b with
+    | ok _ => exact isFalse (fun h => by cases h)
+    | error f =>
+      match decEq e f with
+      | isTrue h => exact isTrue (by rw [h])
+      | isFalse h => exact isFalse (fun h' => by cases h'; exact h rfl)
+
 /-- Function outcome: a returned value, loop-scoped `break_`/`continue_`
     signals, or fall-through. `broke`/`continued` escaping a function body
     is `AssertFail` (`evalFuncFuel`); `validate` admits them only inside
