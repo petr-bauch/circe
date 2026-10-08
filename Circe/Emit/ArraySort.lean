@@ -1786,3 +1786,59 @@ theorem evalProgFunc_arraySortSumEntry :
     evalProgFunc arraySortProg 7 arraySortSumEntryFunc [] =
       arraySortSumEntryFwd := by
   cir_eval_closed
+
+/-! ## N9-iv: Sorted/Permutation spec (the sort contract) -/
+
+/-- The fold preserves pairwise sortedness: each step inserts below
+    (`pairwise_insertU32_sorted`), so the accumulator stays sorted. -/
+theorem sortL_sorted (acc : List (BitVec 32)) (xs : List (BitVec 32))
+    (h : acc.Pairwise (fun a b => b.ult a = false)) :
+    (sortL acc xs).Pairwise (fun a b => b.ult a = false) := by
+  induction xs generalizing acc with
+  | nil => exact h
+  | cons y ys ih =>
+    show (sortL (insertU32 y acc) ys).Pairwise _
+    exact ih _ (pairwise_insertU32_sorted _ _ h)
+
+/-- `insertionSortList` is sorted ascending (empty accumulator is
+    vacuously sorted). -/
+theorem insertionSortList_sorted (l : List (BitVec 32)) :
+    (insertionSortList l).Pairwise (fun a b => b.ult a = false) := by
+  rw [sortL_nil]
+  exact sortL_sorted [] l List.Pairwise.nil
+
+/-- Insertion preserves the multiset: the word lands before the
+    first strictly greater one, otherwise the tails permute with a
+    head swap. -/
+theorem insertU32_perm (x : BitVec 32) (l : List (BitVec 32)) :
+    List.Perm (insertU32 x l) (x :: l) := by
+  induction l with
+  | nil => exact List.Perm.rfl
+  | cons y ys ih =>
+    simp only [insertU32]
+    by_cases h : x.ult y = true
+    · simp only [h]
+      exact List.Perm.rfl
+    · simp only [h]
+      exact (ih.cons y).trans (List.Perm.swap x y ys)
+
+/-- `insertionSortList` permutes its input (insert below, then the
+    tail permutes under the cons). -/
+theorem insertionSortList_perm (l : List (BitVec 32)) :
+    List.Perm (insertionSortList l) l := by
+  induction l with
+  | nil => exact List.Perm.rfl
+  | cons x xs ih =>
+    show List.Perm (insertU32 x (insertionSortList xs)) (x :: xs)
+    exact (insertU32_perm x _).trans (ih.cons x)
+
+/-- The emitted sort returns a sorted permutation of its input
+    (the N9-iv contract: `evalFuncFuel_insertionSort` closed at the
+    pure-list spec). -/
+theorem evalFuncFuel_insertionSort_spec (F : Nat) (l : List (BitVec 32))
+    (hlen : l.length = 4) (hF : 7 ≤ F) :
+    ∃ s, evalFuncFuel F insertionSortFunc [.arr32 l] = .ok (.arr32 s) ∧
+      s.Pairwise (fun a b => b.ult a = false) ∧ List.Perm s l := by
+  rw [evalFuncFuel_insertionSort F l hlen hF]
+  exact ⟨insertionSortList l, rfl, insertionSortList_sorted l,
+    insertionSortList_perm l⟩
