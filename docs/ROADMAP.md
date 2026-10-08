@@ -4,7 +4,7 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-08): everything through N7 is delivered — C
+State (2026-10-08): everything through N9 is delivered — C
 pipeline with proved memory transfer (M3a–M3c); STL-free C++-lite
 admission (M2a–M2c) with proved transfer (M3d); N2 (viability past
 noalias); N3 (spec + tactic support); N4a–N4d (C++ syntax coverage
@@ -12,10 +12,14 @@ through the full 53-def `vector` growth composition); N5 (proof
 ergonomics); N6 (arithmetic + switch gaps); N7 (`string_view`
 range-for — the one range-for shape admitted so far — plus
 `reserve`/`insert`/`erase` composers over the admitted N4d
-`vector<int>` core; 409 jobs TEST-OK, CHECK-OK). Delivered
-milestones moved to `DELIVERED.md`. The active remainder is the
-Iris spike (report, not migration) and the lifetime-evidence
-track (L1 extract-only delivered; no consumers wired yet).
+`vector<int>` core); N8 (proof scale-down: closed-entry evals
+collapsed behind `cir_eval_closed`); N9 (insertion-sort case study
+over `std::array<uint32_t,4>`: corpus → gate → forward-as-fold →
+transfer → Sorted/Permutation spec → `DiffSort` fuzz; 425 jobs
+TEST-OK, CHECK-OK). Delivered milestones moved to `DELIVERED.md`.
+The active remainder is the Iris spike (report, not migration) and
+the lifetime-evidence track (L1 extract-only delivered; no
+consumers wired yet).
 
 Guiding principle (locked): admit exactly the C++ that is amenable to
 Aeneas-style translation — value semantics + affine tokens, lifetime
@@ -27,7 +31,7 @@ corpus (real CIRGen, `cir-opt` VERIFY-OK) → shape gate → proof →
 golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 `check.sh` stage → `CHECK-OK`.
 
-## Next (all N slices through N7 delivered — see `DELIVERED.md`)
+## Next (all N slices through N9 delivered — see `DELIVERED.md`)
 
 - Iris spike (time-boxed): the spike report below is still owed —
   evaluate `iris-lean` for heap reasoning, deliverable a report,

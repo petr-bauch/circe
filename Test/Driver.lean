@@ -37,6 +37,7 @@ import DiffVecRealloc
 import DiffReserve
 import DiffInsert
 import DiffErase
+import DiffSort
 import DiffView
 import DiffWidth
 import GoldenAcc
@@ -1097,7 +1098,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
-   ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials])]
+   ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
+   ("diff-sort", DiffSort.main [trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -1137,7 +1139,7 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
-   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffWidth", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",

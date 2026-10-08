@@ -551,3 +551,49 @@ N6 language gaps complete (suite: 23/23 `GoldenFlow`, 13/13
   72-def corpus, `memTransfer` to `4`, DiffErase pin — shiftDown
   ascending-walk, core result, erase router matrix incl. the
   erase-last boundary; 409 jobs TEST-OK, CHECK-OK).
+
+### N8. Proof scale-down — DONE (2026-10-08)
+
+Collapsed the ~7k-line hand evaluations of closed entries to
+`native_decide` behind the `cir_eval_closed` macro (entries restated
+at concrete fuel; collapsed proofs carry argument comments per the
+opacity decision), plus splits keeping files near the ~2k guideline.
+
+- N8a: erase entries collapsed (`DecidableEq (Result Value)`
+  lawful instance unblocking `native_decide`).
+- N8b: insert entries collapsed + `InsertRouter` split out of
+  `Insert`.
+- N8c: `cir_eval_closed` macro (lives in `Eval/Core` beside its
+  `DecidableEq` instance — `Tactics` imports `Emit`, so no
+  back-import) + push/reserve entries collapsed +
+  `n8-closed-eval-adoption` gate (every collapsed closed-entry
+  proof goes through the macro).
+
+### N9. Insertion sort over `std::array<uint32_t,4>` — DONE (2026-10-08)
+
+One-algorithm user-proof case study: prove the emitted forward,
+not arbitrary user programs. Unsigned elements keep the comparison
+in the `ult` core; indices are `u64` per the N4d-i precedent.
+A single `&mut` array is containment (no second ref can collide),
+so the oracle needs no Iris.
+
+- N9-i corpus: `tests/cpp/array_sort_sum.cpp` + `.cir` (4 defs,
+  VERIFY-OK); the entry sorts `{3, 1, 2, 0}` and returns the sum.
+- N9-ii shapes + gate + goldens: `u32` array sort shapes pinned,
+  gate, `GOLDENARRAYSORT-OK` 9.
+- N9-iii forward-as-fold + transfer: pure fold
+  (`insertU32`/`sortL`/`outerListAux`) with CoreIR mirrors
+  (`bubbleDown`, inner/outer `while` correctness by fuel
+  induction with structural index splits),
+  `evalFuncFuel_insertionSort`, mem side (`arrSet_lockstep`,
+  `Transfer.SortSlice` re-induction with the block tracking the
+  value list), closed sum entry computing `6` at fuel 7.
+- N9-iv Sorted/Permutation spec:
+  `evalFuncFuel_insertionSort_spec` (sorted ascending +
+  `List.Perm` of the input).
+- N9-v `DiffSort` fuzz: Lean-Lean eval/forward agreement plus an
+  executable sorted+permutation oracle (8 directed edges + 1000
+  LCG trials, `DIFFSORT-OK`); no native leg — the C++ entry
+  prints only the permutation-invariant sum, so sortedness is
+  pinned by the spec oracle here.
+- Acceptance: 425 jobs TEST-OK, CHECK-OK.
