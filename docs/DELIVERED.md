@@ -373,7 +373,7 @@ tactics discharge the plumbing.
   admitted shapes — the shapes stay small enough that equational
   specs suffice.
 
-### N4. C++ syntax coverage toward useful programs — delivered entries (active remainder: `string_view` range-for — see ROADMAP.md)
+### N4. C++ syntax coverage toward useful programs — all entries delivered (the `string_view` range-for remainder graduated to N7a below)
 
 In admission order (each: probe CIR lowering → shape gate →
 `emit_correct` → golden; stop at the first construct whose lowering
@@ -470,3 +470,84 @@ is not value-faithful):
   `VecGrowComposerEntry*.lean` goldens byte-identical, spec stub
   mirror-agreement check true; containment result — the full
   53-def frontier is IN, N4d-iv-b2 is complete).
+
+### N5. Proof ergonomics — DONE (2026-10-05)
+
+N4d-iv-b2 was the most proof-heavy slice so far: composer fuel
+side-goals, bespoke Fwd-cascade `simp only [...]` sets per composer
+(plus `Except.map` leftovers per the `Span.lean` precedent).
+Delivered, each adopted onto a b2 proof with an adoption assert:
+
+- N5a: composer fuel automation — `fuel_step_down` lemma (one-`obtain`
+  composer split: `k + 1 ≤ F` gives `F = F' + 1 ∧ k ≤ F'`; six b2
+  sites adopted; negative driver gate `n5-no-manual-fuel-split`
+  forbids the manual pair).
+- N5b: composer cascade registry — `cir_step` cascade macro (eight
+  span/read/entry steps adopted, `Except.map` by construction).
+- N5c: spec-stub obligations — composer stubs name their owed gallery
+  equations (`TODO (user)`, pinned per stub in the driver).
+
+Non-goals (kept): proof search, SMT backends, `validate`/`emit`
+semantics changes. No new trusted code, no validator/emit behavior
+change. Suite green.
+
+### N6. Language gaps (arithmetic + control flow) — DONE (2026-10-06)
+
+Probes first, then wiring; every unwired remainder rejects through
+one catalog branch with per-cause messages.
+
+- N6a-i probes (2026-10-05): negation is `cir.minus nsw`,
+  (un)signed div/rem are `cir.div` / `cir.rem` with signedness from
+  the type, sub/mul carry `nsw`, all single-op lowerings (64-bit div
+  included, no libcall), VERIFY-OK.
+- N6a-ii: `neg` + `sdiv` (i32) wired with the pre-proved
+  `checkedNegI32` / `checkedDivI32`.
+- Probe fallout (P0 hole, fixed family-wide): multi-op functions
+  validated to single-op bodies — `arithOpCount == 1` in all six
+  arithmetic leaf gates.
+- N6a-iii (2026-10-05): the unwired remainder (multi-op bodies,
+  unsigned div/rem, signed sub/mul, shifts, bitwise, `nsw`-less
+  minus) rejects with per-cause messages (13/13
+  `GoldenRejectCatalog`; `intClass` uniformity guard preserves the
+  `wmix` routing).
+- N6b probes (2026-10-05): dense switches stay `cir.switch` at CIR
+  level (no jump-table spelling — the if-chain covers all
+  densities), fallthrough is an empty `cir.case` region,
+  `break`-switches carry trailing code, case bodies can carry
+  arithmetic.
+- N6b-i (2026-10-05): `cls_fall` (empty `case 0` into `case 1`) +
+  `cls_dense` (`0`..`7` + `default`) as exact shapes with
+  per-region const pins + `arithOpCount == 0` (closes the
+  unsigned-arith-in-case-body hole and the permuted-const hole in
+  the old whole-text `cls` pins; 15/15 `GoldenFlow`).
+- N6b-ii (2026-10-06): `cls_break` (`0`/`1`, no `default`, store +
+  `break` per case, `99` initializer) as guarded assigns over a
+  local (19/19 `GoldenFlow`).
+- N6b-iii (2026-10-06): `cls_add` (wrapping `y + 1` / `y + 2` / `y`,
+  `uadd` if-chain, dedicated compute-body rejection for the rest;
+  23/23 `GoldenFlow`).
+
+N6 language gaps complete (suite: 23/23 `GoldenFlow`, 13/13
+`GoldenRejectCatalog`, CHECK-OK).
+
+### N7. STD growth — DONE (2026-10-08)
+
+- N7a: `string_view` range-for (2026-10-06: `cir.scope` + `cir.for`
+  with `begin`/`end` as `get_member` projections; the admitted shape
+  normalizes the pointer chase to an index fold over erased `u64`
+  offsets with `sext8` byte reads; `GoldenView` + `DiffView` pin the
+  one admitted range-for shape — span range-for stays OUT, same
+  iterator lowering but a different monomorph).
+- N7b: `reserve` (`capacity` leaf + guarded composer + closed
+  `vec_reserve_sum` entry computing `1 + 2 = 3`, 55-def corpus,
+  DiffReserve pin).
+- N7c: `insert` (descending-blit shift + `_M_insert_aux` /
+  `_M_insert_rval` / forwarder composers + closed `vec_insert_sum`
+  entry computing `1 + 2 + 3 = 6`, 73-def corpus, `memTransfer` to
+  `6`, DiffInsert pin — shift spare-slot, aux result, rval/insert
+  router matrix incl. the full arm; 408 jobs TEST-OK, CHECK-OK).
+- N7d: `erase` (ascending-blit shiftDown + `_M_erase` / forwarder
+  composers + closed `vec_erase_sum` entry computing `1 + 3 = 4`,
+  72-def corpus, `memTransfer` to `4`, DiffErase pin — shiftDown
+  ascending-walk, core result, erase router matrix incl. the
+  erase-last boundary; 409 jobs TEST-OK, CHECK-OK).

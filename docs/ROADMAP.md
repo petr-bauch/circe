@@ -4,20 +4,18 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-05): C pipeline complete with proved memory transfer
-(M3a–M3c); STL-free C++-lite admission complete (M2a–M2c) with proved
-memory transfer (M3d); N2 (viability past noalias) complete; N3
-(spec + tactic support) complete; N4a–N4d complete — overloads,
-moves, templates, `array`/`optional`/`span` reads, `vector` reads,
-`vector` growth leaves (N4d-iv-b1) and the full 53-def growth
-composition (N4d-iv-b2: `_M_realloc_insert`, `emplace_back`,
-`push_back`, `vec_push_sum` entry, 355 jobs TEST-OK, CHECK-OK).
-Delivered milestones moved to `DELIVERED.md`. The active frontier is
-N7b–d (`reserve`/`insert`/`erase` composers over the admitted N4d
-`vector<int>` core); the lifetime-evidence track (L) is in progress.
-N7a (`string_view` range-for) is done — the one range-for shape
-admitted so far (span range-for stays OUT, same iterator lowering
-but a different monomorph).
+State (2026-10-08): everything through N7 is delivered — C
+pipeline with proved memory transfer (M3a–M3c); STL-free C++-lite
+admission (M2a–M2c) with proved transfer (M3d); N2 (viability past
+noalias); N3 (spec + tactic support); N4a–N4d (C++ syntax coverage
+through the full 53-def `vector` growth composition); N5 (proof
+ergonomics); N6 (arithmetic + switch gaps); N7 (`string_view`
+range-for — the one range-for shape admitted so far — plus
+`reserve`/`insert`/`erase` composers over the admitted N4d
+`vector<int>` core; 409 jobs TEST-OK, CHECK-OK). Delivered
+milestones moved to `DELIVERED.md`. The active remainder is the
+Iris spike (report, not migration) and the lifetime-evidence
+track (L1 extract-only delivered; no consumers wired yet).
 
 Guiding principle (locked): admit exactly the C++ that is amenable to
 Aeneas-style translation — value semantics + affine tokens, lifetime
@@ -29,114 +27,25 @@ corpus (real CIRGen, `cir-opt` VERIFY-OK) → shape gate → proof →
 golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 `check.sh` stage → `CHECK-OK`.
 
-### N4 remainder: `std::string_view` range-for — DONE (N7a)
+## Next (all N slices through N7 delivered — see `DELIVERED.md`)
 
-`string_view` range-for was `cir.scope` + `cir.for` with `begin`/`end`
-as `get_member` projections; the admitted shape normalizes the
-pointer chase to an index fold over erased `u64` offsets with
-`sext8` byte reads (`tests/lean/GoldenView.lean`). Probes so far:
-`optional::value` lowers to `cir.trap` (throw path, still deferred).
-Deferral pins live in `tests/lean/GoldenArray.lean` (`optional`
-graduated to `tests/lean/GoldenOptional.lean`, `span` index-sum
-graduated to `tests/lean/GoldenSpan.lean`, `vector` reads
-graduated to `tests/lean/GoldenVecRead.lean`, `vector`
-growth leaves graduated to `tests/lean/GoldenVecGrow.lean`,
-`string_view` range-for graduated to `tests/lean/GoldenView.lean`).
-
-Non-goals (platform-level): inheritance/vtables, exceptions, RTTI,
-concurrency, allocators, iterator invalidation reasoning beyond
-length-paired discipline.
-
-### Suggested order
-
-N5 (proof ergonomics) → N6 (switch + arithmetic gaps) → N7
-(`string_view` range-for; `reserve`/`insert`/`erase` follow-ups).
-N2c opportunistically wherever a
-missing-attr rejection blocks an otherwise-amenable corpus entry.
-Iris spike runs alongside N5 (report, not migration).
-
-## N5. Proof ergonomics — DONE (2026-10-05)
-
-N4d-iv-b2 was the most proof-heavy slice so far: composer fuel
-side-goals (`len + 2 ≤ F` emplace, `len + 3 ≤ F` push_back,
-`6 ≤ F` closed entry, additive `.callProg` at depth `fuel - 1`),
-bespoke Fwd-cascade `simp only [...]` sets per composer (plus
-`Except.map` leftovers per the `Span.lean` precedent). Ergonomics
-compounds across every later slice; S4/S5 precedent applies
-(before/after shortening, `check.sh` adoption asserts, no new
-trusted code, no validator/emit behavior change). Each slice below:
-helper → re-shorten a b2 proof onto it → adoption assert →
-`CHECK-OK`.
-
-- N5a: composer fuel automation — generalize `cir_fuel` (S5) to
-  composer fuel shapes: additive calls at `fuel - 1`,
-  closed-entry constant bounds, `remaining ≤ F` side conditions.
-  Target: the b2 fuel side-goals discharge with no manual
-  `omega`/`have` lines.
-- N5b: composer cascade registry — each proved composer registers
-  its Fwd-cascade simp set once (`Except.map` normalization
-  included); new entries close with the registry + N5a instead of
-  bespoke simp lists.
-- N5c: spec-stub obligations — per-slice proof obligations
-  generated from the spec stub mirror (hole-shaped, discharged by
-  hand), keeping the N3 gallery pattern as new forwards land.
-
-Result: `fuel_step_down` lemma (one-`obtain` composer split, six
-b2 sites adopted, negative driver gate `n5-no-manual-fuel-split`
-forbids the manual pair); `cir_step` cascade macro (eight
-span/read/entry steps adopted, `Except.map` by construction);
-composer stubs name their owed gallery equations (`TODO (user)`,
-pinned per stub in the driver). Suite green.
-
-Non-goals: proof search, SMT backends, `validate`/`emit`
-semantics changes.
+- Iris spike (time-boxed): the spike report below is still owed —
+  evaluate `iris-lean` for heap reasoning, deliverable a report,
+  not a migration.
+- L-track consumers: L1 evidence is extracted and pinned, but no
+  consumer is wired yet (first expected: real region numbers for
+  N4b moves). Next slice wires one consumer or records why none
+  is needed.
+- Deferred probe still open: `optional::value` lowers to `cir.trap`
+  (throw path); deferral pins live in the `Golden*` suites.
+- Standing non-goals (platform-level): inheritance/vtables,
+  exceptions, RTTI, concurrency, allocators, iterator invalidation
+  reasoning beyond length-paired discipline. Proof-search, SMT
+  backends, and `validate`/`emit` semantics changes stay out.
 
 ## Later directions — sketches (not planned)
 
-- N6: language gaps — N6a-i probes done (2026-10-05):
-  negation is `cir.minus nsw`, (un)signed div/rem are `cir.div` /
-  `cir.rem` with signedness from the type, sub/mul carry `nsw`,
-  all single-op lowerings (64-bit div included, no libcall),
-  VERIFY-OK. N6a-ii wires `neg` + `sdiv` (i32) with the
-  pre-proved `checkedNegI32` / `checkedDivI32`. Probe fallout:
-  multi-op functions validated to single-op bodies (P0 hole) —
-  fixed family-wide with `arithOpCount == 1` in all six
-  arithmetic leaf gates. N6a-iii done (2026-10-05): the unwired
-  remainder (multi-op bodies, unsigned div/rem, signed
-  sub/mul, shifts, bitwise, `nsw`-less minus) rejects through
-  one catalog branch with per-cause messages (13/13
-  `GoldenRejectCatalog`, `intClass` uniformity guard preserves
-  the `wmix` routing); N6b probes done (2026-10-05): dense switches
-  stay `cir.switch` at CIR level (no jump-table spelling — the if-chain
-  covers all densities), fallthrough is an empty `cir.case` region,
-  `break`-switches carry trailing code, case bodies can carry
-  arithmetic. N6b-i done (2026-10-05): `cls_fall` (empty `case 0`
-  into `case 1`) + `cls_dense` (`0`..`7` + `default`) as exact shapes
-  with per-region const pins + `arithOpCount == 0` (closes the
-  unsigned-arith-in-case-body hole and the permuted-const hole in the
-  old whole-text `cls` pins; 15/15 `GoldenFlow`); N6b-ii done
-  (2026-10-06): `cls_break` (`0`/`1`, no `default`, store + `break`
-  per case, `99` initializer) as guarded assigns over a local
-  (19/19 `GoldenFlow`); N6b-iii done (2026-10-06): `cls_add`
-  (wrapping `y + 1` / `y + 2` / `y`, `uadd` if-chain, dedicated
-  compute-body rejection for the rest; 23/23 `GoldenFlow`). N6
-  language gaps complete — remaining: N7 STD growth + Iris spike.
-- N7: STD growth — `string_view` range-for DONE (N7a:
-  `begin`/`end` + chase-loop shape admits to an index fold over
-  `sext8` bytes; 393 jobs TEST-OK, CHECK-OK); `reserve` DONE
-  (N7b: `capacity` leaf + guarded composer + closed
-  `vec_reserve_sum` entry, 55-def corpus, DiffReserve pin);
-  `insert` DONE (N7c: descending-blit shift + `_M_insert_aux` /
-  `_M_insert_rval` / forwarder composers + closed `vec_insert_sum`
-  entry, 73-def corpus, `memTransfer` to `6`, DiffInsert pin —
-  shift spare-slot, aux result, rval/insert router matrix incl. the
-  full arm; 408 jobs TEST-OK, CHECK-OK);
-  `erase` DONE (N7d: ascending-blit shiftDown + `_M_erase` /
-  forwarder composers + closed `vec_erase_sum` entry, 72-def
-  corpus, `memTransfer` to `4`, DiffErase pin — shiftDown
-  ascending-walk, core result, erase router matrix incl. the
-  erase-last boundary; 409 jobs TEST-OK, CHECK-OK).
-- Iris spike (time-boxed, alongside N5): evaluate `iris-lean`
+- Iris spike (time-boxed): evaluate `iris-lean`
   (Lean 4 Iris port: MoSeL proof interface today, full-logic
   port deferred upstream — see
   `https://github.com/markusdemedeiros/iris-lean`; verify it

@@ -487,9 +487,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     with dedicated messages (`callsStdVecWrongShape`, or
     `alias-reject`).
     Containment result: reads are IN; growth (`push_back` →
-    reallocation) is OUT with a deferral pin (N4d-iv-b).
-    Still deferred: `push_back`/`emplace` (growth), `reserve`,
-    `insert`/`erase`, `at()`.
+    reallocation) graduated in 23–27, `reserve`/`insert`/`erase`
+    in 30–32 (see below); `at()` stays OUT with a deferral pin.
 23. `std::vector<int32_t>` growth leaves (N4d-iv-b1): the 21
     call-free leaf bodies of the `vec_push_sum` frontier (53
     defined defs; multi-call composition graduated in 24–27:
@@ -522,9 +521,8 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Containment result: growth leaves are IN; multi-call growth
     composition is IN (N4d-iv-b2: all four composers graduated
     in 24–27).
-    Still deferred: `reserve`, `insert`/`erase`, `at()`.
-    (N7b: `reserve` graduated in 30; `insert`/`erase`, `at()`
-    still deferred.)
+    Still deferred: `at()`.
+    (N7b/c/d: `reserve`/`insert`/`erase` graduated in 30–32.)
 24. `std::vector<int32_t>` growth composition (N4d-iv-b2,
     `_M_realloc_insert`): the 16-site corpus def over the
     frozen b1 leaves (`check_len` → `begin` → `mi` → `allocate` →
@@ -622,6 +620,23 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     corpus); the bare reserve stub (any other call shape)
     rejects `out-of-subset` ("outside the admitted call
     shapes").
+31. `std::vector<int32_t>::insert` (N7c): the descending-blit
+    shift (top word moved first into the spare slot) +
+    `_M_insert_aux` (shift + store + length bump) + the
+    `_M_insert_rval` router (room, incl. construct-at-`len`
+    when `pos == len`, vs full reallocation) + the forwarder +
+    the closed `vec_insert_sum` entry (`reserve(10)`, two
+    pushes, `insert(begin() + 1, 2)`, three reads, add,
+    returns `6`). Each validates under per-def `.noalias`
+    facts (73-def corpus).
+32. `std::vector<int32_t>::erase` (N7d): the ascending-blit
+    shiftDown (bottom word moved first) + `_M_erase`
+    (erase-last short-circuits to a length drop, otherwise
+    shift + length drop) + the forwarder + the closed
+    `vec_erase_sum` entry (`reserve(10)`, three pushes,
+    `erase(begin() + 1)`, two reads, add, returns `4`).
+    Each validates under per-def `.noalias` facts (72-def
+    corpus).
 
 ## Admitted CIR ops (raw CIRGen shape)
 

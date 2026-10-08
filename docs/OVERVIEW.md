@@ -1,4 +1,4 @@
-# Circe — Overview (current state, 2026-10-03)
+# Circe — Overview (current state, 2026-10-08)
 
 CIR → Lean 4 verification pipeline for non-aliasing C and STL-free
 C++-lite, Aeneas-style: source → ClangIR (raw CIRGen) → pure,
@@ -69,7 +69,10 @@ presence + adoption greps → M1 heap stages (two-block, `u64`,
 grown-block, leak discipline) → M2 C++ stages (setup gates,
 const-methods, ctors/dtors, new/delete) → M3 transfer stages (mem
 model, derived noalias + cache agreement, loop-free / flow / caller /
-heap transfers) → N2 viability stages → L1 evidence stage → `CHECK-OK`.
+heap transfers) → N2 viability stages → L1 evidence stage →
+N5 tactic-adoption gates → arithmetic/switch golden + rejection
+stages → `string_view` range-for and
+`reserve`/`insert`/`erase` diff stages → `CHECK-OK`.
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next
@@ -81,6 +84,8 @@ A viable verification platform for modern C++: the subset of C++ that
 is amenable to Aeneas-style translation to Lean (value semantics +
 affine tokens, no aliasing in the common case), with tactic and
 spec-scaffolding support for proving properties of the emitted code.
-Delivered so far: S0–S5, M1–M3, N1–N4 (including the full `vector`
-growth composition), plus L1 lifetime evidence (extract-only).
-Details in `DELIVERED.md`; active work in `ROADMAP.md`.
+Delivered so far: S0–S5, M1–M3, N1–N7 (proof ergonomics,
+arithmetic + switch gaps, `string_view` range-for and the full
+`reserve`/`insert`/`erase` STD growth), plus L1 lifetime evidence
+(extract-only). Details in `DELIVERED.md`; active work in
+`ROADMAP.md`.
