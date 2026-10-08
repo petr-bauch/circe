@@ -130,9 +130,12 @@ semantics changes.
   `_M_insert_rval` / forwarder composers + closed `vec_insert_sum`
   entry, 73-def corpus, `memTransfer` to `6`, DiffInsert pin —
   shift spare-slot, aux result, rval/insert router matrix incl. the
-  full arm; 408 jobs TEST-OK, CHECK-OK), then `erase`
-  (`erase` needs memmove-down leaves; reuse the no-inlining
-  `vecGrowProg` pattern).
+  full arm; 408 jobs TEST-OK, CHECK-OK);
+  `erase` DONE (N7d: ascending-blit shiftDown + `_M_erase` /
+  forwarder composers + closed `vec_erase_sum` entry, 72-def
+  corpus, `memTransfer` to `4`, DiffErase pin — shiftDown
+  ascending-walk, core result, erase router matrix incl. the
+  erase-last boundary; 409 jobs TEST-OK, CHECK-OK).
 - Iris spike (time-boxed, alongside N5): evaluate `iris-lean`
   (Lean 4 Iris port: MoSeL proof interface today, full-logic
   port deferred upstream — see

@@ -36,6 +36,7 @@ import DiffVecRead
 import DiffVecRealloc
 import DiffReserve
 import DiffInsert
+import DiffErase
 import DiffView
 import DiffWidth
 import GoldenAcc
@@ -167,6 +168,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["-std=c++17", "tests/cpp/view_sum.cpp", "tests/diff/driver_view_sum.cpp"], bin "circe_view_sum_native"),
    ("c++", ["-std=c++17", "tests/cpp/vec_reserve_sum.cpp", "tests/diff/driver_vec_reserve.cpp"], bin "circe_vec_reserve_native"),
    ("c++", ["-std=c++17", "tests/cpp/vec_insert_sum.cpp", "tests/diff/driver_vec_insert.cpp"], bin "circe_vec_insert_native"),
+   ("c++", ["-std=c++17", "tests/cpp/vec_erase_sum.cpp", "tests/diff/driver_vec_erase.cpp"], bin "circe_vec_erase_native"),
    ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
 
@@ -1050,7 +1052,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-view", DiffView.main [bin "circe_view_sum_native", trials]),
    ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
-   ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials])]
+   ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
+   ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -1089,7 +1092,7 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
-   "DiffView", "DiffReserve", "DiffInsert", "DiffWidth", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffWidth", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
