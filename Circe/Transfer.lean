@@ -25,3 +25,4 @@ import Circe.Transfer.GrowErase
 import Circe.Transfer.GrowEmplace
 import Circe.Transfer.GrowEntry
 import Circe.Transfer.GrowReserve
+import Circe.Transfer.SortSlice

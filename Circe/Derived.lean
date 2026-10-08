@@ -33,6 +33,7 @@ import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Move
 import Circe.Emit.Array
+import Circe.Emit.ArraySort
 import Circe.Emit.Optional
 import Circe.Emit.Box
 
@@ -268,6 +269,49 @@ theorem oracleNoalias_arraySum (a b c d : BitVec 32) :
     exact bindMemArgs_arraySum a b c d
   have hn : LayoutNoAlias [("a", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
+
+/-! ## N9 `insertion_sort` footprints: single block, mutated in place -/
+
+/-- `insertion_sort` binding pins the 4-word array (single block;
+    `bindMemArgs` allocates by value shape, so the `mutBorrow` role
+    binds exactly like the `sharedBorrow` reads). -/
+theorem bindMemArgs_insertionSort (l : List (BitVec 32)) :
+    bindMemArgs
+      [{ name := "a", ty := .array (.u 32) 4, role := .mutBorrow 0 }]
+      [.arr32 l] emptyMem =
+      some ([("a", .arr32 l)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
+  rfl
+
+/-- `insertion_sort` footprints are a singleton (trivially disjoint;
+    a single `&mut` array is containment — no second reference can
+    collide). -/
+theorem oracleNoalias_insertionSort (l : List (BitVec 32)) :
+    oracleNoalias insertionSortFunc [.arr32 l] := by
+  have hb : bindMemArgs insertionSortFunc.args [.arr32 l] emptyMem =
+      some ([("a", .arr32 l)],
+        ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "a", ty := .array (.u 32) 4, role := .mutBorrow 0 }]
+      [.arr32 l] emptyMem = _
+    exact bindMemArgs_insertionSort l
+  have hn : LayoutNoAlias [("a", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `array_sort_sum` entry binding pins nothing (no arguments; the
+    array is a literal inside the body). -/
+theorem bindMemArgs_arraySortSum :
+    bindMemArgs arraySortSumEntryFunc.args [] emptyMem =
+      some ([], emptyMem, []) := by
+  rfl
+
+/-- `array_sort_sum` entry footprints are empty (trivially disjoint). -/
+theorem oracleNoalias_arraySortSum :
+    oracleNoalias arraySortSumEntryFunc [] := by
+  have hb : bindMemArgs arraySortSumEntryFunc.args [] emptyMem =
+      some ([], emptyMem, []) :=
+    bindMemArgs_arraySortSum
+  exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
 
 /-! ## N4d-ii `std::optional` footprints: 2-word block (reads only) -/
 

@@ -490,6 +490,33 @@ theorem vfree_lockstep (m : Mem) (a t : Nat) (b : Vec32) (blk : Block)
     ⟨blk.tag, false, blk.data⟩
   simpa only [htag, hdata] using hhit
 
+/-- `arrSet` lockstep: under the pin invariant (matching tag, live
+    block, block data = value words), the value-level `List.set` and
+    `memStore` succeed together with synced state (N9: the
+    insertion-sort swap writes; mirrors `vset_lockstep` without the
+    vector header/token discipline). -/
+theorem arrSet_lockstep (m : Mem) (a t : Nat) (l : List (BitVec 32))
+    (i : Nat) (x y : BitVec 32) (blk : Block)
+    (hfind : memFind m a = some blk) (htag : blk.tag = t)
+    (hlive : blk.live = true) (hdata : blk.data = l)
+    (hget : l[i]? = some y) :
+    ∃ m', memStore m a t i x = .ok m' ∧
+      memFind m' a = some ⟨t, true, l.set i x⟩ := by
+  have hblen : i < blk.data.length := by
+    rw [hdata]
+    rcases Nat.lt_or_ge i l.length with h | h
+    · exact h
+    · rw [List.getElem?_eq_none h] at hget
+      cases hget
+  have hstore : memStore m a t i x =
+      .ok ⟨m.next, (a, ⟨blk.tag, blk.live, blk.data.set i x⟩) ::
+        m.blocks, m.blocks64⟩ := by
+    simp [memStore, hfind, htag, hlive, hblen]
+  refine ⟨_, hstore, ?_⟩
+  have hhit := memFind_cons_hit m.next m.blocks m.blocks64 a
+    ⟨blk.tag, blk.live, blk.data.set i x⟩
+  simpa only [htag, hlive, hdata] using hhit
+
 /-- Setting past the two header words preserves them: the store lands
     in the storage suffix exactly where `vecSet` lands in `b.val`
     (N4d-iv-b1). -/
