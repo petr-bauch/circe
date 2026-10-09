@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_Z8move_accii` (move + two `add` + `get`, dtors no-op). -/
 def _Z8move_accii_fwd (a b : BitVec 32) : Result (BitVec 32) :=

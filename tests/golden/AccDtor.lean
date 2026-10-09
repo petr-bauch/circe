@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_ZN3AccD2Ev` (trivial dtor: no-op identity). -/
 def _ZN3AccD2Ev_fwd (t : BitVec 32) : Result (BitVec 32) :=

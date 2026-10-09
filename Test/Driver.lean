@@ -1034,6 +1034,19 @@ def checkFlowFwdHomes : IO Unit := do
     if containsSubstr base d then
       throw (IO.userError s!"S3 translation still in Circe/Base.lean: {d}")
 
+/-- M2-homes gate: the C++-lite translations live in
+    `Circe.Emit.M2Fwd` (next to their proofs), never in `Circe.Base`. -/
+def checkM2FwdHomes : IO Unit := do
+  for d in ["def pointTranslate ", "def pointSum ", "def accTwo ",
+      "def moveAcc ", "def scopeEarly ", "def boxThrough ",
+      "structure Point "] do
+    needHas "Circe/Emit/M2Fwd.lean" d
+  let base ← IO.FS.readFile "Circe/Base.lean"
+  for d in ["pointTranslate", "pointSum", "accTwo",
+      "moveAcc", "scopeEarly", "boxThrough", "structure Point"] do
+    if containsSubstr base d then
+      throw (IO.userError s!"M2 translation still in Circe/Base.lean: {d}")
+
 /-- N8c adoption gate: every collapsed closed-entry proof goes through
     the `cir_eval_closed` macro (single adoption point over
     `native_decide`; new entries must use it too). -/
@@ -1223,6 +1236,7 @@ def main (args : List String) : IO Unit := do
         ("n8-closed-eval-adoption", checkClosedEvalAdoption),
         ("m1-vecfwd-homes", checkVecFwdHomes),
         ("s3-flowfwd-homes", checkFlowFwdHomes),
+        ("m2-m2fwd-homes", checkM2FwdHomes),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_ZNK3Acc3getEv` (const getter: identity). -/
 def _ZNK3Acc3getEv_fwd (s : BitVec 32) : Result (BitVec 32) :=

@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_Z13point_sum_refRK5Point` (delegates to the `sum` method body). -/
 def _Z13point_sum_refRK5Point_fwd (p : Point) : Result (BitVec 32) :=

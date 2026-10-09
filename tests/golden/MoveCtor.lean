@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_ZN3AccC2EOS_` (move ctor: dst takes src word). -/
 def _ZN3AccC2EOS__fwd (d s : BitVec 32) : Result (BitVec 32) :=

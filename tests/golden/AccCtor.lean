@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_ZN3AccC2Ev` (value ctor: field-init `s = 0`). -/
 def _ZN3AccC2Ev_fwd : Result (BitVec 32) :=

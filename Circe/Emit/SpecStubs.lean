@@ -1976,9 +1976,9 @@ def emitSumCallerSpecText (name : String) : String :=
 /-- Spec stub for the `translate` shape (S2 struct-by-value). -/
 def emitTranslateSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C signature: `struct Point {name}(struct Point p, int32_t dx, int32_t dy)`.\n"
-  ++ s!"    Base body reference: `pointTranslate` (cf. emitted `{name}_fwd`, `evalFuncFuel_translate`). -/\n"
+  ++ s!"    M2Fwd body reference: `pointTranslate` (cf. emitted `{name}_fwd`, `evalFuncFuel_translate`). -/\n"
   ++ s!"def {name}_spec_fwd (p : Point) (dx dy : BitVec 32) : Result Point :=\n"
   ++ "  pointTranslate p dx dy\n"
   ++ "\n"
@@ -1998,9 +1998,9 @@ def emitTranslateSpecText (name : String) : String :=
 /-- Spec stub for the `methodSum` shape (M2a method leaf). -/
 def emitMethodSumSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t Point::sum() const` (`{name}`).\n"
-  ++ s!"    Base body reference: `pointSum` (cf. emitted `{name}_fwd`, `evalFuncFuel_methodSum`). -/\n"
+  ++ s!"    M2Fwd body reference: `pointSum` (cf. emitted `{name}_fwd`, `evalFuncFuel_methodSum`). -/\n"
   ++ s!"def {name}_spec_fwd (p : Point) : Result (BitVec 32) :=\n"
   ++ "  pointSum p\n"
   ++ "\n"
@@ -2020,9 +2020,9 @@ def emitMethodSumSpecText (name : String) : String :=
 /-- Spec stub for the `pointSumRef` shape (M2a entry). -/
 def emitPointSumRefSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t {name}(const Point &p)` (delegates to `Point::sum`).\n"
-  ++ s!"    Base body reference: `pointSum` (cf. emitted `{name}_fwd`, `evalProgFunc_pointSumRef`). -/\n"
+  ++ s!"    M2Fwd body reference: `pointSum` (cf. emitted `{name}_fwd`, `evalProgFunc_pointSumRef`). -/\n"
   ++ s!"def {name}_spec_fwd (p : Point) : Result (BitVec 32) :=\n"
   ++ "  pointSum p\n"
   ++ "\n"
@@ -2042,9 +2042,9 @@ def emitPointSumRefSpecText (name : String) : String :=
 /-- Spec stub for the `accCtor` shape (M2b ctor leaf). -/
 def emitAccCtorSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `Acc::Acc()` (`{name}`: field-init `s = 0`).\n"
-  ++ s!"    Base body reference: `accCtor` (cf. emitted `{name}_fwd`, `evalFuncFuel_accCtor`). -/\n"
+  ++ s!"    M2Fwd body reference: `accCtor` (cf. emitted `{name}_fwd`, `evalFuncFuel_accCtor`). -/\n"
   ++ s!"def {name}_spec_fwd : Result (BitVec 32) :=\n"
   ++ "  .ok accCtor\n"
   ++ "\n"
@@ -2061,9 +2061,9 @@ def emitAccCtorSpecText (name : String) : String :=
 /-- Spec stub for the `accAdd` shape (M2b method leaf). -/
 def emitAccAddSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `void Acc::add(int32_t v)` (`{name}`: checked `s += v`).\n"
-  ++ s!"    Base body reference: `accAdd` (cf. emitted `{name}_fwd`, `evalFuncFuel_accAdd`). -/\n"
+  ++ s!"    M2Fwd body reference: `accAdd` (cf. emitted `{name}_fwd`, `evalFuncFuel_accAdd`). -/\n"
   ++ s!"def {name}_spec_fwd (s v : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accAdd s v\n"
   ++ "\n"
@@ -2082,9 +2082,9 @@ def emitAccAddSpecText (name : String) : String :=
 /-- Spec stub for the `accGet` shape (M2b getter leaf). -/
 def emitAccGetSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t Acc::get() const` (`{name}`: identity).\n"
-  ++ s!"    Base body reference: `accGet` (cf. emitted `{name}_fwd`, `evalFuncFuel_accGet`). -/\n"
+  ++ s!"    M2Fwd body reference: `accGet` (cf. emitted `{name}_fwd`, `evalFuncFuel_accGet`). -/\n"
   ++ s!"def {name}_spec_fwd (s : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accGet s\n"
   ++ "\n"
@@ -2101,9 +2101,9 @@ def emitAccGetSpecText (name : String) : String :=
 /-- Spec stub for the `accDtor` shape (M2b trivial-dtor leaf). -/
 def emitAccDtorSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `Acc::~Acc()` (`{name}`: no-op identity).\n"
-  ++ s!"    Base body reference: `accDtor` (cf. emitted `{name}_fwd`, `evalFuncFuel_accDtor`). -/\n"
+  ++ s!"    M2Fwd body reference: `accDtor` (cf. emitted `{name}_fwd`, `evalFuncFuel_accDtor`). -/\n"
   ++ s!"def {name}_spec_fwd (t : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accDtor t\n"
   ++ "\n"
@@ -2120,9 +2120,9 @@ def emitAccDtorSpecText (name : String) : String :=
 /-- Spec stub for the `accTwo` shape (M2b entry). -/
 def emitAccTwoSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t {name}(int32_t a, int32_t b)` (ctor + two `add` + `get`, dtor no-op).\n"
-  ++ s!"    Base body reference: `accTwo` (cf. emitted `{name}_fwd`, `evalProgFunc_accTwo`). -/\n"
+  ++ s!"    M2Fwd body reference: `accTwo` (cf. emitted `{name}_fwd`, `evalProgFunc_accTwo`). -/\n"
   ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accTwo a b\n"
   ++ "\n"
@@ -2141,9 +2141,9 @@ def emitAccTwoSpecText (name : String) : String :=
 /-- Spec stub for the move-ctor leaf (N4b `_ZN3AccC2EOS_`). -/
 def emitAccMoveCtorSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `{name}(dst, src)` move ctor (dst takes src word; `o.s = 0` is entry-level).\n"
-  ++ s!"    Base body reference: `accMoveCtor` (cf. emitted `{name}_fwd`, `accMoveCtorFwd_is_ok`). -/\n"
+  ++ s!"    M2Fwd body reference: `accMoveCtor` (cf. emitted `{name}_fwd`, `accMoveCtorFwd_is_ok`). -/\n"
   ++ s!"def {name}_spec_fwd (d s : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accMoveCtor d s\n"
   ++ "\n"
@@ -2161,9 +2161,9 @@ def emitAccMoveCtorSpecText (name : String) : String :=
 /-- Spec stub for the `move_acc` entry (N4b). -/
 def emitMoveAccSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t {name}(int32_t a, int32_t b)` (move + two `add` + `get`, dtors no-op).\n"
-  ++ s!"    Base body reference: `moveAcc` (cf. emitted `{name}_fwd`, `evalProgFunc_moveAcc`). -/\n"
+  ++ s!"    M2Fwd body reference: `moveAcc` (cf. emitted `{name}_fwd`, `evalProgFunc_moveAcc`). -/\n"
   ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  moveAcc a b\n"
   ++ "\n"
@@ -2182,9 +2182,9 @@ def emitMoveAccSpecText (name : String) : String :=
 /-- Spec stub for the `scope_early` entry (N4b). -/
 def emitScopeEarlySpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t {name}(int32_t a, int32_t b)` (early `get` on `a == b`, else `add` + `get`, dtors no-op).\n"
-  ++ s!"    Base body reference: `scopeEarly` (cf. emitted `{name}_fwd`, `evalProgFunc_scopeEarly`). -/\n"
+  ++ s!"    M2Fwd body reference: `scopeEarly` (cf. emitted `{name}_fwd`, `evalProgFunc_scopeEarly`). -/\n"
   ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  scopeEarly a b\n"
   ++ "\n"
@@ -2203,9 +2203,9 @@ def emitScopeEarlySpecText (name : String) : String :=
 /-- Spec stub for the `boxThrough` shape (M2c entry). -/
 def emitBoxThroughSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- C++ signature: `int32_t {name}(int32_t x)` (`new` → read → `delete` passthrough).\n"
-  ++ s!"    Base body reference: `boxThrough` (cf. emitted `{name}_fwd`, `evalFuncFuel_boxThrough`). -/\n"
+  ++ s!"    M2Fwd body reference: `boxThrough` (cf. emitted `{name}_fwd`, `evalFuncFuel_boxThrough`). -/\n"
   ++ s!"def {name}_spec_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  boxThrough x\n"
   ++ "\n"

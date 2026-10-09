@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_ZNK5Point3sumEv` (POD const-method `sum`: checked field addition). -/
 def _ZNK5Point3sumEv_fwd (p : Point) : Result (BitVec 32) :=

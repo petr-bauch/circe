@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_Z11box_throughi` (`new` → read → `delete` passthrough). -/
 def _Z11box_throughi_fwd (x : BitVec 32) : Result (BitVec 32) :=

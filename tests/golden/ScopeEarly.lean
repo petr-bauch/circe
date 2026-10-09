@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_Z11scope_earlyii` (early return + `add` + `get`, dtors no-op). -/
 def _Z11scope_earlyii_fwd (a b : BitVec 32) : Result (BitVec 32) :=

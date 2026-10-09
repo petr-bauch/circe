@@ -842,7 +842,7 @@ def emitStdVecEmplaceBackText (name : String) : String :=
 /-- Render the `push_back` forwarder definition: direct delegation to
     the verified `stdVecPushBackFwd` (the discarded reference never
     affects the triple; cf. `emitTranslateText` delegating to the
-    verified `Base` op). -/
+    verified `M2Fwd` op). -/
 def emitStdVecPushBackText (name : String) : String :=
   emitHeader
   ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
@@ -891,7 +891,7 @@ def emitStdVecInsertText (name : String) : String :=
 /-- Render the closed `vec_push_sum` entry: direct delegation to the
     verified `vecPushSumEntryFwd` (default ctor, three pushes, three
     reads, two adds, destructor; cf. `emitTranslateText` delegating to
-    the verified `Base` op). -/
+    the verified `M2Fwd` op). -/
 def emitVecPushSumEntryText (name : String) : String :=
   emitHeader
   ++ "\nimport Circe.Base\nimport Circe.Emit.VecGrow\nimport Circe.Emit.VecCompose\n\n"
@@ -961,31 +961,31 @@ def emitVecEraseSumEntryText (name : String) : String :=
   ++ "  vecEraseSumEntryFwd\n"
 
 /-- Render the `translate` forward definition: direct delegation to the
-    verified `Base` op `pointTranslate` (field-wise checked addition;
+    verified `M2Fwd` op `pointTranslate` (field-wise checked addition;
     `translateFwd_*` bridge lemmas certify the delegation). -/
 def emitTranslateText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (field-wise `Point` translation). -/\n"
   ++ s!"def {name}_fwd (p : Point) (dx dy : BitVec 32) : Result Point :=\n"
   ++ "  pointTranslate p dx dy\n"
 
 /-- Render the `_ZNK5Point3sumEv` method-leaf forward definition:
-    direct delegation to the verified `Base` op `pointSum`
+    direct delegation to the verified `M2Fwd` op `pointSum`
     (`methodSumFwd_*` bridges certify the delegation). -/
 def emitMethodSumText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (POD const-method `sum`: checked field addition). -/\n"
   ++ s!"def {name}_fwd (p : Point) : Result (BitVec 32) :=\n"
   ++ "  pointSum p\n"
 
 /-- Render the `_Z13point_sum_refRK5Point` entry forward definition:
-    direct delegation to `pointSum` (same `Base` op as the leaf, see
+    direct delegation to `pointSum` (same `M2Fwd` op as the leaf, see
     `pointSumRefFwd_is_call`). -/
 def emitPointSumRefText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (delegates to the `sum` method body). -/\n"
   ++ s!"def {name}_fwd (p : Point) : Result (BitVec 32) :=\n"
   ++ "  pointSum p\n"
@@ -994,7 +994,7 @@ def emitPointSumRefText (name : String) : String :=
     field-init (`accCtor` = `0`; `evalFuncFuel_accCtor` certifies it). -/
 def emitAccCtorText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (value ctor: field-init `s = 0`). -/\n"
   ++ s!"def {name}_fwd : Result (BitVec 32) :=\n"
   ++ "  .ok accCtor\n"
@@ -1003,7 +1003,7 @@ def emitAccCtorText (name : String) : String :=
     `s += v` (`accAddFwd_ok/err` bridges certify the delegation). -/
 def emitAccAddText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (mutating `add`: checked field addition). -/\n"
   ++ s!"def {name}_fwd (s v : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accAdd s v\n"
@@ -1012,7 +1012,7 @@ def emitAccAddText (name : String) : String :=
     (identity; `evalFuncFuel_accGet` certifies it). -/
 def emitAccGetText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (const getter: identity). -/\n"
   ++ s!"def {name}_fwd (s : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accGet s\n"
@@ -1021,7 +1021,7 @@ def emitAccGetText (name : String) : String :=
     (no-op identity; `evalFuncFuel_accDtor` certifies it). -/
 def emitAccDtorText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (trivial dtor: no-op identity). -/\n"
   ++ s!"def {name}_fwd (t : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accDtor t\n"
@@ -1031,7 +1031,7 @@ def emitAccDtorText (name : String) : String :=
     `evalProgFunc_accTwo`). -/
 def emitAccTwoText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (ctor + two `add` + `get`, dtor no-op). -/\n"
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accTwo a b\n"
@@ -1041,7 +1041,7 @@ def emitAccTwoText (name : String) : String :=
     certifies it; the source-zeroing store is entry-level). -/
 def emitAccMoveCtorText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (move ctor: dst takes src word). -/\n"
   ++ s!"def {name}_fwd (d s : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  accMoveCtor d s\n"
@@ -1051,7 +1051,7 @@ def emitAccMoveCtorText (name : String) : String :=
     `add` + `get`, dtors no-op; see `evalProgFunc_moveAcc`). -/
 def emitMoveAccText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (move + two `add` + `get`, dtors no-op). -/\n"
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  moveAcc a b\n"
@@ -1061,7 +1061,7 @@ def emitMoveAccText (name : String) : String :=
     `add` + `get`, dtors no-op; see `evalProgFunc_scopeEarly`). -/
 def emitScopeEarlyText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (early return + `add` + `get`, dtors no-op). -/\n"
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  scopeEarly a b\n"
@@ -1071,7 +1071,7 @@ def emitScopeEarlyText (name : String) : String :=
     see `evalFuncFuel_boxThrough`). -/
 def emitBoxThroughText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.M2Fwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (`new` → read → `delete` passthrough). -/\n"
   ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  boxThrough x\n"

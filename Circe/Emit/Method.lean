@@ -5,6 +5,7 @@ and the `_Z13point_sum_refRK5Point` entry (single DAG call into the
 leaf via S1 `callRet`; no new CIR constructs).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.M2Fwd
 
 /-! ## M2a: POD const-methods (`point_sum_ref`) -/
 

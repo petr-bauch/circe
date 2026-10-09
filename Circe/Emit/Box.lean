@@ -12,6 +12,7 @@ and erased at validation, as is the `cleanup` scope (the sized
 the size const, and the call multiset instead.
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.M2Fwd
 
 /-! ## M2c: `new` / `delete` as ownership ops (`box_through`) -/
 

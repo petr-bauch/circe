@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `_ZN3Acc3addEi` (mutating `add`: checked field addition). -/
 def _ZN3Acc3addEi_fwd (s v : BitVec 32) : Result (BitVec 32) :=

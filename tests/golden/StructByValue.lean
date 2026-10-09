@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.M2Fwd
 
 /-- Pure translation of `translate` (field-wise `Point` translation). -/
 def translate_fwd (p : Point) (dx dy : BitVec 32) : Result Point :=

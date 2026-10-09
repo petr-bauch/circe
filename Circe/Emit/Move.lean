@@ -14,6 +14,7 @@ Both dtors are no-ops, so the nested `cleanup` scopes flatten to one
 unwinding paths, unobservable here since no dtor can fail).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.M2Fwd
 import Circe.Emit.Acc
 
 /-! ## N4b: move ctor leaf + `move_acc` entry -/

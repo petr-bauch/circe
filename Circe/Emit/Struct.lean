@@ -3,6 +3,7 @@ Circe.Emit.Struct — S2 struct-by-value `translate`: field projection + `nsw`
 field adds, with ok/err bridges.
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.M2Fwd
 
 /-! ## S2: struct-by-value (`translate`) -/
 

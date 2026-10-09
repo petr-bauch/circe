@@ -9,6 +9,7 @@ identity, and the trivial-dtor call a no-op (all erased at validation;
 the `cleanup` scope sequences them, `cleanup normal` at exit).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.M2Fwd
 
 /-! ## M2b: value ctors + trivial dtors (`acc_two`) -/
 
