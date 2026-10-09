@@ -1,7 +1,7 @@
 -- Generated spec stub by the Circe emitter (S4) from validated CoreIR.
 -- Unverified scaffolding: copy into `Circe.Specs` (or a per-project spec
 -- file) and fill the equation. The `_fwd` mirror below is body-identical
--- to the emitted forward (same `Base` op); specs proved against it
+-- to the emitted forward (same library op); specs proved against it
 -- transfer verbatim by body identity (see docs/VERIFYING.md).
 
 import Circe.Base

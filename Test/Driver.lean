@@ -1008,6 +1008,20 @@ def checkNoManualFuelSplit : IO Unit := do
   if hits != ["Circe/Eval/Stmt.lean"] then
     throw (IO.userError s!"manual fuel split outside fuel_step_down: {hits}")
 
+/-- M1-homes gate: the heap-family program translations live in
+    `Circe.Emit.VecFwd` (next to their proofs), never in `Circe.Base`
+    (evaluator vocabulary only). -/
+def checkVecFwdHomes : IO Unit := do
+  for d in ["def vecFillSumU32 ", "def vecFillSumU64 ",
+      "def vecReallocFillSumU32 ", "def vecFillLoopAux ",
+      "def vecSumLoopAux ", "def vecCopyLoopAux "] do
+    needHas "Circe/Emit/VecFwd.lean" d
+  let base ← IO.FS.readFile "Circe/Base.lean"
+  for d in ["vecFillSumU32", "vecFillSumU64", "vecReallocFillSumU32",
+      "vecFillLoop", "vecSumLoop", "vecCopyLoop"] do
+    if containsSubstr base d then
+      throw (IO.userError s!"M1 translation still in Circe/Base.lean: {d}")
+
 /-- N8c adoption gate: every collapsed closed-entry proof goes through
     the `cir_eval_closed` macro (single adoption point over
     `native_decide`; new entries must use it too). -/
@@ -1195,6 +1209,7 @@ def main (args : List String) : IO Unit := do
         ("cir-fuel-adoption", checkCirFuelAdoption),
         ("n5-no-manual-fuel-split", checkNoManualFuelSplit),
         ("n8-closed-eval-adoption", checkClosedEvalAdoption),
+        ("m1-vecfwd-homes", checkVecFwdHomes),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

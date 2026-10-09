@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.VecFwd
 
 /-- Pure translation of `vec_alloc` (uniquely-owned `u32` heap block: allocate, fill with indices, sum, free). -/
 def vec_alloc_fwd (n : BitVec 32) : Result (BitVec 32) :=

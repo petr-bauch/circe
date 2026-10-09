@@ -114,7 +114,7 @@ def emitSumText (name : String) : String :=
     `vecFillSumU32` fold over `n.toNat`. -/
 def emitVecText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ "/-- Pure translation of `" ++ name ++ "` (uniquely-owned `u32` heap block: allocate, fill with indices, sum, free). -/\n"
   ++ "def " ++ name ++ "_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecFillSumU32 n.toNat\n"
@@ -124,7 +124,7 @@ def emitVecText (name : String) : String :=
     verified `vecFillSumU32` fold over `n.toNat`. -/
 def emitVec2Text (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ "/-- Pure translation of `" ++ name ++ "` (two live `u32` heap blocks: allocate two, fill `a` with indices, copy `a` into `b`, sum `b`, free both). -/\n"
   ++ "def " ++ name ++ "_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecFillSumU32 n.toNat\n"
@@ -134,7 +134,7 @@ def emitVec2Text (name : String) : String :=
     `vecFillSumU64` fold over `n.toNat`. -/
 def emitVec64Text (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ "/-- Pure translation of `" ++ name ++ "` (uniquely-owned `u64` heap block: allocate, fill with indices, sum, free). -/\n"
   ++ "def " ++ name ++ "_fwd (n : BitVec 64) : Result (BitVec 64) :=\n"
   ++ "  vecFillSumU64 n.toNat\n"
@@ -145,7 +145,7 @@ def emitVec64Text (name : String) : String :=
     `2*n` preserving the prefix, fill `[n,2*n)`, sum, free). -/
 def emitVecReallocText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ "/-- Pure translation of `" ++ name ++ "` (uniquely-owned `u32` heap block grown by `realloc`: allocate, fill with indices, resize to `2*n`, fill the extension, sum, free). -/\n"
   ++ "def " ++ name ++ "_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecReallocFillSumU32 n.toNat\n"

@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.VecFwd
 
 /-- Pure translation of `vec_copy_sum` (two live `u32` heap blocks: allocate two, fill `a` with indices, copy `a` into `b`, sum `b`, free both). -/
 def vec_copy_sum_fwd (n : BitVec 32) : Result (BitVec 32) :=

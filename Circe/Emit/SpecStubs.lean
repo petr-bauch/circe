@@ -24,7 +24,7 @@ def emitSpecHeader : String :=
   "-- Generated spec stub by the Circe emitter (S4) from validated CoreIR.\n"
   ++ "-- Unverified scaffolding: copy into `Circe.Specs` (or a per-project spec\n"
   ++ "-- file) and fill the equation. The `_fwd` mirror below is body-identical\n"
-  ++ "-- to the emitted forward (same `Base` op); specs proved against it\n"
+  ++ "-- to the emitted forward (same library op); specs proved against it\n"
   ++ "-- transfer verbatim by body identity (see docs/VERIFYING.md).\n"
 
 /-- Spec stub for the `add` shape. -/
@@ -191,9 +191,9 @@ def emitSumSpecText (name : String) : String :=
 /-- Spec stub for the `vec_alloc` shape. -/
 def emitVecSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (allocate, fill with indices, sum, free).\n"
-  ++ s!"    Base body reference: `vecFillSumU32` (cf. emitted `{name}_fwd`, `emit_correct_vec`). -/\n"
+  ++ s!"    VecFwd body reference: `vecFillSumU32` (cf. emitted `{name}_fwd`, `emit_correct_vec`). -/\n"
   ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecFillSumU32 n.toNat\n"
   ++ "\n"
@@ -211,9 +211,9 @@ def emitVecSpecText (name : String) : String :=
 /-- Spec stub for the `vec_copy_sum` shape (M1a: two live blocks). -/
 def emitVec2SpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (allocate two, fill `a` with indices, copy `a` into `b`, sum `b`, free both).\n"
-  ++ s!"    Base body reference: `vecFillSumU32` — the copy is value-invisible (cf. emitted `{name}_fwd`, `emit_correct_vec2`, `vec2Fwd_eq_vecFwd`). -/\n"
+  ++ s!"    VecFwd body reference: `vecFillSumU32` — the copy is value-invisible (cf. emitted `{name}_fwd`, `emit_correct_vec2`, `vec2Fwd_eq_vecFwd`). -/\n"
   ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecFillSumU32 n.toNat\n"
   ++ "\n"
@@ -232,9 +232,9 @@ def emitVec2SpecText (name : String) : String :=
 /-- Spec stub for the `vec_alloc_u64` shape (M1b: `u64` mirror). -/
 def emitVec64SpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ s!"/-- C signature: `uint64_t {name}(uint64_t n)` (allocate, fill with indices, sum, free).\n"
-  ++ s!"    Base body reference: `vecFillSumU64` (cf. emitted `{name}_fwd`, `emit_correct_vec64`). -/\n"
+  ++ s!"    VecFwd body reference: `vecFillSumU64` (cf. emitted `{name}_fwd`, `emit_correct_vec64`). -/\n"
   ++ s!"def {name}_spec_fwd (n : BitVec 64) : Result (BitVec 64) :=\n"
   ++ "  vecFillSumU64 n.toNat\n"
   ++ "\n"
@@ -252,9 +252,9 @@ def emitVec64SpecText (name : String) : String :=
 /-- Spec stub for the `vec_realloc` shape (M1c: grown block). -/
 def emitVecReallocSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (allocate, fill `[0,n)`, `realloc` to `2*n`, fill `[n,2*n)`, sum, free).\n"
-  ++ s!"    Base body reference: `vecReallocFillSumU32` (cf. emitted `{name}_fwd`, `emit_correct_vecRealloc`). -/\n"
+  ++ s!"    VecFwd body reference: `vecReallocFillSumU32` (cf. emitted `{name}_fwd`, `emit_correct_vecRealloc`). -/\n"
   ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  vecReallocFillSumU32 n.toNat\n"
   ++ "\n"

@@ -3,6 +3,7 @@ Circe.Emit.Vec — `vec_alloc`: uniquely-owned heap block (fill + sum loops,
 whole-function correctness).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.VecFwd
 
 /-! ## `vec_alloc`: uniquely-owned heap block (Phase 7, u32-only) -/
 

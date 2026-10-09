@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.VecFwd
 
 /-- Pure translation of `vec_alloc_u64` (uniquely-owned `u64` heap block: allocate, fill with indices, sum, free). -/
 def vec_alloc_u64_fwd (n : BitVec 64) : Result (BitVec 64) :=

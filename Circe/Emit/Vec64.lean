@@ -4,6 +4,7 @@ Circe.Emit.Vec64 — `vec_alloc_u64`: uniquely-owned `u64` heap block
 correctness).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.VecFwd
 
 /-! ## `vec_alloc_u64`: uniquely-owned heap block (M1b, u64-only) -/
 
