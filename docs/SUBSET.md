@@ -637,6 +637,41 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `erase(begin() + 1)`, two reads, add, returns `4`).
     Each validates under per-def `.noalias` facts (72-def
     corpus).
+33. `std::array<uint32_t, 4>` insertion sort (N9: one-algorithm
+    user-proof case study — each monomorph is its own shape, the
+    N4c precedent): u32 `_S_ref` leaf (single `const&` to the raw
+    4-word `u32` array with the single-reference triple, `u64`
+    index, pointer-to-`u32` return, one `cir.get_element`, no
+    calls, no arithmetic, no control flow); mutating
+    `operator[]` single-delegation (single `&mut` array object
+    with the single-reference triple, `u64` index, exactly one
+    call site into the u32 `_S_ref`, one `_M_elems` projection —
+    the projection + call fuse into `idxu` on the read path and
+    `arrSet` on the store path downstream); `insertion_sort`
+    loop (single `&mut` array — exactly one live array so no
+    second reference can collide (containment, no Iris), void
+    return, one `cir.for` (`i in [1, 4)`), one `cir.while` with
+    short-circuit `&&` via one `cir.ternary` + two
+    `cir.condition`, exactly six call sites into the mutating
+    `operator[]` (two in the condition, four in the swap), three
+    `cir.cmp` (one `lt` bound, one `gt` counter, one `gt`
+    elements), three `cir.sub`, one `cir.dec` (fused to
+    `usub`-one downstream); no heap, no other control flow);
+    closed `array_sort_sum` entry (no params, `u32` return,
+    const-record init with `trailing_zeros`, exactly one call
+    into `insertion_sort` + four into `operator[]`, three
+    wrapping `u32` adds, no control flow).
+    Semantics: `insertionSortFwd` is the sorted array
+    (`insertionSortList`: ascending `Pairwise` + `List.Perm` of
+    the input — the N9-iv contract); the entry evaluates to the
+    sum (`6`, permutation-invariant). `idxu` is the unsigned
+    bounded index and `arrSet` the bounded store (OOB off the end
+    is loud on both the value and memory sides). Misshapen uses
+    (wrong call-site counts, extra control flow, `nsw` adds in
+    the entry, heap calls) are rejected with dedicated messages.
+    Pinned by `tests/lean/GoldenArraySort.lean` + the
+    `diff-sort` differential (Lean-Lean + executable-spec oracle;
+    no native leg — the C++ entry prints only the sum).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
@@ -668,7 +703,14 @@ the dead assert arm of the exact N4d-ii `opt_impl_get` shape;
 `@_ZNKSt19_Optional_base_implIiSt14_Optional_baseIiLb1ELb1EEE6_M_getEv`
 in the exact N4d-ii `opt_deref_op` leaf shape only (1 site);
 `@_ZNKSt8optionalIiE9has_valueEv` / `@_ZNKRSt8optionalIiEdeEv` in the
-exact N4d-ii `opt_deref` entry shape only (1 + 1 sites)),
+exact N4d-ii `opt_deref` entry shape only (1 + 1 sites);
+`@_ZNSt14__array_traitsIjLm4EE6_S_refERA4_Kjm` in the exact N9
+mutating `operator[]` shape only (1 site);
+`@_ZNSt5arrayIjLm4EEixEm` in the exact N9 `insertion_sort` loop
+shape only (6 sites) and in the exact N9 `array_sort_sum` entry
+shape only (4 sites);
+`@_Z14insertion_sortRSt5arrayIjLm4EE` in the exact N9
+`array_sort_sum` entry shape only (1 site)),
 `cir.const`, `cir.get_member` (S2 `translate`
 shape only: `Point` field reads with `nsw` adds; M2a method-leaf shape
 only: single-`this` field reads with one `nsw` add; M2b `Acc` leaf
@@ -679,7 +721,9 @@ projection beside the single `_S_ref` call; N4d-ii `opt_has` leaf
 shape only: the `derived [0]` + `_M_payload [0]` + `base [0]` +
 `_M_engaged [1]` chain, `opt_get` leaf shape only: the
 `_M_payload [0]` + `_M_value [1]` pair, `opt_impl_get` entry shape
-only: one live `_M_payload [0]` beside the payload call; all other
+only: one live `_M_payload [0]` beside the payload call; N9
+mutating `operator[]` shape only: one `_M_elems` projection
+beside the single `_S_ref` call; all other
 struct uses rejected), `cir.continue` (S3a `skip_sum` shape
 only), `cir.switch`/`cir.case` (S3a `cls` shape only: equality cases
 on pinned consts + `default`; N6b-i `cls_fall` (empty `case 0` into
@@ -694,7 +738,8 @@ plain unsigned `cir.add` (S3a `nested_sum`/`skip_sum` loop shapes +
 N6b-iii `cls_add` case bodies only),
 `cir.minus` (`nsw`, N6a `neg` shape only),
 `cir.div` (`!s32i`, N6a `sdiv` shape only; all other spellings rejected),
-`get_element` (bounded: the N4d-i `_S_ref` leaf shape only) /
+`get_element` (bounded: the N4d-i `_S_ref` leaf shape + the N9
+u32 `_S_ref` leaf shape only) /
 `ptr_stride` (bounded),
 `cir.if`/`ternary`/`while`/`for` + `cir.condition`/`cir.inc`
 (`cir.if` carries the M2c null guard (`cir.cmp ne` vs
@@ -703,7 +748,12 @@ in the exact `scope_early` shape only), the N4d-ii guarded deref
 (one-sided with the deref inside, exact `opt_deref` shape only),
 and the dead one-sided assert (exact `opt_impl_get` shape only);
 `cir.ternary` + `cir.unreachable` + `cir.do`/`cir.condition` in the
-exact dead-assert skeleton of `opt_impl_get` only),
+exact dead-assert skeleton of `opt_impl_get` only;
+`cir.ternary` (one short-circuit `&&`) + `cir.condition` (two:
+bound guard, element compare) in the exact N9 `insertion_sort`
+loop shape only; `cir.for` (one, `i in [1, 4)`) + `cir.while`
+(one, inner shift) in the exact N9 `insertion_sort` loop shape
+only),
 `cir.scope`/`cir.yield`, `cir.const #cir.int<N>`
 (`#cir.int<4> : !u64i` pinned in the M2c shape; the `-1` sentinel +
 stray dead `1` pinned in the exact `opt_deref` shape (2 consts);

@@ -39,15 +39,16 @@ for f in tests/c/*.c; do clang -O0 "$f" -o "/tmp/$(basename $f .c)"; done
 # re-capture CIR goldens (requires the CIR-enabled clang, see docs/PINS.md)
 tools/emit-cir.sh  # writes tests/cir/*.cir
 
-# End-to-end (single entry point): the full pipeline — C corpus, C++ corpus
-# (M2), and the M3 memory-transfer stages — plus golden diffs, native
-# drivers, differential fuzz vs native (default 1000 trials), rejection
-# suites, spec stubs, and tactic-adoption checks
+# End-to-end (single entry point): the full pipeline — C/C++ corpora through
+# N9 (incl. N8 closed-eval adoption and the N9 insertion-sort golden + diff
+# stages) — plus golden diffs, native drivers, differential fuzz vs native
+# (default 1000 trials), rejection suites, spec stubs, and tactic-adoption
+# checks
 tools/check.sh [trials]
 ```
 
 Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`
-(verified IR), `Circe/Eval.lean` (loan-based value semantics + `cir_fuel`),
+(verified IR), `Circe/Eval.lean` (loan-based value semantics + `cir_fuel` + `cir_eval_closed`),
 `Circe/Mem.lean` (addressful block-map model + lockstep bridges),
 `Circe/Validator.lean` (verified gate + `derivedNoalias`),
 `Circe/Emit*.lean` (emitter + per-shape proofs), `Circe/Derived.lean`

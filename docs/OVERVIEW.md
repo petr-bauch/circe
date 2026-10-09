@@ -1,4 +1,4 @@
-# Circe — Overview (current state, 2026-10-08)
+# Circe — Overview (current state, 2026-10-09)
 
 CIR → Lean 4 verification pipeline for non-aliasing C and STL-free
 C++-lite, Aeneas-style: source → ClangIR (raw CIRGen) → pure,
@@ -33,6 +33,11 @@ input rejects loudly, never silently models memory.
 | C++ const-method (M2a) | `point_sum_ref(const Point&)` | `pointSumRefFwd` → `pointSum` delegation | `emit_correct_method` (leaf + entry composition) |
 | C++ ctor/dtor (M2b) | `acc_two(a, b)` | `accTwo` (init + two checked adds) | `emit_correct_accTwo` (1 ctor + 2 add + 1 get + 1 dtor) |
 | C++ `new`/`delete` (M2c) | `box_through(x)` | `boxThrough` (identity; box + affine token) | `emit_correct_box` (token threading) |
+
+The table above is frozen at M2c. Newer fragments — N4d
+`optional`/array reads, N6 arithmetic + switch, N7 `string_view` +
+vector growth, N8 closed evaluation, N9 insertion sort — live in
+`DELIVERED.md` with their proofs and pins.
 
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), addressful block-map model + proved memory transfer on the
@@ -72,7 +77,8 @@ model, derived noalias + cache agreement, loop-free / flow / caller /
 heap transfers) → N2 viability stages → L1 evidence stage →
 N5 tactic-adoption gates → arithmetic/switch golden + rejection
 stages → `string_view` range-for and
-`reserve`/`insert`/`erase` diff stages → `CHECK-OK`.
+`reserve`/`insert`/`erase` diff stages → N8 closed-eval adoption +
+N9 sort (golden + diff) stages → `CHECK-OK`.
 
 See `PIPELINE.md` for stages and trust, `SUBSET.md` for the admitted
 subset, `VERIFYING.md` for the user workflow, `ROADMAP.md` for next
@@ -86,6 +92,8 @@ affine tokens, no aliasing in the common case), with tactic and
 spec-scaffolding support for proving properties of the emitted code.
 Delivered so far: S0–S5, M1–M3, N1–N7 (proof ergonomics,
 arithmetic + switch gaps, `string_view` range-for and the full
-`reserve`/`insert`/`erase` STD growth), plus L1 lifetime evidence
-(extract-only). Details in `DELIVERED.md`; active work in
-`ROADMAP.md`.
+`reserve`/`insert`/`erase` STD growth), N8 (closed-evaluation
+kernel: `cir_eval_closed` + adoption), N9 (`std::array<uint32_t,4>`
+insertion-sort case study: forward-as-fold, Sorted/Permutation
+spec, `DiffSort` fuzz), plus L1 lifetime evidence (extract-only).
+Details in `DELIVERED.md`; active work in `ROADMAP.md`.
