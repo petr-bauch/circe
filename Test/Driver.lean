@@ -1022,6 +1022,18 @@ def checkVecFwdHomes : IO Unit := do
     if containsSubstr base d then
       throw (IO.userError s!"M1 translation still in Circe/Base.lean: {d}")
 
+/-- S3-homes gate: the control-flow translations live in
+    `Circe.Emit.FlowFwd` (next to their proofs), never in `Circe.Base`. -/
+def checkFlowFwdHomes : IO Unit := do
+  for d in ["def nestedSumU32 ", "def skipSumU32 ", "def findEqOut ",
+      "def rowU32 ", "def findIdxU32 "] do
+    needHas "Circe/Emit/FlowFwd.lean" d
+  let base ← IO.FS.readFile "Circe/Base.lean"
+  for d in ["nestedSumU32", "skipSumU32", "findEqOut",
+      "rowU32", "findIdxU32"] do
+    if containsSubstr base d then
+      throw (IO.userError s!"S3 translation still in Circe/Base.lean: {d}")
+
 /-- N8c adoption gate: every collapsed closed-entry proof goes through
     the `cir_eval_closed` macro (single adoption point over
     `native_decide`; new entries must use it too). -/
@@ -1210,6 +1222,7 @@ def main (args : List String) : IO Unit := do
         ("n5-no-manual-fuel-split", checkNoManualFuelSplit),
         ("n8-closed-eval-adoption", checkClosedEvalAdoption),
         ("m1-vecfwd-homes", checkVecFwdHomes),
+        ("s3-flowfwd-homes", checkFlowFwdHomes),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

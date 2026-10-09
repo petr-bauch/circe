@@ -2224,9 +2224,9 @@ def emitBoxThroughSpecText (name : String) : String :=
 /-- Spec stub for the `nested_sum` shape (S3a). -/
 def emitNestedSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.FlowFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t n, uint32_t m)` (nested bounded loops, wrapping).\n"
-  ++ s!"    Base body reference: `nestedSumU32` (cf. emitted `{name}_fwd`, `emit_correct_nested`). -/\n"
+  ++ s!"    FlowFwd body reference: `nestedSumU32` (cf. emitted `{name}_fwd`, `emit_correct_nested`). -/\n"
   ++ s!"def {name}_spec_fwd (n m : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  .ok (nestedSumU32 n.toNat m.toNat)\n"
   ++ "\n"
@@ -2244,9 +2244,9 @@ def emitNestedSpecText (name : String) : String :=
 /-- Spec stub for the `skip_sum` shape (S3a break/continue). -/
 def emitSkipSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.FlowFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t n)` (`continue` at 2, `break` at 8).\n"
-  ++ s!"    Base body reference: `skipSumU32` (cf. emitted `{name}_fwd`, `emit_correct_skip`). -/\n"
+  ++ s!"    FlowFwd body reference: `skipSumU32` (cf. emitted `{name}_fwd`, `emit_correct_skip`). -/\n"
   ++ s!"def {name}_spec_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  .ok (skipSumU32 n.toNat)\n"
   ++ "\n"
@@ -2264,10 +2264,10 @@ def emitSkipSpecText (name : String) : String :=
 /-- Spec stub for the `find_eq` shape (S3a early return). -/
 def emitFindEqSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.FlowFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t *a, uint32_t n, uint32_t k)`\n"
   ++ "    (first match, else length, else `OOB`).\n"
-  ++ s!"    Base body reference: `findEqOut` (cf. emitted `{name}_fwd`, `emit_correct_find`). -/\n"
+  ++ s!"    FlowFwd body reference: `findEqOut` (cf. emitted `{name}_fwd`, `emit_correct_find`). -/\n"
   ++ s!"def {name}_spec_fwd (a : List (BitVec 32)) (n k : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  findEqOut a n.toNat k\n"
   ++ "\n"

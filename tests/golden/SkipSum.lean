@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.FlowFwd
 
 /-- Pure translation of `skip_sum` (bounded loop with `break`/`continue`, wrapping). -/
 def skip_sum_fwd (n : BitVec 32) : Result (BitVec 32) :=

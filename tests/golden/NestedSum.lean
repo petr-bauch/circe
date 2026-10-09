@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.FlowFwd
 
 /-- Pure translation of `nested_sum` (nested bounded `u32` loops, wrapping). -/
 def nested_sum_fwd (n m : BitVec 32) : Result (BitVec 32) :=

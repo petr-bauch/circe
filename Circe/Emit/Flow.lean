@@ -3,6 +3,7 @@ Circe.Emit.Flow — S3a control flow: `nested_sum`, `skip_sum`
 (break/continue), `find_eq` (early return), `cls` (switch-as-if-chain).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.FlowFwd
 
 /-! ## S3a: control-flow hardening (nested loops, break/continue,
 early return, switch-as-if-chain) -/

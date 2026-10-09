@@ -1077,11 +1077,11 @@ def emitBoxThroughText (name : String) : String :=
   ++ "  boxThrough x\n"
 
 /-- Render the `nested_sum` forward definition: the double fold over
-    `Base.nestedSumU32` (both bounds travel as words; fuel sufficiency
+    `FlowFwd.nestedSumU32` (both bounds travel as words; fuel sufficiency
     is the `emit_correct_nested` side condition). -/
 def emitNestedText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.FlowFwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (nested bounded `u32` loops, wrapping). -/\n"
   ++ s!"def {name}_fwd (n m : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  .ok (nestedSumU32 n.toNat m.toNat)\n"
@@ -1090,18 +1090,19 @@ def emitNestedText (name : String) : String :=
     at 9, so no fuel hypothesis is needed downstream). -/
 def emitSkipText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.FlowFwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (bounded loop with `break`/`continue`, wrapping). -/\n"
   ++ s!"def {name}_fwd (n : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  .ok (skipSumU32 n.toNat)\n"
 
 /-- Render the `find_eq` forward definition (early return lowered to
-    `Base.findEqOut`: first match, else length, else `OOB`). Stated
-    over `BitVec` (not `Value`): rendered files import only
-    `Circe.Base`, and tag erasure is trusted rendering anyway. -/
+    `FlowFwd.findEqOut`: first match, else length, else `OOB`). Stated
+    over `BitVec` (not `Value`): rendered files import
+    `Circe.Base` + `Circe.Emit.FlowFwd`, and tag erasure is trusted
+    rendering anyway. -/
 def emitFindEqText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.FlowFwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (bounded search with early return). -/\n"
   ++ s!"def {name}_fwd (a : List (BitVec 32)) (n k : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  findEqOut a n.toNat k\n"

@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.FlowFwd
 
 /-- Pure translation of `find_eq` (bounded search with early return). -/
 def find_eq_fwd (a : List (BitVec 32)) (n k : BitVec 32) : Result (BitVec 32) :=
