@@ -104,3 +104,42 @@ theorem qrAt_kat :
     qrAt [0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567] 0 1 2 3 =
       [0xea2a92f4, 0xcb1cf8ce, 0x4581472e, 0x5881c4bb] := by
   decide
+
+/-! ### Double round over the 16-word state (K4 spec) -/
+
+/-- One double round: four column QRs then four diagonal QRs
+    (RFC 8439 §2.3 inner block, one `for` iteration of the C). -/
+def chachaRound (s : List (BitVec 32)) : List (BitVec 32) :=
+  let s := qrAt s 0 4 8 12
+  let s := qrAt s 1 5 9 13
+  let s := qrAt s 2 6 10 14
+  let s := qrAt s 3 7 11 15
+  let s := qrAt s 0 5 10 15
+  let s := qrAt s 1 6 11 12
+  let s := qrAt s 2 7 8 13
+  qrAt s 3 4 9 14
+
+/-- `n` double rounds (the C runs ten). -/
+def chachaRounds : Nat → List (BitVec 32) → List (BitVec 32)
+  | 0, s => s
+  | n + 1, s => chachaRounds n (chachaRound s)
+
+/-- Unfolding one round off the front (definitional). -/
+theorem chachaRounds_succ (n : Nat) (s : List (BitVec 32)) :
+    chachaRounds (n + 1) s = chachaRounds n (chachaRound s) := rfl
+
+-- The ten-round fold needs a deeper kernel stack than the default allows.
+set_option maxRecDepth 10000
+/-- The RFC §2.3.2 after-20-rounds state, by computation (pins the
+    round composition independently of the add-back). -/
+theorem chachaRounds_kat :
+    chachaRounds 10
+      [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574,
+       0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c,
+       0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c,
+       0x00000001, 0x09000000, 0x4a000000, 0x00000000] =
+      [0x837778ab, 0xe238d763, 0xa67ae21e, 0x5950bb2f,
+       0xc4f2d0c7, 0xfc62bb2f, 0x8fa018fc, 0x3f5ec7b7,
+       0x335271c2, 0xf29489f3, 0xeabda8fc, 0x82e46ebd,
+       0xd19c12b4, 0xb04e16de, 0x9e83d0cb, 0x4e3c50a2] := by
+  decide

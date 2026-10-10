@@ -11,6 +11,7 @@ import Circe.Emit.ArraySort8
 import Circe.Emit.View
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose
+import Circe.Crypto.Block
 import Circe.Validator.GrowLeaves
 
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
@@ -381,6 +382,54 @@ def isXorNShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.shift" &&
     !containsSubstr raw.text "cir.and " &&
     !containsSubstr raw.text "cir.or "
+  | _ => false
+
+/-- `chacha20_block`: single `__restrict__` u32 state buffer, void
+    return, three `cir.for` (copy, ten double-rounds, add-back) over
+    the QR arithmetic (`cir.add`/`sub`/`xor`/`shift`/`or`), no calls.
+    Counts read off the captured CIR. The single writer is the K2
+    single-`&mut` containment: no oracle change or exemption. -/
+def isChachaBlockShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [state] =>
+    noBreakContinueSwitch raw.text &&
+    isU32PtrNoalias state &&
+    raw.ret == "" &&
+    !callsFunc raw.text raw.name &&
+    !hasNonHeapCall raw.text &&
+    opCount raw.text "cir.for" == 3 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 207 &&
+    opCount raw.text "cir.store" == 105 &&
+    opCount raw.text "cir.add" == 33 &&
+    opCount raw.text "cir.sub" == 32 &&
+    opCount raw.text "cir.xor " == 32 &&
+    opCount raw.text "cir.shift" == 64 &&
+    opCount raw.text "cir.or " == 32 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.condition" == 3 &&
+    opCount raw.text "cir.cast" == 6 &&
+    opCount raw.text "cir.ptr_stride" == 2 &&
+    opCount raw.text "cir.inc" == 3 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.call @" == 0 &&
+    opCount raw.text "cir.scope" == 4 &&
+    opCount raw.text "cir.const" == 556 &&
+    opCount raw.text "cir.get_element" == 226 &&
+    opCount raw.text "cir.load align(4)" == 99 &&
+    opCount raw.text "cir.store align(4)" == 50 &&
+    opCount raw.text "cir.yield" == 6 &&
+    opCount raw.text "llvm.noalias" == 1 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.dec" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.div" &&
+    !containsSubstr raw.text "cir.and "
   | _ => false
 
 /-- Small-width promotion: 8/16-bit integers appear only via `cir.cast`
@@ -1705,6 +1754,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { shrU32Func with name := raw.name }
       else if isXorNShape raw then
         .ok { xorNFunc with name := raw.name }
+      else if isChachaBlockShape raw then
+        .ok { chachaBlockFunc with name := raw.name }
       else if isUnadmittedArithLeaf raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses integer arithmetic outside the admitted single-op leaves: {arithRejectWhy raw.text} (see docs/SUBSET.md)"

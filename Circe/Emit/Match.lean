@@ -20,6 +20,7 @@ import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Bitwise
 import Circe.Emit.XorBuf
+import Circe.Crypto.Block
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.ArraySort
@@ -42,6 +43,55 @@ def isVecUnitName (fname : String) : Bool :=
   fname == "_ZNSt12_Vector_baseIiSaIiEE12_Vector_implD2Ev" ||
   fname == "_ZNSaIiED2Ev" ||
   fname == "_ZN9__gnu_cxx13new_allocatorIiED2Ev"
+
+-- Boolean `CType` equality (manual recursion: the `struct` field
+-- nests `List CType`, which defeats `deriving DecidableEq`).
+mutual
+def beqCType : CType → CType → Bool
+  | .void, .void => true
+  | .bool, .bool => true
+  | .i w, .i w' => w == w'
+  | .u w, .u w' => w == w'
+  | .array t n, .array t' n' => beqCType t t' && n == n'
+  | .struct name f, .struct name' f' =>
+    name == name' && beqCTypeList f f'
+  | _, _ => false
+def beqCTypeList : List CType → List CType → Bool
+  | [], [] => true
+  | t :: ts, t' :: ts' => beqCType t t' && beqCTypeList ts ts'
+  | _, _ => false
+end
+
+/-- Boolean `CStmt` equality over `beqCType` (`CExpr` already carries
+    `DecidableEq`, so `decide` compares the leaves). -/
+def beqStmt : CStmt → CStmt → Bool
+  | .skip, .skip => true
+  | .seq a b, .seq a' b' => beqStmt a a' && beqStmt b b'
+  | .cleanup b, .cleanup b' => beqStmt b b'
+  | .let_ x t v, .let_ x' t' v' =>
+    x == x' && beqCType t t' && decide (v = v')
+  | .assign x v, .assign x' v' => x == x' && decide (v = v')
+  | .vset x i v, .vset x' i' v' =>
+    x == x' && decide (i = i') && decide (v = v')
+  | .vrealloc x n, .vrealloc x' n' => x == x' && decide (n = n')
+  | .vfree x, .vfree x' => x == x'
+  | .boxFree x, .boxFree x' => x == x'
+  | .vgrowSet t i v, .vgrowSet t' i' v' =>
+    t == t' && decide (i = i') && decide (v = v')
+  | .vgrowFree t, .vgrowFree t' => t == t'
+  | .arrSet a i v, .arrSet a' i' v' =>
+    a == a' && decide (i = i') && decide (v = v')
+  | .fail, .fail => true
+  | .if_ c t e, .if_ c' t' e' =>
+    decide (c = c') && beqStmt t t' && beqStmt e e'
+  | .while_ c b, .while_ c' b' => decide (c = c') && beqStmt b b'
+  | .break_, .break_ => true
+  | .continue_, .continue_ => true
+  | .call f a, .call f' a' => f == f' && a == a'
+  | .callRet d f a, .callRet d' f' a' => d == d' && f == f' && a == a'
+  | .callProg d f a, .callProg d' f' a' => d == d' && f == f' && a == a'
+  | .return_ v, .return_ v' => decide (v = v')
+  | _, _ => false
 
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
     (and `emitFunc` rejects it loudly).
@@ -236,6 +286,22 @@ def matchFrag : Func → Option FragKind
         if zero.toNat == 0 && one.toNat == 1 then some .xorN
         else none
       | _ => none
+    | _ => none
+  | ⟨_, [⟨"state", .array (.u 32) _, .mutBorrow _⟩], _, body⟩ =>
+    -- K4 block kernel: copy `state` to `x`, ten double-rounds, add-back,
+    -- returning the state buffer (counter inits pinned; the loop bodies
+    -- are exact constants, compared structurally — `CType` nests
+    -- `List CType`, which defeats `deriving DecidableEq`, so the
+    -- comparison is a manual boolean recursion).
+    match body with
+    | .seq (.let_ "x" _ (.var "state"))
+        (.seq (.let_ "r" _ (.lit (.u64 rzero)))
+        (.seq rw
+        (.seq (.let_ "i" _ (.lit (.u64 izero)))
+        (.seq aw (.return_ (.var "state")))))) =>
+      if rzero.toNat == 0 && izero.toNat == 0 && beqStmt rw roundWhile &&
+          beqStmt aw addWhile then some .chachaBlock
+      else none
     | _ => none
   | ⟨_, [⟨"p", .struct "Point" _, .owned⟩,
          ⟨"dx", .i 32, .owned⟩, ⟨"dy", .i 32, .owned⟩], _,
@@ -1078,6 +1144,8 @@ theorem matchFrag_orU32 : matchFrag orU32Func = some .orU32 := rfl
 theorem matchFrag_shlU32 : matchFrag shlU32Func = some .shlU32 := rfl
 theorem matchFrag_shrU32 : matchFrag shrU32Func = some .shrU32 := rfl
 theorem matchFrag_xorN : matchFrag xorNFunc = some .xorN := rfl
+theorem matchFrag_chachaBlock : matchFrag chachaBlockFunc = some .chachaBlock :=
+  rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl

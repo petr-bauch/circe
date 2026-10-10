@@ -42,6 +42,7 @@ import DiffView
 import DiffWidth
 import DiffXorN
 import DiffQr
+import DiffChacha
 import GoldenAcc
 import GoldenAliasProbe
 import GoldenArray
@@ -72,6 +73,7 @@ import GoldenView
 import GoldenVecGrow
 import GoldenWidth
 import GoldenXorN
+import GoldenChacha
 import ScopeReport
 import Circe.Parser
 
@@ -162,6 +164,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/shr_u32.c", "tests/diff/driver_shr_u32.c"], bin "circe_shr_u32_native"),
    ("cc", ["tests/c/xor_n.c", "tests/diff/driver_xor_n.c"], bin "circe_xor_n_native"),
    ("cc", ["tests/diff/driver_qr.c"], bin "circe_qr_native"),
+   ("cc", ["tests/c/chacha_block.c", "tests/diff/driver_chacha.c"], bin "circe_chacha_native"),
    ("cc", ["tests/c/vec_alloc.c", "tests/diff/driver_vec.c"], bin "circe_vec_native"),
    ("cc", ["tests/c/vec_copy_sum.c", "tests/diff/driver_veccopy.c"], bin "circe_vec2_native"),
    ("cc", ["tests/c/vec_alloc_u64.c", "tests/diff/driver_vec64.c"], bin "circe_vec64_native"),
@@ -225,6 +228,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ShrU32_Spec.lean", "out/ShrU32_Spec.lean"),
    ("tests/golden/XorN.lean", "out/XorN.lean"),
    ("tests/golden/XorN_Spec.lean", "out/XorN_Spec.lean"),
+   ("tests/golden/ChachaBlock.lean", "out/ChachaBlock.lean"),
+   ("tests/golden/ChachaBlock_Spec.lean", "out/ChachaBlock_Spec.lean"),
    ("tests/golden/VecAlloc.lean", "out/VecAlloc.lean"),
    ("tests/golden/VecCopySum.lean", "out/VecCopySum.lean"),
    ("tests/golden/VecAllocU64.lean", "out/VecAllocU64.lean"),
@@ -358,6 +363,7 @@ def emittedTypechecks : List String :=
    "out/XorU32.lean", "out/AndU32.lean", "out/OrU32.lean",
    "out/ShlU32.lean", "out/ShrU32.lean",
    "out/XorN.lean",
+   "out/ChachaBlock.lean",
    "out/VecAlloc.lean",
    "out/VecCopySum.lean", "out/VecCopySum_Spec.lean",
    "out/VecAllocU64.lean", "out/VecAllocU64_Spec.lean",
@@ -554,6 +560,23 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Crypto/Qr.lean", "0x5881c4bb"),
      ("tests/lean/DiffQr.lean", "DIFFQR-OK"),
      ("tests/diff/driver_qr.c", "test-only scaffolding")]),
+   ("k4-chacha",
+    [("out/ChachaBlock.lean", "chacha20_block_fwd"),
+     ("tests/golden/ChachaBlock.lean", "chacha20_block_fwd"),
+     ("tests/golden/ChachaBlock_Spec.lean", "chacha20_block_spec_check"),
+     ("Circe/Crypto/Block.lean", "theorem evalFuncFuel_chachaBlock"),
+     ("Circe/Crypto/Block.lean", "theorem evalFuncFuel_chachaBlock_oob"),
+     ("Circe/Crypto/Block.lean", "theorem emit_correct_chachaBlock"),
+     ("Circe/Validator/Gate.lean", "def isChachaBlockShape"),
+     ("Circe/Emit/Fragment.lean", "chachaBlock"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_chachaBlock"),
+     ("Circe/Emit/Render.lean", "def emitChachaBlockText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitChachaBlockSpecText"),
+     ("tests/lean/DiffChacha.lean", "DIFFCHACHA-OK"),
+     ("tests/lean/GoldenChacha.lean", "GOLDENCHACHA-OK"),
+     ("tests/c/chacha_block.c", "chacha20_block"),
+     ("tests/cir/chacha_block.cir", "@chacha20_block"),
+     ("tests/diff/driver_chacha.c", "chacha20_block(state)")]),
    ("n6b-switch",
     [("out/ClsFall.lean", "else if x == 1 then .ok 10"),
      ("out/ClsDense.lean", "else if x == 7 then .ok 70"),
@@ -1212,8 +1235,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 106 then
-    throw (IO.userError s!"expected 106 spec stubs, found {stubs.length}")
+  if stubs.length != 107 then
+    throw (IO.userError s!"expected 107 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -1259,7 +1282,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
    ("diff-sort", DiffSort.main [trials]),
    ("diff-xorn", DiffXorN.main [bin "circe_xor_n_native", trials]),
-   ("diff-qr", DiffQr.main [bin "circe_qr_native", trials])]
+   ("diff-qr", DiffQr.main [bin "circe_qr_native", trials]),
+   ("diff-chacha", DiffChacha.main [bin "circe_chacha_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -1285,6 +1309,7 @@ def checkSuites : List Job :=
    ("golden-arraysort8", GoldenArraySort8.main),
    ("golden-aliasprobe", GoldenAliasProbe.main),
    ("golden-xorn", GoldenXorN.main),
+   ("golden-chacha", GoldenChacha.main),
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
    ("golden-view", GoldenView.main),
@@ -1302,12 +1327,12 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
-   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
-   "GoldenWidth", "GoldenXorN", "ScopeReport"]
+   "GoldenWidth", "GoldenXorN", "GoldenChacha", "ScopeReport"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

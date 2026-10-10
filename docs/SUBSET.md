@@ -636,6 +636,31 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     composition check) and by the `DiffQr` KAT leg (fold vs the
     test-only native QR in `tests/diff/driver_qr.c`, which is
     scaffolding — never corpus — plus fuzz trials).
+28e. ChaCha20 block kernel (K4, single-`&mut` state containment):
+    `chacha20_block` (one `__restrict__` u32 state buffer, void
+    return, three `cir.for` — init copy, 10 double-rounds of 8
+    inlined quarter rounds, add-back — no calls). Admission is the
+    same single-`&mut` containment as K2, widened to a whole-state
+    writer: one writer + `noalias`-verdict over the exact op-count
+    shape (`isChachaBlockShape`: 3 `for` / 33 `add` / 32 `sub` /
+    32 `xor` / 64 `shift` / 32 `or` / 207 loads / 105 stores, no
+    calls/branches), so no oracle change was needed — but the
+    verdict check still demands the explicit `noalias` verdict
+    (attrs are claims, the verdict confirms) and the local arrays
+    are abstracted as whole-list `let_` copies (never address-taken).
+    The `Func` threads one 16-word state list through
+    `roundWhile` + `addWhile`; the forward is `chachaBlockFwd`
+    over the K3 `qrAt` fold (`OOB` on short states); the RFC 8439
+    §2.3.2 vector is pinned by computation in the `DiffChacha`
+    KAT leg (forward agrees with the RFC keystream words, native
+    agrees with both). Pinned by the `GoldenChacha`
+    pipeline-vs-golden row + 3 containment rejections
+    (inconclusive verdict, missing `__restrict__`, 2-param arity
+    — all dedicated `alias-reject` codes) and the `DiffChacha`
+    legs (eval-vs-forward agreement on every trial, native on
+    16-word states incl. all-zero, Lean-Lean `OOB` on short
+    states, 16-word-prefix agreement on long states, 1000 fuzz
+    trials).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

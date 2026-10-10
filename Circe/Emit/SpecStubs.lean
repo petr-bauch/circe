@@ -275,6 +275,35 @@ def emitXorNSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun ⟨⟨o, a, b, n⟩, want⟩ =>\n"
   ++ s!"    (repr ({name}_spec_fwd o a b n)).pretty == (repr want).pretty\n"
 
+/-- Spec stub for the ChaCha20 block shape (forward + RFC 8439 §2.3.2
+    KAT edge; values cross-checked against the RFC keystream bytes). -/
+def emitChachaBlockSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Crypto.Block\n\n"
+  ++ s!"/-- C signature: `void {name}(uint32_t *__restrict state)` (ten double-rounds over a 16-word copy, added back; short states are `OOB`, long states pass the tail through).\n"
+  ++ s!"    Base body reference: the `chachaRounds`/`addBackList` fold (cf. emitted `{name}_fwd`, `emit_correct_chachaBlock`). -/\n"
+  ++ s!"def {name}_spec_fwd (s : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  if 16 ≤ s.length then\n"
+  ++ "    .ok (addBackList s (chachaRounds 10 s) 16)\n"
+  ++ "  else .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: RFC 8439 §2.3.2 KAT, all-zero state, short state (`OOB`), long state (tail passes through). -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (List (BitVec 32))) :=\n"
+  ++ "  [(([0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x00000001, 0x09000000, 0x4a000000, 0x00000000]),\n"
+  ++ "    .ok [0xe4e7f110, 0x15593bd1, 0x1fdd0f50, 0xc47120a3, 0xc7f4d1c7, 0x0368c033, 0x9aaa2204, 0x4e6cd4c3, 0x466482d2, 0x09aa9f07, 0x05d7c214, 0xa2028bd9, 0xd19c12b5, 0xb94e16de, 0xe883d0cb, 0x4e3c50a2]),\n"
+  ++ "   (([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),\n"
+  ++ "    .ok [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),\n"
+  ++ "   (([0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x00000001, 0x09000000, 0x4a000000]), .error .OOB),\n"
+  ++ "   (([0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x00000001, 0x09000000, 0x4a000000, 0x00000000, 0xdeadbeef]),\n"
+  ++ "    .ok [0xe4e7f110, 0x15593bd1, 0x1fdd0f50, 0xc47120a3, 0xc7f4d1c7, 0x0368c033, 0x9aaa2204, 0x4e6cd4c3, 0x466482d2, 0x09aa9f07, 0x05d7c214, 0xa2028bd9, 0xd19c12b5, 0xb94e16de, 0xe883d0cb, 0x4e3c50a2, 0xdeadbeef])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge.\n"
+  ++ "    TODO (user): strengthen to a gallery equation over `chachaRounds`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun ⟨s, want⟩ =>\n"
+  ++ s!"    (repr ({name}_spec_fwd s)).pretty == (repr want).pretty\n"
+
 /-- Spec stub for the `choose` shape (forward + backward). -/
 def emitChooseSpecText (name : String) : String :=
   emitSpecHeader

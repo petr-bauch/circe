@@ -678,3 +678,30 @@ memory, `...c925` vs `...c4bb`). `DiffQr` (KAT + zero + 1000
 fuzz trials vs the test-only native driver) rides the roster
 with a `k3-qr` content suite; no gate/validator/golden changes.
 - Acceptance: 469 jobs TEST-OK, CHECK-OK.
+
+### K4. ChaCha20 block vs §2.3.2 KAT — DONE (2026-10-10)
+
+Full ChaCha20 block function over a single-`&mut` 16-word state,
+verified end to end: real CIRGen corpus (`tests/c/chacha_block.c`
+→ `tests/cir/chacha_block.cir`, 1413 lines: one `__restrict__`
+u32 state buffer, void return, three `cir.for`, no calls) admitted
+by exact op-count gate (`isChachaBlockShape`, no oracle change —
+the pair check still demands the explicit `noalias` verdict).
+New `Circe/Crypto/Block.lean`: `qrFrag`/`roundFrag`/`roundBody`/
+`roundWhile`/`addWhile` fragments with forward-eval agreement
+(`qrFrag_eval` via the 12-step bridge to the K3 `qrAt` fold,
+`roundBody_eval`, `roundWhile_correct`, `addWhile_correct`) plus
+the `OOB` corollary legs (short states error on every fragment
+and the `Func`), and `emit_correct_chachaBlock`. Gate/match/render
+wiring (`FragKind.chachaBlock`, `matchFrag_chachaBlock`,
+`emitChachaBlockText`/`emitChachaBlockSpecText`); pipeline output
+is byte-identical to the checked-in `tests/golden/ChachaBlock.lean`
+(+ `_Spec.lean`, `spec_check=true`). The RFC 8439 §2.3.2 vector is
+pinned three ways (Python reference cross-check at authoring time,
+forward-KAT leg, native-vs-forward leg). `DiffChacha` (pipeline +
+KAT + zero/short/long edges + 1000 fuzz trials vs the corpus-linked
+native driver, eval-vs-forward agreement on every trial) +
+`GoldenChacha` (pipeline-vs-golden + rename acceptance + 3
+containment rejections) ride the driver roster with a `k4-chacha`
+content suite; spec stubs grow 106 → 107.
+- Acceptance: 475 jobs TEST-OK, CHECK-OK.

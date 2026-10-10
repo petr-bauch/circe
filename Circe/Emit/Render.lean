@@ -138,6 +138,18 @@ def emitXorNText (name : String) : String :=
   ++ "    .ok (xorNList o a b n.toNat)\n"
   ++ "  else .error .OOB\n"
 
+/-- Render the ChaCha20 block forward definition (`chacha20_block_fwd`:
+    second buffer-result shape after K2: 16-word state in, blocked
+    state out, tag-erased). -/
+def emitChachaBlockText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Crypto.Block\n\n"
+  ++ s!"/-- Pure translation of `{name}`: 16-word state in, blocked state out. -/\n"
+  ++ s!"def {name}_fwd (s : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  if 16 ≤ s.length then\n"
+  ++ "    .ok (addBackList s (chachaRounds 10 s) 16)\n"
+  ++ "  else .error .OOB\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader
