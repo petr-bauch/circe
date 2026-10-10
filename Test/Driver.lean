@@ -40,6 +40,7 @@ import DiffErase
 import DiffSort
 import DiffView
 import DiffWidth
+import DiffXorN
 import GoldenAcc
 import GoldenAliasProbe
 import GoldenArray
@@ -69,6 +70,7 @@ import GoldenVecRealloc
 import GoldenView
 import GoldenVecGrow
 import GoldenWidth
+import GoldenXorN
 import ScopeReport
 import Circe.Parser
 
@@ -157,6 +159,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/or_u32.c", "tests/diff/driver_or_u32.c"], bin "circe_or_u32_native"),
    ("cc", ["tests/c/shl_u32.c", "tests/diff/driver_shl_u32.c"], bin "circe_shl_u32_native"),
    ("cc", ["tests/c/shr_u32.c", "tests/diff/driver_shr_u32.c"], bin "circe_shr_u32_native"),
+   ("cc", ["tests/c/xor_n.c", "tests/diff/driver_xor_n.c"], bin "circe_xor_n_native"),
    ("cc", ["tests/c/vec_alloc.c", "tests/diff/driver_vec.c"], bin "circe_vec_native"),
    ("cc", ["tests/c/vec_copy_sum.c", "tests/diff/driver_veccopy.c"], bin "circe_vec2_native"),
    ("cc", ["tests/c/vec_alloc_u64.c", "tests/diff/driver_vec64.c"], bin "circe_vec64_native"),
@@ -218,6 +221,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ShlU32_Spec.lean", "out/ShlU32_Spec.lean"),
    ("tests/golden/ShrU32.lean", "out/ShrU32.lean"),
    ("tests/golden/ShrU32_Spec.lean", "out/ShrU32_Spec.lean"),
+   ("tests/golden/XorN.lean", "out/XorN.lean"),
+   ("tests/golden/XorN_Spec.lean", "out/XorN_Spec.lean"),
    ("tests/golden/VecAlloc.lean", "out/VecAlloc.lean"),
    ("tests/golden/VecCopySum.lean", "out/VecCopySum.lean"),
    ("tests/golden/VecAllocU64.lean", "out/VecAllocU64.lean"),
@@ -350,6 +355,7 @@ def emittedTypechecks : List String :=
    "out/Neg.lean", "out/Sdiv.lean",
    "out/XorU32.lean", "out/AndU32.lean", "out/OrU32.lean",
    "out/ShlU32.lean", "out/ShrU32.lean",
+   "out/XorN.lean",
    "out/VecAlloc.lean",
    "out/VecCopySum.lean", "out/VecCopySum_Spec.lean",
    "out/VecAllocU64.lean", "out/VecAllocU64_Spec.lean",
@@ -522,6 +528,19 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Specs.lean", "theorem xorU32_correct"),
      ("Circe/Specs.lean", "theorem shlU32_correct_err"),
      ("Circe/Base.lean", "def checkedShiftU32")]),
+   ("k2-xorn",
+    [("out/XorN.lean", "xorNList o a b n.toNat"),
+     ("tests/golden/XorN.lean", "xor_n_fwd"),
+     ("tests/golden/XorN_Spec.lean", "xor_n_spec_check"),
+     ("Circe/Emit/XorBuf.lean", "theorem emit_correct_xorN"),
+     ("Circe/Emit/XorBuf.lean", "theorem evalFuncFuel_xorN_oob"),
+     ("Circe/Emit/XorBuf.lean", "theorem xorWhile_correct"),
+     ("Circe/Emit/XorBuf.lean", "theorem xorWhile_oob"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_xorN"),
+     ("Circe/Emit/Render.lean", "def emitXorNText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitXorNSpecText"),
+     ("Circe/Validator/Gate.lean", "def isXorNShape"),
+     ("Circe/Validator/Gate.lean", "def isU32PtrNoalias")]),
    ("n6b-switch",
     [("out/ClsFall.lean", "else if x == 1 then .ok 10"),
      ("out/ClsDense.lean", "else if x == 7 then .ok 70"),
@@ -1180,8 +1199,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 105 then
-    throw (IO.userError s!"expected 105 spec stubs, found {stubs.length}")
+  if stubs.length != 106 then
+    throw (IO.userError s!"expected 106 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -1225,7 +1244,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
-   ("diff-sort", DiffSort.main [trials])]
+   ("diff-sort", DiffSort.main [trials]),
+   ("diff-xorn", DiffXorN.main [bin "circe_xor_n_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -1250,6 +1270,7 @@ def checkSuites : List Job :=
    ("golden-arraysort", GoldenArraySort.main),
    ("golden-arraysort8", GoldenArraySort8.main),
    ("golden-aliasprobe", GoldenAliasProbe.main),
+   ("golden-xorn", GoldenXorN.main),
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
    ("golden-view", GoldenView.main),
@@ -1267,12 +1288,12 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
-   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
-   "GoldenWidth", "ScopeReport"]
+   "GoldenWidth", "GoldenXorN", "ScopeReport"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

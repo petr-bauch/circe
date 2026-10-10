@@ -640,3 +640,24 @@ round will compose the shifts explicitly. `DiffArith` grows five
 native legs (Lean-Lean + C binaries, `OOB` amounts Lean-Lean
 only) plus five pipeline-vs-golden VERIFY-OK rows.
 - Acceptance: 461 jobs TEST-OK, CHECK-OK.
+
+### K2. Bounded buffer-xor kernel — DONE (2026-10-10)
+
+First crypto buffer entry: `xor_n` (`out[i] = a[i] ^ b[i]`,
+`i in [0,n)`) over `__restrict__` buffers with a `u64` (`size_t`)
+length. New `Circe/Emit/XorBuf.lean`: the entry `Func` (`mutBorrow`
+out + `sharedBorrow` readers), the `xorNList` prefix-fold forward
+with `OOB` past any buffer, loop-env + cond/body/correctness/`OOB`
+lemmas (fuel induction mirroring the `sum` proofs, `simp only`
+with the `toNat` bridge so `simp`'s `BitVec` mod-normalization
+cannot strand the `arrSet` facts), and `emit_correct` + `OOB`
+corollaries. Gate: `isXorNShape` (exact op-count shape over the
+captured CIR) + dispatch + the single-`&mut` containment exemption
+in the 2+-pointer pair check (verdict still required). New
+`FragKind` (`.xorN`) with a structural match arm (bound literals
+pinned, body exact), tag-erased buffer-result rendering, and a
+spec stub whose mirror is the emitted body. `DiffXorN` (pipeline
+leg, directed edges, past-`u32` length legs, fuzz vs the native
+driver) + `GoldenXorN` (pipeline-vs-golden + 5 containment
+rejections) ride the driver roster; spec stubs grow 105 → 106.
+- Acceptance: 467 jobs TEST-OK, CHECK-OK.

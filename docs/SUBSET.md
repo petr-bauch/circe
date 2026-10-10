@@ -597,6 +597,29 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     round will compose the shifts explicitly. Pinned by the K1
     `DiffArith` legs (Lean-Lean + native binaries, `OOB`
     amounts Lean-Lean only) + the `rotl` reject row.
+28c. Bounded buffer-xor kernel (K2, first crypto buffer entry):
+    `xor_n` (`__restrict__` out + two `__restrict__` u32 readers +
+    `u64` length, void return, single bounded `cir.for`
+    (`i in [0,n)`), one `cir.xor` + one word-store per iteration,
+    stores only to `out[i]`). Admission is the single-`&mut`
+    containment: one writer + `noalias`-verdict readers over the
+    exact op-count shape (`isXorNShape`: 1 `for` / 1 `xor` /
+    3 `ptr_stride` / 1 `cmp` / 1 `inc` / 2 `cast` / 5 `alloca` /
+    2 align-4 loads / 1 align-4 store / 3 `llvm.noalias`, no calls),
+    so no oracle change was needed — but the verdict check still
+    demands the explicit `noalias` verdict (attrs are claims, the
+    verdict confirms) and the 2+-pointer pair check exempts only
+    the exact shape. The `Func` carries `mutBorrow` out +
+    `sharedBorrow` readers; the forward is the `xorNList` prefix
+    fold (`OOB` past any buffer); the rendered forward is the
+    first buffer-result shape (tag-erased to a word list). Pinned
+    by the `GoldenXorN` pipeline-vs-golden row + 5 containment
+    rejections (inconclusive verdict, missing `__restrict__`,
+    double xor, 3-param arity, `u32` length — all dedicated
+    `alias-reject` codes) and the `DiffXorN` legs (eval-vs-forward
+    agreement, native on in-range trials incl. garbage-out
+    overwrite and partial prefixes, Lean-Lean `OOB` + past-`u32`
+    lengths).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

@@ -246,6 +246,35 @@ def emitShrU32SpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun p =>\n"
   ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedShiftU32 p.1 p.2 (· >>> ·))).pretty\n"
 
+/-- Spec stub for the `xor_n` shape (K2: bounded buffer xor; the
+    mirror is the emitted forward body over `xorNList`, edges cover
+    overwrite / empty / partial / `OOB`). -/
+def emitXorNSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.XorBuf\n\n"
+  ++ s!"/-- C signature: `void {name}(uint32_t *out, const uint32_t *a, const uint32_t *b, size_t n)` (bounded xor, `n` past any buffer is `OOB`).\n"
+  ++ s!"    Base body reference: the `xorNList` prefix fold (cf. emitted `{name}_fwd`, `emit_correct_xorN`). -/\n"
+  ++ s!"def {name}_spec_fwd (o a b : List (BitVec 32)) (n : BitVec 64) : Result (List (BitVec 32)) :=\n"
+  ++ "  if n.toNat ≤ o.length ∧ n.toNat ≤ a.length ∧ n.toNat ≤ b.length then\n"
+  ++ "    .ok (xorNList o a b n.toNat)\n"
+  ++ "  else .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: basic xor, garbage-out overwrite, empty range (out unchanged), partial prefix, over-long `n`, short `a`. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32) × List (BitVec 32) × BitVec 64) × Result (List (BitVec 32))) :=\n"
+  ++ "  [((([0, 0], [1, 2], [3, 4], 2)), .ok [2, 6]),\n"
+  ++ "   ((([9, 9], [0xFFFFFFFF, 0], [0xFFFFFFFF, 0], 2)), .ok [0, 0]),\n"
+  ++ "   ((([7, 7], [1, 1], [2, 2], 0)), .ok [7, 7]),\n"
+  ++ "   ((([9, 9], [1, 2], [3, 4], 1)), .ok [2, 9]),\n"
+  ++ "   ((([0, 0], [1, 2], [3, 4], 3)), .error .OOB),\n"
+  ++ "   ((([0, 0], [1], [3, 4], 2)), .error .OOB)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge.\n"
+  ++ "    TODO (user): strengthen to a gallery equation over `xorNList`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun ⟨⟨o, a, b, n⟩, want⟩ =>\n"
+  ++ s!"    (repr ({name}_spec_fwd o a b n)).pretty == (repr want).pretty\n"
+
 /-- Spec stub for the `choose` shape (forward + backward). -/
 def emitChooseSpecText (name : String) : String :=
   emitSpecHeader

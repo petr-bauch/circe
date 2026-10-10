@@ -325,6 +325,64 @@ def isShrU32Shape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
+/-! ## K2: bounded buffer-xor kernel (`xor_n`) -/
+
+/-- A `__restrict__` (`llvm.noalias`) `u32`-buffer param. -/
+def isU32PtrNoalias (p : RawParam) : Bool :=
+  isPtrType p.ctype && p.noalias &&
+  (match ptrInner p.ctype with | some inner => isU32 inner | none => false)
+
+/-- `xor_n`: `mutBorrow` out + two `sharedBorrow` u32 buffers (all
+    three `__restrict__`), `u64` length, void return, single bounded
+    `cir.for` (`i in [0,n)`), one `cir.xor` + one word-store per
+    iteration. Counts read off the captured CIR. The single writer +
+    `noalias`-verdict readers are the single-`&mut` containment: the
+    writer cannot collide with a reader, so no oracle change is
+    needed (the verdict check below still demands the explicit
+    `noalias` verdict — the attrs are claims, the verdict confirms). -/
+def isXorNShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [out, a, b, n] =>
+    noBreakContinueSwitch raw.text &&
+    isU32PtrNoalias out && isU32PtrNoalias a && isU32PtrNoalias b &&
+    isU64 n.ctype && !isPtrType n.ctype &&
+    raw.ret == "" &&
+    !callsFunc raw.text raw.name &&
+    !hasNonHeapCall raw.text &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.xor " == 1 &&
+    opCount raw.text "cir.ptr_stride" == 3 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.condition" == 1 &&
+    opCount raw.text "cir.inc" == 1 &&
+    opCount raw.text "cir.cast" == 2 &&
+    opCount raw.text "cir.scope" == 2 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load align(4)" == 2 &&
+    opCount raw.text "cir.store align(4)" == 1 &&
+    opCount raw.text "llvm.noalias" == 3 &&
+    opCount raw.text "cir.const" == 2 &&
+    opCount raw.text "cir.store" == 7 &&
+    opCount raw.text "cir.load" == 11 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.call @" == 0 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.dec" &&
+    !containsSubstr raw.text "cir.sub" &&
+    !containsSubstr raw.text "cir.add" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.div" &&
+    !containsSubstr raw.text "cir.shift" &&
+    !containsSubstr raw.text "cir.and " &&
+    !containsSubstr raw.text "cir.or "
+  | _ => false
+
 /-- Small-width promotion: 8/16-bit integers appear only via `cir.cast`
     promotion to `i32` (S3b probe); there is no native small-width
     arithmetic to model, so any occurrence rejects loudly. -/
@@ -1431,9 +1489,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         reject raw.name .aliasReject
           s!"alias-reject: function '{raw.name}': oracle {why}: live pointer params require an explicit `noalias` verdict (see docs/OWNERSHIP.md)"
       else if 2 ≤ (oracleParams raw).length && !isChooseShape raw &&
-          !isVecGrowShape raw then
+          !isVecGrowShape raw && !isXorNShape raw then
         reject raw.name .aliasReject
-          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`) is admitted (see docs/SUBSET.md rules 2, 6; N2a admits no multi-reader `Func` yet)"
+          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`) and the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment) are admitted (see docs/SUBSET.md rules 2, 6)"
       else if isAddShape raw then
         .ok { addFunc with name := raw.name }
       else if isIncrShape raw then
@@ -1645,6 +1703,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { shlU32Func with name := raw.name }
       else if isShrU32Shape raw then
         .ok { shrU32Func with name := raw.name }
+      else if isXorNShape raw then
+        .ok { xorNFunc with name := raw.name }
       else if isUnadmittedArithLeaf raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses integer arithmetic outside the admitted single-op leaves: {arithRejectWhy raw.text} (see docs/SUBSET.md)"

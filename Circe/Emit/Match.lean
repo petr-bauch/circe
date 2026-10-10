@@ -19,6 +19,7 @@ import Circe.Emit.Struct
 import Circe.Emit.Method
 import Circe.Emit.Acc
 import Circe.Emit.Bitwise
+import Circe.Emit.XorBuf
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.ArraySort
@@ -216,6 +217,25 @@ def matchFrag : Func → Option FragKind
     match body with
     | .seq (.callRet "s" "sum_array" ["a", "n"])
         (.return_ (.var "s")) => some .sumCall
+    | _ => none
+  | ⟨_, [⟨"out", .array (.u 32) _, .mutBorrow _⟩,
+         ⟨"a", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"b", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"n", .u 64, .owned⟩], _, body⟩ =>
+    -- K2 buffer-xor kernel: `i = 0`, single bounded
+    -- `while (i < n)` writing `out[i] = a[i] ^ b[i]`, returning the
+    -- out buffer (bound literals pinned; the body shape is exact).
+    match body with
+    | .seq (.let_ "i" _ (.lit (.u64 zero)))
+        (.seq (.while_ (.ult (.var "i") (.var "n")) wbody)
+          (.return_ (.var "out"))) =>
+      match wbody with
+      | .seq (.arrSet "out" (.var "i")
+               (.bxor (.idxu "a" (.var "i")) (.idxu "b" (.var "i"))))
+          (.assign "i" (.uadd (.var "i") (.lit (.u64 one)))) =>
+        if zero.toNat == 0 && one.toNat == 1 then some .xorN
+        else none
+      | _ => none
     | _ => none
   | ⟨_, [⟨"p", .struct "Point" _, .owned⟩,
          ⟨"dx", .i 32, .owned⟩, ⟨"dy", .i 32, .owned⟩], _,
@@ -1057,6 +1077,7 @@ theorem matchFrag_andU32 : matchFrag andU32Func = some .andU32 := rfl
 theorem matchFrag_orU32 : matchFrag orU32Func = some .orU32 := rfl
 theorem matchFrag_shlU32 : matchFrag shlU32Func = some .shlU32 := rfl
 theorem matchFrag_shrU32 : matchFrag shrU32Func = some .shrU32 := rfl
+theorem matchFrag_xorN : matchFrag xorNFunc = some .xorN := rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl

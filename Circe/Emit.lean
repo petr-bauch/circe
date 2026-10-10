@@ -3,7 +3,7 @@ Circe.Emit — verified emitter `CoreIR → Lean` (facade).
 
 Fragment definitions and proofs live in `Circe.Emit.*` (`Fragment`, `Add`,
 `Choose`, `Sum`, `Vec`, `Vec64`, `Vec2`, `VecRealloc`, `Calls`, `Struct`,
-`Method`, `Acc`, `Move`, `Flow`, `VecGrow`); shape
+`Method`, `Acc`, `Move`, `Flow`, `VecGrow`, `Bitwise`, `XorBuf`); shape
 recognition in `Circe.Emit.Match`; file-text and spec-stub rendering in
 `Circe.Emit.Render` / `Circe.Emit.SpecStubs`. This module wires them
 together (`emitSpec`, `emitFunc`, `emitFunc_rejects`) and holds the golden
@@ -66,6 +66,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .orU32 => .ok (emitOrU32SpecText f.name)
   | some .shlU32 => .ok (emitShlU32SpecText f.name)
   | some .shrU32 => .ok (emitShrU32SpecText f.name)
+  | some .xorN => .ok (emitXorNSpecText f.name)
   | some .incr => .ok (emitIncrSpecText f.name)
   | some .choose => .ok (emitChooseSpecText f.name)
   | some .sum => .ok (emitSumSpecText f.name)
@@ -186,6 +187,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .orU32 => .ok ⟨emitOrU32Text f.name, none⟩
   | some .shlU32 => .ok ⟨emitShlU32Text f.name, none⟩
   | some .shrU32 => .ok ⟨emitShrU32Text f.name, none⟩
+  | some .xorN => .ok ⟨emitXorNText f.name, none⟩
   | some .incr => .ok ⟨emitIncrText f.name, none⟩
   | some .choose =>
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩

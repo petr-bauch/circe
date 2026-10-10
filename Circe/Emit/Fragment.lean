@@ -65,6 +65,7 @@ inductive FragKind : Type
   | orU32
   | shlU32
   | shrU32
+  | xorN
   | incr
   | choose
   | sum

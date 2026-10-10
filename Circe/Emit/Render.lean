@@ -126,6 +126,18 @@ def emitShrU32Text (name : String) : String :=
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  checkedShiftU32 a b (· >>> ·)\n"
 
+/-- Render the `xor_n` forward (`xor_n_fwd`, K2: bounded buffer xor —
+    the first buffer-result shape: tag-erased to a word list, `OOB`
+    when `n` exceeds any buffer, mirroring `xorNFwd`). -/
+def emitXorNText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.XorBuf\n\n"
+  ++ s!"/-- Pure translation of `{name}`: buffers in, xored buffer out. -/\n"
+  ++ s!"def {name}_fwd (o a b : List (BitVec 32)) (n : BitVec 64) : Result (List (BitVec 32)) :=\n"
+  ++ "  if n.toNat ≤ o.length ∧ n.toNat ≤ a.length ∧ n.toNat ≤ b.length then\n"
+  ++ "    .ok (xorNList o a b n.toNat)\n"
+  ++ "  else .error .OOB\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader
