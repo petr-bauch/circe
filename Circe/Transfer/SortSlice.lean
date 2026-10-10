@@ -49,11 +49,11 @@ theorem memSortInnerCond_eval_zero (ρ : Env) (m : Mem) (π : Layout)
 /-- The inner condition at `j ≥ 1` on the memory side: both reads
     hit the pinned block, so the comparison agrees and the value
     lemma finishes. -/
-theorem memSortInnerCond_eval_succ (ρ : Env) (m : Mem) (π : Layout)
+theorem memSortInnerCond_eval_succ (N : Nat) (ρ : Env) (m : Mem) (π : Layout)
     (l : List (BitVec 32)) (j : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-    (hlen : l.length = 4) (hj3 : j ≤ 3) (hj1 : 1 ≤ j)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N) (hj1 : 1 ≤ j)
     (hlay : layoutLookup π "a" = some (0, 0))
     (hmem : memFind m 0 = some ⟨0, true, l⟩) :
     memEvalExpr sortInnerCond ρ m π =
@@ -131,23 +131,24 @@ theorem memSortInnerCond_eval_succ (ρ : Env) (m : Mem) (π : Layout)
     simp only [sortInnerCond]
     exact memEvalExpr_tif_true _ _ _ _ _ _ hc hvc ht
   rw [mtif]
-  exact sortInnerCond_eval_succ 4 ρ l j ha hj hlen (by decide) (by omega) hj1
+  exact sortInnerCond_eval_succ N ρ l j ha hj hlen hN64 hjN hj1
 
 /-- The outer condition on the memory side: pure index comparison,
     so agreement plus the value lemma suffices. -/
-theorem memSortOuterCond_eval (ρ : Env) (m : Mem) (π : Layout) (i : Nat)
+theorem memSortOuterCond_eval (N : Nat) (ρ : Env) (m : Mem) (π : Layout) (i : Nat)
+    (hN64 : N < 2 ^ 64)
     (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i))) :
-    memEvalExpr (sortOuterCond 4) ρ m π =
-      .ok (.b ((BitVec.ofNat 64 i).ult (BitVec.ofNat 64 4))) := by
-  have hcond : memEvalExpr (sortOuterCond 4) ρ m π =
-      evalExpr (sortOuterCond 4) ρ := by
+    memEvalExpr (sortOuterCond N) ρ m π =
+      .ok (.b ((BitVec.ofNat 64 i).ult (BitVec.ofNat 64 N))) := by
+  have hcond : memEvalExpr (sortOuterCond N) ρ m π =
+      evalExpr (sortOuterCond N) ρ := by
     simp only [sortOuterCond]
     exact memEvalExpr_ult_agree (.var "i")
-      (.lit (.u64 (BitVec.ofNat 64 4))) ρ m π
+      (.lit (.u64 (BitVec.ofNat 64 N))) ρ m π
       (memEvalExpr_var _ _ _ _)
-      (memEvalExpr_lit (.u64 (BitVec.ofNat 64 4)) _ _ _)
+      (memEvalExpr_lit (.u64 (BitVec.ofNat 64 N)) _ _ _)
   rw [hcond]
-  exact sortOuterCond_eval 4 ρ i hi
+  exact sortOuterCond_eval N ρ i hi
 
 /-! ## Memory swap body (writes lockstepped) -/
 
@@ -155,11 +156,11 @@ theorem memSortOuterCond_eval (ρ : Env) (m : Mem) (π : Layout) (i : Nat)
     `arrSet`s store lockstep with the value `List.set`
     (`arrSet_lockstep`), the countdown is pure. The block tracks the
     value list exactly. -/
-theorem memSortSwapBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
+theorem memSortSwapBody_step (N : Nat) (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
     (l : List (BitVec 32)) (j : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-    (hlen : l.length = 4) (hj3 : j ≤ 3) (hj1 : 1 ≤ j)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N) (hj1 : 1 ≤ j)
     (hlay : layoutLookup π "a" = some (0, 0))
     (hmem : memFind m 0 = some ⟨0, true, l⟩) :
     ∃ ρ₄ m₄, memEvalStmtFuel F sortSwapBody ρ m π =
@@ -396,12 +397,12 @@ theorem memSortSwapBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
 /-- Inner-loop correctness on the memory side: the loop mirrors
     `bubbleDown` with the block tracking the current value list
     (fuel covers the `j + 1` live indices; `i` is untouched). -/
-theorem memSortInnerWhile_correct (F : Nat) (ρ : Env) (m : Mem)
+theorem memSortInnerWhile_correct (N : Nat) (F : Nat) (ρ : Env) (m : Mem)
     (π : Layout) (l₀ : List (BitVec 32)) (l : List (BitVec 32))
     (j : Nat) (z : BitVec 32)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-    (hlen : l.length = 4) (hj3 : j ≤ 3)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N)
     (hz : l[j]? = some z)
     (htake : l.take j = l₀.take j)
     (hF : j + 1 ≤ F)
@@ -417,7 +418,7 @@ theorem memSortInnerWhile_correct (F : Nat) (ρ : Env) (m : Mem)
       (l : List (BitVec 32)) (j : Nat)
       (ha : envLookup ρ "a" = some (.arr32 l))
       (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-      (hlen : l.length = 4) (hj3 : j ≤ 3)
+      (hlen : l.length = N) (hjN : j + 1 ≤ N)
       (hz : l[j]? = some z) (htake : l.take j = l₀.take j)
       (hF : j + 1 ≤ F)
       (hlay : layoutLookup π "a" = some (0, 0))
@@ -427,13 +428,13 @@ theorem memSortInnerWhile_correct (F : Nat) (ρ : Env) (m : Mem)
         envLookup ρ' "a" = some (.arr32 (bubbleDown l j)) ∧
         memFind m' 0 = some ⟨0, true, bubbleDown l j⟩ ∧
         envLookup ρ' "i" = envLookup ρ "i")
-    ?_ ?_ F ρ m π l j ha hj hlen hj3 hz htake hF hlay hmem
-  · clear F ρ m π l j ha hj hlen hj3 hz htake hF hlay hmem
-    intro ρ m π l j ha hj hlen hj3 hz htake hF hlay hmem
+    ?_ ?_ F ρ m π l j ha hj hlen hjN hz htake hF hlay hmem
+  · clear F ρ m π l j ha hj hlen hjN hz htake hF hlay hmem
+    intro ρ m π l j ha hj hlen hjN hz htake hF hlay hmem
     have h0 : j + 1 ≤ 0 := hF
     exact (Nat.not_succ_le_zero j h0).elim
-  · clear F ρ m π l j ha hj hlen hj3 hz htake hF hlay hmem
-    intro F ih ρ m π l j ha hj hlen hj3 hz htake hF hlay hmem
+  · clear F ρ m π l j ha hj hlen hjN hz htake hF hlay hmem
+    intro F ih ρ m π l j ha hj hlen hjN hz htake hF hlay hmem
     -- Structural split on the index (as on the value side).
     cases j with
     | zero =>
@@ -451,13 +452,13 @@ theorem memSortInnerWhile_correct (F : Nat) (ρ : Env) (m : Mem)
         exact hmem
     | succ k =>
       have hj1 : 1 ≤ k + 1 := by omega
-      have hcond := memSortInnerCond_eval_succ ρ m π l (k + 1) ha hj
-        hlen hj3 hj1 hlay hmem
+      have hcond := memSortInnerCond_eval_succ N ρ m π l (k + 1) ha hj
+        hlen hN64 (by omega) hj1 hlay hmem
       by_cases hc : l[k + 1].ult l[(k + 1) - 1] = true
       · -- Swap iteration: body, then the IH below.
         rw [hc] at hcond
         obtain ⟨ρ₄, m₄, hbody, ha₄, hj₄, hmem₄, hi₄⟩ :=
-          memSortSwapBody_step F ρ m π l (k + 1) ha hj hlen
+          memSortSwapBody_step N F ρ m π l (k + 1) ha hj hlen hN64
             (by omega) (by omega) hlay hmem
         -- `(k+1)-1 ≡ k`, `(k+1)+1 ≡ k+2` definitionally: ascribe the
         -- post-state in `k`-form.
@@ -515,16 +516,16 @@ theorem memSortInnerWhile_correct (F : Nat) (ρ : Env) (m : Mem)
             rw [e2] at e1
             exact e1.symm
           exact hA
-        have hlen' : (l.take k ++ [z, l[k]] ++ l.drop (k + 2)).length = 4 := by
+        have hlen' : (l.take k ++ [z, l[k]] ++ l.drop (k + 2)).length = N := by
           have hmin : min k l.length = k := by omega
           have h2 : [z, l[k]].length = 2 := rfl
           rw [List.length_append, List.length_append, List.length_take, hmin,
             h2, List.length_drop, hlen]
           omega
         have hF' : k + 1 ≤ F := by omega
-        have hj3' : k ≤ 3 := by omega
+        have hjN' : k + 1 ≤ N := by omega
         obtain ⟨ρ', m', hloop, ha', hmem', hi'⟩ :=
-          ih ρ₄ m₄ π _ k ha₄z hj₄k hlen' hj3' hz' htake' hF' hlay hmem₄z
+          ih ρ₄ m₄ π _ k ha₄z hj₄k hlen' hjN' hz' htake' hF' hlay hmem₄z
         -- The loop head equals the pure unfold.
         have hbub : bubbleDown l (k + 1) = bubbleDown
             (l.take k ++ [z, l[k]] ++ l.drop (k + 2)) k := by
@@ -584,11 +585,11 @@ theorem memSortInnerWhile_correct (F : Nat) (ρ : Env) (m : Mem)
 /-- One memory outer pass: rebind `j`, bubble down (block follows
     the value list), step `i`. The post-pass block holds the outer
     step with sorted `take (i+1)` prefix. -/
-theorem memSortOuterBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
+theorem memSortOuterBody_step (N : Nat) (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
     (l : List (BitVec 32)) (i : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i)))
-    (hlen : l.length = 4) (hi3 : i ≤ 3)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hiN : i + 1 ≤ N)
     (hsorted : (l.take i).Pairwise (fun a b => b.ult a = false))
     (hF : i + 1 ≤ F)
     (hlay : layoutLookup π "a" = some (0, 0))
@@ -602,7 +603,7 @@ theorem memSortOuterBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
         some ⟨0, true, outerListStep l i (l[i]?.getD 0)⟩ ∧
       ((outerListStep l i (l[i]?.getD 0)).take (i + 1)).Pairwise
         (fun a b => b.ult a = false) ∧
-      (outerListStep l i (l[i]?.getD 0)).length = 4 := by
+      (outerListStep l i (l[i]?.getD 0)).length = N := by
   have hi64 : i < 2 ^ 64 := by omega
   have hz : l[i]? = some l[i] := List.getElem?_eq_getElem (by omega)
   have hgetD : l[i]?.getD 0 = l[i] := by simp [hz]
@@ -629,9 +630,9 @@ theorem memSortOuterBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
     simp [envLookup, show ("i" : String) ≠ "j" by decide]
   -- Bubble down from `j = i`.
   obtain ⟨ρ₂, m₂, hloop, ha₂raw, hmem₂raw, hi₂raw⟩ :=
-    memSortInnerWhile_correct F
+    memSortInnerWhile_correct N F
       ((("j", .u64 (BitVec.ofNat 64 i)) :: ρ)) m π l l i l[i]
-      ha₁ hj₁ hlen hi3 hz rfl hF hlay hmem
+      ha₁ hj₁ hlen hN64 hiN hz rfl hF hlay hmem
   have hi₂' : envLookup ρ₂ "i" = some (.u64 (BitVec.ofNat 64 i)) := by
     rw [hi₂raw, hi₁]
     exact hi
@@ -647,7 +648,7 @@ theorem memSortOuterBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
     intro w hw
     rw [hdrop] at hw
     simp at hw
-  have hbub := bubbleDown_eq_outerListStep 4 l i l i l[i] hlen (by omega)
+  have hbub := bubbleDown_eq_outerListStep N l i l i l[i] hlen hiN
     hsorted hlen (Nat.le_refl i) hz rfl hslice hmid
   have ha₂ : envLookup ρ₂ "a" =
       some (.arr32 (outerListStep l i (l[i]?.getD 0))) := by
@@ -705,7 +706,7 @@ theorem memSortOuterBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
       (i + 1)).Pairwise (fun a b => b.ult a = false) := by
     rw [hstep_eq, htakeN]
     exact pairwise_insertU32_sorted _ _ hsorted
-  have hnew_len : (outerListStep l i (l[i]?.getD 0)).length = 4 := by
+  have hnew_len : (outerListStep l i (l[i]?.getD 0)).length = N := by
     rw [hstep_eq, List.length_append, insertU32_length,
       take_length_eq _ _ (by omega), List.length_drop, hlen]
     omega
@@ -720,105 +721,90 @@ theorem memSortOuterBody_step (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
 /-- Outer-loop correctness on the memory side: pass `i` bubbles
     `l[i]` into the sorted prefix with the block following, and the
     IH runs the remaining passes. Same fuel bound as the value side. -/
-theorem memSortOuterWhile_correct (F : Nat) (ρ : Env) (m : Mem)
+theorem memSortOuterWhile_correct (N : Nat) (F : Nat) (ρ : Env) (m : Mem)
     (π : Layout) (l : List (BitVec 32)) (i : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i)))
-    (hlen : l.length = 4) (hi1 : 1 ≤ i) (hi4 : i ≤ 4)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hi1 : 1 ≤ i) (hiN : i ≤ N)
     (hsorted : (l.take i).Pairwise (fun a b => b.ult a = false))
-    (hF : (4 - i) + 4 ≤ F)
+    (hF : (N - i) + N ≤ F)
     (hlay : layoutLookup π "a" = some (0, 0))
     (hmem : memFind m 0 = some ⟨0, true, l⟩) :
-    ∃ ρ' m', memEvalStmtFuel F (sortOuterWhile 4) ρ m π =
+    ∃ ρ' m', memEvalStmtFuel F (sortOuterWhile N) ρ m π =
         .ok ((ρ', m', π), .fellThrough) ∧
-      envLookup ρ' "a" = some (.arr32 (outerListAux 4 l i (4 - i))) ∧
-      memFind m' 0 = some ⟨0, true, outerListAux 4 l i (4 - i)⟩ ∧
-      envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 4)) := by
-  refine Nat.rec
-    (motive := fun F => ∀ (ρ : Env) (m : Mem) (π : Layout)
-      (l : List (BitVec 32)) (i : Nat)
-      (ha : envLookup ρ "a" = some (.arr32 l))
-      (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i)))
-      (hlen : l.length = 4) (hi1 : 1 ≤ i) (hi4 : i ≤ 4)
-      (hsorted : (l.take i).Pairwise (fun a b => b.ult a = false))
-      (hF : (4 - i) + 4 ≤ F)
-      (hlay : layoutLookup π "a" = some (0, 0))
-      (hmem : memFind m 0 = some ⟨0, true, l⟩),
-      ∃ ρ' m', memEvalStmtFuel F (sortOuterWhile 4) ρ m π =
-          .ok ((ρ', m', π), .fellThrough) ∧
-        envLookup ρ' "a" = some (.arr32 (outerListAux 4 l i (4 - i))) ∧
-        memFind m' 0 = some ⟨0, true, outerListAux 4 l i (4 - i)⟩ ∧
-        envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 4)))
-    ?_ ?_ F ρ m π l i ha hi hlen hi1 hi4 hsorted hF hlay hmem
-  · intro ρ m π l i ha hi hlen hi1 hi4 hsorted hF hlay hmem
-    have h0 : (4 - i) + 4 ≤ 0 := hF
-    exact (Nat.not_succ_le_zero _ h0).elim
-  · intro F ih ρ m π l i ha hi hlen hi1 hi4 hsorted hF hlay hmem
+      envLookup ρ' "a" = some (.arr32 (outerListAux N l i (N - i))) ∧
+      memFind m' 0 = some ⟨0, true, outerListAux N l i (N - i)⟩ ∧
+      envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 N)) := by
+  induction F generalizing ρ m π l i ha hi hlen hN64 hi1 hiN hsorted hlay hmem with
+  | zero =>
+    have h0 : (N - i) + N ≤ 0 := hF
+    have hcontra : False := by omega
+    exact hcontra.elim
+  | succ F ih =>
     have hi64 : i < 2 ^ 64 := by omega
-    have hcond := memSortOuterCond_eval ρ m π i hi
-    by_cases hi4' : i < 4
+    have hcond := memSortOuterCond_eval N ρ m π i hN64 hi
+    by_cases hiN' : i < N
     · -- Pass `i`: body, then the remaining passes below.
-      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 4) = true := by
-        rw [ofNat64_ult i _ hi64, ofNat64_toNat 4 (by decide : 4 < 2 ^ 64)]
-        exact decide_eq_true hi4'
+      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 N) = true := by
+        rw [ofNat64_ult i _ hi64, ofNat64_toNat N hN64]
+        exact decide_eq_true hiN'
       rw [hc] at hcond
       obtain ⟨ρ₂, m₂, hbody, ha₂, hi₂, hmem₂, hsorted₂, hlen₂⟩ :=
-        memSortOuterBody_step F ρ m π l i ha hi hlen (by omega)
+        memSortOuterBody_step N F ρ m π l i ha hi hlen hN64 (by omega)
           hsorted (by omega) hlay hmem
-      have hstep : memEvalStmtFuel (F + 1) (sortOuterWhile 4) ρ m π =
-          memEvalStmtFuel F (sortOuterWhile 4) ρ₂ m₂ π := by
+      have hstep : memEvalStmtFuel (F + 1) (sortOuterWhile N) ρ m π =
+          memEvalStmtFuel F (sortOuterWhile N) ρ₂ m₂ π := by
         simp [sortOuterWhile, memEvalStmtFuel, memEvalSuccHandler,
           memEvalStmtWith, hcond, hbody]
       rw [hstep]
-      have hfuel : 4 - i = (3 - i) + 1 := by omega
-      have hF' : (4 - (i + 1)) + 4 ≤ F := by omega
+      have hfuel : N - i = (N - (i + 1)) + 1 := by omega
+      have hF' : (N - (i + 1)) + N ≤ F := by omega
       obtain ⟨ρ', m', hloop, ha', hmem', hi'⟩ :=
-        ih ρ₂ m₂ π _ (i + 1) ha₂ hi₂ hlen₂ (by omega) (by omega)
+        ih ρ₂ m₂ π _ (i + 1) ha₂ hi₂ hlen₂ hN64 (by omega) (by omega)
           hsorted₂ hF' hlay hmem₂
       -- The loop head equals the pure unfold.
-      have haux : outerListAux 4 l i (4 - i) = outerListAux 4
-          (outerListStep l i (l[i]?.getD 0)) (i + 1) (4 - (i + 1)) := by
-        rw [hfuel, outerListAux_succ, if_pos hi4']
-        have heq : 4 - (i + 1) = 3 - i := by omega
-        rw [heq]
+      have haux : outerListAux N l i (N - i) = outerListAux N
+          (outerListStep l i (l[i]?.getD 0)) (i + 1) (N - (i + 1)) := by
+        rw [hfuel, outerListAux_succ, if_pos hiN']
       refine ⟨ρ', m', hloop, ?_, ?_, hi'⟩
       · rw [haux]
         exact ha'
       · rw [haux]
         exact hmem'
-    · -- Exit at `i = 4`: no passes remain.
-      have hi4eq : i = 4 := by omega
-      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 4) = false := by
-        rw [ofNat64_ult i _ hi64, ofNat64_toNat 4 (by decide : 4 < 2 ^ 64),
-          hi4eq]
-        decide
+    · -- Exit at `i = N`: no passes remain.
+      have hiNeq : i = N := by omega
+      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 N) = false := by
+        rw [ofNat64_ult i _ hi64, ofNat64_toNat N hN64, hiNeq]
+        simp
       rw [hc] at hcond
-      have hexit : memEvalStmtFuel (F + 1) (sortOuterWhile 4) ρ m π =
+      have hexit : memEvalStmtFuel (F + 1) (sortOuterWhile N) ρ m π =
           .ok ((ρ, m, π), .fellThrough) := by
         simp [sortOuterWhile, memEvalStmtFuel, memEvalSuccHandler,
           memEvalStmtWith, hcond]
-      rw [hexit]
-      subst hi4eq
-      have hemp : outerListAux 4 l 4 (4 - 4) = l := rfl
+      rw [hexit, hiNeq]
+      have hemp : outerListAux N l N (N - N) = l := by
+        rw [Nat.sub_self, outerListAux_zero]
       refine ⟨ρ, m, rfl, ?_, ?_, ?_⟩
       · rw [hemp]
         exact ha
       · rw [hemp]
         exact hmem
-      · exact hi
+      · rw [← hiNeq]
+        exact hi
 
 /-! ## Whole-function correctness (fuel-generalized, then transfer) -/
 
 /-- `memEval` for `insertion_sort` at any fuel covering the passes
     (mirrors `evalFuncFuel_insertionSort`; the block rides alongside
     and ends holding the sorted words). -/
-theorem memEvalFuncFuel_insertionSort (F : Nat) (l : List (BitVec 32))
-    (hlen : l.length = 4) (hF : 7 ≤ F) :
-    memEvalFuncFuel F (insertionSortFunc 4) [.arr32 l] = insertionSortFwd l := by
-  have hb : bindMemArgs (insertionSortFunc 4).args [.arr32 l] emptyMem =
+theorem memEvalFuncFuel_insertionSort (N : Nat) (F : Nat) (l : List (BitVec 32))
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (h1N : 1 ≤ N)
+    (hF : (N - 1) + N ≤ F) :
+    memEvalFuncFuel F (insertionSortFunc N) [.arr32 l] = insertionSortFwd l := by
+  have hb : bindMemArgs (insertionSortFunc N).args [.arr32 l] emptyMem =
       some ([("a", .arr32 l)],
         ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) :=
-    bindMemArgs_insertionSort l
+    bindMemArgs_insertionSort N l
   have hlay : layoutLookup [("a", 0, 0)] "a" = some (0, 0) := by
     simp [layoutLookup]
   have hmem : memFind ⟨1, [(0, ⟨0, true, l⟩)], []⟩ 0 =
@@ -850,37 +836,37 @@ theorem memEvalFuncFuel_insertionSort (F : Nat) (l : List (BitVec 32))
       some (.u64 (BitVec.ofNat 64 1)) := by
     simp [envLookup]
   obtain ⟨ρ₂, m₂, hloop, ha₂, hmem₂, hi₂⟩ :=
-    memSortOuterWhile_correct F
+    memSortOuterWhile_correct N F
       ((("i", .u64 (BitVec.ofNat 64 1)) :: ("a", .arr32 l) :: []))
       ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] l 1
-      ha₁ hi₁ hlen (by decide : 1 ≤ 1) (by decide : 1 ≤ 4)
-      (pairwise_take_one l (by omega)) (by omega : (4 - 1) + 4 ≤ F)
+      ha₁ hi₁ hlen hN64 (by decide : 1 ≤ 1) h1N
+      (pairwise_take_one l (by omega)) hF
       hlay hmem
   have e_ret : memEvalExpr (.var "a") ρ₂ m₂ [("a", 0, 0)] =
       evalExpr (.var "a") ρ₂ :=
     memEvalExpr_var _ _ _ _
   have ve_ret : evalExpr (.var "a") ρ₂ =
-      .ok (.arr32 (outerListAux 4 l 1 (4 - 1))) :=
+      .ok (.arr32 (outerListAux N l 1 (N - 1))) :=
     evalExpr_var_hit _ _ _ ha₂
   have hret : memEvalStmtFuel F (.return_ (.var "a")) ρ₂ m₂
       [("a", 0, 0)] =
       .ok ((ρ₂, m₂, [("a", 0, 0)]),
-        .returned (.arr32 (outerListAux 4 l 1 (4 - 1)))) :=
+        .returned (.arr32 (outerListAux N l 1 (N - 1)))) :=
     memEvalStmtFuel_return F _ _ _ _ _ e_ret ve_ret
-  have hbody : memEvalStmtFuel F (insertionSortFunc 4).body [("a", .arr32 l)]
+  have hbody : memEvalStmtFuel F (insertionSortFunc N).body [("a", .arr32 l)]
       ⟨1, [(0, ⟨0, true, l⟩)], []⟩ [("a", 0, 0)] =
       .ok ((ρ₂, m₂, [("a", 0, 0)]),
-        .returned (.arr32 (outerListAux 4 l 1 (4 - 1)))) := by
+        .returned (.arr32 (outerListAux N l 1 (N - 1)))) := by
     rw [insertionSortFunc_body]
     rw [memEvalStmtFuel_seq_fallthrough F _ _ _ _ _ _ _ _ s1,
       memEvalStmtFuel_seq_fallthrough F _ _ _ _ _ _ _ _ hloop]
     exact hret
-  have hfunc : memEvalFuncFuel F (insertionSortFunc 4) [.arr32 l] =
-      .ok (.arr32 (outerListAux 4 l 1 (4 - 1))) := by
+  have hfunc : memEvalFuncFuel F (insertionSortFunc N) [.arr32 l] =
+      .ok (.arr32 (outerListAux N l 1 (N - 1))) := by
     simp [memEvalFuncFuel, hb, hbody]
   -- The loop result is the insertion fold.
-  have hsorted_eq : outerListAux 4 l 1 (4 - 1) = insertionSortList l := by
-    have h := outerListAux_sortL 4 l 1 (4 - 1) hlen (by omega)
+  have hsorted_eq : outerListAux N l 1 (N - 1) = insertionSortList l := by
+    have h := outerListAux_sortL N l 1 (N - 1) hlen (by omega)
     rw [h]
     exact sortL_take_one_drop_one l (by omega)
   rw [hsorted_eq] at hfunc
@@ -888,10 +874,11 @@ theorem memEvalFuncFuel_insertionSort (F : Nat) (l : List (BitVec 32))
 
 /-- Transfer for `insertion_sort`: both sides equal `insertionSortFwd`
     (the block discipline is invisible at the value level). -/
-theorem memTransfer_insertionSort (F : Nat) (l : List (BitVec 32))
-    (hlen : l.length = 4) (hF : 7 ≤ F)
-    (_h : oracleNoalias (insertionSortFunc 4) [.arr32 l]) :
-    memEvalFuncFuel F (insertionSortFunc 4) [.arr32 l] =
-      evalFuncFuel F (insertionSortFunc 4) [.arr32 l] := by
-  rw [memEvalFuncFuel_insertionSort F l hlen hF,
-    evalFuncFuel_insertionSort 4 F l hlen (by decide) (by decide) (by omega)]
+theorem memTransfer_insertionSort (N : Nat) (F : Nat) (l : List (BitVec 32))
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (h1N : 1 ≤ N)
+    (hF : (N - 1) + N ≤ F)
+    (_h : oracleNoalias (insertionSortFunc N) [.arr32 l]) :
+    memEvalFuncFuel F (insertionSortFunc N) [.arr32 l] =
+      evalFuncFuel F (insertionSortFunc N) [.arr32 l] := by
+  rw [memEvalFuncFuel_insertionSort N F l hlen hN64 h1N hF,
+    evalFuncFuel_insertionSort N F l hlen hN64 h1N hF]

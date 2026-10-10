@@ -272,12 +272,12 @@ theorem oracleNoalias_arraySum (a b c d : BitVec 32) :
 
 /-! ## N9 `insertion_sort` footprints: single block, mutated in place -/
 
-/-- `insertion_sort` binding pins the 4-word array (single block;
+/-- `insertion_sort` binding pins the `N`-word array (single block;
     `bindMemArgs` allocates by value shape, so the `mutBorrow` role
     binds exactly like the `sharedBorrow` reads). -/
-theorem bindMemArgs_insertionSort (l : List (BitVec 32)) :
+theorem bindMemArgs_insertionSort (N : Nat) (l : List (BitVec 32)) :
     bindMemArgs
-      [{ name := "a", ty := .array (.u 32) 4, role := .mutBorrow 0 }]
+      [{ name := "a", ty := .array (.u 32) N, role := .mutBorrow 0 }]
       [.arr32 l] emptyMem =
       some ([("a", .arr32 l)],
         ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
@@ -286,15 +286,15 @@ theorem bindMemArgs_insertionSort (l : List (BitVec 32)) :
 /-- `insertion_sort` footprints are a singleton (trivially disjoint;
     a single `&mut` array is containment — no second reference can
     collide). -/
-theorem oracleNoalias_insertionSort (l : List (BitVec 32)) :
-    oracleNoalias (insertionSortFunc 4) [.arr32 l] := by
-  have hb : bindMemArgs (insertionSortFunc 4).args [.arr32 l] emptyMem =
+theorem oracleNoalias_insertionSort (N : Nat) (l : List (BitVec 32)) :
+    oracleNoalias (insertionSortFunc N) [.arr32 l] := by
+  have hb : bindMemArgs (insertionSortFunc N).args [.arr32 l] emptyMem =
       some ([("a", .arr32 l)],
         ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
     show bindMemArgs
-      [{ name := "a", ty := .array (.u 32) 4, role := .mutBorrow 0 }]
+      [{ name := "a", ty := .array (.u 32) N, role := .mutBorrow 0 }]
       [.arr32 l] emptyMem = _
-    exact bindMemArgs_insertionSort l
+    exact bindMemArgs_insertionSort N l
   have hn : LayoutNoAlias [("a", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
