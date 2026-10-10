@@ -41,6 +41,7 @@ import DiffSort
 import DiffView
 import DiffWidth
 import DiffXorN
+import DiffQr
 import GoldenAcc
 import GoldenAliasProbe
 import GoldenArray
@@ -160,6 +161,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/shl_u32.c", "tests/diff/driver_shl_u32.c"], bin "circe_shl_u32_native"),
    ("cc", ["tests/c/shr_u32.c", "tests/diff/driver_shr_u32.c"], bin "circe_shr_u32_native"),
    ("cc", ["tests/c/xor_n.c", "tests/diff/driver_xor_n.c"], bin "circe_xor_n_native"),
+   ("cc", ["tests/diff/driver_qr.c"], bin "circe_qr_native"),
    ("cc", ["tests/c/vec_alloc.c", "tests/diff/driver_vec.c"], bin "circe_vec_native"),
    ("cc", ["tests/c/vec_copy_sum.c", "tests/diff/driver_veccopy.c"], bin "circe_vec2_native"),
    ("cc", ["tests/c/vec_alloc_u64.c", "tests/diff/driver_vec64.c"], bin "circe_vec64_native"),
@@ -541,6 +543,17 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Emit/SpecStubs.lean", "def emitXorNSpecText"),
      ("Circe/Validator/Gate.lean", "def isXorNShape"),
      ("Circe/Validator/Gate.lean", "def isU32PtrNoalias")]),
+   ("k3-qr",
+    [("Circe/Crypto/Qr.lean", "theorem qrStep_kat"),
+     ("Circe/Crypto/Qr.lean", "theorem qrStep_zero"),
+     ("Circe/Crypto/Qr.lean", "theorem rotlU32_shl"),
+     ("Circe/Crypto/Qr.lean", "theorem rotlU32_shr"),
+     ("Circe/Crypto/Qr.lean", "theorem qrAt_length"),
+     ("Circe/Crypto/Qr.lean", "theorem qrAt_other"),
+     ("Circe/Crypto/Qr.lean", "theorem qrAt_kat"),
+     ("Circe/Crypto/Qr.lean", "0x5881c4bb"),
+     ("tests/lean/DiffQr.lean", "DIFFQR-OK"),
+     ("tests/diff/driver_qr.c", "test-only scaffolding")]),
    ("n6b-switch",
     [("out/ClsFall.lean", "else if x == 1 then .ok 10"),
      ("out/ClsDense.lean", "else if x == 7 then .ok 70"),
@@ -1245,7 +1258,8 @@ def diffSuites (trials : String) : List Job :=
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
    ("diff-sort", DiffSort.main [trials]),
-   ("diff-xorn", DiffXorN.main [bin "circe_xor_n_native", trials])]
+   ("diff-xorn", DiffXorN.main [bin "circe_xor_n_native", trials]),
+   ("diff-qr", DiffQr.main [bin "circe_qr_native", trials])]
 
 def checkSuites : List Job :=
   [("golden-phase4", GoldenPhase4.main),
@@ -1288,7 +1302,7 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
-   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",

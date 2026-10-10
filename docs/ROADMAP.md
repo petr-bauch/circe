@@ -89,7 +89,8 @@ agreement plus RFC 8439 known-answer vectors. Staged: K1 `u32`
 bitwise leaves — DONE (`DELIVERED.md`); K2 buffer entries
 (`mutBorrow` out-param + `sharedBorrow` in-params, tag-erased
 buffer-result rendering, directed + fuzz KAT oracle leg) —
-DONE (`DELIVERED.md`); K3
+DONE (`DELIVERED.md`); K3 quarter-round-as-fold + QR KAT —
+DONE (`DELIVERED.md`); K4
 quarter-round-as-fold + QR KAT; K4 full block vs §2.3.2 KAT
 (single-`&mut` state containment, no oracle change — the quarter
 round is inlined because a 4-writer QR leaf could never pass the

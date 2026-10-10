@@ -661,3 +661,20 @@ leg, directed edges, past-`u32` length legs, fuzz vs the native
 driver) + `GoldenXorN` (pipeline-vs-golden + 5 containment
 rejections) ride the driver roster; spec stubs grow 105 → 106.
 - Acceptance: 467 jobs TEST-OK, CHECK-OK.
+
+### K3. Quarter-round fold + QR KAT — DONE (2026-10-10)
+
+Pure-Lean ChaCha20 quarter-round spec for K4 to verify against
+(no C corpus, no gate admission — by design, see SUBSET 28d).
+New `Circe/Crypto/Qr.lean`: `rotlU32` with K1-leaf bridges,
+`qrStep` (RFC 8439 §2.1), `qrAt` state applier with
+length/untouched lemmas. The §2.1.1 vector
+(`11111111/01020304/9b8d6f43/01234567` →
+`ea2a92f4/cb1cf8ce/4581472e/5881c4bb`) is pinned by `decide` in
+the library and cross-checked two independent ways before
+check-in (6+ web sources agree; a from-pseudocode Python
+implementation reproduces it — this caught a wrong `d` word from
+memory, `...c925` vs `...c4bb`). `DiffQr` (KAT + zero + 1000
+fuzz trials vs the test-only native driver) rides the roster
+with a `k3-qr` content suite; no gate/validator/golden changes.
+- Acceptance: 469 jobs TEST-OK, CHECK-OK.

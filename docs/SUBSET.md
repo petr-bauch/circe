@@ -620,6 +620,22 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     agreement, native on in-range trials incl. garbage-out
     overwrite and partial prefixes, Lean-Lean `OOB` + past-`u32`
     lengths).
+28d. Quarter-round fold (K3, pure spec — no corpus, no admission):
+    a 4-writer QR leaf could never pass the 2+-pointer pair
+    check, so the quarter round is only ever inlined (K4 inlines
+    it into the block function) and K3 pins the fold K4 verifies
+    against. `rotlU32` composes the shifts explicitly (rotl stays
+    unadmitted — the `rotl_u32` reject row) grounded in the
+    verified K1 shift leaves (`rotlU32_shl` / `rotlU32_shr`
+    ok-projections at the fixed amounts 16/12/8/7); `qrStep` is
+    the RFC 8439 §2.1 four-line macro over wrapping `+`
+    (total — unsigned wrap is well-defined in C); `qrAt` applies
+    it to a state vector (length preserved, outside words
+    untouched). The §2.1.1 vector is pinned by computation in the
+    library (`qrStep_kat`, plus the zero round and the `qrAt`
+    composition check) and by the `DiffQr` KAT leg (fold vs the
+    test-only native QR in `tests/diff/driver_qr.c`, which is
+    scaffolding — never corpus — plus fuzz trials).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +
