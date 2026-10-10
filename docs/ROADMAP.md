@@ -59,6 +59,27 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   the migration seam? Deliverable is a spike report, not a
   migration — no commitment until a concrete slice needs
   framing beyond equational specs.
+- Alias-oracle boundary evidence (A-track probe,
+  `tests/lean/GoldenAliasProbe.lean`, `GOLDENALIASPROBE-OK` 12:
+  2 admit controls + 10 reject rows over real CIRGen corpus in
+  `tests/cpp/alias_*.cpp`). Decision procedure pinned:
+  rule-1 param check → verdict gate → pair check → shape arms.
+  Findings: a `noalias` verdict confirms `__restrict__` attr
+  claims but never substitutes for missing attr text (plain
+  pair rejects identically under `unknown` and `noalias`);
+  two `noalias` readers still reject at the pair check (no
+  multi-reader `Func` admitted); triple-param cases
+  (`reborrow`, `cond`, `readonly_pair`, free `incr_ref`) pass
+  the oracle vacuously and reject at the shape gate — lexical
+  death and conditional liveness are invisible without
+  lifetime markers. Zero false-accepts. Residue routing: (i)
+  conditionally-live writers (`alias_cond`) are the one case
+  needing framing beyond equational specs — first concrete
+  Iris-spike input; (ii) sequential reborrows (`alias_reborrow`)
+  want an L-track consumer (scope-death evidence over L1);
+  (iii) `noalias` reader pairs, closed two-alloca shapes, and
+  free single-`&mut` writers are shape admissions (cheap-rule
+  candidates), not oracle or Iris problems.
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)
 

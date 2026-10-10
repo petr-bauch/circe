@@ -41,6 +41,7 @@ import DiffSort
 import DiffView
 import DiffWidth
 import GoldenAcc
+import GoldenAliasProbe
 import GoldenArray
 import GoldenArraySort
 import GoldenArraySort8
@@ -1208,6 +1209,7 @@ def checkSuites : List Job :=
    ("golden-array", GoldenArray.main),
    ("golden-arraysort", GoldenArraySort.main),
    ("golden-arraysort8", GoldenArraySort8.main),
+   ("golden-aliasprobe", GoldenAliasProbe.main),
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
    ("golden-view", GoldenView.main),
@@ -1229,7 +1231,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=

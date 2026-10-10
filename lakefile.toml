@@ -20,7 +20,7 @@ name = "Circe"
 [[lean_lib]]
 name = "Suites"
 srcDir = "tests/lean"
-roots = ["DerivedNoalias","DiffAcc","DiffArith","DiffArray","DiffBox","DiffCalls","DiffFlow","DiffMethod","DiffMove","DiffNorestrict","DiffOptional","DiffOverload","DiffPhase3","DiffPhase4","DiffStruct","DiffSpan","DiffTadd","DiffVec","DiffVec2","DiffVec64","DiffVecLeak","DiffVecRealloc","DiffVecRead","DiffReserve","DiffInsert","DiffErase","DiffSort","DiffView","DiffWidth","GoldenAcc","GoldenArray","GoldenBox","GoldenCalls","GoldenFlow","GoldenFreeDiscipline","GoldenM2Setup","GoldenMethod","GoldenMove","GoldenArraySort","GoldenArraySort8","GoldenOptional","GoldenOverload","GoldenPhase4","GoldenPhase6","GoldenPhase7","GoldenReadOnly","GoldenRejectCatalog","GoldenSpan","GoldenStruct","GoldenTadd","GoldenVec2","GoldenVec64","GoldenVecRealloc","GoldenVecRead","GoldenVecGrow","GoldenView","GoldenWidth","ScopeReport"]
+roots = ["DerivedNoalias","DiffAcc","DiffArith","DiffArray","DiffBox","DiffCalls","DiffFlow","DiffMethod","DiffMove","DiffNorestrict","DiffOptional","DiffOverload","DiffPhase3","DiffPhase4","DiffStruct","DiffSpan","DiffTadd","DiffVec","DiffVec2","DiffVec64","DiffVecLeak","DiffVecRealloc","DiffVecRead","DiffReserve","DiffInsert","DiffErase","DiffSort","DiffView","DiffWidth","GoldenAcc","GoldenArray","GoldenBox","GoldenCalls","GoldenFlow","GoldenFreeDiscipline","GoldenM2Setup","GoldenMethod","GoldenMove","GoldenArraySort","GoldenArraySort8","GoldenAliasProbe","GoldenOptional","GoldenOverload","GoldenPhase4","GoldenPhase6","GoldenPhase7","GoldenReadOnly","GoldenRejectCatalog","GoldenSpan","GoldenStruct","GoldenTadd","GoldenVec2","GoldenVec64","GoldenVecRealloc","GoldenVecRead","GoldenVecGrow","GoldenView","GoldenWidth","ScopeReport"]
 
 [[lean_exe]]
 name = "circe-test"
