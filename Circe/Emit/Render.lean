@@ -286,10 +286,10 @@ def emitArrayAtU32Text (name : String) : String :=
     over the array (the tag-erased `insertionSortFwd`). The helpers
     are emitted inline under the entry-name prefix so the file stays
     self-contained (house style: cf. the `arrayAt` inlining above). -/
-def emitInsertionSortText (name : String) : String :=
+def emitInsertionSortText (name : String) (n : Nat) : String :=
   emitHeader
   ++ "\nimport Circe.Base\n\n"
-  ++ s!"/-- Pure translation of `{name}` (insertion sort over the 4-word `u32` array). -/\n"
+  ++ s!"/-- Pure translation of `{name}` (insertion sort over the {n}-word `u32` array). -/\n"
   ++ s!"def {name}_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
   ++ "  | [] => [x]\n"
   ++ s!"  | y :: ys => if x.ult y then x :: y :: ys else y :: {name}_insert x ys\n"
@@ -299,14 +299,15 @@ def emitInsertionSortText (name : String) : String :=
   ++ s!"def {name}_fwd (a : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
   ++ s!"  .ok ({name}_sort a)\n"
 
-/-- Render the `array_sort_sum` entry forward definition: sort
-    `[3, 1, 2, 0]`, add the four words (wrapping; the tag-erased
-    `arraySortSumEntryFwd`). Helpers inlined under the entry-name
-    prefix, cf. `emitInsertionSortText`. -/
-def emitArraySortSumText (name : String) : String :=
+/-- Render an `array_sort_sum`-shaped entry forward definition: sort
+    `initDoc`, add the words (wrapping; the tag-erased entry forward).
+    Helpers inlined under the entry-name prefix, cf.
+    `emitInsertionSortText`. `initDoc`/`addWord` come from the
+    validated entry init (call site projects them from the `Func`). -/
+def emitArraySortSumText (name initDoc addWord : String) : String :=
   emitHeader
   ++ "\nimport Circe.Base\n\n"
-  ++ s!"/-- Pure translation of `{name}` (sort `[3, 1, 2, 0]`, three wrapping adds). -/\n"
+  ++ s!"/-- Pure translation of `{name}` (sort `{initDoc}`, {addWord} wrapping adds). -/\n"
   ++ s!"def {name}_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
   ++ "  | [] => [x]\n"
   ++ s!"  | y :: ys => if x.ult y then x :: y :: ys else y :: {name}_insert x ys\n"
@@ -314,7 +315,7 @@ def emitArraySortSumText (name : String) : String :=
   ++ "  | [] => []\n"
   ++ s!"  | x :: xs => {name}_insert x ({name}_sort xs)\n"
   ++ s!"def {name}_fwd : Result (BitVec 32) :=\n"
-  ++ s!"  .ok ((({name}_sort [3, 1, 2, 0]).foldl (· + ·) 0))\n"
+  ++ s!"  .ok ((({name}_sort {initDoc}).foldl (· + ·) 0))\n"
 
 /-- Render the `_M_is_engaged` leaf forward definition: the engaged
     bit of the optional (the tag-erased `optHasFwd`, value tags

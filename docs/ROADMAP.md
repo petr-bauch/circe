@@ -14,8 +14,9 @@ range-for — the one range-for shape admitted so far — plus
 `reserve`/`insert`/`erase` composers over the admitted N4d
 `vector<int>` core); N8 (proof scale-down: closed-entry evals
 collapsed behind `cir_eval_closed`); N9 (insertion-sort case study
-over `std::array<uint32_t,4>`: corpus → gate → forward-as-fold →
-transfer → Sorted/Permutation spec → `DiffSort` fuzz; 425 jobs
+over `std::array<uint32_t,4>` + the N=8 second monomorph:
+corpus → gate → forward-as-fold →
+transfer → Sorted/Permutation spec → `DiffSort` fuzz; 444 jobs
 TEST-OK, CHECK-OK). Delivered milestones moved to `DELIVERED.md`.
 The active remainder is the Iris spike (report, not migration) and
 the lifetime-evidence track (L1 extract-only delivered; no

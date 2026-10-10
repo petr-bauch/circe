@@ -596,7 +596,17 @@ so the oracle needs no Iris.
   LCG trials, `DIFFSORT-OK`); no native leg — the C++ entry
   prints only the permutation-invariant sum, so sortedness is
   pinned by the spec oracle here.
-- Acceptance: 425 jobs TEST-OK, CHECK-OK.
+- N9b second monomorph (`std::array<uint32_t,8>`): new corpus
+  (`tests/cpp/array_sort_sum8.cpp` + `.cir`; the entry sorts
+  `{3, 1, 2, 0, 7, 5, 6, 4}` and returns `28`); new shapes
+  (`isArrayAtU32_8Shape`, `isInsertionSort8Shape`,
+  `isArraySortSum8Shape`) sharing the N=4 op-count cores; the
+  closed entry computes `28` at fuel 15
+  (`evalProgFunc_arraySortSum8Entry`); no new proofs — the
+  N-parametric value + mem theorems already cover N=8.
+  `GOLDENARRAYSORT8-OK` 7, the N=8 `DiffSort` leg (8 edges + 1000
+  LCG trials), 3 N=8 reject probes.
+- Acceptance: 444 jobs TEST-OK, CHECK-OK.
 
 ### N10. Per-family translation homes (`*Fwd` split) — DONE (2026-10-10)
 

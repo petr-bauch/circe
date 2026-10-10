@@ -23,6 +23,35 @@ import Circe.Emit.Match
 import Circe.Emit.Render
 import Circe.Emit.SpecStubs
 
+/-- Project the array size from a sort func's params. Total: `none`
+    when the shape is unexpected — unreachable after `matchFrag`
+    classified it, and loud at the call sites below. -/
+def sortFuncArraySize? (f : Func) : Option Nat :=
+  match f.args with
+  | [⟨_, .array (.u 32) n, _⟩] => some n
+  | _ => none
+
+/-- Project an entry init from the leading `let a = [..]`. Total:
+    `none` when the shape is unexpected — unreachable after
+    `matchFrag`, and loud at the call sites below. -/
+def entryInit? (f : Func) : Option (List (BitVec 32)) :=
+  match f.body with
+  | .seq (.let_ "a" _ (.lit (.arr32 init))) _ => some init
+  | _ => none
+
+/-- Render init words as `[3, 1, 2, 0]` (decimal `toNat`s, matching the
+    long-standing golden format). -/
+def renderInitWords (init : List (BitVec 32)) : String :=
+  "[" ++ ", ".intercalate (init.map (toString ·.toNat)) ++ "]"
+
+/-- Small number words for docs (`three wrapping adds`). Named sizes
+    stay words (golden-stable); anything else renders numerically
+    (docs only — the code init is always exact). -/
+def numWord : Nat → String
+  | 3 => "three"
+  | 7 => "seven"
+  | n => toString n
+
 /-- The spec emitter: accepted fragment renders to stub text; everything
     else is rejected loudly (never silently modeled). -/
 def emitSpec (f : Func) : Except EmitError String :=
@@ -50,8 +79,15 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .arraySum => .ok (emitArraySumSpecText f.name)
   | some .arrayRefU32 => .ok (emitArrayRefU32SpecText f.name)
   | some .arrayAtU32 => .ok (emitArrayAtU32SpecText f.name)
-  | some .insertionSort => .ok (emitInsertionSortSpecText f.name)
-  | some .arraySortSum => .ok (emitArraySortSumSpecText f.name)
+  | some .insertionSort =>
+    match sortFuncArraySize? f with
+    | some n => .ok (emitInsertionSortSpecText f.name n)
+    | none => .error (.notFragment "insertion_sort: cannot project array size")
+  | some .arraySortSum =>
+    match entryInit? f with
+    | some init => .ok (emitArraySortSumSpecText f.name (renderInitWords init)
+        (init.foldl (· + ·) (BitVec.ofNat 32 0)).toNat)
+    | none => .error (.notFragment "array_sort_sum: cannot project entry init")
   | some .optHas => .ok (emitOptHasSpecText f.name)
   | some .optHasValue => .ok (emitOptHasValueSpecText f.name)
   | some .optGet => .ok (emitOptGetSpecText f.name)
@@ -159,8 +195,15 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .arraySum => .ok ⟨emitArraySumText f.name, none⟩
   | some .arrayRefU32 => .ok ⟨emitArrayRefU32Text f.name, none⟩
   | some .arrayAtU32 => .ok ⟨emitArrayAtU32Text f.name, none⟩
-  | some .insertionSort => .ok ⟨emitInsertionSortText f.name, none⟩
-  | some .arraySortSum => .ok ⟨emitArraySortSumText f.name, none⟩
+  | some .insertionSort =>
+    match sortFuncArraySize? f with
+    | some n => .ok ⟨emitInsertionSortText f.name n, none⟩
+    | none => .error (.notFragment "insertion_sort: cannot project array size")
+  | some .arraySortSum =>
+    match entryInit? f with
+    | some init => .ok ⟨emitArraySortSumText f.name (renderInitWords init)
+        (numWord (init.length - 1)), none⟩
+    | none => .error (.notFragment "array_sort_sum: cannot project entry init")
   | some .optHas => .ok ⟨emitOptHasText f.name, none⟩
   | some .optHasValue => .ok ⟨emitOptHasValueText f.name, none⟩
   | some .optGet => .ok ⟨emitOptGetText f.name, none⟩

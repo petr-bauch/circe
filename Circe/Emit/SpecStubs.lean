@@ -528,10 +528,10 @@ def emitArrayAtU32SpecText (name : String) : String :=
     is the tag-erased `insertionSortFwd` (helpers inlined, cf.
     `emitInsertionSortText`); edges carry ground truth (sorted,
     reverse, duplicates). -/
-def emitInsertionSortSpecText (name : String) : String :=
+def emitInsertionSortSpecText (name : String) (n : Nat) : String :=
   emitSpecHeader
   ++ "\nimport Circe.Base\n\n"
-  ++ s!"/-- C++ signature: `{name}(a)` sorts the 4-word `u32` array in place.\n"
+  ++ s!"/-- C++ signature: `{name}(a)` sorts the {n}-word `u32` array in place.\n"
   ++ s!"    Base body reference: insertion sort itself (cf. emitted `{name}_fwd`,\n"
   ++ s!"    `insertionSortFwd`). -/\n"
   ++ s!"def {name}_spec_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
@@ -553,14 +553,15 @@ def emitInsertionSortSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr (.ok t.2 : Result (List (BitVec 32)))).pretty\n"
 
-/-- Spec stub for the `array_sort_sum` shape (N9 closed entry). The
-    mirror sorts `[3, 1, 2, 0]` and adds the four words (wrapping; the
-    tag-erased `arraySortSumEntryFwd`); the edge carries ground truth
-    (`0 + 1 + 2 + 3 = 6`). -/
-def emitArraySortSumSpecText (name : String) : String :=
+/-- Spec stub for an `array_sort_sum`-shaped closed entry. The mirror
+    sorts `initDoc` and adds the words (wrapping; the tag-erased entry
+    forward); the edge carries ground truth (sorted init sums to `sum`).
+    `initDoc`/`sum` come from the validated entry init (call site
+    projects them from the `Func`). -/
+def emitArraySortSumSpecText (name initDoc : String) (sum : Nat) : String :=
   emitSpecHeader
   ++ "\nimport Circe.Base\n\n"
-  ++ s!"/-- C++ signature: `{name}()` sorts `[3, 1, 2, 0]`, sums the words.\n"
+  ++ s!"/-- C++ signature: `{name}()` sorts `{initDoc}`, sums the words.\n"
   ++ s!"    Base body reference: sort-then-wrapping-add (cf. emitted `{name}_fwd`,\n"
   ++ s!"    `arraySortSumEntryFwd`). -/\n"
   ++ s!"def {name}_spec_insert (x : BitVec 32) : List (BitVec 32) → List (BitVec 32)\n"
@@ -570,11 +571,11 @@ def emitArraySortSumSpecText (name : String) : String :=
   ++ "  | [] => []\n"
   ++ s!"  | x :: xs => {name}_spec_insert x ({name}_spec_sort xs)\n"
   ++ s!"def {name}_spec_fwd : Result (BitVec 32) :=\n"
-  ++ s!"  .ok ((({name}_spec_sort [3, 1, 2, 0]).foldl (· + ·) 0))\n"
+  ++ s!"  .ok ((({name}_spec_sort {initDoc}).foldl (· + ·) 0))\n"
   ++ "\n"
-  ++ s!"/-- Edge cases: the entry input sorts to `[0, 1, 2, 3]`, sums to `6`. -/\n"
+  ++ s!"/-- Edge cases: the entry input sorts to `{initDoc}`, sums to `{sum}`. -/\n"
   ++ s!"def {name}_spec_edges : List (Result (BitVec 32)) :=\n"
-  ++ "  [.ok 6]\n"
+  ++ s!"  [.ok {sum}]\n"
   ++ "\n"
   ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
   ++ s!"def {name}_spec_check : Bool :=\n"

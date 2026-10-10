@@ -21,6 +21,7 @@ import Circe.Emit.Acc
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.ArraySort
+import Circe.Emit.ArraySort8
 import Circe.Emit.Optional
 import Circe.Emit.Span
 import Circe.Emit.View
@@ -412,14 +413,17 @@ def matchFrag : Func → Option FragKind
          ⟨"n", .u 64, .owned⟩], _,
       .return_ (.idxu "a" (.var "n"))⟩ =>
     some .arrayAtU32
-  | ⟨_, [⟨"a", .array (.u 32) 4, .mutBorrow 0⟩], _, body⟩ =>
+  | ⟨_, [⟨"a", .array (.u 32) sz, .mutBorrow 0⟩], _, body⟩ =>
     -- Sort loop: body matched separately (nested `.seq`/`.while_`
     -- patterns inside `⟨⟩` hit the parser quirk, cf. `arraySum`).
+    -- Size-generic arm: the bound must equal the array size, and the
+    -- size must be admitted (4 | 8 — the gate stays authoritative;
+    -- this is defense in depth).
     match body with
     | .seq (.let_ "i" _ (.lit (.u64 one)))
       (.seq (.while_ (.ult (.var "i") (.lit (.u64 four))) _)
         (.return_ (.var "a"))) =>
-      if one == 1 && four == 4 then
+      if one == 1 && four.toNat == sz && (sz == 4 || sz == 8) then
         some .insertionSort
       else none
     | _ => none
@@ -441,6 +445,33 @@ def matchFrag : Func → Option FragKind
       if l0 == 0 && l1 == 1 && l2 == 2 && l3 == 3 &&
         init == [BitVec.ofNat 32 3, BitVec.ofNat 32 1,
           BitVec.ofNat 32 2, BitVec.ofNat 32 0] then
+        some .arraySortSum
+      else none
+    | .seq (.callProg "s" "_Z15insertion_sort8RSt5arrayIjLm8EE" ["a"])
+      (.seq (.let_ "i0" _ (.lit (.u64 l0)))
+      (.seq (.callRet "e0" "_ZNSt5arrayIjLm8EEixEm" ["s", "i0"])
+      (.seq (.let_ "i1" _ (.lit (.u64 l1)))
+      (.seq (.callRet "e1" "_ZNSt5arrayIjLm8EEixEm" ["s", "i1"])
+      (.seq (.let_ "i2" _ (.lit (.u64 l2)))
+      (.seq (.callRet "e2" "_ZNSt5arrayIjLm8EEixEm" ["s", "i2"])
+      (.seq (.let_ "i3" _ (.lit (.u64 l3)))
+      (.seq (.callRet "e3" "_ZNSt5arrayIjLm8EEixEm" ["s", "i3"])
+      (.seq (.let_ "i4" _ (.lit (.u64 l4)))
+      (.seq (.callRet "e4" "_ZNSt5arrayIjLm8EEixEm" ["s", "i4"])
+      (.seq (.let_ "i5" _ (.lit (.u64 l5)))
+      (.seq (.callRet "e5" "_ZNSt5arrayIjLm8EEixEm" ["s", "i5"])
+      (.seq (.let_ "i6" _ (.lit (.u64 l6)))
+      (.seq (.callRet "e6" "_ZNSt5arrayIjLm8EEixEm" ["s", "i6"])
+      (.seq (.let_ "i7" _ (.lit (.u64 l7)))
+      (.seq (.callRet "e7" "_ZNSt5arrayIjLm8EEixEm" ["s", "i7"])
+             (.return_ (.uadd (.uadd (.uadd (.uadd (.uadd (.uadd
+               (.uadd (.var "e0") (.var "e1")) (.var "e2")) (.var "e3"))
+               (.var "e4")) (.var "e5")) (.var "e6")) (.var "e7"))))))))))))))))))) =>
+      if l0 == 0 && l1 == 1 && l2 == 2 && l3 == 3 &&
+        l4 == 4 && l5 == 5 && l6 == 6 && l7 == 7 &&
+        init == [BitVec.ofNat 32 3, BitVec.ofNat 32 1,
+          BitVec.ofNat 32 2, BitVec.ofNat 32 0, BitVec.ofNat 32 7,
+          BitVec.ofNat 32 5, BitVec.ofNat 32 6, BitVec.ofNat 32 4] then
         some .arraySortSum
       else none
     | _ => none
@@ -1044,6 +1075,8 @@ theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl
 theorem matchFrag_arrayRefU32 : matchFrag arrayRefU32Func = some .arrayRefU32 := rfl
 theorem matchFrag_arrayAtU32 : matchFrag arrayAtU32Func = some .arrayAtU32 := rfl
 theorem matchFrag_insertionSort : matchFrag (insertionSortFunc 4) = some .insertionSort := rfl
+theorem matchFrag_insertionSort8 : matchFrag (insertionSortFunc 8) = some .insertionSort := rfl
+theorem matchFrag_arraySortSum8 : matchFrag arraySortSum8EntryFunc = some .arraySortSum := rfl
 theorem matchFrag_arraySortSum : matchFrag arraySortSumEntryFunc = some .arraySortSum := rfl
 theorem matchFrag_optHas : matchFrag optHasFunc = some .optHas := rfl
 theorem matchFrag_optHasValue : matchFrag optHasValueFunc = some .optHasValue := rfl

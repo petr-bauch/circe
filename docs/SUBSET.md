@@ -672,6 +672,15 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Pinned by `tests/lean/GoldenArraySort.lean` + the
     `diff-sort` differential (Lean-Lean + executable-spec oracle;
     no native leg — the C++ entry prints only the sum).
+    N9b second monomorph (`std::array<uint32_t, 8>`, same
+    per-monomorph rule): the sort-loop op table is shared with N=4
+    (six `operator[]` sites, three `cir.cmp`, three `cir.sub`, one
+    `cir.dec` — only the `Lm8EE` type marker and callee differ);
+    the closed `array_sort_sum8` entry inits `{3, 1, 2, 0, 7, 5, 6,
+    4}` (no `trailing_zeros`), makes nine calls (one sort + eight
+    `operator[]`), and evaluates to the sum (`28`) at fuel 15.
+    Pinned by `tests/lean/GoldenArraySort8.lean` + the N=8
+    `DiffSort` leg.
 
 ## Admitted CIR ops (raw CIRGen shape)
 

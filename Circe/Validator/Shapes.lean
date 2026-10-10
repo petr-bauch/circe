@@ -300,7 +300,8 @@ def isArraySumShape (raw : RawFunc) : Bool :=
     rejection. -/
 def arrayLeafCallees : List String :=
   [arrayRefName, arrayAtName, arrayRefU32Name, arrayAtU32Name,
-    insertionSortName, arraySortSumName]
+    insertionSortName, arraySortSumName, arrayRefU32_8Name,
+    arrayAtU32_8Name, insertionSort8Name, arraySortSum8Name]
 
 /-- Calls a known `std::array` leaf but not with an admitted (name,
     arity, site-count) shape: dedicated rejection naming the admitted
@@ -316,6 +317,12 @@ def callsArrayWrongShape (raw : RawFunc) : Bool :=
     them disjoint, the N4c monomorphization precedent). -/
 def isStdArrayU4Type (t : String) : Bool :=
   containsSubstr t "array" && containsSubstr t "4UL" &&
+    containsSubstr t "unsigned"
+
+/-- The N9b `std::array<unsigned int, 8UL>` object type (second
+    monomorph; each monomorph is its own shape, the N4c precedent). -/
+def isStdArrayU8Type (t : String) : Bool :=
+  containsSubstr t "array" && containsSubstr t "8UL" &&
     containsSubstr t "unsigned"
 
 /-- The u32 `_S_ref` unchecked-index leaf: single `const&` to the raw
@@ -344,21 +351,18 @@ def isArrayRefU32Shape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
-/-- The mutating `operator[]` single-delegation entry: single `&mut`
-    to the `std::array<uint32_t, 4>` object with the single-reference
-    triple, `u64` index, pointer-to-`u32` return, exactly one call site
-    to the u32 `_S_ref` leaf (the `_M_elems` projection + call fuse
-    into the `idxu` read downstream; the store path fuses into
-    `arrSet` instead), one `cir.get_member`, no local indexing or
-    arithmetic. -/
-def isArrayAtU32Shape (raw : RawFunc) : Bool :=
+/-- Shared mutating-`operator[]` single-delegation core (CIRGen emits
+    identical structure for every size; only the array type marker and
+    the `_S_ref` callee differ). -/
+def isArrayAtU32ShapeCore (isArrTy : String → Bool) (refName : String)
+    (raw : RawFunc) : Bool :=
   match raw.params with
   | [a, n] =>
     noBreakContinueSwitch raw.text &&
-    isPtrType a.ctype && a.singleRef && isStdArrayU4Type a.ctype &&
+    isPtrType a.ctype && a.singleRef && isArrTy a.ctype &&
     isU64 n.ctype && !isPtrType n.ctype &&
     (match ptrInner raw.ret with | some inner => isU32 inner | none => false) &&
-    callsFunc raw.text arrayRefU32Name &&
+    callsFunc raw.text refName &&
     opCount raw.text "cir.call @" == 1 &&
     !callsFunc raw.text raw.name &&
     containsSubstr raw.text "cir.get_member" &&
@@ -374,24 +378,33 @@ def isArrayAtU32Shape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_stride"
   | _ => false
 
-/-- The `insertion_sort` loop: single `&mut` to the
-    `std::array<uint32_t, 4>` object with the single-reference triple
-    (exactly one live array — the containment story: no second
-    reference can collide), void return, one `cir.for` (`i in [1,4)`),
-    one `cir.while` (short-circuit `&&` via one `cir.ternary`),
-    exactly six call sites into the mutating `operator[]` (two in the
-    condition, four in the swap), three `cir.cmp` (`lt` bound, `gt`
-    counter, `gt` elements), three `cir.sub` (`j - 1` × 3), one
-    `cir.dec` (fused to `usub`-one downstream), no heap calls, no
-    other control flow. -/
-def isInsertionSortShape (raw : RawFunc) : Bool :=
+/-- The mutating `operator[]` single-delegation entry: single `&mut`
+    to the `std::array<uint32_t, 4>` object with the single-reference
+    triple, `u64` index, pointer-to-`u32` return, exactly one call site
+    to the u32 `_S_ref` leaf (the `_M_elems` projection + call fuse
+    into the `idxu` read downstream; the store path fuses into
+    `arrSet` instead), one `cir.get_member`, no local indexing or
+    arithmetic. -/
+def isArrayAtU32Shape (raw : RawFunc) : Bool :=
+  isArrayAtU32ShapeCore isStdArrayU4Type arrayRefU32Name raw
+
+/-- The N9b 8-word mutating-`operator[]` monomorph (same delegation
+    shape over `std::array<uint32_t, 8>`). -/
+def isArrayAtU32_8Shape (raw : RawFunc) : Bool :=
+  isArrayAtU32ShapeCore isStdArrayU8Type arrayRefU32_8Name raw
+
+/-- Shared `insertion_sort` loop core (verified structurally identical
+    across sizes: per-function op tables match N4↔N8 exactly, only the
+    array type marker and the `operator[]` callee differ). -/
+def isInsertionSortLoopCore (isArrTy : String → Bool) (atName : String)
+    (raw : RawFunc) : Bool :=
   match raw.params with
   | [a] =>
     noBreakContinueSwitch raw.text &&
-    isPtrType a.ctype && a.singleRef && isStdArrayU4Type a.ctype &&
+    isPtrType a.ctype && a.singleRef && isArrTy a.ctype &&
     raw.ret == "" &&
-    callsFunc raw.text arrayAtU32Name &&
-    opCount raw.text ("cir.call @" ++ arrayAtU32Name ++ "(") == 6 &&
+    callsFunc raw.text atName &&
+    opCount raw.text ("cir.call @" ++ atName ++ "(") == 6 &&
     opCount raw.text "cir.call @" == 6 &&
     !callsFunc raw.text raw.name &&
     opCount raw.text "cir.for" == 1 &&
@@ -422,6 +435,24 @@ def isInsertionSortShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.trap"
   | _ => false
 
+/-- The `insertion_sort` loop: single `&mut` to the
+    `std::array<uint32_t, 4>` object with the single-reference triple
+    (exactly one live array — the containment story: no second
+    reference can collide), void return, one `cir.for` (`i in [1,4)`),
+    one `cir.while` (short-circuit `&&` via one `cir.ternary`),
+    exactly six call sites into the mutating `operator[]` (two in the
+    condition, four in the swap), three `cir.cmp` (`lt` bound, `gt`
+    counter, `gt` elements), three `cir.sub` (`j - 1` × 3), one
+    `cir.dec` (fused to `usub`-one downstream), no heap calls, no
+    other control flow. -/
+def isInsertionSortShape (raw : RawFunc) : Bool :=
+  isInsertionSortLoopCore isStdArrayU4Type arrayAtU32Name raw
+
+/-- The N9b 8-word `insertion_sort` monomorph (same loop core over
+    `std::array<uint32_t, 8>`, `i in [1,8)`). -/
+def isInsertionSort8Shape (raw : RawFunc) : Bool :=
+  isInsertionSortLoopCore isStdArrayU8Type arrayAtU32_8Name raw
+
 /-- The `array_sort_sum` closed entry: no params, `u32` return, exactly
     one call into `insertion_sort` plus four into the mutating
     `operator[]`, const-record init (three words +
@@ -448,6 +479,51 @@ def isArraySortSumShape (raw : RawFunc) : Bool :=
     opCount raw.text "cir.alloca" == 2 &&
     opCount raw.text "cir.store" == 2 &&
     opCount raw.text "cir.load" == 5 &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.dec" &&
+    !containsSubstr raw.text "cir.sub" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.cmp"
+  | _ => false
+
+/-- The N9b `array_sort_sum8` closed entry: no params, `u32` return,
+    exactly one call into `insertion_sort8` plus eight into the
+    mutating `operator[]`, const-record init (no `trailing_zeros` —
+    the 8-init `{3,1,2,0,7,5,6,4}` ends in `4`), seven wrapping `u32`
+    adds, no control flow or projection ops of its own. Counts are the
+    exact 4→8 scaling of `isArraySortSumShape` (5→9 calls/loads,
+    11→19 consts, 3→7 adds), read off the captured CIR. -/
+def isArraySortSum8Shape (raw : RawFunc) : Bool :=
+  noBreakContinueSwitch raw.text &&
+  isU32 raw.ret &&
+  match raw.params with
+  | [] =>
+    !callsFunc raw.text raw.name &&
+    callsFunc raw.text insertionSort8Name &&
+    opCount raw.text ("cir.call @" ++ insertionSort8Name ++ "(") == 1 &&
+    callsFunc raw.text arrayAtU32_8Name &&
+    opCount raw.text ("cir.call @" ++ arrayAtU32_8Name ++ "(") == 8 &&
+    opCount raw.text "cir.call @" == 9 &&
+    opCount raw.text "cir.const_record" == 1 &&
+    opCount raw.text "cir.const_array" == 1 &&
+    !containsSubstr raw.text "trailing_zeros" &&
+    opCount raw.text "cir.add" == 7 &&
+    -- `cir.const` is a substring of `cir.const_record`/`cir.const_array`
+    -- above, so this counts 17 plain consts + those 2 lines.
+    opCount raw.text "cir.const" == 19 &&
+    opCount raw.text "cir.alloca" == 2 &&
+    opCount raw.text "cir.store" == 2 &&
+    opCount raw.text "cir.load" == 9 &&
     opCount raw.text "cir.return" == 1 &&
     !containsSubstr raw.text "cir.call @malloc" &&
     !containsSubstr raw.text "cir.call @free(" &&

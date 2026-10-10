@@ -28,6 +28,14 @@ def arrayAtU32Name : String := "_ZNSt5arrayIjLm4EEixEm"
 def insertionSortName : String := "_Z14insertion_sortRSt5arrayIjLm4EE"
 def arraySortSumName : String := "_Z14array_sort_sumv"
 
+/-- Mangled callee names in `tests/cpp/array_sort_sum8.cpp` (the N=8
+    monomorph; each monomorph is its own shape, the N4c precedent). -/
+def arrayRefU32_8Name : String :=
+  "_ZNSt14__array_traitsIjLm8EE6_S_refERA8_Kjm"
+def arrayAtU32_8Name : String := "_ZNSt5arrayIjLm8EEixEm"
+def insertionSort8Name : String := "_Z15insertion_sort8RSt5arrayIjLm8EE"
+def arraySortSum8Name : String := "_Z15array_sort_sum8v"
+
 /-- Canonical CoreIR for the u32 `_S_ref` leaf: unchecked `u64` index
     into the 4-word `u32` array (`cir.get_element`, OOB is UB so the
     model reports `OOB`). -/

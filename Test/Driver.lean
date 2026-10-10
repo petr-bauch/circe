@@ -43,6 +43,7 @@ import DiffWidth
 import GoldenAcc
 import GoldenArray
 import GoldenArraySort
+import GoldenArraySort8
 import GoldenBox
 import GoldenCalls
 import GoldenFlow
@@ -234,6 +235,10 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ArrayAtU32.lean", "out/ArrayAtU32.lean"),
    ("tests/golden/InsertionSort.lean", "out/InsertionSort.lean"),
    ("tests/golden/ArraySortSum.lean", "out/ArraySortSum.lean"),
+   ("tests/golden/ArrayRefU328.lean", "out/ArrayRefU328.lean"),
+   ("tests/golden/ArrayAtU328.lean", "out/ArrayAtU328.lean"),
+   ("tests/golden/InsertionSort8.lean", "out/InsertionSort8.lean"),
+   ("tests/golden/ArraySortSum8.lean", "out/ArraySortSum8.lean"),
    ("tests/golden/OptHas.lean", "out/OptHas.lean"),
    ("tests/golden/OptHasValue.lean", "out/OptHasValue.lean"),
    ("tests/golden/OptGet.lean", "out/OptGet.lean"),
@@ -359,6 +364,10 @@ def emittedTypechecks : List String :=
    "out/ArrayAtU32.lean", "out/ArrayAtU32_Spec.lean",
    "out/InsertionSort.lean", "out/InsertionSort_Spec.lean",
    "out/ArraySortSum.lean", "out/ArraySortSum_Spec.lean",
+   "out/ArrayRefU328.lean", "out/ArrayRefU328_Spec.lean",
+   "out/ArrayAtU328.lean", "out/ArrayAtU328_Spec.lean",
+   "out/InsertionSort8.lean", "out/InsertionSort8_Spec.lean",
+   "out/ArraySortSum8.lean", "out/ArraySortSum8_Spec.lean",
    "out/OptHas.lean", "out/OptHas_Spec.lean",
    "out/OptHasValue.lean", "out/OptHasValue_Spec.lean",
    "out/OptGet.lean", "out/OptGet_Spec.lean",
@@ -761,6 +770,22 @@ def contentAsserts : List (String × List (String × String)) :=
      ("out/InsertionSort.lean", "_Z14insertion_sortRSt5arrayIjLm4EE_fwd"),
      ("tests/golden/ArraySortSum.lean", "_Z14array_sort_sumv_fwd"),
      ("tests/golden/InsertionSort.lean", "_Z14insertion_sortRSt5arrayIjLm4EE_fwd")]),
+  ("n9b-arraysort",
+   [("Circe/Validator/Shapes.lean", "def isArrayRefU32Shape"),
+    ("Circe/Validator/Shapes.lean", "def isArrayAtU32_8Shape"),
+    ("Circe/Validator/Shapes.lean", "def isInsertionSort8Shape"),
+    ("Circe/Validator/Shapes.lean", "def isArraySortSum8Shape"),
+    ("Circe/Emit/Match.lean", "some .arraySortSum"),
+    ("Circe/Emit/Match.lean", "theorem matchFrag_insertionSort8"),
+    ("Circe/Emit/Match.lean", "theorem matchFrag_arraySortSum8"),
+    ("Circe/Emit/ArraySort.lean", "def arrayRefU32Fwd"),
+    ("Circe/Emit/ArraySort.lean", "def insertionSortFwd"),
+    ("Circe/Emit/ArraySort8.lean", "def arraySortSum8EntryFunc"),
+    ("Circe/Emit/ArraySort8.lean", "theorem evalProgFunc_arraySortSum8Entry"),
+    ("out/ArraySortSum8.lean", "_Z15array_sort_sum8v_fwd"),
+    ("out/InsertionSort8.lean", "_Z15insertion_sort8RSt5arrayIjLm8EE_fwd"),
+    ("tests/golden/ArraySortSum8.lean", "_Z15array_sort_sum8v_fwd"),
+    ("tests/golden/InsertionSort8.lean", "_Z15insertion_sort8RSt5arrayIjLm8EE_fwd")]),
    ("n4d-optional",
     [("Circe/Validator/Shapes.lean", "def isOptHasShape"),
      ("Circe/Validator/Shapes.lean", "def isOptGetShape"),
@@ -1114,8 +1139,8 @@ def specCheckOf (text : String) : Option String := do
 def checkSpecStubs : IO Unit := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 96 then
-    throw (IO.userError s!"expected 96 spec stubs, found {stubs.length}")
+  if stubs.length != 100 then
+    throw (IO.userError s!"expected 100 spec stubs, found {stubs.length}")
   for s in stubs do
     typecheck ("out/" ++ s)
   for s in stubs do
@@ -1182,6 +1207,7 @@ def checkSuites : List Job :=
    ("golden-tadd", GoldenTadd.main),
    ("golden-array", GoldenArray.main),
    ("golden-arraysort", GoldenArraySort.main),
+   ("golden-arraysort8", GoldenArraySort8.main),
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
    ("golden-view", GoldenView.main),
@@ -1203,7 +1229,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
    "GoldenWidth", "ScopeReport"]
 
 def stem (f : String) : String :=
