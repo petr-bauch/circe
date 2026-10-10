@@ -88,13 +88,13 @@ def advSub : String :=
 def advMul : String :=
   "module {\n  cir.func @mll(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %p = cir.mul nsw %arg0, %arg1 : !s32i\n    cir.return %p : !s32i\n  }\n}"
 
-/-- Shift: `cir.shift` on `!u32i` — no leaf. -/
+/-- Shift: `cir.shift` on `!s32i` — outside the K1 `u32` leaves. -/
 def advShift : String :=
-  "module {\n  cir.func @shf(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %s = cir.shift(left, %arg0 : !u32i, %arg1 : !u32i) -> !u32i\n    cir.return %s : !u32i\n  }\n}"
+  "module {\n  cir.func @shf(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %s = cir.shift(left, %arg0 : !s32i, %arg1 : !s32i) -> !s32i\n    cir.return %s : !s32i\n  }\n}"
 
-/-- Bitwise: `cir.and` on `!u32i` — no leaf. -/
+/-- Bitwise: `cir.and` on `!s32i` — outside the K1 `u32` leaves. -/
 def advBitwise : String :=
-  "module {\n  cir.func @bwa(%arg0: !u32i {llvm.noundef}, %arg1: !u32i {llvm.noundef}) -> !u32i attributes {\"nothrow\"} {\n    %b = cir.and %arg0, %arg1 : !u32i\n    cir.return %b : !u32i\n  }\n}"
+  "module {\n  cir.func @bwa(%arg0: !s32i {llvm.noundef}, %arg1: !s32i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n    %b = cir.and %arg0, %arg1 : !s32i\n    cir.return %b : !s32i\n  }\n}"
 
 /-- Unary minus without `nsw`: wrapping negation overflow is UB, and the
     `neg` leaf requires the marker. -/
@@ -142,6 +142,11 @@ def main : IO Unit := do
   let c13 ← checkRejectCatalog "mnb" advMinusBare .unknown
     "outOfSubset" "without `nsw`"
   passed := passed + c13
+  -- K1: the rotate-left composite is four ops, not a single-op leaf.
+  let rotlText ← IO.FS.readFile "tests/cir/rotl_u32.cir"
+  let c14 ← checkRejectCatalog "rotl_u32" rotlText .unknown
+    "outOfSubset" "combines 4 arithmetic ops"
+  passed := passed + c14
   IO.println s!"GOLDENREJECTCATALOG-OK passed={passed}"
 
 end GoldenRejectCatalog

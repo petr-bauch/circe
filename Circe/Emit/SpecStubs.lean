@@ -146,6 +146,106 @@ def emitSdivSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun p =>\n"
   ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedDivI32 p.1 p.2)).pretty\n"
 
+/-- Spec stub for the `xor_u32` shape (K1: total `u32` xor). -/
+def emitXorU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t a, uint32_t b)` (bitwise xor, total).\n"
+  ++ s!"    Base body reference: `a ^^^ b` (cf. emitted `{name}_fwd`, `emit_correct_xorU32`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (a ^^^ b)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zeros, all-ones, nibble-split, unit. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (0xFFFFFFFF, 0xFFFFFFFF), (0xF0F0F0F0, 0x0F0F0F0F), (1, 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equation `xorU32_correct`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr ((Except.ok (p.1 ^^^ p.2) : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `and_u32` shape (K1: total `u32` and). -/
+def emitAndU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t a, uint32_t b)` (bitwise and, total).\n"
+  ++ s!"    Base body reference: `a &&& b` (cf. emitted `{name}_fwd`, `emit_correct_andU32`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (a &&& b)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zeros, all-ones, nibble-split, unit. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (0xFFFFFFFF, 0xFFFFFFFF), (0xF0F0F0F0, 0x0F0F0F0F), (0, 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equation `andU32_correct`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr ((Except.ok (p.1 &&& p.2) : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `or_u32` shape (K1: total `u32` or). -/
+def emitOrU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t a, uint32_t b)` (bitwise or, total).\n"
+  ++ s!"    Base body reference: `a ||| b` (cf. emitted `{name}_fwd`, `emit_correct_orU32`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (a ||| b)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zeros, all-ones, nibble-split, unit. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0, 0), (0xFFFFFFFF, 0), (0xF0F0F0F0, 0x0F0F0F0F), (0, 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equation `orU32_correct`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr ((Except.ok (p.1 ||| p.2) : Result (BitVec 32)))).pretty\n"
+
+/-- Spec stub for the `shl_u32` shape (K1: left shift, `OOB` ≥ 32). -/
+def emitShlU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t a, uint32_t b)` (left shift, amounts ≥ 32 are `OOB`).\n"
+  ++ s!"    Base body reference: `checkedShiftU32` (cf. emitted `{name}_fwd`, `emit_correct_shlU32`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedShiftU32 a b (· <<< ·)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero/unit amounts, bit 31, `OOB` amount, all-ones. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(1, 0), (1, 1), (1, 31), (1, 32), (0xFFFFFFFF, 4)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equations `shlU32_correct_ok` /\n"
+  ++ "    `shlU32_correct_err` (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedShiftU32 p.1 p.2 (· <<< ·))).pretty\n"
+
+/-- Spec stub for the `shr_u32` shape (K1: right shift, `OOB` ≥ 32). -/
+def emitShrU32SpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(uint32_t a, uint32_t b)` (logical right shift, amounts ≥ 32 are `OOB`).\n"
+  ++ s!"    Base body reference: `checkedShiftU32` (cf. emitted `{name}_fwd`, `emit_correct_shrU32`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedShiftU32 a b (· >>> ·)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero/unit amounts, high bit, `OOB` amount, all-ones. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32) :=\n"
+  ++ "  [(0x80000000, 0), (0x80000000, 1), (0x80000000, 31), (1, 32), (0xFFFFFFFF, 4)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with the `Base` body on every edge.\n"
+  ++ "    TODO (user): strengthen to the gallery equations `shrU32_correct_ok` /\n"
+  ++ "    `shrU32_correct_err` (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun p =>\n"
+  ++ s!"    (repr ({name}_spec_fwd p.1 p.2)).pretty == (repr (checkedShiftU32 p.1 p.2 (· >>> ·))).pretty\n"
+
 /-- Spec stub for the `choose` shape (forward + backward). -/
 def emitChooseSpecText (name : String) : String :=
   emitSpecHeader

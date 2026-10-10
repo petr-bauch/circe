@@ -171,7 +171,7 @@ def arithRejectWhy (text : String) : String :=
       tys.any (containsSubstr line ·))
   let unsignedTys := ["!u32i", "!u64i", "<u, 32>", "<u,32>", "<u, 64>", "<u,64>"]
   if 2 ≤ arithOpCount text then
-    s!"combines {arithOpCount text} arithmetic ops in one function — single-op leaves admit exactly one (`add`/`incr`/`add64`/`addu64`/`neg`/`sdiv`)"
+    s!"combines {arithOpCount text} arithmetic ops in one function — single-op leaves admit exactly one (`add`/`incr`/`add64`/`addu64`/`neg`/`sdiv`/`xor_u32`/`and_u32`/`or_u32`/`shl_u32`/`shr_u32`)"
   else if hasTyped "cir.div " unsignedTys then
     "unsigned division (`cir.div` on unsigned) is not admitted — only signed `sdiv` on `!s32i`"
   else if hasTyped "cir.rem " unsignedTys then
@@ -183,9 +183,9 @@ def arithRejectWhy (text : String) : String :=
   else if hasOp "cir.mul " then
     "multiplication (`cir.mul`) is not admitted outside the unsigned wrapping leaves — neither the `nsw` signed spelling nor a standalone leaf exists"
   else if hasOp "cir.shift" then
-    "shifts (`cir.shift`) are not admitted"
+    "shifts (`cir.shift`) outside the `u32` single-op `shl_u32`/`shr_u32` leaves are not admitted"
   else if hasOp "cir.and " || hasOp "cir.or " || hasOp "cir.xor " then
-    "bitwise ops (`cir.and` / `cir.or` / `cir.xor`) are not admitted"
+    "bitwise ops (`cir.and` / `cir.or` / `cir.xor`) outside the `u32` single-op leaves are not admitted"
   else if hasOp "cir.minus" then
     "unary minus without `nsw` (wrapping negation overflow is UB in C: mark the op `nsw` for the `neg` leaf)"
   else

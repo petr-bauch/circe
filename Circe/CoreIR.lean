@@ -135,6 +135,11 @@ inductive CExpr : Type
   | umul : CExpr → CExpr → CExpr
   | neg : CExpr → CExpr
   | sdiv : CExpr → CExpr → CExpr
+  | bxor : CExpr → CExpr → CExpr
+  | band : CExpr → CExpr → CExpr
+  | bor : CExpr → CExpr → CExpr
+  | bshl : CExpr → CExpr → CExpr
+  | bshr : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
   | une : CExpr → CExpr → CExpr

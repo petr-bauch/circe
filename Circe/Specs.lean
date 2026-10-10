@@ -367,6 +367,53 @@ theorem sdiv_correct_overflow (a b : BitVec 32)
     sdivFwd a b = .error .Overflow := by
   simp only [sdivFwd, h] <;> cir_simp
 
+/-! ## `xor_u32` / `and_u32` / `or_u32` / `shl_u32` / `shr_u32`:
+    total `u32` bitwise + checked shifts (K1) -/
+
+/-- `xor_u32` delivers the bitwise xor (total — no UB in C). -/
+theorem xorU32_correct (a b : BitVec 32) :
+    xorU32Fwd a b = .ok (.u32 (a ^^^ b)) := rfl
+
+/-- `and_u32` delivers the bitwise and (total). -/
+theorem andU32_correct (a b : BitVec 32) :
+    andU32Fwd a b = .ok (.u32 (a &&& b)) := rfl
+
+/-- `or_u32` delivers the bitwise or (total). -/
+theorem orU32_correct (a b : BitVec 32) :
+    orU32Fwd a b = .ok (.u32 (a ||| b)) := rfl
+
+/-- `shl_u32` success delivers the shifted word. -/
+theorem shlU32_correct_ok (a b r : BitVec 32)
+    (h : checkedShiftU32 a b (· <<< ·) = .ok r) :
+    shlU32Fwd a b = .ok (.u32 r) := by
+  unfold shlU32Fwd
+  rw [h]
+  rfl
+
+/-- `shl_u32` failure is exactly the `OOB` amount case. -/
+theorem shlU32_correct_err (a b : BitVec 32) (e : Panic)
+    (h : checkedShiftU32 a b (· <<< ·) = .error e) :
+    shlU32Fwd a b = .error e := by
+  unfold shlU32Fwd
+  rw [h]
+  rfl
+
+/-- `shr_u32` success delivers the shifted word. -/
+theorem shrU32_correct_ok (a b r : BitVec 32)
+    (h : checkedShiftU32 a b (· >>> ·) = .ok r) :
+    shrU32Fwd a b = .ok (.u32 r) := by
+  unfold shrU32Fwd
+  rw [h]
+  rfl
+
+/-- `shr_u32` failure is exactly the `OOB` amount case. -/
+theorem shrU32_correct_err (a b : BitVec 32) (e : Panic)
+    (h : checkedShiftU32 a b (· >>> ·) = .error e) :
+    shrU32Fwd a b = .error e := by
+  unfold shrU32Fwd
+  rw [h]
+  rfl
+
 /-! ## `sum_norestrict`: same body, same theorem (N2c, N3a) -/
 
 /-- `sum_norestrict` shares the `sum_array` body exactly (N2c recovers

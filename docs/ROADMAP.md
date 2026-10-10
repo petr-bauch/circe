@@ -81,6 +81,21 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   free single-`&mut` writers are shape admissions (cheap-rule
   candidates), not oracle or Iris problems.
 
+## K. Verified crypto programs — PLAN (2026-10-10)
+
+North star: the ChaCha20 block function over
+`std::array<uint32_t,16>`, proved as emitted-forward-vs-executable-spec
+agreement plus RFC 8439 known-answer vectors. Staged: K1 `u32`
+bitwise leaves — DONE (`DELIVERED.md`); K2 buffer entries
+(`mutBorrow` out-param + `sharedBorrow` in-params, top-level
+`y ← f_fwd y` spelling, fixed-vector KAT oracle leg); K3
+quarter-round-as-fold + QR KAT; K4 full block vs §2.3.2 KAT
+(single-`&mut` state containment, no oracle change — the quarter
+round is inlined because a 4-writer QR leaf could never pass the
+pair check); K5 second primitive (SHA-256) or written
+stop-decision. Non-goals: streaming/Poly1305, pointer idioms,
+heap, Iris, speculative STD. C++-lite only (`std::array`).
+
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)
 
 True lifetime intrinsics do not exist at this pin (raw CIRGen rejects

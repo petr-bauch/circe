@@ -149,6 +149,142 @@ theorem memTransfer_sdiv (F : Nat) (a b : BitVec 32)
       ha, hbb] <;>
     (cases h : checkedDivI32 a b <;> rfl)
 
+/-! ## K1 transfers: `xor_u32`, `and_u32`, `or_u32`, `shl_u32`, `shr_u32` -/
+
+/-- Transfer for `xor_u32` (any fuel): total pure shape. -/
+theorem memTransfer_xorU32 (F : Nat) (a b : BitVec 32)
+    (_h : oracleNoalias xorU32Func [.u32 a, .u32 b]) :
+    memEvalFuncFuel F xorU32Func [.u32 a, .u32 b] =
+      evalFuncFuel F xorU32Func [.u32 a, .u32 b] := by
+  have hbf : xorU32Func.args =
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }] := rfl
+  have hbody : xorU32Func.body =
+      .return_ (.bxor (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }]
+      [.u32 a, .u32 b] emptyMem =
+      some ([("a", .u32 a), ("b", .u32 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .u32 a), ("b", .u32 b)] "a" =
+      some (.u32 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .u32 a), ("b", .u32 b)] "b" =
+      some (.u32 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb]
+
+/-- Transfer for `and_u32` (any fuel): total pure shape. -/
+theorem memTransfer_andU32 (F : Nat) (a b : BitVec 32)
+    (_h : oracleNoalias andU32Func [.u32 a, .u32 b]) :
+    memEvalFuncFuel F andU32Func [.u32 a, .u32 b] =
+      evalFuncFuel F andU32Func [.u32 a, .u32 b] := by
+  have hbf : andU32Func.args =
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }] := rfl
+  have hbody : andU32Func.body =
+      .return_ (.band (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }]
+      [.u32 a, .u32 b] emptyMem =
+      some ([("a", .u32 a), ("b", .u32 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .u32 a), ("b", .u32 b)] "a" =
+      some (.u32 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .u32 a), ("b", .u32 b)] "b" =
+      some (.u32 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb]
+
+/-- Transfer for `or_u32` (any fuel): total pure shape. -/
+theorem memTransfer_orU32 (F : Nat) (a b : BitVec 32)
+    (_h : oracleNoalias orU32Func [.u32 a, .u32 b]) :
+    memEvalFuncFuel F orU32Func [.u32 a, .u32 b] =
+      evalFuncFuel F orU32Func [.u32 a, .u32 b] := by
+  have hbf : orU32Func.args =
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }] := rfl
+  have hbody : orU32Func.body =
+      .return_ (.bor (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }]
+      [.u32 a, .u32 b] emptyMem =
+      some ([("a", .u32 a), ("b", .u32 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .u32 a), ("b", .u32 b)] "a" =
+      some (.u32 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .u32 a), ("b", .u32 b)] "b" =
+      some (.u32 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb]
+
+/-- Transfer for `shl_u32` (any fuel): `OOB` amounts stay loud on both
+    sides. -/
+theorem memTransfer_shlU32 (F : Nat) (a b : BitVec 32)
+    (_h : oracleNoalias shlU32Func [.u32 a, .u32 b]) :
+    memEvalFuncFuel F shlU32Func [.u32 a, .u32 b] =
+      evalFuncFuel F shlU32Func [.u32 a, .u32 b] := by
+  have hbf : shlU32Func.args =
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }] := rfl
+  have hbody : shlU32Func.body =
+      .return_ (.bshl (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }]
+      [.u32 a, .u32 b] emptyMem =
+      some ([("a", .u32 a), ("b", .u32 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .u32 a), ("b", .u32 b)] "a" =
+      some (.u32 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .u32 a), ("b", .u32 b)] "b" =
+      some (.u32 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb] <;>
+    (cases h : checkedShiftU32 a b (· <<< ·) <;> rfl)
+
+/-- Transfer for `shr_u32` (any fuel): `OOB` amounts stay loud on both
+    sides. -/
+theorem memTransfer_shrU32 (F : Nat) (a b : BitVec 32)
+    (_h : oracleNoalias shrU32Func [.u32 a, .u32 b]) :
+    memEvalFuncFuel F shrU32Func [.u32 a, .u32 b] =
+      evalFuncFuel F shrU32Func [.u32 a, .u32 b] := by
+  have hbf : shrU32Func.args =
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }] := rfl
+  have hbody : shrU32Func.body =
+      .return_ (.bshr (.var "a") (.var "b")) := rfl
+  have hb : bindMemArgs
+      [{ name := "a", ty := .u 32, role := .owned },
+       { name := "b", ty := .u 32, role := .owned }]
+      [.u32 a, .u32 b] emptyMem =
+      some ([("a", .u32 a), ("b", .u32 b)], emptyMem, []) := rfl
+  have ha : envLookup [("a", .u32 a), ("b", .u32 b)] "a" =
+      some (.u32 a) := by simp [envLookup]
+  have hbb : envLookup [("a", .u32 a), ("b", .u32 b)] "b" =
+      some (.u32 b) := by
+    simp [envLookup, show ("b" : String) ≠ "a" by decide]
+  simp only [memEvalFuncFuel, evalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases F <;>
+    simp only [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      evalStmtFuel, evalStmtZero, evalStmtWith, memEvalExpr, evalExpr,
+      ha, hbb] <;>
+    (cases h : checkedShiftU32 a b (· >>> ·) <;> rfl)
+
 /-- Transfer for `cls` (any fuel): the switch-as-if-chain is pure, so
     memory is untouched and both sides classify identically. -/
 theorem memTransfer_cls (F : Nat) (x : BitVec 32)

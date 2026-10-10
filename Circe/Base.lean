@@ -139,6 +139,24 @@ theorem checkedIncrI32_ok (a : BitVec 32)
     checkedIncrI32 a = .ok (a + 1) := by
   simp [checkedIncrI32, checkedAddI32, h]
 
+/-- Checked unsigned-32 shift: `OOB` when the amount is out of range
+    (C UB for amounts ≥ 32, the N6 shift-UB discipline); otherwise the
+    `BitVec` shift. No flag distinguishes left/right in the result —
+    direction lives in the `CExpr` constructor. -/
+def checkedShiftU32 (a b : BitVec 32) (op : BitVec 32 → Nat → BitVec 32) :
+    Result (BitVec 32) :=
+  if b.toNat < 32 then .ok (op a b.toNat) else .error .OOB
+
+theorem checkedShiftU32_ok (a b : BitVec 32)
+    (op : BitVec 32 → Nat → BitVec 32) (h : b.toNat < 32) :
+    checkedShiftU32 a b op = .ok (op a b.toNat) := by
+  simp [checkedShiftU32, h]
+
+theorem checkedShiftU32_err (a b : BitVec 32)
+    (op : BitVec 32 → Nat → BitVec 32) (h : ¬ b.toNat < 32) :
+    checkedShiftU32 a b op = .error .OOB := by
+  simp [checkedShiftU32, h]
+
 /-! ## Checked signed-64 ops (S3b: 64-bit loop-free widths) -/
 
 /-- Minimum `Int` value of C `int64_t`. -/

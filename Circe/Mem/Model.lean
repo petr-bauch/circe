@@ -463,6 +463,38 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .bxor a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x ^^^ y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .band a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x &&& y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .bor a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x ||| y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .bshl a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u32 x), .ok (.u32 y) =>
+      (checkedShiftU32 x y (· <<< ·)).map .u32
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .bshr a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.u32 x), .ok (.u32 y) =>
+      (checkedShiftU32 x y (· >>> ·)).map .u32
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .ult a b, ρ, m, π =>
     match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))

@@ -18,6 +18,7 @@ import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Method
 import Circe.Emit.Acc
+import Circe.Emit.Bitwise
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.ArraySort
@@ -63,6 +64,16 @@ def matchFrag : Func → Option FragKind
       .return_ (.neg (.var "x"))⟩ => some .neg
   | ⟨_, [⟨"a", .i 32, .owned⟩, ⟨"b", .i 32, .owned⟩], _,
       .return_ (.sdiv (.var "a") (.var "b"))⟩ => some .sdiv
+  | ⟨_, [⟨"a", .u 32, .owned⟩, ⟨"b", .u 32, .owned⟩], _,
+      .return_ (.bxor (.var "a") (.var "b"))⟩ => some .xorU32
+  | ⟨_, [⟨"a", .u 32, .owned⟩, ⟨"b", .u 32, .owned⟩], _,
+      .return_ (.band (.var "a") (.var "b"))⟩ => some .andU32
+  | ⟨_, [⟨"a", .u 32, .owned⟩, ⟨"b", .u 32, .owned⟩], _,
+      .return_ (.bor (.var "a") (.var "b"))⟩ => some .orU32
+  | ⟨_, [⟨"a", .u 32, .owned⟩, ⟨"b", .u 32, .owned⟩], _,
+      .return_ (.bshl (.var "a") (.var "b"))⟩ => some .shlU32
+  | ⟨_, [⟨"a", .u 32, .owned⟩, ⟨"b", .u 32, .owned⟩], _,
+      .return_ (.bshr (.var "a") (.var "b"))⟩ => some .shrU32
   | ⟨_, [⟨"x", .u 32, .owned⟩, ⟨"y", .u 32, .owned⟩], _,
       .if_ (.ueq (.var "x") (.lit (.u32 c0)))
         (.return_ (.uadd (.var "y") (.lit (.u32 k0))))
@@ -1041,6 +1052,11 @@ theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
 theorem matchFrag_neg : matchFrag negFunc = some .neg := rfl
 theorem matchFrag_sdiv : matchFrag sdivFunc = some .sdiv := rfl
+theorem matchFrag_xorU32 : matchFrag xorU32Func = some .xorU32 := rfl
+theorem matchFrag_andU32 : matchFrag andU32Func = some .andU32 := rfl
+theorem matchFrag_orU32 : matchFrag orU32Func = some .orU32 := rfl
+theorem matchFrag_shlU32 : matchFrag shlU32Func = some .shlU32 := rfl
+theorem matchFrag_shrU32 : matchFrag shrU32Func = some .shrU32 := rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl

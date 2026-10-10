@@ -400,6 +400,38 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .bxor a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x ^^^ y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .band a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x &&& y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .bor a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) => .ok (.u32 (x ||| y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .bshl a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) =>
+      (checkedShiftU32 x y (· <<< ·)).map .u32
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .bshr a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.u32 x), .ok (.u32 y) =>
+      (checkedShiftU32 x y (· >>> ·)).map .u32
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .ult a b, ρ =>
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))

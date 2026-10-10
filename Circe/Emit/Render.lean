@@ -84,6 +84,48 @@ def emitSdivText (name : String) : String :=
   ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  checkedDivI32 a b\n"
 
+/-- Render the `xor_u32` forward (`xor_u32_fwd`, K1: total `u32` xor). -/
+def emitXorU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (a ^^^ b)\n"
+
+/-- Render the `and_u32` forward (`and_u32_fwd`, K1: total `u32` and). -/
+def emitAndU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (a &&& b)\n"
+
+/-- Render the `or_u32` forward (`or_u32_fwd`, K1: total `u32` or). -/
+def emitOrU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  .ok (a ||| b)\n"
+
+/-- Render the `shl_u32` forward (`shl_u32_fwd`, K1: left shift,
+    `OOB` on amounts ≥ 32). -/
+def emitShlU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedShiftU32 a b (· <<< ·)\n"
+
+/-- Render the `shr_u32` forward (`shr_u32_fwd`, K1: right shift,
+    `OOB` on amounts ≥ 32). -/
+def emitShrU32Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}`: values in, value out (no memory). -/\n"
+  ++ s!"def {name}_fwd (a b : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  checkedShiftU32 a b (· >>> ·)\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader

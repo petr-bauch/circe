@@ -576,16 +576,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     (two by-value `i32`s, `cir.div` on `!s32i`, `i32` return;
     zero divisor is `DivZero`, `INT_MIN / -1` is `Overflow` via
     `checkedDivI32`). Single-op exactness: every arithmetic leaf
-    gate (`add`/`incr`/`add64`/`addu64`/`neg`/`sdiv`) requires
-    `arithOpCount == 1`, so multi-op functions (e.g.
-    `(a + b) + (a * b)`, previously silently validated to a
-    single-op body) reject instead. Unsigned div/rem, sub, mul,
-    and shift/bitwise spellings stay out (dedicated rejections
-    via the arithmetic catalog, which runs after every admission
-    so no exemptions are needed; the `intClass` uniformity guard
-    keeps width-mixed signatures on their existing routing, and
-    `nsw`-less `cir.minus` stays out to protect the `vec_push_sum`
-    iterator helper).
+    gate (`add`/`incr`/`add64`/`addu64`/`neg`/`sdiv` and the K1
+    `u32` bitwise leaves below) requires `arithOpCount == 1`, so
+    multi-op functions (e.g. `(a + b) + (a * b)`, previously
+    silently validated to a single-op body) reject instead.
+    Unsigned div/rem, sub, mul stay out, and shift/bitwise
+    spellings outside the K1 leaves stay out (dedicated
+    rejections via the arithmetic catalog, which runs after every
+    admission so no exemptions are needed; the `intClass`
+    uniformity guard keeps width-mixed signatures on their
+    existing routing, and `nsw`-less `cir.minus` stays out to
+    protect the `vec_push_sum` iterator helper).
+28b. `u32` bitwise leaves (K1, the crypto op mix): `xor_u32` /
+    `and_u32` / `or_u32` (two by-value `u32`s, `cir.xor` /
+    `cir.and` / `cir.or`, total — no UB in C) and `shl_u32` /
+    `shr_u32` (`cir.shift(left/right, …)`, amounts ≥ 32 are `OOB`
+    via `checkedShiftU32`, the N6 shift-UB discipline). The
+    rotate-left composite (`rotl_u32`: shift + sub + shift + or)
+    is four ops, so single-op exactness rejects it — the quarter
+    round will compose the shifts explicitly. Pinned by the K1
+    `DiffArith` legs (Lean-Lean + native binaries, `OOB`
+    amounts Lean-Lean only) + the `rotl` reject row.
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

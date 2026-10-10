@@ -228,6 +228,103 @@ def isSdivShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
+/-! ## K1: `u32` bitwise leaves (`xor` / `and` / `or` / shifts) -/
+
+/-- `xor_u32`: two by-value `u32`s, `u32` return, `cir.xor`, no
+    control flow, no calls — with single-op exactness. -/
+def isXorU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isU32 a.ctype && isU32 b.ctype && isU32 raw.ret &&
+    containsSubstr raw.text "cir.xor " &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `and_u32`: two by-value `u32`s, `u32` return, `cir.and`, no
+    control flow, no calls — with single-op exactness. -/
+def isAndU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isU32 a.ctype && isU32 b.ctype && isU32 raw.ret &&
+    containsSubstr raw.text "cir.and " &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `or_u32`: two by-value `u32`s, `u32` return, `cir.or`, no
+    control flow, no calls — with single-op exactness. -/
+def isOrU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isU32 a.ctype && isU32 b.ctype && isU32 raw.ret &&
+    containsSubstr raw.text "cir.or " &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `shl_u32`: two by-value `u32`s, `u32` return, `cir.shift(left`,
+    no control flow, no calls — with single-op exactness. -/
+def isShlU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isU32 a.ctype && isU32 b.ctype && isU32 raw.ret &&
+    containsSubstr raw.text "cir.shift(left" &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
+/-- `shr_u32`: two by-value `u32`s, `u32` return, `cir.shift(right`,
+    no control flow, no calls — with single-op exactness. -/
+def isShrU32Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    isU32 a.ctype && isU32 b.ctype && isU32 raw.ret &&
+    containsSubstr raw.text "cir.shift(right" &&
+    arithOpCount raw.text == 1 &&
+    noBreakContinueSwitch raw.text &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.get_member"
+  | _ => false
+
 /-- Small-width promotion: 8/16-bit integers appear only via `cir.cast`
     promotion to `i32` (S3b probe); there is no native small-width
     arithmetic to model, so any occurrence rejects loudly. -/
@@ -638,7 +735,9 @@ def isCNoPtrShape (raw : RawFunc) : Bool :=
   isClsShape raw || isClsFallShape raw || isClsDenseShape raw ||
   isClsBreakShape raw || isClsAddShape raw ||
   isAdd64Shape raw || isAddu64Shape raw ||
-  isNegShape raw || isSdivShape raw
+  isNegShape raw || isSdivShape raw ||
+  isXorU32Shape raw || isAndU32Shape raw || isOrU32Shape raw ||
+  isShlU32Shape raw || isShrU32Shape raw
 
 /-- Text-derived noalias evidence (C only): no live pointer params and an
     admitted no-ptr C shape (vacuous), one `noalias` param in an admitted
@@ -1536,6 +1635,16 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { negFunc with name := raw.name }
       else if isSdivShape raw then
         .ok { sdivFunc with name := raw.name }
+      else if isXorU32Shape raw then
+        .ok { xorU32Func with name := raw.name }
+      else if isAndU32Shape raw then
+        .ok { andU32Func with name := raw.name }
+      else if isOrU32Shape raw then
+        .ok { orU32Func with name := raw.name }
+      else if isShlU32Shape raw then
+        .ok { shlU32Func with name := raw.name }
+      else if isShrU32Shape raw then
+        .ok { shrU32Func with name := raw.name }
       else if isUnadmittedArithLeaf raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses integer arithmetic outside the admitted single-op leaves: {arithRejectWhy raw.text} (see docs/SUBSET.md)"

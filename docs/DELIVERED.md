@@ -624,3 +624,19 @@ transitively, goldens import the home module (byte re-pinned), and
 per-family `*-homes` gates pin the split (defs present in the `Fwd`
 module, absent in `Base`).
 - Acceptance: 430 jobs TEST-OK, CHECK-OK.
+
+### K1. `u32` bitwise leaves (crypto op mix) — DONE (2026-10-10)
+
+First crypto-track milestone: `xor_u32` / `and_u32` / `or_u32`
+(total `cir.xor` / `cir.and` / `cir.or` on `!u32i`) and `shl_u32` /
+`shr_u32` (`cir.shift(left/right, …)`, amounts ≥ 32 are `OOB` via
+`checkedShiftU32`, the N6 shift-UB discipline). New `CExpr`
+constructors (`bxor`/`band`/`bor`/`bshl`/`bshr`) with value + mem
+eval arms, `Circe/Emit/Bitwise.lean` forwards with `emit_correct`
+proofs, `Specs` gallery equations, `Transfer` theorems, N6-catalog
+shapes with single-op exactness. The rotate-left composite is four
+ops, so exactness rejects it (`rotl` reject row) — the quarter
+round will compose the shifts explicitly. `DiffArith` grows five
+native legs (Lean-Lean + C binaries, `OOB` amounts Lean-Lean
+only) plus five pipeline-vs-golden VERIFY-OK rows.
+- Acceptance: 461 jobs TEST-OK, CHECK-OK.
