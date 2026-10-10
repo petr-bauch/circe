@@ -4,6 +4,7 @@ composer: frozen-leaf bridges plus `evalProgFunc_stdVecGrowRealloc`,
 over `Circe.Emit.VecCompose.Base`.
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.GrowFwd
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose.Base
 

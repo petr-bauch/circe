@@ -47,7 +47,9 @@ tools/emit-cir.sh  # writes tests/cir/*.cir
 tools/check.sh [trials]
 ```
 
-Layout: `Circe/Base.lean` (value model + checked ops), `Circe/CoreIR.lean`
+Layout: `Circe/Base.lean` (value model + checked ops + evaluator vocabulary),
+`Circe/Emit/{Vec,Flow,M2,Sum,Grow}Fwd.lean` (per-family program translations),
+`Circe/CoreIR.lean`
 (verified IR), `Circe/Eval.lean` (loan-based value semantics + `cir_fuel` + `cir_eval_closed`),
 `Circe/Mem.lean` (addressful block-map model + lockstep bridges),
 `Circe/Validator.lean` (verified gate + `derivedNoalias`),

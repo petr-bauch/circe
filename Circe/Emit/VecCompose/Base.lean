@@ -5,6 +5,7 @@ composer `Name`/`Func` bundle, and the realloc leaf definitions;
 composers live in `Realloc` / `Emplace` / `Entry`.
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.GrowFwd
 import Circe.Emit.VecGrow
 
 /-! ## N4d-iv-b2: `_M_realloc_insert` (growth reallocation) -/

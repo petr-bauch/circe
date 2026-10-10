@@ -5,6 +5,7 @@
 -- transfer verbatim by body identity (see docs/VERIFYING.md).
 
 import Circe.Base
+import Circe.Emit.GrowFwd
 
 /-- C++ signature: `_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_(src, dst, first, last, result)` copies the range.
     Base body reference: the copy loop itself (cf. emitted `_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0__fwd`,

@@ -39,6 +39,12 @@ The table above is frozen at M2c. Newer fragments — N4d
 vector growth, N8 closed evaluation, N9 insertion sort — live in
 `DELIVERED.md` with their proofs and pins.
 
+Translation layout: per-family `Circe/Emit/*Fwd.lean` modules
+(`VecFwd`, `FlowFwd`, `M2Fwd`, `SumFwd`, `GrowFwd`) own the value-level
+program translations next to their proofs; `Base` keeps evaluator
+vocabulary only. Goldens render the translations from their home
+modules (pinned `*-homes` gates).
+
 Plus: `Result` + checked ops (`Base`), loan-based value semantics
 (`Eval`), addressful block-map model + proved memory transfer on the
 admitted C and C++-lite fragments (`Mem` / `Derived` / `Transfer`:

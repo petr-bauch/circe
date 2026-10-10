@@ -1485,7 +1485,7 @@ def emitStdVecConstructSpecText (name : String) : String :=
     trip, copy, consumed source). -/
 def emitStdVecRelocSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.GrowFwd\n\n"
   ++ s!"/-- C++ signature: `{name}(src, dst, first, last, result)` copies the range.\n"
   ++ s!"    Base body reference: the copy loop itself (cf. emitted `{name}_fwd`,\n"
   ++ s!"    `stdVecRelocFwd`). -/\n"

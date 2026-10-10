@@ -4,6 +4,7 @@ Circe.Emit.VecGrow.B — iterators, `_M_allocate` / `_M_deallocate`,
 `Circe.Emit.VecGrow.A`.
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.GrowFwd
 import Circe.Emit.VecGrow.A
 
 /-! ## N4d-iv-b1: iterators (`begin` / `end` / `back` / identities / minus) -/

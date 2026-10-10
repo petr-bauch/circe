@@ -21,6 +21,7 @@ const-ctors / `__niter_wrap` reuse the iterator identity (name
 stamping is the Gate's job — `evalFuncFuel` never looks at names).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.GrowFwd
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose.Base
 import Circe.Emit.VecCompose.Realloc

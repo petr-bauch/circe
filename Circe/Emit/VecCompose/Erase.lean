@@ -22,6 +22,7 @@ its pointer return drops (callers recompute offsets).
 Iterator leaf: `ne` (`une` over erased offsets).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.GrowFwd
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose.Base
 import Circe.Emit.VecCompose.Emplace

@@ -1057,6 +1057,17 @@ def checkSumFwdHomes : IO Unit := do
     if containsSubstr base d then
       throw (IO.userError s!"sum translation still in Circe/Base.lean: {d}")
 
+/-- Grow-homes gate: the bulk word-copy folds live in
+    `Circe.Emit.GrowFwd` (next to their proofs), never in `Circe.Base`. -/
+def checkGrowFwdHomes : IO Unit := do
+  for d in ["def stdVecBlitFold ", "def stdVecBlitBackFold ",
+      "def stdVecBlitFwdFold "] do
+    needHas "Circe/Emit/GrowFwd.lean" d
+  let base ← IO.FS.readFile "Circe/Base.lean"
+  for d in ["stdVecBlitFold", "stdVecBlitBackFold", "stdVecBlitFwdFold"] do
+    if containsSubstr base d then
+      throw (IO.userError s!"growth blit still in Circe/Base.lean: {d}")
+
 /-- N8c adoption gate: every collapsed closed-entry proof goes through
     the `cir_eval_closed` macro (single adoption point over
     `native_decide`; new entries must use it too). -/
@@ -1248,6 +1259,7 @@ def main (args : List String) : IO Unit := do
         ("s3-flowfwd-homes", checkFlowFwdHomes),
         ("m2-m2fwd-homes", checkM2FwdHomes),
         ("s0-sumfwd-homes", checkSumFwdHomes),
+        ("n7-growfwd-homes", checkGrowFwdHomes),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

@@ -750,7 +750,7 @@ def emitStdVecConstructText (name : String) : String :=
     `stdVecRelocFwd`: the `memmove`-fused bulk copy). -/
 def emitStdVecRelocText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.GrowFwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (the copy loop over the destination triple; the source triple is unchanged). -/\n"
   ++ s!"def {name}_fwd (bS : Vec32) (lenS : Nat) (_capS : Nat) (bD : Vec32) (lenD capD : Nat) (first last result : BitVec 64) : Result (Vec32 × Nat × Nat) :=\n"
   ++ "  match stdVecBlitFold bS.val lenS bS.freed bD result.toNat first.toNat (last.toNat - first.toNat) with\n"

@@ -597,3 +597,20 @@ so the oracle needs no Iris.
   prints only the permutation-invariant sum, so sortedness is
   pinned by the spec oracle here.
 - Acceptance: 425 jobs TEST-OK, CHECK-OK.
+
+### N10. Per-family translation homes (`*Fwd` split) — DONE (2026-10-10)
+
+`Circe/Base.lean` (1923 lines) mixed evaluator vocabulary with the
+program translations the goldens render. The translations moved to
+per-family value-level modules under unchanged names, next to their
+proofs — `Emit/VecFwd` (M1 fill/sum/copy loops + whole-program
+entries), `Emit/FlowFwd` (S3 folds + `findEq`), `Emit/M2Fwd` (C++
+`Point`/`Acc`/`Box` bodies), `Emit/SumFwd` (wrapping prefix sums),
+`Emit/GrowFwd` (bulk word-copy folds) — while `Base` (754 lines)
+keeps evaluator vocabulary only (value/checked-op primitives, the
+`Vec32`/`Vec64`/`Box32` types + block ops `Eval`/`Mem` call
+directly). No proof touched: consumers resolve the same names
+transitively, goldens import the home module (byte re-pinned), and
+per-family `*-homes` gates pin the split (defs present in the `Fwd`
+module, absent in `Base`).
+- Acceptance: 430 jobs TEST-OK, CHECK-OK.

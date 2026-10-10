@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.GrowFwd
 
 /-- Pure translation of `_ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0_` (the copy loop over the destination triple; the source triple is unchanged). -/
 def _ZNSt6vectorIiSaIiEE11_S_relocateEPiS2_S2_RS0__fwd (bS : Vec32) (lenS : Nat) (_capS : Nat) (bD : Vec32) (lenD capD : Nat) (first last result : BitVec 64) : Result (Vec32 × Nat × Nat) :=
