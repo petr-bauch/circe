@@ -1381,7 +1381,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if isArrayAtU32Shape raw then
         .ok { arrayAtU32Func with name := raw.name }
       else if isInsertionSortShape raw then
-        .ok { insertionSortFunc with name := raw.name }
+        .ok { (insertionSortFunc 4) with name := raw.name }
       else if isArraySortSumShape raw then
         .ok { arraySortSumEntryFunc with name := raw.name }
       else if callsArrayWrongShape raw then

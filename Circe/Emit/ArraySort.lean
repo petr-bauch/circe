@@ -49,15 +49,15 @@ def arrayAtU32Func : Func :=
    .return_ (.idxu "a" (.var "n"))⟩
 
 /-- Canonical CoreIR for `insertion_sort`: outer `for`-as-`while`
-    over `i in [1, 4)`, inner `while` over the short-circuit
+    over `i in [1, N)`, inner `while` over the short-circuit
     condition, swap via temp + two `arrSet`s, counters via
     `assign`. -/
-def insertionSortFunc : Func :=
+def insertionSortFunc (N : Nat) : Func :=
   ⟨insertionSortName,
-   [{ name := "a", ty := .array (.u 32) 4, role := .mutBorrow 0 }],
-   .array (.u 32) 4,
+   [{ name := "a", ty := .array (.u 32) N, role := .mutBorrow 0 }],
+   .array (.u 32) N,
    .seq (.let_ "i" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
-   (.seq (.while_ (.ult (.var "i") (.lit (.u64 (BitVec.ofNat 64 4))))
+   (.seq (.while_ (.ult (.var "i") (.lit (.u64 (BitVec.ofNat 64 N))))
      (.seq (.let_ "j" (.u 64) (.var "i"))
      (.seq (.while_
        (.tif (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.var "j"))
@@ -432,35 +432,6 @@ theorem take_length_eq {α : Type} (l : List α) (m : Nat)
         omega
       simp [ih as hm]
 
-/-- A length-4 list is a 4-tuple. -/
-theorem length_eq_four {α : Type} (l : List α) (h : l.length = 4) :
-    ∃ a b c d, l = [a, b, c, d] := by
-  cases l with
-  | nil =>
-    simp only [List.length_nil] at h
-    omega
-  | cons a as =>
-    cases as with
-    | nil =>
-      simp only [List.length_cons, List.length_nil] at h
-      omega
-    | cons b bs =>
-      cases bs with
-      | nil =>
-        simp only [List.length_cons, List.length_nil] at h
-        omega
-      | cons c cs =>
-        cases cs with
-        | nil =>
-          simp only [List.length_cons, List.length_nil] at h
-          omega
-        | cons d ds =>
-          cases ds with
-          | nil => exact ⟨a, b, c, d, rfl⟩
-          | cons e es =>
-            simp only [List.length_cons] at h
-            omega
-
 /-- The swap body in take/drop form: writing `v` at `m+1` then `w`
     at `m` splices both words in (needs only the length bound, no
     value hypotheses). Proved by induction on `m`; the zero case
@@ -697,24 +668,26 @@ def outerListStep (l : List (BitVec 32)) (i : Nat) (z : BitVec 32) :
     List (BitVec 32) :=
   insertU32 z (l.take i) ++ l.drop (i + 1)
 
-/-- Outer-loop mirror: three passes (`i = 1, 2, 3`) starting from the
-    singleton prefix. The `getD 0` default never fires (every index
-    hits); the bridge discharges each read with a hit fact. -/
-def outerListAux (l : List (BitVec 32)) (i fuel : Nat) : List (BitVec 32) :=
+/-- Outer-loop mirror: `fuel` passes starting from index `i` over a
+    length-`N` list (the N9 `4` case runs passes `i = 1, 2, 3`). The
+    `getD 0` default never fires (every index hits); the bridge
+    discharges each read with a hit fact. -/
+def outerListAux (N : Nat) (l : List (BitVec 32)) (i fuel : Nat) :
+    List (BitVec 32) :=
   match fuel with
   | 0 => l
   | f + 1 =>
-    if i < 4 then outerListAux (outerListStep l i (l[i]?.getD 0)) (i + 1) f
+    if i < N then outerListAux N (outerListStep l i (l[i]?.getD 0)) (i + 1) f
     else l
 
 /-- Base case (definitional, named for rewriting). -/
-theorem outerListAux_zero (l : List (BitVec 32)) (i : Nat) :
-    outerListAux l i 0 = l := rfl
+theorem outerListAux_zero (N : Nat) (l : List (BitVec 32)) (i : Nat) :
+    outerListAux N l i 0 = l := rfl
 
 /-- Step case (definitional, named for rewriting). -/
-theorem outerListAux_succ (l : List (BitVec 32)) (i f : Nat) :
-    outerListAux l i (f + 1) =
-      if i < 4 then outerListAux (outerListStep l i (l[i]?.getD 0)) (i + 1) f
+theorem outerListAux_succ (N : Nat) (l : List (BitVec 32)) (i f : Nat) :
+    outerListAux N l i (f + 1) =
+      if i < N then outerListAux N (outerListStep l i (l[i]?.getD 0)) (i + 1) f
       else l := rfl
 
 /-- Decrementing a positive small index word (for the `j - 1`
@@ -767,9 +740,9 @@ def sortInnerCond : CExpr :=
 /-- The inner `while` (one outer pass's worth of bubbling). -/
 def sortInnerWhile : CStmt := .while_ sortInnerCond sortSwapBody
 
-/-- The outer-loop condition `i < 4`. -/
-def sortOuterCond : CExpr :=
-  .ult (.var "i") (.lit (.u64 (BitVec.ofNat 64 4)))
+/-- The outer-loop condition `i < N`. -/
+def sortOuterCond (N : Nat) : CExpr :=
+  .ult (.var "i") (.lit (.u64 (BitVec.ofNat 64 N)))
 
 /-- One outer pass: rebind `j` at `i`, bubble, step `i`. -/
 def sortOuterBody : CStmt :=
@@ -777,13 +750,13 @@ def sortOuterBody : CStmt :=
   (.seq sortInnerWhile
     (.assign "i" (.uadd (.var "i") (.lit (.u64 (BitVec.ofNat 64 1))))))
 
-/-- The outer `while` (three passes). -/
-def sortOuterWhile : CStmt := .while_ sortOuterCond sortOuterBody
+/-- The outer `while` (`N - 1` passes from `i = 1`). -/
+def sortOuterWhile (N : Nat) : CStmt := .while_ (sortOuterCond N) sortOuterBody
 
 /-- `insertionSortFunc.body` is `i := 1`, the outer loop, `return a`. -/
-theorem insertionSortFunc_body : insertionSortFunc.body =
+theorem insertionSortFunc_body (N : Nat) : (insertionSortFunc N).body =
     .seq (.let_ "i" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
-    (.seq sortOuterWhile (.return_ (.var "a"))) := rfl
+    (.seq (sortOuterWhile N) (.return_ (.var "a"))) := rfl
 
 /-- The inner condition at `j = 0`: the `j > 0` guard is false,
     so `tif` takes the else-branch without touching the array. -/
@@ -801,10 +774,11 @@ theorem sortInnerCond_eval_zero (ρ : Env) (l : List (BitVec 32)) (j : Nat)
 
 /-- The inner condition at `j ≥ 1`: the guard holds, so `tif` runs
     the `a[j] < a[j-1]` comparison (both reads hit). -/
-theorem sortInnerCond_eval_succ (ρ : Env) (l : List (BitVec 32)) (j : Nat)
+theorem sortInnerCond_eval_succ (N : Nat) (ρ : Env) (l : List (BitVec 32)) (j : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-    (hlen : l.length = 4) (hj3 : j ≤ 3) (hj1 : 1 ≤ j) :
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N)
+    (hj1 : 1 ≤ j) :
     evalExpr sortInnerCond ρ = .ok (.b (l[j].ult l[j - 1])) := by
   have hj64 : j < 2 ^ 64 := by omega
   have htoNat_j : (BitVec.ofNat 64 j).toNat = j := ofNat64_toNat j hj64
@@ -877,11 +851,11 @@ def bubbleDown (l : List (BitVec 32)) : Nat → List (BitVec 32)
     greater suffix (`insertU32_all_gt`); at a false guard the
     sorted prefix absorbs it (`insertU32_snoc_ge`); on swap the
     slice shifts down by one. -/
-theorem bubbleDown_eq_outerListStep (l₀ : List (BitVec 32)) (i : Nat)
+theorem bubbleDown_eq_outerListStep (N : Nat) (l₀ : List (BitVec 32)) (i : Nat)
     (l : List (BitVec 32)) (j : Nat) (z : BitVec 32)
-    (hlen₀ : l₀.length = 4) (hi3 : i ≤ 3)
+    (hlen₀ : l₀.length = N) (hiN : i + 1 ≤ N)
     (hsorted : (l₀.take i).Pairwise (fun a b => b.ult a = false))
-    (hlen : l.length = 4) (hji : j ≤ i)
+    (hlen : l.length = N) (hji : j ≤ i)
     (hz : l[j]? = some z)
     (htake : l.take j = l₀.take j)
     (hslice : l.drop (j + 1) = (l₀.take i).drop j ++ l₀.drop (i + 1))
@@ -890,7 +864,7 @@ theorem bubbleDown_eq_outerListStep (l₀ : List (BitVec 32)) (i : Nat)
   -- Explicit `Nat.rec` motive (instead of `induction ... with`,
   -- whose auto-introduction misnames the reverted hypotheses).
   refine Nat.rec
-    (motive := fun j => ∀ (l : List (BitVec 32)) (hlen : l.length = 4)
+    (motive := fun j => ∀ (l : List (BitVec 32)) (hlen : l.length = N)
       (hji : j ≤ i) (hz : l[j]? = some z)
       (htake : l.take j = l₀.take j)
       (hslice : l.drop (j + 1) = (l₀.take i).drop j ++ l₀.drop (i + 1))
@@ -990,7 +964,7 @@ theorem bubbleDown_eq_outerListStep (l₀ : List (BitVec 32)) (i : Nat)
         · rw [← hx_eq]
           exact hc
         · exact hmid w hm
-      have hlen' : (l.take j ++ [z, l[j]] ++ l.drop (j + 2)).length = 4 := by
+      have hlen' : (l.take j ++ [z, l[j]] ++ l.drop (j + 2)).length = N := by
         have hmin : min j l.length = j := by omega
         have h2 : [z, l[j]].length = 2 := rfl
         rw [List.length_append, List.length_append, List.length_take, hmin,
@@ -1057,10 +1031,12 @@ theorem bubbleDown_eq_outerListStep (l₀ : List (BitVec 32)) (i : Nat)
     + `simp` handles both fuels uniformly, the `stdVecBody_step_ok`
     shape). The post-array is the `set_take_drop` splice; `i` is
     untouched. -/
-theorem sortSwapBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (j : Nat)
+theorem sortSwapBody_step (N : Nat) (F : Nat) (ρ : Env) (l : List (BitVec 32))
+    (j : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-    (hlen : l.length = 4) (hj3 : j ≤ 3) (hj1 : 1 ≤ j) :
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N)
+    (hj1 : 1 ≤ j) :
     ∃ ρ₄, evalStmtFuel F sortSwapBody ρ = .ok (ρ₄, .fellThrough) ∧
       envLookup ρ₄ "a" =
         some (.arr32 (l.take (j - 1) ++ [l[j], l[j - 1]] ++ l.drop (j + 1))) ∧
@@ -1233,11 +1209,12 @@ theorem sortSwapBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (j : Nat)
     covers the `j + 1` live indices; `i` is untouched). The
     `take`-prefix and hit facts thread the condition evaluation
     and the swap-body applicability. -/
-theorem sortInnerWhile_correct (F : Nat) (ρ : Env) (l₀ : List (BitVec 32))
+theorem sortInnerWhile_correct (N : Nat) (F : Nat) (ρ : Env)
+    (l₀ : List (BitVec 32))
     (l : List (BitVec 32)) (j : Nat) (z : BitVec 32)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-    (hlen : l.length = 4) (hj3 : j ≤ 3)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N)
     (hz : l[j]? = some z)
     (htake : l.take j = l₀.take j)
     (hF : j + 1 ≤ F) :
@@ -1248,19 +1225,19 @@ theorem sortInnerWhile_correct (F : Nat) (ρ : Env) (l₀ : List (BitVec 32))
     (motive := fun F => ∀ (ρ : Env) (l : List (BitVec 32)) (j : Nat)
       (ha : envLookup ρ "a" = some (.arr32 l))
       (hj : envLookup ρ "j" = some (.u64 (BitVec.ofNat 64 j)))
-      (hlen : l.length = 4) (hj3 : j ≤ 3)
+      (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hjN : j + 1 ≤ N)
       (hz : l[j]? = some z) (htake : l.take j = l₀.take j)
       (hF : j + 1 ≤ F),
       ∃ ρ', evalStmtFuel F sortInnerWhile ρ = .ok (ρ', .fellThrough) ∧
         envLookup ρ' "a" = some (.arr32 (bubbleDown l j)) ∧
         envLookup ρ' "i" = envLookup ρ "i")
-    ?_ ?_ F ρ l j ha hj hlen hj3 hz htake hF
-  · clear F ρ l j ha hj hlen hj3 hz htake hF
-    intro ρ l j ha hj hlen hj3 hz htake hF
+    ?_ ?_ F ρ l j ha hj hlen hN64 hjN hz htake hF
+  · clear F ρ l j ha hj hlen hN64 hjN hz htake hF
+    intro ρ l j ha hj hlen hN64 hjN hz htake hF
     have h0 : j + 1 ≤ 0 := hF
     exact (Nat.not_succ_le_zero j h0).elim
-  · clear F ρ l j ha hj hlen hj3 hz htake hF
-    intro F ih ρ l j ha hj hlen hj3 hz htake hF
+  · clear F ρ l j ha hj hlen hN64 hjN hz htake hF
+    intro F ih ρ l j ha hj hlen hN64 hjN hz htake hF
     -- Structural split on the index (no manual predecessor lemma,
     -- keeping the `n5-no-manual-fuel-split` gate green).
     cases j with
@@ -1278,13 +1255,15 @@ theorem sortInnerWhile_correct (F : Nat) (ρ : Env) (l₀ : List (BitVec 32))
         exact ha
     | succ k =>
       have hj1 : 1 ≤ k + 1 := by omega
-      have hcond := sortInnerCond_eval_succ ρ l (k + 1) ha hj hlen hj3 hj1
+      have hcond := sortInnerCond_eval_succ N ρ l (k + 1) ha hj hlen hN64
+        (by omega) hj1
       by_cases hc : l[k + 1].ult l[(k + 1) - 1] = true
       · -- Swap iteration: body, then the IH below (`k` is ambient
         -- from the structural split).
         rw [hc] at hcond
         obtain ⟨ρ₄, hbody, ha₄, hj₄, hi₄⟩ :=
-          sortSwapBody_step F ρ l (k + 1) ha hj hlen (by omega) (by omega)
+          sortSwapBody_step N F ρ l (k + 1) ha hj hlen hN64 (by omega)
+            (by omega)
         -- `(k+1)-1 ≡ k`, `(k+1)+1 ≡ k+2` definitionally: ascribe the
         -- post-state in `k`-form (rewriting indices inside `getElem`
         -- would disturb its proof argument).
@@ -1335,16 +1314,16 @@ theorem sortInnerWhile_correct (F : Nat) (ρ : Env) (l₀ : List (BitVec 32))
             rw [e2] at e1
             exact e1.symm
           exact hA
-        have hlen' : (l.take k ++ [z, l[k]] ++ l.drop (k + 2)).length = 4 := by
+        have hlen' : (l.take k ++ [z, l[k]] ++ l.drop (k + 2)).length = N := by
           have hmin : min k l.length = k := by omega
           have h2 : [z, l[k]].length = 2 := rfl
           rw [List.length_append, List.length_append, List.length_take, hmin,
             h2, List.length_drop, hlen]
           omega
         have hF' : k + 1 ≤ F := by omega
-        have hj3' : k ≤ 3 := by omega
+        have hjN' : k + 1 ≤ N := by omega
         obtain ⟨ρ', hloop, ha', hi'⟩ :=
-          ih ρ₄ _ k ha₄z hj₄k hlen' hj3' hz' htake' hF'
+          ih ρ₄ _ k ha₄z hj₄k hlen' hN64 hjN' hz' htake' hF'
         -- The loop head equals the pure unfold.
         have hbub : bubbleDown l (k + 1) = bubbleDown
             (l.take k ++ [z, l[k]] ++ l.drop (k + 2)) k := by
@@ -1396,18 +1375,18 @@ theorem sortInnerWhile_correct (F : Nat) (ρ : Env) (l₀ : List (BitVec 32))
         rw [hbub]
         exact ha
 
-/-- The outer condition reads `i < 4` off the environment (raw `ult`
+/-- The outer condition reads `i < N` off the environment (raw `ult`
     form, like the inner condition lemmas; call sites case-split). -/
-theorem sortOuterCond_eval (ρ : Env) (i : Nat)
+theorem sortOuterCond_eval (N : Nat) (ρ : Env) (i : Nat)
     (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i))) :
-    evalExpr sortOuterCond ρ =
-      .ok (.b ((BitVec.ofNat 64 i).ult (BitVec.ofNat 64 4))) := by
+    evalExpr (sortOuterCond N) ρ =
+      .ok (.b ((BitVec.ofNat 64 i).ult (BitVec.ofNat 64 N))) := by
   have e_i : evalExpr (.var "i") ρ = .ok (.u64 (BitVec.ofNat 64 i)) :=
     evalExpr_var_hit _ _ _ hi
-  have e4 : evalExpr (.lit (.u64 (BitVec.ofNat 64 4))) ρ =
-      .ok (.u64 (BitVec.ofNat 64 4)) := by
+  have eN : evalExpr (.lit (.u64 (BitVec.ofNat 64 N))) ρ =
+      .ok (.u64 (BitVec.ofNat 64 N)) := by
     simp [evalExpr, litVal]
-  have h := evalExpr_ult_u64 _ _ ρ _ _ e_i e4
+  have h := evalExpr_ult_u64 _ _ ρ _ _ e_i eN
   simp only [sortOuterCond]
   exact h
 
@@ -1415,10 +1394,11 @@ theorem sortOuterCond_eval (ρ : Env) (i : Nat)
     `l[i]` into the sorted `take i` prefix by `bubbleDown_eq`),
     step `i`. The post-pass prefix `take (i+1)` is sorted
     (`pairwise_insertU32_sorted`) with length preserved. -/
-theorem sortOuterBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (i : Nat)
+theorem sortOuterBody_step (N : Nat) (F : Nat) (ρ : Env) (l : List (BitVec 32))
+    (i : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i)))
-    (hlen : l.length = 4) (hi3 : i ≤ 3)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hiN : i + 1 ≤ N)
     (hsorted : (l.take i).Pairwise (fun a b => b.ult a = false))
     (hF : i + 1 ≤ F) :
     ∃ ρ', evalStmtFuel F sortOuterBody ρ = .ok (ρ', .fellThrough) ∧
@@ -1427,7 +1407,7 @@ theorem sortOuterBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (i : Nat)
       envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 (i + 1))) ∧
       ((outerListStep l i (l[i]?.getD 0)).take (i + 1)).Pairwise
         (fun a b => b.ult a = false) ∧
-      (outerListStep l i (l[i]?.getD 0)).length = 4 := by
+      (outerListStep l i (l[i]?.getD 0)).length = N := by
   have hi64 : i < 2 ^ 64 := by omega
   have hz : l[i]? = some l[i] := List.getElem?_eq_getElem (by omega)
   have hgetD : l[i]?.getD 0 = l[i] := by simp [hz]
@@ -1448,8 +1428,8 @@ theorem sortOuterBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (i : Nat)
     simp [envExtend, envLookup, show ("i" : String) ≠ "j" by decide]
   -- Bubble down from `j = i` (prefix is trivially the entry prefix).
   obtain ⟨ρ₂, hloop, ha₂raw, hi₂raw⟩ :=
-    sortInnerWhile_correct F (envExtend ρ "j" (.u64 (BitVec.ofNat 64 i)))
-      l l i l[i] ha₁ hj₁ hlen hi3 hz rfl hF
+    sortInnerWhile_correct N F (envExtend ρ "j" (.u64 (BitVec.ofNat 64 i)))
+      l l i l[i] ha₁ hj₁ hlen hN64 (by omega) hz rfl hF
   have hi₂' : envLookup ρ₂ "i" = some (.u64 (BitVec.ofNat 64 i)) := by
     rw [hi₂raw, hi₁]
     exact hi
@@ -1465,7 +1445,7 @@ theorem sortOuterBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (i : Nat)
     intro w hw
     rw [hdrop] at hw
     simp at hw
-  have hbub := bubbleDown_eq_outerListStep l i l i l[i] hlen hi3 hsorted
+  have hbub := bubbleDown_eq_outerListStep N l i l i l[i] hlen hiN hsorted
     hlen (Nat.le_refl i) hz rfl hslice hmid
   have ha₂ : envLookup ρ₂ "a" =
       some (.arr32 (outerListStep l i (l[i]?.getD 0))) := by
@@ -1520,7 +1500,7 @@ theorem sortOuterBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (i : Nat)
       (i + 1)).Pairwise (fun a b => b.ult a = false) := by
     rw [hstep_eq, htakeN]
     exact pairwise_insertU32_sorted _ _ hsorted
-  have hnew_len : (outerListStep l i (l[i]?.getD 0)).length = 4 := by
+  have hnew_len : (outerListStep l i (l[i]?.getD 0)).length = N := by
     rw [hstep_eq, List.length_append, insertU32_length,
       take_length_eq _ _ (by omega), List.length_drop, hlen]
     omega
@@ -1534,160 +1514,112 @@ theorem sortOuterBody_step (F : Nat) (ρ : Env) (l : List (BitVec 32)) (i : Nat)
     prefix (`sortOuterBody_step`), and the IH runs the remaining
     passes. Fuel `B(i) = (4-i)+4` covers the inner descent (`i+1`)
     plus one per remaining pass. -/
-theorem sortOuterWhile_correct (F : Nat) (ρ : Env) (l : List (BitVec 32))
+theorem sortOuterWhile_correct (N : Nat) (F : Nat) (ρ : Env)
+    (l : List (BitVec 32))
     (i : Nat)
     (ha : envLookup ρ "a" = some (.arr32 l))
     (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i)))
-    (hlen : l.length = 4) (hi1 : 1 ≤ i) (hi4 : i ≤ 4)
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (hi1 : 1 ≤ i) (hiN : i ≤ N)
     (hsorted : (l.take i).Pairwise (fun a b => b.ult a = false))
-    (hF : (4 - i) + 4 ≤ F) :
-    ∃ ρ', evalStmtFuel F sortOuterWhile ρ = .ok (ρ', .fellThrough) ∧
-      envLookup ρ' "a" = some (.arr32 (outerListAux l i (4 - i))) ∧
-      envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 4)) := by
-  refine Nat.rec
-    (motive := fun F => ∀ (ρ : Env) (l : List (BitVec 32)) (i : Nat)
-      (ha : envLookup ρ "a" = some (.arr32 l))
-      (hi : envLookup ρ "i" = some (.u64 (BitVec.ofNat 64 i)))
-      (hlen : l.length = 4) (hi1 : 1 ≤ i) (hi4 : i ≤ 4)
-      (hsorted : (l.take i).Pairwise (fun a b => b.ult a = false))
-      (hF : (4 - i) + 4 ≤ F),
-      ∃ ρ', evalStmtFuel F sortOuterWhile ρ = .ok (ρ', .fellThrough) ∧
-        envLookup ρ' "a" = some (.arr32 (outerListAux l i (4 - i))) ∧
-        envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 4)))
-    ?_ ?_ F ρ l i ha hi hlen hi1 hi4 hsorted hF
-  · intro ρ l i ha hi hlen hi1 hi4 hsorted hF
-    have h0 : (4 - i) + 4 ≤ 0 := hF
-    exact (Nat.not_succ_le_zero _ h0).elim
-  · intro F ih ρ l i ha hi hlen hi1 hi4 hsorted hF
+    (hF : (N - i) + N ≤ F) :
+    ∃ ρ', evalStmtFuel F (sortOuterWhile N) ρ = .ok (ρ', .fellThrough) ∧
+      envLookup ρ' "a" = some (.arr32 (outerListAux N l i (N - i))) ∧
+      envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 N)) := by
+  induction F generalizing ρ l i ha hi hlen hN64 hi1 hiN hsorted with
+  | zero =>
+    have h0 : (N - i) + N ≤ 0 := hF
+    have hcontra : False := by omega
+    exact hcontra.elim
+  | succ F ih =>
     have hi64 : i < 2 ^ 64 := by omega
-    have hcond := sortOuterCond_eval ρ i hi
-    by_cases hi4' : i < 4
+    have hcond := sortOuterCond_eval N ρ i hi
+    by_cases hiN' : i < N
     · -- Pass `i`: body, then the remaining passes below.
-      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 4) = true := by
-        rw [ofNat64_ult i _ hi64, ofNat64_toNat 4 (by decide : 4 < 2 ^ 64)]
-        exact decide_eq_true hi4'
+      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 N) = true := by
+        rw [ofNat64_ult i _ hi64, ofNat64_toNat N hN64]
+        exact decide_eq_true hiN'
       rw [hc] at hcond
       obtain ⟨ρ₂, hbody, ha₂, hi₂, hsorted₂, hlen₂⟩ :=
-        sortOuterBody_step F ρ l i ha hi hlen (by omega) hsorted (by omega)
-      have hstep : evalStmtFuel (F + 1) sortOuterWhile ρ =
-          evalStmtFuel F sortOuterWhile ρ₂ := by
+        sortOuterBody_step N F ρ l i ha hi hlen hN64 (by omega) hsorted
+          (by omega)
+      have hstep : evalStmtFuel (F + 1) (sortOuterWhile N) ρ =
+          evalStmtFuel F (sortOuterWhile N) ρ₂ := by
         simp [sortOuterWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
           hcond, hbody]
       rw [hstep]
-      have hfuel : 4 - i = (3 - i) + 1 := by omega
-      have hF' : (4 - (i + 1)) + 4 ≤ F := by omega
+      have hfuel : N - i = (N - (i + 1)) + 1 := by omega
+      have hF' : (N - (i + 1)) + N ≤ F := by omega
       obtain ⟨ρ', hloop, ha', hi'⟩ :=
-        ih ρ₂ _ (i + 1) ha₂ hi₂ hlen₂ (by omega) (by omega) hsorted₂ hF'
+        ih ρ₂ _ (i + 1) ha₂ hi₂ hlen₂ hN64 (by omega) (by omega) hsorted₂ hF'
       -- The loop head equals the pure unfold.
-      have haux : outerListAux l i (4 - i) = outerListAux
-          (outerListStep l i (l[i]?.getD 0)) (i + 1) (4 - (i + 1)) := by
-        rw [hfuel, outerListAux_succ, if_pos hi4']
-        have heq : 4 - (i + 1) = 3 - i := by omega
-        rw [heq]
+      have haux : outerListAux N l i (N - i) = outerListAux N
+          (outerListStep l i (l[i]?.getD 0)) (i + 1) (N - (i + 1)) := by
+        rw [hfuel, outerListAux_succ, if_pos hiN']
       refine ⟨ρ', hloop, ?_, hi'⟩
       rw [haux]
       exact ha'
-    · -- Exit at `i = 4`: no passes remain.
-      have hi4eq : i = 4 := by omega
-      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 4) = false := by
-        rw [ofNat64_ult i _ hi64, ofNat64_toNat 4 (by decide : 4 < 2 ^ 64),
-          hi4eq]
-        decide
+    · -- Exit at `i = N`: no passes remain.
+      have hiNeq : i = N := by omega
+      have hc : (BitVec.ofNat 64 i).ult (BitVec.ofNat 64 N) = false := by
+        rw [ofNat64_ult i _ hi64, ofNat64_toNat N hN64, hiNeq]
+        simp
       rw [hc] at hcond
-      have hexit : evalStmtFuel (F + 1) sortOuterWhile ρ =
+      have hexit : evalStmtFuel (F + 1) (sortOuterWhile N) ρ =
           .ok (ρ, .fellThrough) := by
         simp [sortOuterWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
           hcond]
-      rw [hexit]
-      subst hi4eq
+      rw [hexit, hiNeq]
       refine ⟨ρ, rfl, ?_, ?_⟩
-      · have hemp : outerListAux l 4 (4 - 4) = l := rfl
+      · have hemp : outerListAux N l N (N - N) = l := by
+          rw [Nat.sub_self, outerListAux_zero]
         rw [hemp]
         exact ha
-      · exact hi
+      · rw [← hiNeq]
+        exact hi
 
-/-- Three outer passes equal the insertion fold: each pass inserts the
-    next word into the sorted prefix, so the accumulator after pass
-    `i` is `insertU32 x_i` over the previous prefix — exactly the
-    `sortL` nesting, hence `insertionSortList` by `sortL_nil`. -/
-theorem outerListAux_sortL (l : List (BitVec 32)) (hlen : l.length = 4) :
-    outerListAux l 1 3 = sortL [] l := by
-  obtain ⟨x0, x1, x2, x3, rfl⟩ := length_eq_four l hlen
-  -- Pass 1 reads/computations (all definitional on literals).
-  have z1 : ([x0, x1, x2, x3][1]?.getD 0) = x1 := rfl
-  have t1 : [x0, x1, x2, x3].take 1 = insertU32 x0 [] := rfl
-  have d1 : [x0, x1, x2, x3].drop (1 + 1) = [x2, x3] := rfl
-  have S1 : outerListStep [x0, x1, x2, x3] 1 ([x0, x1, x2, x3][1]?.getD 0) =
-      insertU32 x1 (insertU32 x0 []) ++ [x2, x3] := by
-    simp only [outerListStep, z1, t1, d1]
-  -- Pass 2: the prefix has length 2, so take/drop/get hit the split.
-  have hA1 : (insertU32 x1 (insertU32 x0 [])).length = 2 := by
-    simp [insertU32_length]
-  have g2 : ((insertU32 x1 (insertU32 x0 [])) ++ [x2, x3])[2]? = some x2 := by
-    have e := getElem?_append_add (insertU32 x1 (insertU32 x0 [])) [x2, x3] 0
-    rw [Nat.add_zero, hA1] at e
-    exact e
-  have t2 : ((insertU32 x1 (insertU32 x0 [])) ++ [x2, x3]).take 2 =
-      insertU32 x1 (insertU32 x0 []) := by
-    rw [← hA1]
-    exact take_append_self _ _
-  have d2 : ((insertU32 x1 (insertU32 x0 [])) ++ [x2, x3]).drop (2 + 1) =
-      [x3] := by
-    have h1 : (insertU32 x1 (insertU32 x0 [])).length ≤ 2 + 1 := by omega
-    have h2 : 2 + 1 - (insertU32 x1 (insertU32 x0 [])).length = 1 := by omega
-    have h3 : [x2, x3].drop 1 = [x3] := rfl
-    rw [List.drop_append, List.drop_eq_nil_of_le h1, h2, h3]
+/-- The aux equals the insertion fold over the take/drop split: each
+    pass inserts `l[i]` into the accumulator, so after `k` passes with
+    `i + k = N` the accumulator holds the folded length-`N` prefix.
+    Induction on the remaining passes; the step slides the split by
+    one (`take_append_self` / `drop_append_self`), the base case folds
+    the whole list from empty. -/
+theorem outerListAux_sortL (N : Nat) (l : List (BitVec 32)) (i k : Nat)
+    (hlen : l.length = N) (hik : i + k = N) :
+    outerListAux N l i k = sortL (l.take i) (l.drop i) := by
+  induction k generalizing l i with
+  | zero =>
+    have hiN : i = N := by omega
+    have ht : l.take N = l := by
+      rw [← hlen]
+      simp
+    have hd : l.drop N = [] := by
+      rw [← hlen]
+      simp
+    rw [outerListAux_zero, hiN, ht, hd]
     rfl
-  have gz2 : ((((insertU32 x1 (insertU32 x0 [])) ++ [x2, x3])[2]?.getD 0)) =
-      x2 := by
-    rw [g2]
+  | succ k ih =>
+    have hiN : i < N := by omega
+    have hz : l[i]? = some l[i] := List.getElem?_eq_getElem (by omega)
+    have hgetD : l[i]?.getD 0 = l[i] := by simp [hz]
+    have hsteplen : (outerListStep l i l[i]).length = N := by
+      rw [outerListStep, List.length_append, insertU32_length,
+        take_length_eq _ _ (by omega), List.length_drop, hlen]
+      omega
+    have hik' : (i + 1) + k = N := by omega
+    rw [outerListAux_succ, if_pos hiN, hgetD]
+    rw [ih _ _ hsteplen hik']
+    have hA : (insertU32 l[i] (l.take i)).length = i + 1 := by
+      rw [insertU32_length, take_length_eq _ _ (by omega)]
+    have htake : (outerListStep l i l[i]).take (i + 1) =
+        insertU32 l[i] (l.take i) := by
+      rw [outerListStep, show i + 1 = (insertU32 l[i] (l.take i)).length
+        from hA.symm, take_append_self]
+    have hdrop : (outerListStep l i l[i]).drop (i + 1) = l.drop (i + 1) := by
+      rw [outerListStep, show i + 1 = (insertU32 l[i] (l.take i)).length
+        from hA.symm, drop_append_self]
+    rw [htake, hdrop, drop_of_getElem? _ _ _ hz]
     rfl
-  have S2 : outerListStep ((insertU32 x1 (insertU32 x0 [])) ++ [x2, x3]) 2
-      ((((insertU32 x1 (insertU32 x0 [])) ++ [x2, x3])[2]?.getD 0)) =
-      insertU32 x2 (insertU32 x1 (insertU32 x0 [])) ++ [x3] := by
-    simp only [outerListStep, gz2, t2, d2]
-  -- Pass 3: the prefix has length 3.
-  have hA2 : (insertU32 x2 (insertU32 x1 (insertU32 x0 []))).length = 3 := by
-    simp [insertU32_length]
-  have g3 : ((insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [x3])[3]? =
-      some x3 := by
-    have e := getElem?_append_add
-      (insertU32 x2 (insertU32 x1 (insertU32 x0 []))) [x3] 0
-    rw [Nat.add_zero, hA2] at e
-    exact e
-  have t3 : ((insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [x3]).take 3 =
-      insertU32 x2 (insertU32 x1 (insertU32 x0 [])) := by
-    rw [← hA2]
-    exact take_append_self _ _
-  have d3 : ((insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [x3]).drop
-      (3 + 1) = [] := by
-    have h1 : (insertU32 x2 (insertU32 x1 (insertU32 x0 []))).length ≤ 3 + 1 :=
-      by omega
-    have h2 : 3 + 1 - (insertU32 x2 (insertU32 x1 (insertU32 x0 []))).length =
-        1 := by omega
-    have h3 : ([x3].drop 1) = ([] : List (BitVec 32)) := rfl
-    rw [List.drop_append, List.drop_eq_nil_of_le h1, h2, h3]
-    rfl
-  have gz3 : ((((insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [x3])[3]?.getD
-      0)) = x3 := by
-    rw [g3]
-    rfl
-  have S3 : outerListStep
-      ((insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [x3]) 3
-      ((((insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [x3])[3]?.getD 0)) =
-      insertU32 x3 (insertU32 x2 (insertU32 x1 (insertU32 x0 []))) ++ [] := by
-    simp only [outerListStep, gz3, t3, d3]
-  -- Chain the three passes; the index/fuel literals normalize by `rfl`.
-  have e12 : (1 : Nat) + 1 = 2 := rfl
-  have e23 : (2 : Nat) + 1 = 3 := rfl
-  rw [show (3 : Nat) = 2 + 1 from rfl, outerListAux_succ,
-    if_pos (by decide : (1 : Nat) < 4), S1, e12,
-    show (2 : Nat) = 1 + 1 from rfl, outerListAux_succ,
-    if_pos (by decide : (2 : Nat) < 4), S2, e23,
-    show (1 : Nat) = 0 + 1 from rfl, outerListAux_succ,
-    if_pos (by decide : (3 : Nat) < 4), S3, outerListAux_zero,
-    List.append_nil]
-  simp only [sortL]
+
 
 /-- `take 1` is pairwise sorted (at most one word). -/
 theorem pairwise_take_one (l : List (BitVec 32)) (hlen : 1 ≤ l.length) :
@@ -1702,14 +1634,33 @@ theorem pairwise_take_one (l : List (BitVec 32)) (hlen : 1 ≤ l.length) :
       rw [h] at hL
       simp at hL
 
-/-- `emit_correct` for `insertion_sort`: bind `a`, run the three
+/-- Folding from the singleton prefix sorts the whole list: the
+    `i = 1` split is the head/tail split, and the fold from `[x]`
+    agrees with `insertionSortList` by one `sortL_insert` step. -/
+theorem sortL_take_one_drop_one (l : List (BitVec 32)) (hlen : 1 ≤ l.length) :
+    sortL (l.take 1) (l.drop 1) = insertionSortList l := by
+  cases l with
+  | nil => simp at hlen
+  | cons x xs =>
+    have t : (x :: xs).take 1 = [x] := rfl
+    have d : (x :: xs).drop 1 = xs := rfl
+    rw [t, d]
+    show sortL [x] xs = insertU32 x (insertionSortList xs)
+    have e1 : insertU32 x [] = [x] := rfl
+    have e2 := sortL_insert x [] xs
+    rw [e1] at e2
+    rw [sortL_nil]
+    exact e2
+
+/-- `emit_correct` for `insertion_sort`: bind `a`, run the outer
     passes from the singleton prefix (`sortOuterWhile_correct` at
-    `i = 1`, fuel `7`), return the array — which is the insertion
-    fold by `outerListAux_sortL` + `sortL_nil`. -/
-theorem evalFuncFuel_insertionSort (F : Nat) (l : List (BitVec 32))
-    (hlen : l.length = 4) (hF : 7 ≤ F) :
-    evalFuncFuel F insertionSortFunc [.arr32 l] = insertionSortFwd l := by
-  have hbind : bindArgs insertionSortFunc.args [.arr32 l] =
+    `i = 1`, fuel `(N-1)+N`), return the array — which is the insertion
+    fold by `outerListAux_sortL` + `sortL_take_one_drop_one`. -/
+theorem evalFuncFuel_insertionSort (N : Nat) (F : Nat) (l : List (BitVec 32))
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (h1N : 1 ≤ N)
+    (hF : (N - 1) + N ≤ F) :
+    evalFuncFuel F (insertionSortFunc N) [.arr32 l] = insertionSortFwd l := by
+  have hbind : bindArgs (insertionSortFunc N).args [.arr32 l] =
       some [("a", .arr32 l)] := rfl
   have e_one : evalExpr (.lit (.u64 (BitVec.ofNat 64 1)))
       [("a", .arr32 l)] = .ok (.u64 (BitVec.ofNat 64 1)) := by
@@ -1728,41 +1679,42 @@ theorem evalFuncFuel_insertionSort (F : Nat) (l : List (BitVec 32))
       some (.u64 (BitVec.ofNat 64 1)) := by
     simp [envExtend, envLookup]
   obtain ⟨ρ₂, hloop, ha₂, _⟩ :=
-    sortOuterWhile_correct F
+    sortOuterWhile_correct N F
       (envExtend [("a", .arr32 l)] "i" (.u64 (BitVec.ofNat 64 1))) l 1
-      ha₁ hi₁ hlen (by decide : 1 ≤ 1) (by decide : 1 ≤ 4)
-      (pairwise_take_one l (by omega)) (by omega : (4 - 1) + 4 ≤ F)
+      ha₁ hi₁ hlen hN64 (by decide : 1 ≤ 1) h1N
+      (pairwise_take_one l (by omega)) hF
   have e_ret : evalExpr (.var "a") ρ₂ =
-      .ok (.arr32 (outerListAux l 1 (4 - 1))) :=
+      .ok (.arr32 (outerListAux N l 1 (N - 1))) :=
     evalExpr_var_hit _ _ _ ha₂
   have hret : evalStmtFuel F (.return_ (.var "a")) ρ₂ =
-      .ok (ρ₂, .returned (.arr32 (outerListAux l 1 (4 - 1)))) :=
+      .ok (ρ₂, .returned (.arr32 (outerListAux N l 1 (N - 1)))) :=
     evalStmtFuel_return F _ _ _ e_ret
-  have hbody : evalStmtFuel F insertionSortFunc.body [("a", .arr32 l)] =
-      .ok (ρ₂, .returned (.arr32 (outerListAux l 1 (4 - 1)))) := by
+  have hbody : evalStmtFuel F (insertionSortFunc N).body [("a", .arr32 l)] =
+      .ok (ρ₂, .returned (.arr32 (outerListAux N l 1 (N - 1)))) := by
     rw [insertionSortFunc_body]
     rw [evalStmtFuel_seq_fallthrough F _ _ _ _ s1,
       evalStmtFuel_seq_fallthrough F _ _ _ _ hloop]
     exact hret
-  have hfunc : evalFuncFuel F insertionSortFunc [.arr32 l] =
-      .ok (.arr32 (outerListAux l 1 (4 - 1))) := by
+  have hfunc : evalFuncFuel F (insertionSortFunc N) [.arr32 l] =
+      .ok (.arr32 (outerListAux N l 1 (N - 1))) := by
     simp only [evalFuncFuel, hbind, hbody]
   -- The loop result is the insertion fold.
-  have hsorted_eq : outerListAux l 1 (4 - 1) = insertionSortList l := by
-    have h3 : (4 - 1) = 3 := rfl
-    rw [h3, outerListAux_sortL _ hlen, ← sortL_nil]
+  have hsorted_eq : outerListAux N l 1 (N - 1) = insertionSortList l := by
+    have h := outerListAux_sortL N l 1 (N - 1) hlen (by omega)
+    rw [h]
+    exact sortL_take_one_drop_one l (by omega)
   rw [hsorted_eq] at hfunc
   simpa [insertionSortFwd] using hfunc
 
 /-- Closed program for the case study: the two array leaves, the
     sort, and the entry. -/
 def arraySortProg : Prog :=
-  [arrayRefU32Func, arrayAtU32Func, insertionSortFunc,
+  [arrayRefU32Func, arrayAtU32Func, insertionSortFunc 4,
     arraySortSumEntryFunc]
 
 /-- `findFunc` resolves the sort callee. -/
 theorem findFunc_insertionSort :
-    findFunc arraySortProg insertionSortName = some insertionSortFunc := by
+    findFunc arraySortProg insertionSortName = some (insertionSortFunc 4) := by
   unfold arraySortProg
   rw [findFunc_miss _ _ _ (by decide), findFunc_miss _ _ _ (by decide)]
   exact findFunc_hit _ _
@@ -1835,10 +1787,11 @@ theorem insertionSortList_perm (l : List (BitVec 32)) :
 /-- The emitted sort returns a sorted permutation of its input
     (the N9-iv contract: `evalFuncFuel_insertionSort` closed at the
     pure-list spec). -/
-theorem evalFuncFuel_insertionSort_spec (F : Nat) (l : List (BitVec 32))
-    (hlen : l.length = 4) (hF : 7 ≤ F) :
-    ∃ s, evalFuncFuel F insertionSortFunc [.arr32 l] = .ok (.arr32 s) ∧
+theorem evalFuncFuel_insertionSort_spec (N : Nat) (F : Nat) (l : List (BitVec 32))
+    (hlen : l.length = N) (hN64 : N < 2 ^ 64) (h1N : 1 ≤ N)
+    (hF : (N - 1) + N ≤ F) :
+    ∃ s, evalFuncFuel F (insertionSortFunc N) [.arr32 l] = .ok (.arr32 s) ∧
       s.Pairwise (fun a b => b.ult a = false) ∧ List.Perm s l := by
-  rw [evalFuncFuel_insertionSort F l hlen hF]
+  rw [evalFuncFuel_insertionSort N F l hlen hN64 h1N hF]
   exact ⟨insertionSortList l, rfl, insertionSortList_sorted l,
     insertionSortList_perm l⟩

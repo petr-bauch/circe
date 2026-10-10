@@ -44,7 +44,7 @@ def checkSort (a b c d : BitVec 32) : IO Nat := do
   -- forward (the proof is `evalFuncFuel_insertionSort`; this checks
   -- the executable closes the same way on each input).
   let fwd := insertionSortFwd l
-  let ev := evalFunc insertionSortFunc [.arr32 l]
+  let ev := evalFunc (insertionSortFunc 4) [.arr32 l]
   if (repr fwd).pretty != (repr ev).pretty then
     throw (IO.userError s!"sort eval/fwd mismatch at {[a, b, c, d]}")
   -- Executable N9-iv contract on the evaluated output.

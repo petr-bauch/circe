@@ -1043,7 +1043,7 @@ theorem matchFrag_arrayAt : matchFrag arrayAtFunc = some .arrayAt := rfl
 theorem matchFrag_arraySum : matchFrag arraySumFunc = some .arraySum := rfl
 theorem matchFrag_arrayRefU32 : matchFrag arrayRefU32Func = some .arrayRefU32 := rfl
 theorem matchFrag_arrayAtU32 : matchFrag arrayAtU32Func = some .arrayAtU32 := rfl
-theorem matchFrag_insertionSort : matchFrag insertionSortFunc = some .insertionSort := rfl
+theorem matchFrag_insertionSort : matchFrag (insertionSortFunc 4) = some .insertionSort := rfl
 theorem matchFrag_arraySortSum : matchFrag arraySortSumEntryFunc = some .arraySortSum := rfl
 theorem matchFrag_optHas : matchFrag optHasFunc = some .optHas := rfl
 theorem matchFrag_optHasValue : matchFrag optHasValueFunc = some .optHasValue := rfl

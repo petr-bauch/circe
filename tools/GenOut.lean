@@ -72,7 +72,7 @@ def main : IO Unit := do
   let arraySum ← emitOrDie arraySumFunc
   let arrayRefU32 ← emitOrDie arrayRefU32Func
   let arrayAtU32 ← emitOrDie arrayAtU32Func
-  let insertionSort ← emitOrDie insertionSortFunc
+  let insertionSort ← emitOrDie (insertionSortFunc 4)
   let arraySortSum ← emitOrDie arraySortSumEntryFunc
   let optHas ← emitOrDie optHasFunc
   let optHasValue ← emitOrDie optHasValueFunc
@@ -264,7 +264,7 @@ def main : IO Unit := do
   let arraySumSpec ← specOrDie arraySumFunc
   let arrayRefU32Spec ← specOrDie arrayRefU32Func
   let arrayAtU32Spec ← specOrDie arrayAtU32Func
-  let insertionSortSpec ← specOrDie insertionSortFunc
+  let insertionSortSpec ← specOrDie (insertionSortFunc 4)
   let arraySortSumSpec ← specOrDie arraySortSumEntryFunc
   let optHasSpec ← specOrDie optHasFunc
   let optHasValueSpec ← specOrDie optHasValueFunc

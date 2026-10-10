@@ -287,8 +287,8 @@ theorem bindMemArgs_insertionSort (l : List (BitVec 32)) :
     a single `&mut` array is containment — no second reference can
     collide). -/
 theorem oracleNoalias_insertionSort (l : List (BitVec 32)) :
-    oracleNoalias insertionSortFunc [.arr32 l] := by
-  have hb : bindMemArgs insertionSortFunc.args [.arr32 l] emptyMem =
+    oracleNoalias (insertionSortFunc 4) [.arr32 l] := by
+  have hb : bindMemArgs (insertionSortFunc 4).args [.arr32 l] emptyMem =
       some ([("a", .arr32 l)],
         ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)]) := by
     show bindMemArgs
