@@ -1047,6 +1047,16 @@ def checkM2FwdHomes : IO Unit := do
     if containsSubstr base d then
       throw (IO.userError s!"M2 translation still in Circe/Base.lean: {d}")
 
+/-- Sum-homes gate: the prefix-sum translations live in
+    `Circe.Emit.SumFwd` (next to their proofs), never in `Circe.Base`. -/
+def checkSumFwdHomes : IO Unit := do
+  for d in ["def prefixSumU32 ", "def prefixSumU64 "] do
+    needHas "Circe/Emit/SumFwd.lean" d
+  let base ← IO.FS.readFile "Circe/Base.lean"
+  for d in ["prefixSumU32", "prefixSumU64"] do
+    if containsSubstr base d then
+      throw (IO.userError s!"sum translation still in Circe/Base.lean: {d}")
+
 /-- N8c adoption gate: every collapsed closed-entry proof goes through
     the `cir_eval_closed` macro (single adoption point over
     `native_decide`; new entries must use it too). -/
@@ -1237,6 +1247,7 @@ def main (args : List String) : IO Unit := do
         ("m1-vecfwd-homes", checkVecFwdHomes),
         ("s3-flowfwd-homes", checkFlowFwdHomes),
         ("m2-m2fwd-homes", checkM2FwdHomes),
+        ("s0-sumfwd-homes", checkSumFwdHomes),
         ("roster-suites", checkSuiteRoster),
         ("roster-goldens", checkGoldenRoster)]
   let res ← runJobs jobs

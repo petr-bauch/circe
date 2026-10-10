@@ -5,6 +5,7 @@
 -- Checked by `lake env lean`; see `tools/check-phase4.sh`.
 
 import Circe.Base
+import Circe.Emit.SumFwd
 
 /-- Pure translation of `sum_caller` (delegates to `sum_array_fwd`). -/
 def sum_caller_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=

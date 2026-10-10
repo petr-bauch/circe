@@ -3,6 +3,7 @@ Circe.Emit.Sum — `sum_array`: bounded loop over a length-paired array
 (canonical `Func`, forward, loop invariant, fuel-generalized correctness).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.SumFwd
 
 /-! ## `sum_array`: bounded loop over a length-paired array -/
 

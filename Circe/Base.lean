@@ -467,39 +467,6 @@ theorem vecGet_set_same (v : Vec32) (i : Nat) (x : BitVec 32) (w : Vec32)
   rw [hset']
   exact getElem?_set_self v.val i x hb
 
-/-- Wrapping prefix sum of the first `k` elements (`sum_array` accumulates
-    `uint32_t`, so addition wraps mod 2^32 and never fails). -/
-def prefixSumU32 : List (BitVec 32) → Nat → BitVec 32
-  | [], _ => 0
-  | _, 0 => 0
-  | x :: xs, k + 1 => x + prefixSumU32 xs k
-
-theorem prefixSumU32_nil (k : Nat) : prefixSumU32 [] k = 0 := by
-  cases k <;> rfl
-
-theorem prefixSumU32_zero (l : List (BitVec 32)) : prefixSumU32 l 0 = 0 := by
-  cases l <;> rfl
-
-theorem prefixSumU32_cons (x : BitVec 32) (xs : List (BitVec 32)) (k : Nat) :
-    prefixSumU32 (x :: xs) (k + 1) = x + prefixSumU32 xs k := rfl
-
-/-- Bridge to the spec world: a prefix sum is the `List.sum` of the taken
-    prefix (Phase 5 functional specs build on this). -/
-theorem prefixSumU32_take_sum (l : List (BitVec 32)) (k : Nat) :
-    prefixSumU32 l k = (l.take k).sum := by
-  induction l generalizing k with
-  | nil => cases k <;> rfl
-  | cons x xs ih =>
-    cases k with
-    | zero => rfl
-    | succ k => simp [prefixSumU32, List.sum_cons, ih]
-
-/-- Full-length prefix sum is the whole-list sum. -/
-theorem prefixSumU32_full (l : List (BitVec 32)) :
-    prefixSumU32 l l.length = l.sum := by
-  have h := prefixSumU32_take_sum l l.length
-  rwa [List.take_length] at h
-
 /-! ## M1b: uniquely-owned heap mirror `Vec64` (u64-only) -/
 
 /-- A uniquely-owned `u64` heap block (`malloc`/`free` functionalized).
@@ -646,37 +613,6 @@ theorem vecGet64_set_same (v : Vec64) (i : Nat) (x : BitVec 64) (w : Vec64)
   rw [vecGet64_ok w i x (vecSet64_live v i x w hset)]
   rw [hset']
   exact getElem?_set_self64 v.val i x hb
-
-def prefixSumU64 : List (BitVec 64) → Nat → BitVec 64
-  | [], _ => 0
-  | _, 0 => 0
-  | x :: xs, k + 1 => x + prefixSumU64 xs k
-
-theorem prefixSumU64_nil (k : Nat) : prefixSumU64 [] k = 0 := by
-  cases k <;> rfl
-
-theorem prefixSumU64_zero (l : List (BitVec 64)) : prefixSumU64 l 0 = 0 := by
-  cases l <;> rfl
-
-theorem prefixSumU64_cons (x : BitVec 64) (xs : List (BitVec 64)) (k : Nat) :
-    prefixSumU64 (x :: xs) (k + 1) = x + prefixSumU64 xs k := rfl
-
-/-- Bridge to the spec world: a prefix sum is the `List.sum` of the taken
-    prefix (Phase 5 functional specs build on this). -/
-theorem prefixSumU64_take_sum (l : List (BitVec 64)) (k : Nat) :
-    prefixSumU64 l k = (l.take k).sum := by
-  induction l generalizing k with
-  | nil => cases k <;> rfl
-  | cons x xs ih =>
-    cases k with
-    | zero => rfl
-    | succ k => simp [prefixSumU64, List.sum_cons, ih]
-
-/-- Full-length prefix sum is the whole-list sum. -/
-theorem prefixSumU64_full (l : List (BitVec 64)) :
-    prefixSumU64 l l.length = l.sum := by
-  have h := prefixSumU64_take_sum l l.length
-  rwa [List.take_length] at h
 
 /-! ## M1c: `realloc` (`vec_realloc`, grow a uniquely-owned `u32` block) -/
 

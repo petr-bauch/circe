@@ -171,9 +171,9 @@ def emitChooseSpecText (name : String) : String :=
 /-- Spec stub for the `sum_array` shape. -/
 def emitSumSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.SumFwd\n\n"
   ++ s!"/-- C signature: `uint32_t {name}(uint32_t *a, uint32_t n)` (length-paired, wrapping).\n"
-  ++ s!"    Base body reference: `prefixSumU32` (cf. emitted `{name}_fwd`, `emit_correct_sum`). -/\n"
+  ++ s!"    SumFwd body reference: `prefixSumU32` (cf. emitted `{name}_fwd`, `emit_correct_sum`). -/\n"
   ++ s!"def {name}_spec_fwd " ++ "{n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
   ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
   ++ "\n"
@@ -1957,9 +1957,9 @@ def emitVecEraseSumEntrySpecText (name : String) : String :=
 /-- Spec stub for the `sum_caller` shape (S1 delegation). -/
 def emitSumCallerSpecText (name : String) : String :=
   emitSpecHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.SumFwd\n\n"
   ++ s!"/-- C signature: `{name}(a, n)` delegates to `sum_array_fwd`.\n"
-  ++ s!"    Base body reference: `prefixSumU32` (cf. emitted `{name}_fwd`, `sumCallerFwd_is_call`). -/\n"
+  ++ s!"    SumFwd body reference: `prefixSumU32` (cf. emitted `{name}_fwd`, `sumCallerFwd_is_call`). -/\n"
   ++ s!"def {name}_spec_fwd " ++ "{n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
   ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
   ++ "\n"

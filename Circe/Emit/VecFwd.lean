@@ -12,6 +12,7 @@ entries (`emit_correct_vec*`, `memTransfer_*`) stay in their fragment
 modules and import this module.
 -/
 import Circe.Base
+import Circe.Emit.SumFwd
 
 /-! ## Fill/sum loops + whole-program entry (`vec_alloc`, u32) -/
 

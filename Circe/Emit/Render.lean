@@ -104,7 +104,7 @@ def emitChooseBackText (name : String) : String :=
     structural and the body is the verified `prefixSumU32` fold. -/
 def emitSumText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.SumFwd\n\n"
   ++ "/-- Pure translation of `" ++ name ++ "` (bounded `u32` accumulation, wrapping). -/\n"
   ++ "def " ++ name ++ "_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
   ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
@@ -169,7 +169,7 @@ def emitAddCallerText (name : String) : String :=
     `sum_array` body (same `Base` op, see `sumCallerFwd_is_call`). -/
 def emitSumCallerText (name : String) : String :=
   emitHeader
-  ++ "\nimport Circe.Base\n\n"
+  ++ "\nimport Circe.Base\nimport Circe.Emit.SumFwd\n\n"
   ++ s!"/-- Pure translation of `{name}` (delegates to `sum_array_fwd`). -/\n"
   ++ "def " ++ name ++ "_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
   ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
