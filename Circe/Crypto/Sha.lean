@@ -272,6 +272,94 @@ theorem shaAddBack_length (s v : List (BitVec 32))
     List.length_take, List.length_drop]
   omega
 
+/-- Add-back of the first `n` words (counter-recursive twin of
+    `shaAddBack`, for the K5c loop invariant — K4 `addBackList`
+    precedent; out-of-range reads default to `0`, unreachable under
+    the length hypotheses). -/
+def shaAddBackN (s v : List (BitVec 32)) : Nat → List (BitVec 32)
+  | 0 => s
+  | n + 1 =>
+    ((shaAddBackN s v n).set n
+      ((s[n]?.getD 0) + (v[n]?.getD 0)))
+
+/-- Unfolding the last step (definitional). -/
+theorem shaAddBackN_succ (s v : List (BitVec 32)) (n : Nat) :
+    shaAddBackN s v (n + 1) =
+      ((shaAddBackN s v n).set n
+        ((s[n]?.getD 0) + (v[n]?.getD 0))) := rfl
+
+/-- The add-back keeps its length. -/
+theorem shaAddBackN_length (s v : List (BitVec 32)) (n : Nat) :
+    (shaAddBackN s v n).length = s.length := by
+  induction n with
+  | zero => rfl
+  | succ n ih => simp [shaAddBackN_succ, List.length_set, ih]
+
+/-- Cells at or past the frontier are untouched (K4
+    `addBackList_get_untouched` precedent). -/
+theorem shaAddBackN_get_untouched (s v : List (BitVec 32))
+    (n j : Nat) (h : n ≤ j) :
+    (shaAddBackN s v n)[j]? = s[j]? := by
+  induction n generalizing j with
+  | zero => rfl
+  | succ k ih =>
+    have hkj : k ≠ j := by omega
+    have hkj' : k ≤ j := by omega
+    rw [shaAddBackN_succ, List.getElem?_set_ne hkj, ih j hkj']
+
+/-- Cells below the frontier hold the sums. -/
+theorem shaAddBackN_touched (s v : List (BitVec 32)) (n k : Nat)
+    (h : k < n) (hs : n ≤ s.length) (hv : n ≤ v.length) :
+    (shaAddBackN s v n)[k]? = some (s[k] + v[k]) := by
+  induction n generalizing k with
+  | zero => exact False.elim (by omega)
+  | succ n ih =>
+    -- Substitute `k := n` first (`subst` reverts dependent proofs
+    -- correctly, unlike `rw`), so the set-index and get-index agree
+    -- definitionally and no `if` ever appears.
+    by_cases hkn : k = n
+    · subst k
+      rw [shaAddBackN_succ,
+        List.getElem?_set_self (by rw [shaAddBackN_length]; omega)]
+      have hgs : s[n]? = some s[n] := List.getElem?_eq_getElem (by omega)
+      have hgv : v[n]? = some v[n] := List.getElem?_eq_getElem (by omega)
+      rw [hgs, hgv, Option.getD_some, Option.getD_some]
+    · have hnk : n ≠ k := by omega
+      rw [shaAddBackN_succ, List.getElem?_set_ne hnk]
+      exact ih k (by omega) (by omega) (by omega)
+
+/-- The counter twin agrees with the closed-form fold. -/
+theorem shaAddBackN_eq (s v : List (BitVec 32)) (n : Nat)
+    (hs : n ≤ s.length) (hv : n ≤ v.length) :
+    shaAddBackN s v n =
+      List.zipWith (· + ·) (s.take n) (v.take n) ++ s.drop n := by
+  have hZ : (List.zipWith (· + ·) (s.take n) (v.take n)).length = n := by
+    simp [List.length_zipWith, List.length_take]; omega
+  apply List.ext_getElem?
+  intro k
+  -- Both sides reduce to `some (s[k] + v[k])` below the frontier
+  -- (via `touched` on the left, `zipWith`/`take` unfolding on the
+  -- right) and to `(drop n s)[k - n]?` at or past it (via
+  -- `untouched` on the left, `append_right` on the right). The
+  -- side-lemmas (`append_left/right`, `take_of_lt`) take their
+  -- bounds as hypotheses, so no `if` appears.
+  by_cases hk : k < n
+  · have hLHS : (shaAddBackN s v n)[k]? = some (s[k] + v[k]) :=
+      shaAddBackN_touched s v n k hk hs hv
+    have hkZ : k < (List.zipWith (· + ·) (s.take n) (v.take n)).length := by
+      rw [hZ]; exact hk
+    rw [hLHS, List.getElem?_append_left hkZ, List.getElem?_zipWith,
+      List.getElem?_take_of_lt hk, List.getElem?_take_of_lt hk,
+      List.getElem?_eq_getElem (by omega : k < s.length),
+      List.getElem?_eq_getElem (by omega : k < v.length)]
+  · have hLHS : (shaAddBackN s v n)[k]? = s[k]? :=
+      shaAddBackN_get_untouched s v n k (by omega)
+    have hZn : (List.zipWith (· + ·) (s.take n) (v.take n)).length ≤ k := by
+      rw [hZ]; omega
+    rw [hLHS, List.getElem?_append_right hZn, hZ, List.getElem?_drop]
+    congr 1
+    omega
+
 /-- The full compression fold over the 24-word state (8 digest +
     16 block): schedule, 64 rounds, add-back. Total (like K4's
     forward): short inputs compute junk — the `Func` errors `OOB`

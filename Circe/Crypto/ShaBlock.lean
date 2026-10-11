@@ -1004,6 +1004,34 @@ theorem schedBody_eval (F : Nat) (s : List (BitVec 32)) (u : Nat)
   have hassign := evalStmtFuel_assign F "u" _ _ _ _ huaddu hupdu
   rw [schedBody, evalStmtFuel_seq_fallthrough F _ _ _ _ harr, hassign]
 
+/-- One add-back iteration: `st[j] += v[j]; j++` (any fuel: both
+    steps are loop-free). -/
+theorem shaAddBody_eval (F : Nat) (v w : List (BitVec 32)) (j : Nat)
+    (st : List (BitVec 32))
+    (hj8 : j < 8) (hst : 8 ≤ st.length) (hvlen : v.length = 8)
+    (hj64 : j < 2 ^ 64) :
+    evalStmtFuel F shaAddBody (mkShaAddEnv v w j st) =
+      .ok (mkShaAddEnv v w (j + 1) (st.set j (st[j] + v[j])),
+        .fellThrough) := by
+  have htoNat : (BitVec.ofNat 64 j).toNat = j := ofNat64_toNat j hj64
+  have hget : st[j]? = some st[j] := List.getElem?_eq_getElem (by omega)
+  have hgetv : v[j]? = some v[j] := List.getElem?_eq_getElem (by omega)
+  have hv : evalExpr (.uadd (.idxu "st" (.var "j")) (.idxu "v" (.var "j")))
+      (mkShaAddEnv v w j st) = .ok (.u32 (st[j] + v[j])) := by
+    simp only [evalExpr, mkShaAddEnv_st, mkShaAddEnv_v, mkShaAddEnv_j,
+      htoNat, hget, hgetv]
+  have harr := shaAddArrSet F v w j st _ _ (by omega) hj64 hv
+  have huaddj : evalExpr (.uadd (.var "j") (.lit (.u64 (BitVec.ofNat 64 1))))
+      (mkShaAddEnv v w j (st.set j (st[j] + v[j]))) =
+      .ok (.u64 (BitVec.ofNat 64 (j + 1))) := by
+    simp only [evalExpr, mkShaAddEnv_j, litVal, ofNat64_add_one]
+  have hupdj : envUpdate (mkShaAddEnv v w j (st.set j (st[j] + v[j]))) "j"
+      (.u64 (BitVec.ofNat 64 (j + 1))) =
+      some (mkShaAddEnv v w (j + 1) (st.set j (st[j] + v[j]))) :=
+    shaAddEnv_update_j v w j (j + 1) (st.set j (st[j] + v[j]))
+  have hassign := evalStmtFuel_assign F "j" _ _ _ _ huaddj hupdj
+  rw [shaAddBody, evalStmtFuel_seq_fallthrough F _ _ _ _ harr, hassign]
+
 -- Giant single-fragment bridge below (temps plus eight stores plus
 -- extensionality reassembly): raise the heartbeat budget as in K4.
 set_option maxHeartbeats 1000000
@@ -1399,133 +1427,3 @@ theorem compressFrag_eval (F : Nat) (s : List (BitVec 32))
     evalStmtFuel_seq_fallthrough F _ _ _ _ e6,
     evalStmtFuel_seq_fallthrough F _ _ _ _ e7,
     e8, hbridge]
-
-/-! ### Loop evaluation (fuel induction, K4 `roundWhile_correct` precedent) -/
-
-/-- The block-copy loop evaluates to `initLoop 16 0` (fuel
-    induction mirroring `roundWhile_correct`; the invariant phrases
-    the remaining copy suffix-style since `initLoop` composes
-    inside-out: `initLoop (16 - t) t w = initLoop 16 0 w0`). -/
-theorem initWhile_correct (F : Nat) (s : List (BitVec 32)) (t : Nat)
-    (w w0 : List (BitVec 32))
-    (ht : t ≤ 16) (hs : 24 ≤ s.length) (hw : w.length = 64)
-    (hinv : initLoop (16 - t) t w s = initLoop 16 0 w0 s)
-    (hF : 16 - t ≤ F) :
-    evalStmtFuel F initWhile (mkInitEnv s t w) =
-      .ok (mkInitEnv s 16 (initLoop 16 0 w0 s), .fellThrough) := by
-  induction F generalizing t w with
-  | zero =>
-    have ht16 : t = 16 := by omega
-    subst ht16
-    have hcond := initCond_eval s 16 w (by decide)
-    have hcondF : evalExpr (.ult (.var "t")
-          (.lit (.u64 (BitVec.ofNat 64 16)))) (mkInitEnv s 16 w) =
-        .ok (.b false) := by
-      simpa using hcond
-    have hdone : w = initLoop 16 0 w0 s := hinv
-    rw [hdone] at hcondF ⊢
-    simp [initWhile, evalStmtFuel, evalStmtZero, evalStmtZeroHandler,
-      evalStmtWith, hcondF]
-  | succ F ih =>
-    by_cases hlt : t < 16
-    · have ht64 : t < 2 ^ 64 := by omega
-      have hcond := initCond_eval s t w ht64
-      have hcondT : evalExpr (.ult (.var "t")
-            (.lit (.u64 (BitVec.ofNat 64 16)))) (mkInitEnv s t w) =
-          .ok (.b true) := by
-        simpa [hlt] using hcond
-      have hbody := initBody_eval F s t w hlt hs hw ht64
-      have hstep : evalStmtFuel (F + 1) initWhile (mkInitEnv s t w)
-          = evalStmtFuel F initWhile
-            (mkInitEnv s (t + 1) (w.set t s[8 + t])) := by
-        simp [initWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcondT, hbody]
-      rw [hstep]
-      have ht' : t + 1 ≤ 16 := by omega
-      have hw' : (w.set t s[8 + t]).length = 64 := by
-        rw [List.length_set]; exact hw
-      have hget : s[8 + t]? = some s[8 + t] :=
-        List.getElem?_eq_getElem (by omega)
-      have hset : w.set t s[8 + t] = initStep w s t := by
-        simp [initStep, hget]
-      have e1 : 16 - (t + 1) = 16 - t - 1 := by omega
-      have e2 : 16 - t = (16 - t - 1) + 1 := by omega
-      have hinv' : initLoop (16 - (t + 1)) (t + 1) (w.set t s[8 + t]) s =
-          initLoop 16 0 w0 s := by
-        rw [hset, e1, ← initLoop_succ, ← e2]
-        exact hinv
-      exact ih (t + 1) (w.set t s[8 + t]) ht' hw' hinv' (by omega)
-    · have ht16 : t = 16 := by omega
-      subst ht16
-      have hcond := initCond_eval s 16 w (by decide)
-      have hcondF : evalExpr (.ult (.var "t")
-            (.lit (.u64 (BitVec.ofNat 64 16)))) (mkInitEnv s 16 w) =
-          .ok (.b false) := by
-        simpa using hcond
-      have hdone : w = initLoop 16 0 w0 s := hinv
-      rw [hdone] at hcondF ⊢
-      simp [initWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcondF]
-
-/-- The work-init loop evaluates to `vinitLoop 8 0` (same
-    suffix-style induction over the digest head). -/
-theorem vinitWhile_correct (F : Nat) (s : List (BitVec 32)) (i : Nat)
-    (v v0 : List (BitVec 32)) (w : List (BitVec 32))
-    (hi : i ≤ 8) (hs : 24 ≤ s.length) (hvlen : v.length = 8)
-    (hinv : vinitLoop (8 - i) i v s = vinitLoop 8 0 v0 s)
-    (hF : 8 - i ≤ F) :
-    evalStmtFuel F vinitWhile (mkVinitEnv s i v w) =
-      .ok (mkVinitEnv s 8 (vinitLoop 8 0 v0 s) w, .fellThrough) := by
-  induction F generalizing i v with
-  | zero =>
-    have hi8 : i = 8 := by omega
-    subst hi8
-    have hcond := vinitCond_eval s 8 v w (by decide)
-    have hcondF : evalExpr (.ult (.var "i")
-          (.lit (.u64 (BitVec.ofNat 64 8)))) (mkVinitEnv s 8 v w) =
-        .ok (.b false) := by
-      simpa using hcond
-    have hdone : v = vinitLoop 8 0 v0 s := hinv
-    rw [hdone] at hcondF ⊢
-    simp [vinitWhile, evalStmtFuel, evalStmtZero, evalStmtZeroHandler,
-      evalStmtWith, hcondF]
-  | succ F ih =>
-    by_cases hlt : i < 8
-    · have hi64 : i < 2 ^ 64 := by omega
-      have hcond := vinitCond_eval s i v w hi64
-      have hcondT : evalExpr (.ult (.var "i")
-            (.lit (.u64 (BitVec.ofNat 64 8)))) (mkVinitEnv s i v w) =
-          .ok (.b true) := by
-        simpa [hlt] using hcond
-      have hbody := vinitBody_eval F s i v w hlt hs hvlen hi64
-      have hstep : evalStmtFuel (F + 1) vinitWhile (mkVinitEnv s i v w)
-          = evalStmtFuel F vinitWhile
-            (mkVinitEnv s (i + 1) (v.set i s[i]) w) := by
-        simp [vinitWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcondT, hbody]
-      rw [hstep]
-      have hi' : i + 1 ≤ 8 := by omega
-      have hvlen' : (v.set i s[i]).length = 8 := by
-        rw [List.length_set]; exact hvlen
-      have hget : s[i]? = some s[i] := List.getElem?_eq_getElem (by omega)
-      have hset : v.set i s[i] = vinitStep v s i := by
-        simp [vinitStep, hget]
-      have e1 : 8 - (i + 1) = 8 - i - 1 := by omega
-      have e2 : 8 - i = (8 - i - 1) + 1 := by omega
-      have hinv' : vinitLoop (8 - (i + 1)) (i + 1) (v.set i s[i]) s =
-          vinitLoop 8 0 v0 s := by
-        rw [hset, e1, ← vinitLoop_succ, ← e2]
-        exact hinv
-      exact ih (i + 1) (v.set i s[i]) hi' hvlen' hinv' (by omega)
-    · have hi8 : i = 8 := by omega
-      subst hi8
-      have hcond := vinitCond_eval s 8 v w (by decide)
-      have hcondF : evalExpr (.ult (.var "i")
-            (.lit (.u64 (BitVec.ofNat 64 8)))) (mkVinitEnv s 8 v w) =
-          .ok (.b false) := by
-        simpa using hcond
-      have hdone : v = vinitLoop 8 0 v0 s := hinv
-      rw [hdone] at hcondF ⊢
-      simp [vinitWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcondF]
-
