@@ -432,6 +432,57 @@ def isChachaBlockShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.and "
   | _ => false
 
+/-- `sha256_compress`: single `__restrict__` u32 buffer (24 words:
+    8 digest + 16 block), void return, five `cir.for` (block-init,
+    schedule, work-init, 64 compress rounds, add-back), no calls.
+    Unlike the ChaCha gate this shape allows `cir.and` (Ch/Maj are
+    K1 `and_u32` leaves) and pins one `cir.const_array` (the folded
+    K-table init). Dispatch waits for `sha256Func` (K5c); until then
+    this predicate is the K5a admission check. -/
+def isSha256Shape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [state] =>
+    noBreakContinueSwitch raw.text &&
+    isU32PtrNoalias state &&
+    raw.ret == "" &&
+    !callsFunc raw.text raw.name &&
+    !hasNonHeapCall raw.text &&
+    opCount raw.text "cir.for" == 5 &&
+    opCount raw.text "cir.alloca" == 11 &&
+    opCount raw.text "cir.load" == 85 &&
+    opCount raw.text "cir.store" == 26 &&
+    opCount raw.text "cir.add" == 12 &&
+    opCount raw.text "cir.sub" == 22 &&
+    opCount raw.text "cir.xor " == 12 &&
+    opCount raw.text "cir.shift" == 22 &&
+    opCount raw.text "cir.or " == 10 &&
+    opCount raw.text "cir.and " == 4 &&
+    opCount raw.text "cir.cmp" == 5 &&
+    opCount raw.text "cir.condition" == 5 &&
+    opCount raw.text "cir.cast" == 10 &&
+    opCount raw.text "cir.ptr_stride" == 3 &&
+    opCount raw.text "cir.inc" == 5 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.call @" == 0 &&
+    opCount raw.text "cir.scope" == 6 &&
+    opCount raw.text "cir.const" == 156 &&
+    opCount raw.text "cir.const_array" == 1 &&
+    opCount raw.text "cir.get_element" == 56 &&
+    opCount raw.text "cir.load align(4)" == 28 &&
+    opCount raw.text "cir.store align(4)" == 10 &&
+    opCount raw.text "cir.yield" == 10 &&
+    opCount raw.text "llvm.noalias" == 1 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.dec" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.div"
+  | _ => false
+
 /-- Small-width promotion: 8/16-bit integers appear only via `cir.cast`
     promotion to `i32` (S3b probe); there is no native small-width
     arithmetic to model, so any occurrence rejects loudly. -/
