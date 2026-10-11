@@ -19,6 +19,7 @@ words pass the tail through untouched; shorter than 24 is `OOB`
 the first loop — see `initBody_oob`/`initWhile_oob`).
 -/
 import Circe.Emit.Fragment
+import Circe.Emit.ArraySort
 import Circe.Crypto.Block
 import Circe.Crypto.Sha
 
@@ -1427,3 +1428,473 @@ theorem compressFrag_eval (F : Nat) (s : List (BitVec 32))
     evalStmtFuel_seq_fallthrough F _ _ _ _ e6,
     evalStmtFuel_seq_fallthrough F _ _ _ _ e7,
     e8, hbridge]
+
+/-- Frame preservation across a `v`-cell update: only the `v` lookup
+    changes. Bundles six `envLookup_envUpdate_diff` applications so
+    each of the eight round stores costs one line. -/
+theorem compressFrame_update (ρ ρ' : Env) (new : Value)
+    (hu : envUpdate ρ "v" new = some ρ') :
+    envLookup ρ' "r" = envLookup ρ "r" ∧
+    envLookup ρ' "w" = envLookup ρ "w" ∧
+    envLookup ρ' "K" = envLookup ρ "K" ∧
+    envLookup ρ' "st" = envLookup ρ "st" ∧
+    envLookup ρ' "t1" = envLookup ρ "t1" ∧
+    envLookup ρ' "t2" = envLookup ρ "t2" := by
+  exact ⟨envLookup_envUpdate_diff _ _ _ _ _ hu (by decide),
+    envLookup_envUpdate_diff _ _ _ _ _ hu (by decide),
+    envLookup_envUpdate_diff _ _ _ _ _ hu (by decide),
+    envLookup_envUpdate_diff _ _ _ _ _ hu (by decide),
+    envLookup_envUpdate_diff _ _ _ _ _ hu (by decide),
+    envLookup_envUpdate_diff _ _ _ _ _ hu (by decide)⟩
+
+/-- One `v`-cell write over an abstract env: the update equation is an
+    explicit hypothesis (existential post-envs never match literal
+    shapes). Mirrors `compEnv2ArrSet`. -/
+theorem transferArrSet (F : Nat) (ρ ρ' : Env) (CUR : List (BitVec 32))
+    (t : Nat) (ve : CExpr) (VAL : BitVec 32)
+    (ht : t < CUR.length)
+    (hv : evalExpr ve ρ = .ok (.u32 VAL))
+    (hcur : envLookup ρ "v" = some (.arr32 CUR))
+    (hget : CUR[(BitVec.ofNat 64 t).toNat]? = some CUR[t])
+    (hu : envUpdate ρ "v" (.arr32 (CUR.set (BitVec.ofNat 64 t).toNat VAL)) =
+      some ρ') :
+    evalStmtFuel F (.arrSet "v" (atU64 t) ve) ρ =
+      .ok (ρ', .fellThrough) := by
+  have hi : evalExpr (atU64 t) ρ = .ok (.u64 (BitVec.ofNat 64 t)) := by
+    simp [atU64, evalExpr, litVal]
+  exact evalStmtFuel_arrSet F "v" (atU64 t) ve _ _ VAL CUR CUR[t] _ hi hv
+    hcur hget hu
+
+/-- One compression round over an abstract env: evaluation is
+    lookup-determined, so the exact-env certificate replays with the
+    entry lookups as hypotheses and existential post-envs
+    (`envUpdate_some_of_lookup`, ArraySort precedent) for the eight
+    stores. The conclusion pins `v` absolutely and frames the rest. -/
+theorem compressFrag_transfer (F : Nat) (ρ : Env)
+    (vv : List (BitVec 32)) (r : Nat) (w : List (BitVec 32))
+    (hv8 : vv.length = 8) (hw64 : w.length = 64)
+    (hr64 : r < 64) (hr642 : r < 2 ^ 64)
+    (hρv : envLookup ρ "v" = some (.arr32 vv))
+    (hρw : envLookup ρ "w" = some (.arr32 w))
+    (hρK : envLookup ρ "K" = some (.arr32 shaK))
+    (hρr : envLookup ρ "r" = some (.u64 (BitVec.ofNat 64 r))) :
+    ∃ ρ', evalStmtFuel F compressFrag ρ = .ok (ρ', .fellThrough)
+      ∧ envLookup ρ' "v" = some (.arr32 (roundStep vv w r))
+      ∧ envLookup ρ' "r" = envLookup ρ "r"
+      ∧ envLookup ρ' "w" = envLookup ρ "w"
+      ∧ envLookup ρ' "K" = envLookup ρ "K"
+      ∧ envLookup ρ' "st" = envLookup ρ "st" := by
+  obtain ⟨A, B, C, D, E, Ff, G, H, rfl⟩ :
+      ∃ A B C D E Ff G H, vv = [A, B, C, D, E, Ff, G, H] := by
+    exact ⟨vv[0], vv[1], vv[2], vv[3], vv[4], vv[5], vv[6], vv[7],
+      cons8 vv hv8⟩
+  have htoNat0 : (BitVec.ofNat 64 0).toNat = 0 := ofNat64_toNat 0 (by decide)
+  have htoNat1 : (BitVec.ofNat 64 1).toNat = 1 := ofNat64_toNat 1 (by decide)
+  have htoNat2 : (BitVec.ofNat 64 2).toNat = 2 := ofNat64_toNat 2 (by decide)
+  have htoNat3 : (BitVec.ofNat 64 3).toNat = 3 := ofNat64_toNat 3 (by decide)
+  have htoNat4 : (BitVec.ofNat 64 4).toNat = 4 := ofNat64_toNat 4 (by decide)
+  have htoNat5 : (BitVec.ofNat 64 5).toNat = 5 := ofNat64_toNat 5 (by decide)
+  have htoNat6 : (BitVec.ofNat 64 6).toNat = 6 := ofNat64_toNat 6 (by decide)
+  have htoNat7 : (BitVec.ofNat 64 7).toNat = 7 := ofNat64_toNat 7 (by decide)
+  have hgetw : w[r]? = some w[r] :=
+    List.getElem?_eq_getElem (by omega)
+  have hgetk : shaK[r]? = some shaK[r] := by
+    have := shaK_length
+    exact List.getElem?_eq_getElem (by omega)
+  have hg4 : ([A, B, C, D, E, Ff, G, H])[4]? = some E := by simp
+  have hg5 : ([A, B, C, D, E, Ff, G, H])[5]? = some Ff := by simp
+  have hg6 : ([A, B, C, D, E, Ff, G, H])[6]? = some G := by simp
+  have hg7 : ([A, B, C, D, E, Ff, G, H])[7]? = some H := by simp
+  have hE4lit : evalExpr (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 4)))) ρ =
+      .ok (.u32 E) := by
+    simp only [evalExpr, litVal, hρv, htoNat4, hg4]
+  have hc6lit : evalExpr (rotrE (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 4)))) 6)
+      ρ = .ok (.u32 (rotrU32 E 6)) := by
+    exact rotrE_eval _ _ _ 6 hE4lit (ofNat32_toNat 6 (by decide))
+      (ofNat32_toNat (32 - 6) (by decide)) (by decide) (by decide)
+  have hc11lit : evalExpr (rotrE (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 4)))) 11)
+      ρ = .ok (.u32 (rotrU32 E 11)) := by
+    exact rotrE_eval _ _ _ 11 hE4lit (ofNat32_toNat 11 (by decide))
+      (ofNat32_toNat (32 - 11) (by decide)) (by decide) (by decide)
+  have hc25lit : evalExpr (rotrE (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 4)))) 25)
+      ρ = .ok (.u32 (rotrU32 E 25)) := by
+    exact rotrE_eval _ _ _ 25 hE4lit (ofNat32_toNat 25 (by decide))
+      (ofNat32_toNat (32 - 25) (by decide)) (by decide) (by decide)
+  -- Reads and rotates over the entry env (nothing here depends on the
+  -- temp params, so the entry facts feed `t1Expr` directly and the
+  -- post-`t1` facts below re-derive the `v` reads via shadowing).
+  have htoNatrE : (BitVec.ofNat 64 r).toNat = r := ofNat64_toNat r hr642
+  have hA : evalExpr (.idxu "v" (atU64 0)) ρ = .ok (.u32 A) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat0]
+    simp
+  have hB : evalExpr (.idxu "v" (atU64 1)) ρ = .ok (.u32 B) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat1]
+    simp
+  have hC : evalExpr (.idxu "v" (atU64 2)) ρ = .ok (.u32 C) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat2]
+    simp
+  have hD : evalExpr (.idxu "v" (atU64 3)) ρ = .ok (.u32 D) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat3]
+    simp
+  have hE : evalExpr (.idxu "v" (atU64 4)) ρ = .ok (.u32 E) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat4]
+    simp
+  have hF : evalExpr (.idxu "v" (atU64 5)) ρ = .ok (.u32 Ff) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat5]
+    simp
+  have hG : evalExpr (.idxu "v" (atU64 6)) ρ = .ok (.u32 G) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat6]
+    simp
+  have hH : evalExpr (.idxu "v" (atU64 7)) ρ = .ok (.u32 H) := by
+    simp only [evalExpr, litVal, atU64, hρv, htoNat7]
+    simp
+  have hWT : evalExpr (.idxu "w" (.var "r")) ρ = .ok (.u32 w[r]) := by
+    simp only [evalExpr, hρw, hρr, htoNatrE, hgetw]
+  have hKK : evalExpr (.idxu "K" (.var "r")) ρ = .ok (.u32 shaK[r]) := by
+    simp only [evalExpr, hρK, hρr, htoNatrE, hgetk]
+  have hc6 : evalExpr (rotrE (.idxu "v" (atU64 4)) 6) ρ =
+      .ok (.u32 (rotrU32 E 6)) :=
+    rotrE_eval _ _ _ 6 hE (ofNat32_toNat 6 (by decide))
+      (ofNat32_toNat (32 - 6) (by decide)) (by decide) (by decide)
+  have hc11 : evalExpr (rotrE (.idxu "v" (atU64 4)) 11) ρ =
+      .ok (.u32 (rotrU32 E 11)) :=
+    rotrE_eval _ _ _ 11 hE (ofNat32_toNat 11 (by decide))
+      (ofNat32_toNat (32 - 11) (by decide)) (by decide) (by decide)
+  have hc25 : evalExpr (rotrE (.idxu "v" (atU64 4)) 25) ρ =
+      .ok (.u32 (rotrU32 E 25)) :=
+    rotrE_eval _ _ _ 25 hE (ofNat32_toNat 25 (by decide))
+      (ofNat32_toNat (32 - 25) (by decide)) (by decide) (by decide)
+  have hc2 : evalExpr (rotrE (.idxu "v" (atU64 0)) 2) ρ =
+      .ok (.u32 (rotrU32 A 2)) :=
+    rotrE_eval _ _ _ 2 hA (ofNat32_toNat 2 (by decide))
+      (ofNat32_toNat (32 - 2) (by decide)) (by decide) (by decide)
+  have hc13 : evalExpr (rotrE (.idxu "v" (atU64 0)) 13) ρ =
+      .ok (.u32 (rotrU32 A 13)) :=
+    rotrE_eval _ _ _ 13 hA (ofNat32_toNat 13 (by decide))
+      (ofNat32_toNat (32 - 13) (by decide)) (by decide) (by decide)
+  have hc22 : evalExpr (rotrE (.idxu "v" (atU64 0)) 22) ρ =
+      .ok (.u32 (rotrU32 A 22)) :=
+    rotrE_eval _ _ _ 22 hA (ofNat32_toNat 22 (by decide))
+      (ofNat32_toNat (32 - 22) (by decide)) (by decide) (by decide)
+  have hT1 : evalExpr t1Expr ρ =
+      .ok (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])) := by
+    simp only [t1Expr, evalExpr, hρv, hρw, hρK, hρr, atU64, litVal,
+      htoNat4, htoNat5, htoNat6, htoNat7, htoNatrE, hgetw, hgetk,
+      hg4, hg5, hg6, hg7,
+      hc6lit, hc11lit, hc25lit, cV1, cV2, cV3, cV4, cV5, cV6]
+  have hletT1 := evalStmtFuel_let_ F "t1" (.u 32) t1Expr ρ
+    (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])) hT1
+  -- Post-`t1` reads: `v` via shadowing (the `t2` expression reads
+  -- only `v`, so no `w`/`K`/`r` facts are needed here).
+  have hρav : envLookup
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) "v" =
+      some (.arr32 [A, B, C, D, E, Ff, G, H]) := by
+    simp [envExtend, envLookup, hρv, show ("v" : String) ≠ "t1" by decide]
+  have hgetv0 : ([A, B, C, D, E, Ff, G, H])[0]? = some A := by simp
+  have hgetv1 : ([A, B, C, D, E, Ff, G, H])[1]? = some B := by simp
+  have hgetv2 : ([A, B, C, D, E, Ff, G, H])[2]? = some C := by simp
+  have hA0lit : evalExpr (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 0))))
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 A) := by
+    simp only [evalExpr, litVal, hρav, htoNat0, hgetv0]
+  have hc2lit : evalExpr (rotrE (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 0)))) 2)
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 (rotrU32 A 2)) := by
+    exact rotrE_eval _ _ _ 2 hA0lit (ofNat32_toNat 2 (by decide))
+      (ofNat32_toNat (32 - 2) (by decide)) (by decide) (by decide)
+  have hc13lit : evalExpr
+      (rotrE (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 0)))) 13)
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 (rotrU32 A 13)) := by
+    exact rotrE_eval _ _ _ 13 hA0lit (ofNat32_toNat 13 (by decide))
+      (ofNat32_toNat (32 - 13) (by decide)) (by decide) (by decide)
+  have hc22lit : evalExpr
+      (rotrE (.idxu "v" (.lit (.u64 (BitVec.ofNat 64 0)))) 22)
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 (rotrU32 A 22)) := by
+    exact rotrE_eval _ _ _ 22 hA0lit (ofNat32_toNat 22 (by decide))
+      (ofNat32_toNat (32 - 22) (by decide)) (by decide) (by decide)
+  have hT2 : evalExpr t2Expr
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 (cV12 A B C D E Ff G H w[r] shaK[r])) := by
+    simp only [t2Expr, evalExpr, hρav, atU64, litVal,
+      htoNat0, htoNat1, htoNat2, hgetv0, hgetv1, hgetv2,
+      hc2lit, hc13lit, hc22lit, cV7, cV8, cV9, cV10, cV11, cV12]
+  have hletT2 := evalStmtFuel_let_ F "t2" (.u 32) t2Expr
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+    (.u32 (cV12 A B C D E Ff G H w[r] shaK[r])) hT2
+  -- Post-`t2` reads and frame: `v`/`t1`/`t2` absolutely, the rest as
+  -- equalities back to the entry env (two shadowing layers).
+  have hρbv : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "v" =
+      some (.arr32 [A, B, C, D, E, Ff, G, H]) := by
+    have h1 : envLookup (envExtend
+        (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+        "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "v" =
+        envLookup (envExtend ρ "t1"
+          (.u32 (cV6 A B C D E Ff G H w[r] shaK[r]))) "v" := by
+      simp [envExtend, envLookup, show ("v" : String) ≠ "t2" by decide]
+    rw [h1]; exact hρav
+  have hρbt1 : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "t1" =
+      some (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])) := by
+    simp [envExtend, envLookup, show ("t1" : String) ≠ "t2" by decide]
+  have hρbt2 : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "t2" =
+      some (.u32 (cV12 A B C D E Ff G H w[r] shaK[r])) := by
+    simp [envExtend, envLookup]
+  have ht1v : evalExpr (.var "t1") (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])) :=
+    evalExpr_var_hit _ _ _ hρbt1
+  have ht2v : evalExpr (.var "t2") (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 (cV12 A B C D E Ff G H w[r] shaK[r])) :=
+    evalExpr_var_hit _ _ _ hρbt2
+  have hρbr : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "r" =
+      envLookup ρ "r" := by
+    simp [envExtend, envLookup, show ("r" : String) ≠ "t1" by decide,
+      show ("r" : String) ≠ "t2" by decide]
+  have hρbw : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "w" =
+      envLookup ρ "w" := by
+    simp [envExtend, envLookup, show ("w" : String) ≠ "t1" by decide,
+      show ("w" : String) ≠ "t2" by decide]
+  have hρbK : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "K" =
+      envLookup ρ "K" := by
+    simp [envExtend, envLookup, show ("K" : String) ≠ "t1" by decide,
+      show ("K" : String) ≠ "t2" by decide]
+  have hρbst : envLookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "st" =
+      envLookup ρ "st" := by
+    simp [envExtend, envLookup, show ("st" : String) ≠ "t1" by decide,
+      show ("st" : String) ≠ "t2" by decide]
+  -- Eight stores high-to-low. Each: the store-value eval fact, the
+  -- existential post-env, its `v` lookup (normalized to literal
+  -- indices), the frame bundle, and the arrSet step.
+  have hv76 : evalExpr (.idxu "v" (atU64 6)) (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) =
+      .ok (.u32 G) := by
+    simp only [evalExpr, litVal, atU64, hρbv, htoNat6]
+    simp
+  have hget₇ : ([A, B, C, D, E, Ff, G, H][(BitVec.ofNat 64 7).toNat]? =
+      some ([A, B, C, D, E, Ff, G, H][7]'(by simp))) := by
+    rw [htoNat7]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup (envExtend
+      (envExtend ρ "t1" (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])))
+      "t2" (.u32 (cV12 A B C D E Ff G H w[r] shaK[r]))) "v"
+    (.arr32 [A, B, C, D, E, Ff, G, H])
+    (.arr32 (([A, B, C, D, E, Ff, G, H].set (BitVec.ofNat 64 7).toNat G)))
+    hρbv
+  have hvself₁ := envLookup_envUpdate_same _ _ _ _ hu₁
+  rw [htoNat7] at hvself₁
+  obtain ⟨fr₁, fw₁, fK₁, fst₁, ft1₁, ft2₁⟩ := compressFrame_update _ _ _ hu₁
+  have e1 := transferArrSet F _ _ _ 7 _ G (by simp) hv76 hρbv
+    hget₇ hu₁
+  have hv65 : evalExpr (.idxu "v" (atU64 5)) ρ₁ = .ok (.u32 Ff) := by
+    have hg : ((([A, B, C, D, E, Ff, G, H].set 7 G))[5]? = some Ff) := by simp
+    simp only [evalExpr, litVal, atU64, hvself₁, htoNat5, hg]
+  have hget₆ : ((([A, B, C, D, E, Ff, G, H].set 7 G))[
+      (BitVec.ofNat 64 6).toNat]? =
+      some ((([A, B, C, D, E, Ff, G, H].set 7 G))[6]'(by simp))) := by
+    rw [htoNat6]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₂, hu₂⟩ := envUpdate_some_of_lookup ρ₁ "v"
+    (.arr32 (([A, B, C, D, E, Ff, G, H].set 7 G)))
+    (.arr32 ((([A, B, C, D, E, Ff, G, H].set 7 G).set
+      (BitVec.ofNat 64 6).toNat Ff))) hvself₁
+  have hvself₂ := envLookup_envUpdate_same _ _ _ _ hu₂
+  rw [htoNat6] at hvself₂
+  obtain ⟨fr₂, fw₂, fK₂, fst₂, ft1₂, ft2₂⟩ := compressFrame_update _ _ _ hu₂
+  have e2 := transferArrSet F _ _ _ 6 _ Ff (by simp) hv65 hvself₁
+    hget₆ hu₂
+  have hv54 : evalExpr (.idxu "v" (atU64 4)) ρ₂ = .ok (.u32 E) := by
+    have hg : (((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff))[4]? =
+      some E) := by simp
+    simp only [evalExpr, litVal, atU64, hvself₂, htoNat4, hg]
+  have hget₅ : (((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff))[
+      (BitVec.ofNat 64 5).toNat]? =
+      some (((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff))[5]'(by simp))) := by
+    rw [htoNat5]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₃, hu₃⟩ := envUpdate_some_of_lookup ρ₂ "v"
+    (.arr32 ((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff)))
+    (.arr32 (((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set
+      (BitVec.ofNat 64 5).toNat E))) hvself₂
+  have hvself₃ := envLookup_envUpdate_same _ _ _ _ hu₃
+  rw [htoNat5] at hvself₃
+  obtain ⟨fr₃, fw₃, fK₃, fst₃, ft1₃, ft2₃⟩ := compressFrame_update _ _ _ hu₃
+  have e3 := transferArrSet F _ _ _ 5 _ E (by simp) hv54 hvself₂
+    hget₅ hu₃
+  have ht1₄ : envLookup ρ₃ "t1" =
+      some (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])) := by
+    rw [ft1₃, ft1₂, ft1₁]; exact hρbt1
+  have hvT1D : evalExpr (.uadd (.idxu "v" (atU64 3)) (.var "t1")) ρ₃ =
+      .ok (.u32 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))) := by
+    have hg : ((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E))[3]? =
+      some D) := by simp
+    have ht1x := ht1₄
+    simp only [evalExpr, litVal, atU64, hvself₃, htoNat3, hg, ht1x]
+  have hget₄ : ((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E))[
+      (BitVec.ofNat 64 4).toNat]? =
+      some ((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set
+        5 E))[4]'(by simp))) := by
+    rw [htoNat4]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₄, hu₄⟩ := envUpdate_some_of_lookup ρ₃ "v"
+    (.arr32 (((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E)))
+    (.arr32 ((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      (BitVec.ofNat 64 4).toNat (D + (cV6 A B C D E Ff G H w[r] shaK[r])))))
+    hvself₃
+  have hvself₄ := envLookup_envUpdate_same _ _ _ _ hu₄
+  rw [htoNat4] at hvself₄
+  obtain ⟨fr₄, fw₄, fK₄, fst₄, ft1₄l, ft2₄l⟩ := compressFrame_update _ _ _ hu₄
+  have e4 := transferArrSet F _ _ _ 4 _ _ (by simp) hvT1D hvself₃
+    hget₄ hu₄
+  have hvC : evalExpr (.idxu "v" (atU64 2)) ρ₄ = .ok (.u32 C) := by
+    have hg : (((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))))[2]? = some C) := by simp
+    simp only [evalExpr, litVal, atU64, hvself₄, htoNat2, hg]
+  have hget₃ : (((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))))[
+      (BitVec.ofNat 64 3).toNat]? =
+      some (((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set
+        5 E).set 4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))))[3]'(by simp))) := by
+    rw [htoNat3]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₅, hu₅⟩ := envUpdate_some_of_lookup ρ₄ "v"
+    (.arr32 (((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))))
+    (.arr32 ((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set
+      (BitVec.ofNat 64 3).toNat C)) hvself₄
+  have hvself₅ := envLookup_envUpdate_same _ _ _ _ hu₅
+  rw [htoNat3] at hvself₅
+  obtain ⟨fr₅, fw₅, fK₅, fst₅, ft1₅, ft2₅⟩ := compressFrame_update _ _ _ hu₅
+  have e5 := transferArrSet F _ _ _ 3 _ C (by simp) hvC hvself₄
+    hget₃ hu₅
+  have hvB : evalExpr (.idxu "v" (atU64 1)) ρ₅ = .ok (.u32 B) := by
+    have hg : ((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C))[1]? =
+      some B) := by simp
+    simp only [evalExpr, litVal, atU64, hvself₅, htoNat1, hg]
+  have hget₂ : ((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C))[
+      (BitVec.ofNat 64 2).toNat]? =
+      some ((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set
+        5 E).set 4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C))[2]'(by simp))) := by
+    rw [htoNat2]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₆, hu₆⟩ := envUpdate_some_of_lookup ρ₅ "v"
+    (.arr32 ((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C))
+    (.arr32 (((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set
+      (BitVec.ofNat 64 2).toNat B)) hvself₅
+  have hvself₆ := envLookup_envUpdate_same _ _ _ _ hu₆
+  rw [htoNat2] at hvself₆
+  obtain ⟨fr₆, fw₆, fK₆, fst₆, ft1₆, ft2₆⟩ := compressFrame_update _ _ _ hu₆
+  have e6 := transferArrSet F _ _ _ 2 _ B (by simp) hvB hvself₅
+    hget₂ hu₆
+  have hvA : evalExpr (.idxu "v" (atU64 0)) ρ₆ = .ok (.u32 A) := by
+    have hg : (((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B))[0]? =
+      some A) := by simp
+    simp only [evalExpr, litVal, atU64, hvself₆, htoNat0, hg]
+  have hget₁ : (((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B))[
+      (BitVec.ofNat 64 1).toNat]? =
+      some (((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set
+        5 E).set 4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set
+        2 B))[1]'(by simp))) := by
+    rw [htoNat1]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₇, hu₇⟩ := envUpdate_some_of_lookup ρ₆ "v"
+    (.arr32 (((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B))
+    (.arr32 ((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B).set
+      (BitVec.ofNat 64 1).toNat A)) hvself₆
+  have hvself₇ := envLookup_envUpdate_same _ _ _ _ hu₇
+  rw [htoNat1] at hvself₇
+  obtain ⟨fr₇, fw₇, fK₇, fst₇, ft1₇, ft2₇⟩ := compressFrame_update _ _ _ hu₇
+  have e7 := transferArrSet F _ _ _ 1 _ A (by simp) hvA hvself₆
+    hget₁ hu₇
+  have ht1₇ : envLookup ρ₇ "t1" =
+      some (.u32 (cV6 A B C D E Ff G H w[r] shaK[r])) := by
+    rw [ft1₇, ft1₆, ft1₅, ft1₄l, ft1₃, ft1₂, ft1₁]; exact hρbt1
+  have ht2₇ : envLookup ρ₇ "t2" =
+      some (.u32 (cV12 A B C D E Ff G H w[r] shaK[r])) := by
+    rw [ft2₇, ft2₆, ft2₅, ft2₄l, ft2₃, ft2₂, ft2₁]; exact hρbt2
+  have hvT : evalExpr (.uadd (.var "t1") (.var "t2")) ρ₇ =
+      .ok (.u32 ((cV6 A B C D E Ff G H w[r] shaK[r]) +
+        (cV12 A B C D E Ff G H w[r] shaK[r]))) := by
+    have ht1y := ht1₇
+    have ht2y := ht2₇
+    simp only [evalExpr, ht1y, ht2y]
+  have hget₀ : (((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set 4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B).set 1 A)[(BitVec.ofNat 64 0).toNat]? =
+      some (((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set 4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B).set 1 A)[0]'(by simp))) := by
+    rw [htoNat0]; exact List.getElem?_eq_getElem (by simp)
+  obtain ⟨ρ₈, hu₈⟩ := envUpdate_some_of_lookup ρ₇ "v"
+    (.arr32 ((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B).set
+      1 A))
+    (.arr32 (((((((([A, B, C, D, E, Ff, G, H].set 7 G).set 6 Ff).set 5 E).set
+      4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B).set
+      1 A).set (BitVec.ofNat 64 0).toNat ((cV6 A B C D E Ff G H w[r] shaK[r]) +
+        (cV12 A B C D E Ff G H w[r] shaK[r])))) hvself₇
+  have hvself₈ := envLookup_envUpdate_same _ _ _ _ hu₈
+  rw [htoNat0] at hvself₈
+  obtain ⟨fr₈, fw₈, fK₈, fst₈, ft1₈, ft2₈⟩ := compressFrame_update _ _ _ hu₈
+  have e8 := transferArrSet F _ _ _ 0 _ _ (by simp) hvT hvself₇
+    hget₀ hu₈
+  -- The eval-order chain is `roundStep`: same eight positions, so
+  -- extensionality plus an `omega` case split (mirrors the
+  -- exact-env certificate's bridge).
+  have hbridge :
+      (((((((((A :: B :: C :: D :: E :: Ff :: G :: H :: []).set 7 G).set 6 Ff).set
+        5 E).set 4 (D + (cV6 A B C D E Ff G H w[r] shaK[r]))).set 3 C).set 2 B).set 1 A).set 0 ((cV6 A B C D E Ff G H w[r] shaK[r]) + (cV12 A B C D E Ff G H w[r] shaK[r]))) =
+      roundStep [A, B, C, D, E, Ff, G, H] w r := by
+    have hrr : roundStep [A, B, C, D, E, Ff, G, H] w r =
+        [(cV6 A B C D E Ff G H w[r] shaK[r]) + (cV12 A B C D E Ff G H w[r] shaK[r]), A, B, C, D + (cV6 A B C D E Ff G H w[r] shaK[r]), E, Ff, G] := by
+      simp only [roundStep, hgetw, hgetk, shaS1, shaCh, shaS0, shaMaj,
+        cV1, cV2, cV3, cV4, cV5, cV6, cV7, cV8, cV9, cV10, cV11, cV12]
+    rw [hrr]
+    apply List.ext_getElem?
+    intro i
+    by_cases hi : i < 8
+    · have hc : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 ∨ i = 4 ∨ i = 5 ∨ i = 6 ∨
+          i = 7 := by omega
+      obtain rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl := hc <;> simp
+    · rw [List.getElem?_eq_none (by simp; omega),
+        List.getElem?_eq_none (by simp; omega)]
+  have heval : evalStmtFuel F compressFrag ρ = .ok (ρ₈, .fellThrough) := by
+    rw [compressFrag,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ hletT1,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ hletT2,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e1,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e2,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e3,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e4,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e5,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e6,
+      evalStmtFuel_seq_fallthrough F _ _ _ _ e7,
+      e8]
+  have hvconcl : envLookup ρ₈ "v" =
+      some (.arr32 (roundStep [A, B, C, D, E, Ff, G, H] w r)) :=
+    hbridge ▸ hvself₈
+  have hrconcl : envLookup ρ₈ "r" = envLookup ρ "r" := by
+    rw [fr₈, fr₇, fr₆, fr₅, fr₄, fr₃, fr₂, fr₁, hρbr]
+  have hwconcl : envLookup ρ₈ "w" = envLookup ρ "w" := by
+    rw [fw₈, fw₇, fw₆, fw₅, fw₄, fw₃, fw₂, fw₁, hρbw]
+  have hKconcl : envLookup ρ₈ "K" = envLookup ρ "K" := by
+    rw [fK₈, fK₇, fK₆, fK₅, fK₄, fK₃, fK₂, fK₁, hρbK]
+  have hstconcl : envLookup ρ₈ "st" = envLookup ρ "st" := by
+    rw [fst₈, fst₇, fst₆, fst₅, fst₄, fst₃, fst₂, fst₁, hρbst]
+  exact ⟨ρ₈, heval, hvconcl, hrconcl, hwconcl, hKconcl, hstconcl⟩

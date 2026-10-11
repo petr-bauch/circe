@@ -283,3 +283,156 @@ theorem shaAddWhile_correct (F : Nat) (v w : List (BitVec 32)) (j : Nat)
       rw [hdone] at hcondF ⊢
       simp [shaAddWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
         hcondF]
+
+/-- The compress-loop condition over an abstract env (the counter
+    lookup is a hypothesis, mirroring `compressCond_eval`). -/
+theorem compressCond_lookup (ρ : Env) (r : Nat) (h : r < 2 ^ 64)
+    (hρr : envLookup ρ "r" = some (.u64 (BitVec.ofNat 64 r))) :
+    evalExpr (.ult (.var "r") (.lit (.u64 (BitVec.ofNat 64 64)))) ρ =
+      .ok (.b (decide (r < 64))) := by
+  have h64 : (BitVec.ofNat 64 64).toNat = 64 := ofNat64_toNat 64 (by decide)
+  simp [evalExpr, hρr, litVal, ofNat64_ult r _ h, h64]
+
+/-- One round-loop iteration over an abstract env: the fragment plus
+    `r++`, with the post-env pinned by lookups (absolute for the
+    evolving `v`/`r`, absolute values threaded for the frame). -/
+theorem shaRoundBody_lookup (F : Nat) (ρ : Env)
+    (s vv : List (BitVec 32)) (r : Nat) (w : List (BitVec 32))
+    (hv8 : vv.length = 8) (hw64 : w.length = 64)
+    (hr64 : r < 64) (hr642 : r < 2 ^ 64)
+    (hρv : envLookup ρ "v" = some (.arr32 vv))
+    (hρw : envLookup ρ "w" = some (.arr32 w))
+    (hρK : envLookup ρ "K" = some (.arr32 shaK))
+    (hρr : envLookup ρ "r" = some (.u64 (BitVec.ofNat 64 r)))
+    (hρst : envLookup ρ "st" = some (.arr32 s)) :
+    ∃ ρ', evalStmtFuel F shaRoundBody ρ = .ok (ρ', .fellThrough)
+      ∧ envLookup ρ' "v" = some (.arr32 (roundStep vv w r))
+      ∧ envLookup ρ' "r" = some (.u64 (BitVec.ofNat 64 (r + 1)))
+      ∧ envLookup ρ' "w" = some (.arr32 w)
+      ∧ envLookup ρ' "K" = some (.arr32 shaK)
+      ∧ envLookup ρ' "st" = some (.arr32 s) := by
+  obtain ⟨ρm, hfrag, hvm, hrm, hwm, hKm, hstm⟩ :=
+    compressFrag_transfer F ρ vv r w hv8 hw64 hr64 hr642
+      hρv hρw hρK hρr
+  -- The `r++` reads the framed counter and updates it in place.
+  have hrmv : envLookup ρm "r" = some (.u64 (BitVec.ofNat 64 r)) := by
+    rw [hrm]; exact hρr
+  have huaddr : evalExpr (.uadd (.var "r") (.lit (.u64 (BitVec.ofNat 64 1))))
+      ρm = .ok (.u64 (BitVec.ofNat 64 (r + 1))) := by
+    simp only [evalExpr, hrm, hρr, litVal, ofNat64_add_one]
+  obtain ⟨ρ', hu⟩ := envUpdate_some_of_lookup ρm "r"
+    (.u64 (BitVec.ofNat 64 r)) (.u64 (BitVec.ofNat 64 (r + 1))) hrmv
+  have hrv : envLookup ρ' "r" = some (.u64 (BitVec.ofNat 64 (r + 1))) :=
+    envLookup_envUpdate_same _ _ _ _ hu
+  have hvv : envLookup ρ' "v" = some (.arr32 (roundStep vv w r)) := by
+    have h := envLookup_envUpdate_diff _ _ _ _ _ hu (by decide : "r" ≠ "v")
+    rw [hvm] at h
+    exact h
+  have hww : envLookup ρ' "w" = some (.arr32 w) := by
+    have h := envLookup_envUpdate_diff _ _ _ _ _ hu (by decide : "r" ≠ "w")
+    rw [hwm] at h
+    rw [hρw] at h
+    exact h
+  have hKK : envLookup ρ' "K" = some (.arr32 shaK) := by
+    have h := envLookup_envUpdate_diff _ _ _ _ _ hu (by decide : "r" ≠ "K")
+    rw [hKm] at h
+    rw [hρK] at h
+    exact h
+  have hstt : envLookup ρ' "st" = some (.arr32 s) := by
+    have h := envLookup_envUpdate_diff _ _ _ _ _ hu (by decide : "r" ≠ "st")
+    rw [hstm] at h
+    rw [hρst] at h
+    exact h
+  have hassign := evalStmtFuel_assign F "r" _ _ _ _ huaddr hu
+  have heval : evalStmtFuel F shaRoundBody ρ = .ok (ρ', .fellThrough) := by
+    rw [shaRoundBody, evalStmtFuel_seq_fallthrough F _ _ _ _ hfrag, hassign]
+  exact ⟨ρ', heval, hvv, hrv, hww, hKK, hstt⟩
+
+/-- The 64-round loop evaluates to `compressLoop 64 0` (fuel induction
+    over abstract envs: the invariant pins the counter and working
+    vars absolutely and frames the schedule, constants and state). -/
+theorem compressWhile_correct (F : Nat) (ρ : Env)
+    (s : List (BitVec 32)) (r : Nat) (vv v0 : List (BitVec 32))
+    (w : List (BitVec 32))
+    (hr : r ≤ 64) (hv8 : vv.length = 8) (hw64 : w.length = 64)
+    (hρv : envLookup ρ "v" = some (.arr32 vv))
+    (hρw : envLookup ρ "w" = some (.arr32 w))
+    (hρK : envLookup ρ "K" = some (.arr32 shaK))
+    (hρr : envLookup ρ "r" = some (.u64 (BitVec.ofNat 64 r)))
+    (hρst : envLookup ρ "st" = some (.arr32 s))
+    (hloop : compressLoop (64 - r) r vv w = compressLoop 64 0 v0 w)
+    (hF : 64 - r ≤ F) :
+    ∃ ρ', evalStmtFuel F compressWhile ρ = .ok (ρ', .fellThrough)
+      ∧ envLookup ρ' "v" = some (.arr32 (compressLoop 64 0 v0 w))
+      ∧ envLookup ρ' "r" = some (.u64 (BitVec.ofNat 64 64))
+      ∧ envLookup ρ' "w" = some (.arr32 w)
+      ∧ envLookup ρ' "K" = some (.arr32 shaK)
+      ∧ envLookup ρ' "st" = some (.arr32 s) := by
+  induction F generalizing ρ r vv with
+  | zero =>
+    have hr64 : r = 64 := by omega
+    subst hr64
+    have hcond := compressCond_lookup ρ 64 (by decide) hρr
+    have hcondF : evalExpr (.ult (.var "r")
+          (.lit (.u64 (BitVec.ofNat 64 64)))) ρ =
+        .ok (.b false) := by
+      simpa using hcond
+    -- `64 - 64` is definitionally `0`, and `compressLoop 0` is the
+    -- identity, so the invariant is the conclusion's `v` lookup.
+    have hdone : vv = compressLoop 64 0 v0 w := hloop
+    refine ⟨ρ, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · simp [compressWhile, evalStmtFuel, evalStmtZero, evalStmtZeroHandler,
+        evalStmtWith, hcondF]
+    · rw [← hdone]; exact hρv
+    · exact hρr
+    · exact hρw
+    · exact hρK
+    · exact hρst
+  | succ F ih =>
+    by_cases hlt : r < 64
+    · have hr642 : r < 2 ^ 64 := by omega
+      have hcond := compressCond_lookup ρ r hr642 hρr
+      have hcondT : evalExpr (.ult (.var "r")
+            (.lit (.u64 (BitVec.ofNat 64 64)))) ρ =
+          .ok (.b true) := by
+        simpa [hlt] using hcond
+      obtain ⟨ρ', hbody, hv', hrr, hw', hK', hst'⟩ :=
+        shaRoundBody_lookup F ρ s vv r w hv8 hw64 hlt hr642
+          hρv hρw hρK hρr hρst
+      have hstep : evalStmtFuel (F + 1) compressWhile ρ
+          = evalStmtFuel F compressWhile ρ' := by
+        simp [compressWhile, evalStmtFuel, evalStmtSuccHandler,
+          evalStmtWith, hcondT, hbody]
+      rw [hstep]
+      have hr' : r + 1 ≤ 64 := by omega
+      have hv8' : (roundStep vv w r).length = 8 := by
+        rw [roundStep_length]; exact hv8
+      have e1 : 64 - (r + 1) = 64 - r - 1 := by omega
+      have e2 : 64 - r = (64 - r - 1) + 1 := by omega
+      -- Ground step equation (avoids higher-order matching of the
+      -- general successor lemma against the goal).
+      have hsucc : compressLoop ((64 - r - 1) + 1) r vv w =
+          compressLoop (64 - r - 1) (r + 1) (roundStep vv w r) w :=
+        compressLoop_succ (64 - r - 1) r vv w
+      have hloop' : compressLoop (64 - (r + 1)) (r + 1) (roundStep vv w r) w =
+          compressLoop 64 0 v0 w := by
+        rw [e1, ← hsucc, ← e2]
+        exact hloop
+      exact ih ρ' (r + 1) (roundStep vv w r) hr' hv8' hv' hw' hK' hrr hst'
+        hloop' (by omega)
+    · have hr64 : r = 64 := by omega
+      subst hr64
+      have hcond := compressCond_lookup ρ 64 (by decide) hρr
+      have hcondF : evalExpr (.ult (.var "r")
+            (.lit (.u64 (BitVec.ofNat 64 64)))) ρ =
+          .ok (.b false) := by
+        simpa using hcond
+      have hdone : vv = compressLoop 64 0 v0 w := hloop
+      refine ⟨ρ, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · simp [compressWhile, evalStmtFuel, evalStmtSuccHandler,
+          evalStmtWith, hcondF]
+      · rw [← hdone]; exact hρv
+      · exact hρr
+      · exact hρw
+      · exact hρK
+      · exact hρst
