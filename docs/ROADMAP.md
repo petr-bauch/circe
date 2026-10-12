@@ -144,21 +144,30 @@ first return-to-zero (the function extent), and `balanced = false`
 makes miscounts loud (never entered, went negative, never closed).
 Proved: `extractScopes_empty` + the depth-bound invariant
 (`extractScopes_bound` via a fold-preservation lemma). `ScopeReport`
-(29/29) pins every corpus definition's locals and max depth — loop
+(45/45) pins every corpus definition's locals, max depth, and live ranges — loop
 indices sit one `cir.for` region deep, the nested-loop inner index
 four opens deep (verified against `nested_sum.cir`; the reason the
 inner index is re-initialized per outer iteration) — plus
 truncated/malformed-input loudness. `validate`/`Emit`/transfer
 untouched.
 
-### L2. Live-range consumer — SCOPED (admission wiring needs last-use analysis)
+### L2. Live-range consumer — DONE (2026-10-12, extract-only; admission wiring follow-up)
 
-First consumer landed report-only (2026-10-12): `ScopeReport`
-pins `alias_reborrow` (`x`/`r`/`s`, all depth 0) and `alias_cond`
-(`p`/`q`/`c`, all depth 0) identically — L1 birth-depth evidence
-cannot separate sequential reborrows from conditionally-live
-writers (no `cir.scope` around `r`/`s`; use-site scan required).
-So no admission consumer is possible yet: reborrow admission
-needs last-use/death facts L1 does not extract, and `alias_cond`
-framing needs Iris (see the spike report above). N4b
+Second consumer landed report-only: `ScopeReport` pins per-local
+`(first-use, last-use)` line facts — `alias_reborrow` separates
+(`r` last-use line 12 precedes `s` first-use line 14; the
+`cir.load` copy-chain closure carries `r` through its final
+store at file line 17) while `alias_cond` overlaps (`q` spans
+lines 6–22 across `p`/`c` — framing stays Iris, see the spike
+report above). Matching is region-aware (per-region SSA numbers
+resolve inward-outward: the `cond`-region `%13` `n`-copy never
+leaks into `a`/`n` ranges — found live mid-slice when flat
+matching pinned `sum_two` `a`/`n` last-use 44 via the
+after-region integer `%13`; unresolvable mentions count
+conservatively for every root tracking the id). Only `cir.load`
+copies are chased (stores create no aliases; `ptr_stride`
+results are fresh values). Proved: first-use ≤ last-use and
+last-use within the function extent. `validate`/`Emit`/transfer
+untouched. The admission predicate (sequential writers with
+`r.lastUse < s.firstUse`) is the follow-up slice; N4b
 real-region-number wiring stays the other candidate consumer.

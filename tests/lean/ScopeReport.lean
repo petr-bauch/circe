@@ -1,4 +1,4 @@
--- Scope evidence report (L1, extract-only).
+-- Scope evidence report (L1 birth-depths + L2 live ranges, extract-only).
 --
 -- Run from the repo root: `lake env lean --run tests/lean/ScopeReport.lean`
 -- For every definition in each corpus `.cir` file, `extractScopes` must be
@@ -18,6 +18,32 @@ namespace ScopeReport
 /-- One expectation: function name, locals as `(name, depth)` in source
     order, maximum depth. -/
 abbrev ScopeWant := String × List (String × Nat) × Nat
+
+/-- One L2 expectation: function name, locals as
+    `(name, first-use line, last-use line)` in source order
+    (1-based lines within the function text; `(0, 0)` = unobserved). -/
+abbrev ScopeUseWant := String × List (String × Nat × Nat)
+
+def checkScopeUses (cir : String) (wants : List ScopeUseWant) : IO Nat := do
+  let text ← IO.FS.readFile cir
+  let raw ← match parseModule text with
+    | none => throw (IO.userError s!"scope-report: parse failed for {cir}")
+    | some r => pure r
+  let mut n := 0
+  for (name, locs) in wants do
+    match raw.funcs.find? (fun f => f.name == name) with
+    | none =>
+      throw (IO.userError s!"scope-report: {cir}: no definition {name}")
+    | some func =>
+      let s := extractScopes func.text
+      if s.balanced != true then
+        throw (IO.userError s!"scope-report: {cir}:{name}: expected balanced")
+      let got := s.locals.map (fun d => (d.name, d.firstUse, d.lastUse))
+      if got != locs then
+        throw (IO.userError s!"scope-report: {cir}:{name}: uses {got} != {locs}")
+      IO.println s!"PASS scope-uses {name} ({locs.length} locals)"
+      n := n + 1
+  pure n
 
 def checkScopeFile (cir : String) (wants : List ScopeWant) : IO Nat := do
   let text ← IO.FS.readFile cir
@@ -150,6 +176,28 @@ def main : IO Unit := do
      ("_ZNKSt6vectorIiSaIiEE2atEm", [("this", 0), ("__n", 0), ("__retval", 0)], 0),
      ("_ZNKSt6vectorIiSaIiEE14_M_range_checkEm", [("this", 0), ("__n", 0)], 0),
      ("_ZNKSt6vectorIiSaIiEEixEm", [("this", 0), ("__n", 0), ("__retval", 0)], 0)]
+  passed := passed + c
+  -- L2 live ranges: sequential reborrows separate (`r` last-use
+  -- line 12 precedes `s` first-use line 14 — the admission-enabling
+  -- fact L1 birth-depths could not show; the load-copy closure
+  -- carries `r` through its final store).
+  let c ← checkScopeUses "tests/cir/alias_reborrow.cir"
+    [("_Z14alias_reborrowRi",
+      [("x", 5, 14), ("r", 7, 12), ("s", 14, 19)])]
+  passed := passed + c
+  -- L2 live ranges: the conditionally-live writer overlaps (`q`
+  -- spans lines 6-22 across `p` and `c` — framing stays Iris).
+  let c ← checkScopeUses "tests/cir/alias_cond.cir"
+    [("_Z10alias_condRiS_b",
+      [("p", 5, 15), ("q", 6, 22), ("c", 7, 10)])]
+  passed := passed + c
+  -- L2 live ranges: loop regression (region-aware: per-region SSA
+  -- numbers resolve inward-outward, so the `cond`-region `%13`
+  -- (`n`-copy) never leaks into `a`/`n` ranges).
+  let c ← checkScopeUses "tests/cir/sum_two.cir"
+    [("sum_two",
+      [("a", 7, 29), ("b", 8, 33), ("n", 9, 21), ("__retval", 49, 51),
+       ("s", 12, 49), ("i", 17, 44)])]
   passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.
