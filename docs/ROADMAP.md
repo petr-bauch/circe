@@ -37,7 +37,14 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   `Iris spike report` below).
 - L-track consumers: first consumer landed report-only (L2 scoped
   above — admission wiring needs last-use analysis; N4b
-  real-region-number wiring stays the other candidate).
+  real-region-number wiring stays the other candidate). Follow-up
+  DONE (2026-10-12): the admission predicate
+  (`isSequentialReborrowShape`: structural pins + L2-ordered disjoint
+  writer ranges, proved sound) wires into `validate` as deferred
+  recognition — `alias_reborrow` rejects with the "sequential writers"
+  message instead of the generic fragment fallthrough (still a
+  rejection: writer admission needs a writer `Func` + Iris framing).
+  Pinned by `ReborrowGate` (7/7).
 - Next STD/C slice: two-reader pure admission — DONE (2026-10-12,
   N2d; see `DELIVERED.md`). Next candidate: `vector::at()`
   checked read — DONE (2026-10-12, N4d-iv-c; see `DELIVERED.md`).
@@ -169,5 +176,17 @@ copies are chased (stores create no aliases; `ptr_stride`
 results are fresh values). Proved: first-use ≤ last-use and
 last-use within the function extent. `validate`/`Emit`/transfer
 untouched. The admission predicate (sequential writers with
-`r.lastUse < s.firstUse`) is the follow-up slice; N4b
+`r.lastUse < s.firstUse`) was the follow-up slice — DONE
+(2026-10-12): `hasSequentialWriterRanges` (exactly three scope
+locals `[root, a, b]` with the first writer's range observed and
+ending before the second begins) plus structural pins (`void`, one
+single-reference root, three allocas, no calls/comparisons/loops/
+cleanup/traps/globals/strides) form `isSequentialReborrowShape`,
+proved sound (`hasSequentialWriterRanges_disjoint`,
+`isSequentialReborrowShape_disjoint`: `true` yields recorded ranges
+disjoint in order). `validate` routes recognized shapes to a deferred
+"sequential writers" message (after every admission, so nothing
+admitted is shadowed; the corpus sweep shows `alias_reborrow` is the
+only match — `alias_cond` keeps the generic message). Full admission
+still needs writer `Func` semantics + Iris framing; N4b
 real-region-number wiring stays the other candidate consumer.

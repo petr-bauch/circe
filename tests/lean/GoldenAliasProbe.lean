@@ -69,9 +69,12 @@ def main : IO Unit := do
     "alias-reject" "uniqueness cannot be established"
   passed := passed + b4
   -- Triple params: oracle vacuous; novel bodies reject at the shape gate.
+  -- The sequential reborrow is recognized but deferred (L2-disjoint
+  -- writer ranges; writer admission needs Iris framing), so it carries
+  -- the deferred message instead of the generic fragment fallthrough.
   let b5 ← checkProbeReject "_Z14alias_reborrowRi"
     "tests/cir/alias_reborrow.cir" .unknown
-    "out-of-subset" "admitted Phase-4 fragment"
+    "out-of-subset" "sequential writers"
   passed := passed + b5
   let b6 ← checkProbeReject "_Z10alias_condRiS_b"
     "tests/cir/alias_cond.cir" .unknown

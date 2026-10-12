@@ -1893,6 +1893,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if hasSmallWidthInt raw.text then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses 8/16-bit integers (CIRGen promotes them to `i32` via `cir.cast`: no native small-width arithmetic to model; S3b admits 64-bit loop-free widths only, see docs/SUBSET.md)"
+      else if isSequentialReborrowShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' reborrows one root through two sequential writers (the L2 live ranges are disjoint in order): writer admission is deferred — mutable writers need Iris framing over `Mem` (see docs/ROADMAP.md L-track)"
       else
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' is not in the admitted Phase-4 fragment (see `matchFrag` contract in `Circe.Emit`)"

@@ -83,6 +83,7 @@ import GoldenXorN
 import GoldenChacha
 import GoldenSha
 import ScopeReport
+import ReborrowGate
 import Circe.Parser
 
 /-- Scratch dir for native binaries + spec-eval temporaries (mirrors
@@ -1431,7 +1432,8 @@ def checkSuites : List Job :=
    ("golden-sum-two", GoldenSumTwo.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
-   ("scope-report", ScopeReport.main)]
+   ("scope-report", ScopeReport.main),
+   ("reborrow-gate", ReborrowGate.main)]
 
 /-- Registered suite module names (mirrors the `Suites` roots: a new
     `tests/lean` runner without registration fails loudly here). -/
@@ -1445,7 +1447,8 @@ def suiteModules : List String :=
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenView",
-   "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport"]
+   "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
+   "ReborrowGate"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

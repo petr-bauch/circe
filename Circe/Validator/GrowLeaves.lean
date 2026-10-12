@@ -4,6 +4,7 @@ Circe.Validator.GrowLeaves — N4d-iv-b1 growth-leaf shapes, over
 -/
 import Circe.CoreIR
 import Circe.Parser
+import Circe.Scope
 import Circe.Oracle
 import Circe.Emit
 import Circe.Emit.VecGrow
@@ -2005,4 +2006,118 @@ def isVecGrowShape (raw : RawFunc) : Bool :=
     instead of reader recovery). -/
 def isVecGrowErasedParam (raw : RawFunc) (p : RawParam) : Bool :=
   isVecGrowShape raw && isErasedIntPtr p
+
+/-! ## L2-admission: sequential-writer-pair recognition (deferred) -/
+
+/-- L2-ordered disjointness over scope locals: exactly three locals
+    `[root, a, b]` in source order with the first writer's range
+    observed and ending strictly before the second writer's begins.
+    The `alias_reborrow` pair satisfies this (`r` ends before `s`
+    begins); the overlapping `alias_cond` pair fails exactly this
+    comparison, so it stays on the generic reject path. This is the
+    admission predicate the L-track follow-up wires: `true` means the
+    two derived references' RECORDED live ranges are disjoint in order
+    (unresolvable mentions count conservatively, so recorded
+    disjointness admits less, never more). -/
+def hasSequentialWriterRanges (text : String) : Bool :=
+  match (extractScopes text).locals with
+  | [_, a, b] =>
+    0 < a.firstUse && 0 < a.lastUse && a.firstUse ≤ a.lastUse &&
+      a.lastUse < b.firstUse
+  | _ => false
+
+/-- Structural half of sequential-writer-pair recognition: `void`,
+    one single-reference pointer root param, three writer-family
+    allocas, no calls / comparisons / loops / cleanup / traps /
+    globals / strided indexing. The L2 half
+    (`hasSequentialWriterRanges`) is checked last, so the
+    `extractScopes` fold runs only after the cheap pins pass. -/
+def structuralSequentialReborrow (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.alloca" == 3 &&
+  opCount raw.text "cir.call @" == 0 &&
+  opCount raw.text "cir.cmp" == 0 &&
+  opCount raw.text "cir.for" == 0 &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "get_global" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  (match raw.params with
+   | [p] => p.singleRef && isPtrType p.ctype
+   | _ => false)
+
+/-- Sequential-writer-pair recognition: structural pins plus
+    L2-ordered disjoint writer ranges. Recognized shapes are still
+    REJECTED (mutable writers need Iris framing over `Mem` — there is
+    no writer `Func` yet); the gate routes them to the deferred message
+    instead of the generic fragment fallthrough. The branch sits after
+    every admission, so no admitted shape can be shadowed. -/
+def isSequentialReborrowShape (raw : RawFunc) : Bool :=
+  structuralSequentialReborrow raw && hasSequentialWriterRanges raw.text
+
+/-- Soundness of the L2 admission predicate: `true` yields the three
+    recorded locals with the first writer's range ending strictly
+    before the second writer's begins. Admission will consume exactly
+    this fact. -/
+theorem hasSequentialWriterRanges_disjoint (text : String)
+    (h : hasSequentialWriterRanges text = true) :
+    ∃ r a b : LocalDecl, (extractScopes text).locals = [r, a, b] ∧
+      0 < a.lastUse ∧ a.lastUse < b.firstUse := by
+  -- Case on the locals BEFORE unfolding: `h` mentions `text` only, so
+  -- no dependent motive over the scrutinee (casing after `unfold`
+  -- fails dependent elimination on the `decide` match arms).
+  cases hl : (extractScopes text).locals with
+  | nil =>
+    have h2 : hasSequentialWriterRanges text = true := h
+    unfold hasSequentialWriterRanges at h2
+    rw [hl] at h2
+    simp at h2
+  | cons r rest =>
+    cases rest with
+    | nil =>
+      have h2 : hasSequentialWriterRanges text = true := h
+      unfold hasSequentialWriterRanges at h2
+      rw [hl] at h2
+      simp at h2
+    | cons a rest₂ =>
+      cases rest₂ with
+      | nil =>
+        have h2 : hasSequentialWriterRanges text = true := h
+        unfold hasSequentialWriterRanges at h2
+        rw [hl] at h2
+        simp at h2
+      | cons b rest₃ =>
+        cases rest₃ with
+        | cons _ _ =>
+          have h2 : hasSequentialWriterRanges text = true := h
+          unfold hasSequentialWriterRanges at h2
+          rw [hl] at h2
+          simp at h2
+        | nil =>
+          have h2 : hasSequentialWriterRanges text = true := h
+          unfold hasSequentialWriterRanges at h2
+          rw [hl] at h2
+          simp at h2
+          -- `simp_all`: robust to the exact normal form — `hl` rewrites
+          -- the locals equation, `h2`'s split conjuncts supply the two
+          -- range facts (casing or projecting the `Nat.le` conjunct
+          -- trips dependent elimination over the `Nat` indices).
+          refine ⟨r, a, b, ?_, ?_, ?_⟩ <;> simp_all
+
+/-- The full recognition shape carries the disjointness fact: anything
+    the gate routes to the deferred message satisfies the admission
+    predicate. -/
+theorem isSequentialReborrowShape_disjoint (raw : RawFunc)
+    (h : isSequentialReborrowShape raw = true) :
+    ∃ r a b : LocalDecl, (extractScopes raw.text).locals = [r, a, b] ∧
+      0 < a.lastUse ∧ a.lastUse < b.firstUse := by
+  -- Project the trailing L2 conjunct (one projection, robust to the
+  -- structural chain's length: casing the chain trips dependent
+  -- elimination against the nested matches).
+  have hr : hasSequentialWriterRanges raw.text = true := by
+    have h2 := h
+    unfold isSequentialReborrowShape at h2
+    simp only [Bool.and_eq_true] at h2
+    exact h2.2
+  exact hasSequentialWriterRanges_disjoint _ hr
 
