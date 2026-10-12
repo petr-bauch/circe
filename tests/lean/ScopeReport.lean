@@ -115,6 +115,20 @@ def main : IO Unit := do
   let c ← checkScopeFile "tests/cir/box_through.cir"
     [("_Z11box_throughi", [("x", 0), ("__retval", 0), ("p", 0), ("r", 0)], 0)]
   passed := passed + c
+  -- L-track first consumer (report-only): the two alias residues pin
+  -- identically — birth-depth evidence cannot separate sequential
+  -- reborrows (`x`/`r`/`s` all depth 0, no `cir.scope` around `r`/`s`)
+  -- from conditionally-live writers (`p`/`q`/`c` all depth 0). So no
+  -- admission consumer is possible yet: reborrow admission needs
+  -- last-use/death facts L1 does not extract (L2 work, see
+  -- `docs/ROADMAP.md`); `alias_cond` framing needs Iris (see the Iris
+  -- spike report). These rows pin the insufficiency.
+  let c ← checkScopeFile "tests/cir/alias_reborrow.cir"
+    [("_Z14alias_reborrowRi", [("x", 0), ("r", 0), ("s", 0)], 0)]
+  passed := passed + c
+  let c ← checkScopeFile "tests/cir/alias_cond.cir"
+    [("_Z10alias_condRiS_b", [("p", 0), ("q", 0), ("c", 0)], 0)]
+  passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.
   if (extractScopes "cir.func @t { cir.alloca \"a\"").balanced != false then

@@ -35,10 +35,9 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 
 - Iris spike — DONE (2026-10-12, report only, no migration; see
   `Iris spike report` below).
-- L-track consumers: L1 evidence is extracted and pinned, but no
-  consumer is wired yet (first expected: real region numbers for
-  N4b moves). Next slice wires one consumer or records why none
-  is needed.
+- L-track consumers: first consumer landed report-only (L2 scoped
+  above — admission wiring needs last-use analysis; N4b
+  real-region-number wiring stays the other candidate).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,
@@ -146,3 +145,15 @@ four opens deep (verified against `nested_sum.cir`; the reason the
 inner index is re-initialized per outer iteration) — plus
 truncated/malformed-input loudness. `validate`/`Emit`/transfer
 untouched.
+
+### L2. Live-range consumer — SCOPED (admission wiring needs last-use analysis)
+
+First consumer landed report-only (2026-10-12): `ScopeReport`
+pins `alias_reborrow` (`x`/`r`/`s`, all depth 0) and `alias_cond`
+(`p`/`q`/`c`, all depth 0) identically — L1 birth-depth evidence
+cannot separate sequential reborrows from conditionally-live
+writers (no `cir.scope` around `r`/`s`; use-site scan required).
+So no admission consumer is possible yet: reborrow admission
+needs last-use/death facts L1 does not extract, and `alias_cond`
+framing needs Iris (see the spike report above). N4b
+real-region-number wiring stays the other candidate consumer.
