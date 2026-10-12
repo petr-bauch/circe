@@ -517,6 +517,27 @@ is not value-faithful):
   edges + 1000 fuzz trials) green; containment result — checked
   single reads are IN, checked sums (`at()` + `checkedAddI32`)
   stay OUT as the deferred follow-up).
+  N4d-iv-d `std::vector::at` checked sum — DONE (2026-10-12: new
+  corpus `vec_at_sum` (`s += v.at(i)` over `v.size()` with `nsw`
+  adds, real CIRGen, `cir-opt` VERIFY-OK): the entry
+  functionalizes to a call-free fused `while_` loop (the
+  `vec_read_sum` precedent — `callRet` cannot appear inside loop
+  bodies since `while_` delegates to the call-free evaluator, so
+  fusion is structural). Per iteration the `_M_range_check`
+  guard fuses to an `if_` around the inherited `stdVecBody`,
+  the throw arm fusing to `fail`. Error precedence: the loop
+  bound subsumes the guard, so `AssertFail` is dead-but-propagated
+  (`vecAtSumBody_guard_false`) and the live failure is the `nsw`
+  overflow — the forward is the inherited `stdVecFold`
+  (`vecAtSumFwd := stdVecReadSumFwd`). Value proofs + memory
+  transfers + footprint witness green, tag-erased rendering +
+  spec stub byte-identical, `GoldenVecAtSum` (10: 5-pipeline +
+  unchecked-entry + read-sum-not-at-sum + direct-range +
+  double-at + bare-ptr) + `DiffVecAtSum` (eval-vs-forward every
+  trial, native when the fold is `.ok`, Lean-Lean on `nsw`
+  overflow, 8 edges + 1000 fuzz trials; no OOB leg — the bound
+  makes it unreachable) green; containment result — checked
+  `at()` sums are IN).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 

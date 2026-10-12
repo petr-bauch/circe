@@ -729,6 +729,22 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     dedicated rejections. The verdict is honestly `unknown`
     (single-ref exempt, the `vec_alloc` precedent — attrs are
     claims, here the triple itself).
+28i. Checked sum (N4d-iv-d, over the N4d-iv-c read): `vec_at_sum`
+    (`const vector<int>&` in, `i32` out, `s += v.at(i)` with
+    `nsw` adds). Admission is one fused entry Func: single-ref
+    vector param, `i32` return, the `cir.for` index loop over
+    exactly one `size` + one `at()` call (one `lt` guard, one
+    `inc`, one `nsw` add, three `0` consts, 4 allocas / 9 loads /
+    6 stores). Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls — the checked read goes
+    through `at()` only. The per-iteration guard fuses to an
+    `if_` around the inherited fold body (`callRet` cannot live
+    inside loop bodies); the loop bound subsumes the guard, so
+    `AssertFail` is dead-but-propagated and the live failure is
+    the `nsw` overflow (the forward is the inherited fold).
+    Unchecked entries, guard-bypassing entries, unrolled
+    multi-`at` entries, and bare vector pointers keep dedicated
+    rejections. Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

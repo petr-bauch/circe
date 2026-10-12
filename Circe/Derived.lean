@@ -26,6 +26,7 @@ import Circe.Emit.Add
 import Circe.Emit.Choose
 import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
+import Circe.Emit.VecAtSum
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -742,6 +743,22 @@ theorem oracleNoalias_vecAtOne (l : List (BitVec 32)) :
       [.stdVecVal l] emptyMem = _
     exact bindMemArgs_stdVecVal "v" stdVecObjTy l
   have hn : LayoutNoAlias [("v", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `vec_at_sum` footprints are a singleton (the guarded loop runs
+    after entry over the read-only view). -/
+theorem oracleNoalias_vecAtSum (l : List (BitVec 32)) :
+    oracleNoalias vecAtSumFunc [.stdVecVal l] := by
+  have hb : bindMemArgs vecAtSumFunc.args [.stdVecVal l] emptyMem =
+      some ([("s", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow }]
+      [.stdVecVal l] emptyMem = _
+    exact bindMemArgs_stdVecVal "s" stdVecObjTy l
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
 /-- `vec_read_sum` footprints are a singleton (the loop runs after

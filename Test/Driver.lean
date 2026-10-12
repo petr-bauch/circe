@@ -33,6 +33,7 @@ import DiffVec
 import DiffVec2
 import DiffVec64
 import DiffVecAt
+import DiffVecAtSum
 import DiffVecLeak
 import DiffVecRead
 import DiffVecRealloc
@@ -72,6 +73,7 @@ import GoldenTadd
 import GoldenVec2
 import GoldenVec64
 import GoldenVecAt
+import GoldenVecAtSum
 import GoldenVecRead
 import GoldenVecRealloc
 import GoldenView
@@ -195,6 +197,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["-std=c++17", "tests/cpp/vec_erase_sum.cpp", "tests/diff/driver_vec_erase.cpp"], bin "circe_vec_erase_native"),
    ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
    ("c++", ["tests/cpp/vec_at_one.cpp", "tests/diff/driver_vec_at.cpp"], bin "circe_vec_at_native"),
+   ("c++", ["tests/cpp/vec_at_sum.cpp", "tests/diff/driver_vec_at_sum.cpp"], bin "circe_vec_at_sum_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
    ("cc", ["tests/c/sum_two.c", "tests/diff/driver_sum_two.c"], bin "circe_sum_two_native")]
 
@@ -262,6 +265,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecAt_Spec.lean", "out/VecAt_Spec.lean"),
    ("tests/golden/VecAtOne.lean", "out/VecAtOne.lean"),
    ("tests/golden/VecAtOne_Spec.lean", "out/VecAtOne_Spec.lean"),
+   ("tests/golden/VecAtSum.lean", "out/VecAtSum.lean"),
+   ("tests/golden/VecAtSum_Spec.lean", "out/VecAtSum_Spec.lean"),
    ("tests/golden/OverloadAdd.lean", "out/OverloadAdd.lean"),
    ("tests/golden/Add3.lean", "out/Add3.lean"),
    ("tests/golden/UseAdd.lean", "out/UseAdd.lean"),
@@ -400,6 +405,7 @@ def emittedTypechecks : List String :=
    "out/VecRangeCheck.lean", "out/VecRangeCheck_Spec.lean",
    "out/VecAt.lean", "out/VecAt_Spec.lean",
    "out/VecAtOne.lean", "out/VecAtOne_Spec.lean",
+   "out/VecAtSum.lean", "out/VecAtSum_Spec.lean",
    "out/OverloadAdd.lean", "out/OverloadAdd_Spec.lean",
    "out/Add3.lean", "out/Add3_Spec.lean",
    "out/UseAdd.lean", "out/UseAdd_Spec.lean",
@@ -1115,6 +1121,19 @@ def contentAsserts : List (String × List (String × String)) :=
      ("out/VecAt.lean", "_ZNKSt6vectorIiSaIiEE2atEm_fwd"),
      ("out/VecAtOne.lean", "_Z10vec_at_oneRKSt6vectorIiSaIiEE_fwd"),
      ("tests/golden/VecRangeCheck.lean", "_ZNKSt6vectorIiSaIiEE14_M_range_checkEm_fwd")]),
+   ("vec-at-sum",
+    [("Circe/Emit/VecAtSum.lean", "theorem evalFuncFuel_vecAtSum"),
+     ("Circe/Emit/VecAtSum.lean", "theorem vecAtSumWhile_correct"),
+     ("Circe/Emit/VecAtSum.lean", "theorem vecAtSumBody_guard_false"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecAtSum"),
+     ("Circe/Emit/Render.lean", "def emitVecAtSumText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecAtSumSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isVecAtSumShape"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_vecAtSum"),
+     ("Circe/Transfer/Slice.lean", "theorem memTransfer_vecAtSum"),
+     ("Circe/Transfer/Slice.lean", "theorem memVecAtSumWhile_correct"),
+     ("out/VecAtSum.lean", "_Z10vec_at_sumRKSt6vectorIiSaIiEE_fwd"),
+     ("tests/golden/VecAtSum.lean", "_Z10vec_at_sumRKSt6vectorIiSaIiEE_fwd")]),
    ("n4d-vecgrow",
     [("Circe/Validator/GrowLeaves.lean", "def isVecGrowComposerText"),
      ("Circe/Validator/Gate.lean", "N4d-iv-b2 growth composer"),
@@ -1322,8 +1341,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 112 then
-    throw (IO.userError s!"expected 112 spec stubs, found {stubs.length}")
+  if stubs.length != 113 then
+    throw (IO.userError s!"expected 113 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1365,6 +1384,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-view", DiffView.main [bin "circe_view_sum_native", trials]),
    ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
    ("diff-vecat", DiffVecAt.main [bin "circe_vec_at_native", trials]),
+   ("diff-vecatsum", DiffVecAtSum.main [bin "circe_vec_at_sum_native", trials]),
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
@@ -1405,6 +1425,7 @@ def checkSuites : List Job :=
    ("golden-view", GoldenView.main),
    ("golden-vecread", GoldenVecRead.main),
    ("golden-vecat", GoldenVecAt.main),
+   ("golden-vecatsum", GoldenVecAtSum.main),
    ("golden-vecgrow", GoldenVecGrow.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-sum-two", GoldenSumTwo.main),
@@ -1418,12 +1439,12 @@ def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
-   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt",
+   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum",
    "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport"]
 
 def stem (f : String) : String :=

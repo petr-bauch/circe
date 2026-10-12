@@ -12,6 +12,7 @@ import Circe.Emit.Choose
 import Circe.Emit.Sum
 import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
+import Circe.Emit.VecAtSum
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -733,6 +734,20 @@ def matchFrag : Func → Option FragKind
     | .seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
       (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
       (.seq (.while_ (.ult (.var "i") (.stdVecLen "s"))
+              (.if_ (.ult (.var "i") (.stdVecLen "s"))
+                (.seq (.assign "t"
+                        (.add (.var "t") (.stdVecAt "s" (.var "i"))))
+                  (.assign "i"
+                    (.uadd (.var "i") (.lit (.u64 one)))))
+                .fail))
+            (.return_ (.var "t")))) =>
+      if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
+          one == BitVec.ofNat 64 1 then
+        some .vecAtSum
+      else none
+    | .seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
+      (.seq (.while_ (.ult (.var "i") (.stdVecLen "s"))
               (.seq (.assign "t"
                       (.add (.var "t") (.stdVecAt "s" (.var "i"))))
                 (.assign "i"
@@ -1266,6 +1281,7 @@ theorem matchFrag_stdVecReadSum : matchFrag stdVecReadSumFunc = some .vecReadSum
 theorem matchFrag_stdVecRangeCheck : matchFrag stdVecRangeCheckFunc = some .vecRangeCheck := rfl
 theorem matchFrag_stdVecAt : matchFrag stdVecAtFunc = some .vecAt := rfl
 theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
+theorem matchFrag_vecAtSum : matchFrag vecAtSumFunc = some .vecAtSum := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

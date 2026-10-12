@@ -1329,3 +1329,40 @@ def isVecAtOneShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `vec_at_sum` entry shape: single-ref vector, returns `i32`, the
+    `cir.for` index loop over exactly one `size` + one `at()` call
+    with one `lt` guard, one `inc`, one `nsw` add, three `0` consts
+    (acc-init, acc-seed, index-init). Encapsulation pins: no direct
+    `operator[]` / `_M_range_check` / throw calls — the checked read
+    goes through `at()` only. -/
+def isVecAtSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecSizeName &&
+    opCount raw.text "cir.call @" == 2 &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.inc" == 1 &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 3 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.load" == 9 &&
+    opCount raw.text "cir.store" == 6 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+

@@ -595,6 +595,22 @@ def emitStdVecAtText (name : String) : String :=
   ++ "  | some x => if n.toNat < l.length then .ok x else .error .AssertFail\n"
   ++ "  | none => .error .AssertFail\n"
 
+/-- Render the `vec_at_sum` entry forward definition: the
+    checked-add fold over the reified words (the guard is subsumed
+    by the loop bound, so the fold never sees `AssertFail` — the
+    `stdVecReadSumFwd` fold, verbatim). -/
+def emitVecAtSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (checked-add fold over the reified words; `nsw` overflow is loud). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  go l 0\n"
+  ++ "where go : List (BitVec 32) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | [], acc => .ok acc\n"
+  ++ "  | x :: xs, acc => do\n"
+  ++ "      let a ← checkedAddI32 acc x\n"
+  ++ "      go xs a\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

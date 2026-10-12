@@ -41,7 +41,8 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 - Next STD/C slice: two-reader pure admission — DONE (2026-10-12,
   N2d; see `DELIVERED.md`). Next candidate: `vector::at()`
   checked read — DONE (2026-10-12, N4d-iv-c; see `DELIVERED.md`).
-  Follow-up: `vector::at()` checked sum (`at()` + `checkedAddI32` fold).
+  Follow-up: `vector::at()` checked sum — DONE (2026-10-12,
+  N4d-iv-d; see `DELIVERED.md`).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,

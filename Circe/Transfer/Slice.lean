@@ -4,6 +4,7 @@ Over `Circe.Transfer.Flow`.
 -/
 import Circe.Transfer.Flow
 import Circe.Emit.VecAt
+import Circe.Emit.VecAtSum
 
 /-! ## N4d-i `std::array` transfers: reads agree, hit and `OOB` -/
 
@@ -2622,3 +2623,243 @@ theorem memTransfer_vecAtOne (F : Nat) (l : List (BitVec 32))
     memEvalFuncFuel F vecAtOneFunc [.stdVecVal l] =
       evalFuncFuel F vecAtOneFunc [.stdVecVal l] := by
   rw [memEvalFuncFuel_vecAtOne F l hlen64, evalFuncFuel_vecAtOne F l hlen64]
+
+/-- Guard evaluation on memory (mirrors `vecAtSumGuard_eval`). -/
+theorem memVecAtSumGuard_eval (l : List (BitVec 32)) (k : Nat)
+    (acc : BitVec 32) (m : Mem) (π : Layout) (ad : Addr) (t : Nat)
+    (hk64 : k < 2 ^ 64) (hl64 : l.length < 2 ^ 64)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length)) :
+    memEvalExpr vecAtSumGuard (mkStdVecEnv l k acc) m π =
+      .ok (.b (decide (k < l.length))) := by
+  have h := memStdVecCond_eval l k acc m π ad t hk64 hl64 hlay hmemlen
+  simpa [vecAtSumGuard] using h
+
+/-- Body with a successful add on memory: guard holds in-loop, so
+    the step is the inherited body step (any fuel). -/
+theorem memVecAtSumBody_step_ok (F : Nat) (l : List (BitVec 32)) (k : Nat)
+    (acc x a : BitVec 32) (m : Mem) (π : Layout) (ad : Addr) (t : Nat)
+    (hlt : k < l.length) (hk64 : k < 2 ^ 64) (hl64 : l.length < 2 ^ 64)
+    (hget : l[k]? = some x)
+    (hc : checkedAddI32 acc x = .ok a)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 32),
+      l[j]? = some y → memLoad m ad t (j + 1) = .ok y) :
+    memEvalStmtFuel F vecAtSumBody (mkStdVecEnv l k acc) m π =
+      .ok (((mkStdVecEnv l (k + 1) a, m, π)), .fellThrough) := by
+  have hg : memEvalExpr vecAtSumGuard (mkStdVecEnv l k acc) m π =
+      .ok (.b true) := by
+    have h := memVecAtSumGuard_eval l k acc m π ad t hk64 hl64 hlay hmemlen
+    simpa [hlt] using h
+  have hbody := memStdVecBody_step_ok F l k acc x a m π ad t hlt hk64 hl64
+    hget hc hlay hmemlen hmemall
+  simp only [vecAtSumBody]
+  rw [memEvalStmtFuel_if_true _ _ _ _ _ _ _ hg]
+  exact hbody
+
+/-- Body with an overflowing add on memory: the `nsw` error is loud,
+    the index never advances (any fuel). -/
+theorem memVecAtSumBody_step_err (F : Nat) (l : List (BitVec 32)) (k : Nat)
+    (acc x : BitVec 32) (e : Panic) (m : Mem) (π : Layout)
+    (ad : Addr) (t : Nat)
+    (hlt : k < l.length) (hk64 : k < 2 ^ 64) (hl64 : l.length < 2 ^ 64)
+    (hget : l[k]? = some x)
+    (hc : checkedAddI32 acc x = .error e)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (y : BitVec 32),
+      l[j]? = some y → memLoad m ad t (j + 1) = .ok y) :
+    memEvalStmtFuel F vecAtSumBody (mkStdVecEnv l k acc) m π = .error e := by
+  have hg : memEvalExpr vecAtSumGuard (mkStdVecEnv l k acc) m π =
+      .ok (.b true) := by
+    have h := memVecAtSumGuard_eval l k acc m π ad t hk64 hl64 hlay hmemlen
+    simpa [hlt] using h
+  have hbody := memStdVecBody_step_err F l k acc x e m π ad t hlt hk64 hl64
+    hget hc hlay hmemlen hmemall
+  simp only [vecAtSumBody]
+  rw [memEvalStmtFuel_if_true _ _ _ _ _ _ _ hg]
+  exact hbody
+
+/-- Loop correctness on memory: folds the checked-add suffix
+    (mirrors `memStdVecWhile_correct` — the guard is subsumed, so
+    the fold is the inherited one). -/
+theorem memVecAtSumWhile_correct (l : List (BitVec 32))
+    (F k : Nat) (acc : BitVec 32) (m : Mem) (π : Layout)
+    (ad : Addr) (t : Nat)
+    (hk : k ≤ l.length) (hl64 : l.length < 2 ^ 64)
+    (hlay : layoutLookup π "s" = some (ad, t))
+    (hmemlen : memLoad m ad t 0 = .ok (BitVec.ofNat 32 l.length))
+    (hmemall : ∀ (j : Nat) (x : BitVec 32),
+      l[j]? = some x → memLoad m ad t (j + 1) = .ok x)
+    (hF : l.length - k + 1 ≤ F) :
+    memEvalStmtFuel F vecAtSumWhile (mkStdVecEnv l k acc) m π =
+      match stdVecFold (l.drop k) acc with
+      | .error e => .error e
+      | .ok acc' => .ok (((mkStdVecEnv l l.length acc', m, π)),
+        .fellThrough) := by
+  induction F generalizing k acc with
+  | zero => omega
+  | succ F ih =>
+    by_cases hlt : k < l.length
+    · have hk64 : k < 2 ^ 64 := by omega
+      have hget : l[k]? = some l[k] := List.getElem?_eq_getElem hlt
+      have hcond : memEvalExpr (.ult (.var "i") (.stdVecLen "s"))
+            (mkStdVecEnv l k acc) m π = .ok (.b true) := by
+        simpa [hlt] using
+          (memStdVecCond_eval l k acc m π ad t hk64 hl64 hlay hmemlen)
+      have hunfold := stdVecFold_step l k acc l[k] hget
+      cases hc : checkedAddI32 acc l[k] with
+      | error e =>
+        have hbody := memVecAtSumBody_step_err F l k acc l[k] e m π ad t
+          hlt hk64 hl64 hget hc hlay hmemlen hmemall
+        have hstep :
+            memEvalStmtFuel (F + 1) vecAtSumWhile (mkStdVecEnv l k acc) m π
+            = .error e := by
+          simp [vecAtSumWhile, memEvalStmtFuel, memEvalSuccHandler,
+            memEvalStmtWith, hcond, hbody]
+        rw [hstep, hunfold, hc]
+      | ok a =>
+        have hbody := memVecAtSumBody_step_ok F l k acc l[k] a m π ad t
+          hlt hk64 hl64 hget hc hlay hmemlen hmemall
+        have hstep :
+            memEvalStmtFuel (F + 1) vecAtSumWhile (mkStdVecEnv l k acc) m π
+            = memEvalStmtFuel F vecAtSumWhile (mkStdVecEnv l (k + 1) a) m π := by
+          simp [vecAtSumWhile, memEvalStmtFuel, memEvalSuccHandler,
+            memEvalStmtWith, hcond, hbody]
+        rw [hstep, hunfold, hc]
+        exact ih (k + 1) a (by omega) (by omega)
+    · have hkk : k = l.length := by omega
+      subst hkk
+      have hcond : memEvalExpr (.ult (.var "i") (.stdVecLen "s"))
+            (mkStdVecEnv l l.length acc) m π = .ok (.b false) := by
+        have hfalse : (decide (l.length < l.length)) = false := by
+          simp
+        have hk64 : l.length < 2 ^ 64 := hl64
+        have h := memStdVecCond_eval l l.length acc m π ad t hk64 hl64
+          hlay hmemlen
+        rwa [hfalse] at h
+      have hnil : stdVecFold [] acc = .ok acc := rfl
+      simp [vecAtSumWhile, memEvalStmtFuel, memEvalSuccHandler,
+        memEvalStmtWith, hcond, hnil]
+
+/-- `memEval` for `vec_at_sum`, fuel-generalized — mirrors
+    `evalFuncFuel_vecAtSum`. -/
+theorem memEvalFuncFuel_vecAtSum (F : Nat) (l : List (BitVec 32))
+    (hl64 : l.length < 2 ^ 64) (hF : l.length + 1 ≤ F) :
+    memEvalFuncFuel F vecAtSumFunc [.stdVecVal l] = vecAtSumFwd l := by
+  have hbf : vecAtSumFunc.args =
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow }] := rfl
+  have hbody : vecAtSumFunc.body =
+      .seq (.let_ "t" (.i 32) (.lit (.i32 (BitVec.ofNat 32 0))))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      (.seq vecAtSumWhile
+            (.return_ (.var "t")))) := rfl
+  have hb : bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow }]
+      [.stdVecVal l] emptyMem =
+      some ([("s", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_stdVecVal "s" stdVecObjTy l
+  have henv : [("i", .u64 (BitVec.ofNat 64 0)),
+        ("t", .i32 (BitVec.ofNat 32 0)),
+        ("s", .stdVecVal l)]
+      = mkStdVecEnv l 0 (BitVec.ofNat 32 0) := rfl
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmemlen : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmemall : ∀ (j : Nat) (x : BitVec 32),
+      l[j]? = some x →
+      memLoad ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        0 0 (j + 1) = .ok x := by
+    intro j x hget
+    simp [memLoad, memFind, hget]
+  have hsret : ∀ acc' : BitVec 32,
+      envLookup (mkStdVecEnv l l.length acc') "t" = some (.i32 acc') :=
+    fun acc' => mkStdVecEnv_t l l.length acc'
+  cases hfold : stdVecFold l (BitVec.ofNat 32 0) with
+  | error e =>
+    have hsum0 : vecAtSumFwd l = .error e := stdVecReadSumFwd_err l e hfold
+    cases F with
+    | zero =>
+      have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
+            vecAtSumWhile (mkStdVecEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] = .error e := by
+        have h := memVecAtSumWhile_correct l 0 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopH0, hsum0]
+    | succ F =>
+      have hloopS :
+          memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+            vecAtSumWhile (mkStdVecEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] = .error e := by
+        have h := memVecAtSumWhile_correct l (F + 1) 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopS, hsum0]
+  | ok acc' =>
+    have hsum' : vecAtSumFwd l = .ok (.i32 acc') :=
+      stdVecReadSumFwd_ok l acc' hfold
+    cases F with
+    | zero =>
+      have hloopH0 : memEvalStmtWith memEvalStmtZeroHandler
+            vecAtSumWhile (mkStdVecEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] =
+            .ok ((((mkStdVecEnv l l.length acc',
+              ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+              [("s", 0, 0)]))), .fellThrough) := by
+        have h := memVecAtSumWhile_correct l 0 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      have hsret' := hsret acc'
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopH0, hsret', hsum']
+    | succ F =>
+      have hloopS :
+          memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel F))
+            vecAtSumWhile (mkStdVecEnv l 0 (BitVec.ofNat 32 0))
+            ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+            [("s", 0, 0)] =
+            .ok ((((mkStdVecEnv l l.length acc',
+              ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+              [("s", 0, 0)]))), .fellThrough) := by
+        have h := memVecAtSumWhile_correct l (F + 1) 0 (BitVec.ofNat 32 0)
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+          [("s", 0, 0)] 0 0 (Nat.zero_le _) hl64 hlay hmemlen hmemall
+          (by omega)
+        rw [List.drop_zero] at h
+        rwa [hfold] at h
+      have hsret' := hsret acc'
+      simp only [memEvalFuncFuel, hbf, hbody, hb]
+      simp [memEvalStmtFuel, memEvalStmtWith,
+        memEvalExpr, litVal, henv, hloopS, hsret', hsum']
+
+/-- Transfer for `vec_at_sum`: both sides equal the inherited fold. -/
+theorem memTransfer_vecAtSum (F : Nat) (l : List (BitVec 32))
+    (hl64 : l.length < 2 ^ 64) (hF : l.length + 1 ≤ F)
+    (_h : oracleNoalias vecAtSumFunc [.stdVecVal l]) :
+    memEvalFuncFuel F vecAtSumFunc [.stdVecVal l] =
+      evalFuncFuel F vecAtSumFunc [.stdVecVal l] := by
+  rw [memEvalFuncFuel_vecAtSum F l hl64 hF, evalFuncFuel_vecAtSum F l hl64 hF]

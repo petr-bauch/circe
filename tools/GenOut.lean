@@ -9,6 +9,7 @@
 -- `tests/golden/*.lean` pins the forward bytes).
 import Circe.Emit
 import Circe.Emit.VecAt
+import Circe.Emit.VecAtSum
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
 
@@ -109,6 +110,7 @@ def main : IO Unit := do
   let vecRangeCheck ← emitOrDie stdVecRangeCheckFunc
   let vecAt ← emitOrDie stdVecAtFunc
   let vecAtOne ← emitOrDie vecAtOneFunc
+  let vecAtSum ← emitOrDie vecAtSumFunc
   let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
   let vecUnit ← emitOrDie stdVecUnitFunc
   let vecDtor ← emitOrDie stdVecDtorFunc
@@ -221,6 +223,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecRangeCheck.lean" (emitFileText (.ok vecRangeCheck))
   IO.FS.writeFile "out/VecAt.lean" (emitFileText (.ok vecAt))
   IO.FS.writeFile "out/VecAtOne.lean" (emitFileText (.ok vecAtOne))
+  IO.FS.writeFile "out/VecAtSum.lean" (emitFileText (.ok vecAtSum))
   IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
   IO.FS.writeFile "out/VecGrowUnit.lean" (emitFileText (.ok vecUnit))
   IO.FS.writeFile "out/VecGrowDtor.lean" (emitFileText (.ok vecDtor))
@@ -333,6 +336,7 @@ def main : IO Unit := do
   let vecRangeCheckSpec ← specOrDie stdVecRangeCheckFunc
   let vecAtSpec ← specOrDie stdVecAtFunc
   let vecAtOneSpec ← specOrDie vecAtOneFunc
+  let vecAtSumSpec ← specOrDie vecAtSumFunc
   let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
   let vecUnitSpec ← specOrDie stdVecUnitFunc
   let vecDtorSpec ← specOrDie stdVecDtorFunc
@@ -445,6 +449,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecRangeCheck_Spec.lean" vecRangeCheckSpec
   IO.FS.writeFile "out/VecAt_Spec.lean" vecAtSpec
   IO.FS.writeFile "out/VecAtOne_Spec.lean" vecAtOneSpec
+  IO.FS.writeFile "out/VecAtSum_Spec.lean" vecAtSumSpec
   IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec
   IO.FS.writeFile "out/VecGrowUnit_Spec.lean" vecUnitSpec
   IO.FS.writeFile "out/VecGrowDtor_Spec.lean" vecDtorSpec

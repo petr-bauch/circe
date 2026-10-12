@@ -1201,6 +1201,32 @@ def emitVecAtOneSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_at_sum` entry. The mirror is the
+    inherited checked-add fold; edges carry ground truth (empty
+    sum, small sums, `nsw` overflow). -/
+def emitVecAtSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v)` sums `v.at(i)` checked.\n"
+  ++ s!"    Base body reference: the checked-add fold itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecAtSumFwd`, i.e. `stdVecReadSumFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  go l 0\n"
+  ++ "where go : List (BitVec 32) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | [], acc => .ok acc\n"
+  ++ "  | x :: xs, acc => do\n"
+  ++ "      let a ← checkedAddI32 acc x\n"
+  ++ "      go xs a\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty sum, small sums, `nsw` overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [([], .ok 0), ([1, 2, 3], .ok 6), ([0x7FFFFFFF, 1], .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/
