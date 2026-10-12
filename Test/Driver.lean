@@ -1230,16 +1230,16 @@ def specCheckOf (text : String) : Option String := do
   if pre.isEmpty then none else some (String.ofList pre.reverse)
 
 /-- S4 spec loop: every `out/*_Spec.lean` typechecks and its `_check`
-    entry evaluates to `true`. Per-stub temporaries: the single shared
-    name `check.sh` used would race under parallel tasks. -/
-def checkSpecStubs : IO Unit := do
+    entry evaluates to `true`, one parallel job per stub (typecheck +
+    eval together for load balance). Per-stub temporaries: the single
+    shared name `check.sh` used would race under parallel tasks. -/
+def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
   if stubs.length != 107 then
     throw (IO.userError s!"expected 107 spec stubs, found {stubs.length}")
-  for s in stubs do
+  pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
-  for s in stubs do
     let text ← IO.FS.readFile ("out/" ++ s)
     let chk ← match specCheckOf text with
       | none => throw (IO.userError s!"no _spec_check entry in {s}")
@@ -1248,7 +1248,7 @@ def checkSpecStubs : IO Unit := do
     IO.FS.writeFile tmp (text ++ s!"\n#eval {chk}_spec_check\n")
     let out ← shOut "lake" #["env", "lean", tmp]
     if !(out.splitOn "\n").contains "true" then
-      throw (IO.userError s!"spec check false: {s}: {out}")
+      throw (IO.userError s!"spec check false: {s}: {out}")))
 
 /-! ## Suite roster (every `tests/lean` runner, run as parallel tasks) -/
 
@@ -1371,6 +1371,7 @@ def main (args : List String) : IO Unit := do
   let _ ← runJobs (nativeBuilds.map fun (cc, srcs, out) =>
     (s!"build {out}", ccBuild cc srcs out))
   IO.println "== gate (parallel tasks) =="
+  let specJobs ← specStubJobs
   let jobs : List Job :=
     goldenPairs.map (fun (w, g) => (s!"diff {g}", needSameBytes w g))
     ++ (emittedTypechecks ++ moduleTypechecks).map
@@ -1378,8 +1379,8 @@ def main (args : List String) : IO Unit := do
     ++ diffSuites trials ++ checkSuites
     ++ contentAsserts.map (fun (n, ps) => (s!"assert {n}", do
         for (f, needle) in ps do needHas f needle))
-    ++ [("spec-stubs", checkSpecStubs),
-        ("m2-setup-gate", checkM2SetupGate),
+    ++ specJobs
+    ++ [("m2-setup-gate", checkM2SetupGate),
         ("cir-fuel-adoption", checkCirFuelAdoption),
         ("n5-no-manual-fuel-split", checkNoManualFuelSplit),
         ("n8-closed-eval-adoption", checkClosedEvalAdoption),
