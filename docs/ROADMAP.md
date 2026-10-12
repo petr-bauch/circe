@@ -18,9 +18,8 @@ over `std::array<uint32_t,4>` + the N=8 second monomorph:
 corpus → gate → forward-as-fold →
 transfer → Sorted/Permutation spec → `DiffSort` fuzz; 444 jobs
 TEST-OK, CHECK-OK). Delivered milestones moved to `DELIVERED.md`.
-The active remainder is the Iris spike (report, not migration) and
-the lifetime-evidence track (L1 extract-only delivered; no
-consumers wired yet).
+The active remainder is the lifetime-evidence track (L1
+extract-only delivered; no consumers wired yet).
 
 Guiding principle (locked): admit exactly the C++ that is amenable to
 Aeneas-style translation — value semantics + affine tokens, lifetime
@@ -34,9 +33,8 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 
 ## Next (all N slices through N9 delivered — see `DELIVERED.md`)
 
-- Iris spike (time-boxed): the spike report below is still owed —
-  evaluate `iris-lean` for heap reasoning, deliverable a report,
-  not a migration.
+- Iris spike — DONE (2026-10-12, report only, no migration; see
+  `Iris spike report` below).
 - L-track consumers: L1 evidence is extracted and pinned, but no
   consumer is wired yet (first expected: real region numbers for
   N4b moves). Next slice wires one consumer or records why none
@@ -50,15 +48,42 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 
 ## Later directions — sketches (not planned)
 
-- Iris spike (time-boxed): evaluate `iris-lean`
-  (Lean 4 Iris port: MoSeL proof interface today, full-logic
-  port deferred upstream — see
-  `https://github.com/markusdemedeiros/iris-lean`; verify it
-  builds at our toolchain pin) for heap reasoning. Questions:
-  what would it replace (Mem tags? the oracle?) and where is
-  the migration seam? Deliverable is a spike report, not a
-  migration — no commitment until a concrete slice needs
-  framing beyond equational specs.
+### Iris spike report — DONE (2026-10-12, report only, no migration)
+
+Time-boxed evaluation of `iris-lean`
+(`https://github.com/markusdemedeiros/iris-lean`) for heap
+reasoning. No `validate`/`Emit`/transfer churn; no dependency
+vendored.
+
+- Build pin: `iris-lean` pins `leanprover/lean4:v4.21.0`
+  (fetched 2026-10-12) against our `v4.34.0`, and tracks `Qq`
+  on `git#stable`. It is not a direct lake dependency at our
+  pin — adopting it means a separate v4.21 checkout or a port,
+  plus pinning a moving `Qq`. No build attempted in this time
+  box (vendoring would churn `lakefile.toml` + manifest for a
+  report-only spike).
+- Scope: MoSeL proof interface only; the full Iris logic port
+  is deferred upstream with open problems. Even vendored, we
+  would get BI/separation-logic tactics, not Iris program
+  logic (invariants, ghost state, lifetimes).
+- What would it replace: neither the oracle (M3b keeps
+  verdicts as a checked cache) nor the `Mem` tags wholesale
+  (disjoint-by-construction + single-`&mut` containment
+  transfers stand). The seam is narrow: a framing layer over
+  `Mem` blocks for exactly one residue class —
+  conditionally-live writers (`alias_cond`), where the branch
+  makes footprints caller-dependent and equational specs
+  cannot frame. Everything else stays equational: single-`&mut`
+  containment (K2/K4/K5), two-`malloc` disjointness (M1a),
+  recovered readers (N2c), and the cheap-rule candidates
+  (reader pairs, closed two-alloca shapes, free single-`&mut`
+  writers — shape admissions, per the alias-oracle routing
+  below).
+- Recommendation: no migration. Revisit when a slice admits
+  `alias_cond`-class framing; that slice must also solve
+  lifetime evidence (raw CIRGen carries no lifetime markers —
+  see the L-track), since framing without live-range facts has
+  nothing to attach to.
 - Alias-oracle boundary evidence (A-track probe,
   `tests/lean/GoldenAliasProbe.lean`, `GOLDENALIASPROBE-OK` 12:
   2 admit controls + 10 reject rows over real CIRGen corpus in
