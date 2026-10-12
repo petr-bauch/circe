@@ -71,6 +71,7 @@ inductive FragKind : Type
   | incr
   | choose
   | sum
+  | sumTwo
   | vec
   | vec64
   | vec2

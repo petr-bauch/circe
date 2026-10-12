@@ -27,6 +27,7 @@ import DiffPhase3
 import DiffPhase4
 import DiffSpan
 import DiffStruct
+import DiffSumTwo
 import DiffTadd
 import DiffVec
 import DiffVec2
@@ -65,6 +66,7 @@ import GoldenReadOnly
 import GoldenRejectCatalog
 import GoldenSpan
 import GoldenStruct
+import GoldenSumTwo
 import GoldenTadd
 import GoldenVec2
 import GoldenVec64
@@ -190,7 +192,8 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["-std=c++17", "tests/cpp/vec_insert_sum.cpp", "tests/diff/driver_vec_insert.cpp"], bin "circe_vec_insert_native"),
    ("c++", ["-std=c++17", "tests/cpp/vec_erase_sum.cpp", "tests/diff/driver_vec_erase.cpp"], bin "circe_vec_erase_native"),
    ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
-   ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native")]
+   ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
+   ("cc", ["tests/c/sum_two.c", "tests/diff/driver_sum_two.c"], bin "circe_sum_two_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
 def goldenPairs : List (String × String) :=
@@ -248,6 +251,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/AccTwo.lean", "out/AccTwo.lean"),
    ("tests/golden/BoxThrough.lean", "out/BoxThrough.lean"),
    ("tests/golden/SumNorestrict.lean", "out/SumNorestrict.lean"),
+   ("tests/golden/SumTwo.lean", "out/SumTwo.lean"),
+   ("tests/golden/SumTwo_Spec.lean", "out/SumTwo_Spec.lean"),
    ("tests/golden/OverloadAdd.lean", "out/OverloadAdd.lean"),
    ("tests/golden/Add3.lean", "out/Add3.lean"),
    ("tests/golden/UseAdd.lean", "out/UseAdd.lean"),
@@ -382,6 +387,7 @@ def emittedTypechecks : List String :=
    "out/AccDtor_Spec.lean", "out/AccTwo_Spec.lean",
    "out/BoxThrough.lean", "out/BoxThrough_Spec.lean",
    "out/SumNorestrict.lean", "out/SumNorestrict_Spec.lean",
+   "out/SumTwo.lean", "out/SumTwo_Spec.lean",
    "out/OverloadAdd.lean", "out/OverloadAdd_Spec.lean",
    "out/Add3.lean", "out/Add3_Spec.lean",
    "out/UseAdd.lean", "out/UseAdd_Spec.lean",
@@ -555,6 +561,24 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Emit/SpecStubs.lean", "def emitXorNSpecText"),
      ("Circe/Validator/Gate.lean", "def isXorNShape"),
      ("Circe/Validator/Gate.lean", "def isU32PtrNoalias")]),
+   ("sum-two",
+    [("out/SumTwo.lean", "pairSum a b n.toNat"),
+     ("tests/golden/SumTwo.lean", "sum_two_fwd"),
+     ("tests/golden/SumTwo_Spec.lean", "sum_two_spec_check"),
+     ("Circe/Emit/SumTwo.lean", "theorem emit_correct_sumTwo"),
+     ("Circe/Emit/SumTwo.lean", "theorem evalFuncFuel_sumTwo_oob"),
+     ("Circe/Emit/SumTwo.lean", "theorem sumTwoWhile_correct"),
+     ("Circe/Emit/SumTwo.lean", "theorem sumTwoWhile_oob"),
+     ("Circe/Emit/SumTwo.lean", "theorem pairSum_distrib"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_sumTwo"),
+     ("Circe/Emit/Render.lean", "def emitSumTwoText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitSumTwoSpecText"),
+     ("Circe/Validator/Features.lean", "def isSumTwoShape"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_sumTwo"),
+     ("Circe/Transfer/Core.lean", "theorem memTransfer_sumTwo "),
+     ("Circe/Transfer/Core.lean", "theorem memTransfer_sumTwo_oob"),
+     ("Circe/Specs.lean", "theorem sum_two_correct"),
+     ("Circe/Specs.lean", "theorem sum_two_aliased")]),
    ("k3-qr",
     [("Circe/Crypto/Qr.lean", "theorem qrStep_kat"),
      ("Circe/Crypto/Qr.lean", "theorem qrStep_zero"),
@@ -687,6 +711,8 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Mem/Agree.lean", "theorem memTransfer_incr"),
      ("Circe/Transfer/Core.lean", "theorem memTransfer_sum "),
      ("Circe/Transfer/Core.lean", "theorem memTransfer_sum_oob"),
+     ("Circe/Transfer/Core.lean", "theorem memTransfer_sumTwo "),
+     ("Circe/Transfer/Core.lean", "theorem memTransfer_sumTwo_oob"),
      ("Circe/Transfer/VecLeaves.lean", "theorem memTransfer_vec "),
      ("Circe/Mem/Agree.lean", "def m3c_transfer_statement")]),
    ("m3b-derived",
@@ -694,6 +720,7 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Validator/Gate.lean", "theorem derivedNoalias_all_noalias"),
      ("Circe/Validator/Gate.lean", "theorem derivedNoalias_admitted_c"),
      ("Circe/Derived.lean", "theorem oracleNoalias_choose"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_sumTwo"),
      ("Circe/Derived.lean", "theorem oracleNoalias_sumCaller"),
      ("Circe/Derived.lean", "theorem oracleNoalias_findEq"),
      ("Circe/Derived.lean", "theorem derived_bridge_noalias")]),
@@ -1259,8 +1286,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 108 then
-    throw (IO.userError s!"expected 108 spec stubs, found {stubs.length}")
+  if stubs.length != 109 then
+    throw (IO.userError s!"expected 109 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1297,6 +1324,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-array", DiffArray.main [bin "circe_array_sum_native", trials]),
    ("diff-optional", DiffOptional.main [bin "circe_opt_deref_native", trials]),
    ("diff-norestrict", DiffNorestrict.main [bin "circe_sum_norestrict_native", trials]),
+   ("diff-sum-two", DiffSumTwo.main [bin "circe_sum_two_native", trials]),
    ("diff-span", DiffSpan.main [bin "circe_span_sum_native", trials]),
    ("diff-view", DiffView.main [bin "circe_view_sum_native", trials]),
    ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
@@ -1341,6 +1369,7 @@ def checkSuites : List Job :=
    ("golden-vecread", GoldenVecRead.main),
    ("golden-vecgrow", GoldenVecGrow.main),
    ("golden-readonly", GoldenReadOnly.main),
+   ("golden-sum-two", GoldenSumTwo.main),
    ("golden-rejectcatalog", GoldenRejectCatalog.main),
    ("derived-noalias", DerivedNoalias.main),
    ("scope-report", ScopeReport.main)]
@@ -1349,14 +1378,14 @@ def checkSuites : List Job :=
     `tests/lean` runner without registration fails loudly here). -/
 def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
-   "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct",
+   "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead",
    "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport"]
 
 def stem (f : String) : String :=

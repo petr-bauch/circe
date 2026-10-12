@@ -10,6 +10,7 @@ import Circe.Emit.Fragment
 import Circe.Emit.Add
 import Circe.Emit.Choose
 import Circe.Emit.Sum
+import Circe.Emit.SumTwo
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -150,6 +151,17 @@ def matchFrag : Func → Option FragKind
                     (.assign "i" (.uadd (.var "i") (.lit (.u32 one))))))
             (.return_ (.var "s"))))⟩ =>
     if s0 == 0 && i0 == 0 && one == 1 then some .sum else none
+  | ⟨_, [⟨"a", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"b", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"n", .u 32, .owned⟩], _,
+      .seq (.let_ "s" _ (.lit (.u32 s0)))
+      (.seq (.let_ "i" _ (.lit (.u32 i0)))
+      (.seq (.while_ (.ult (.var "i") (.var "n"))
+              (.seq (.assign "s" (.uadd (.var "s")
+                        (.uadd (.idx "a" (.var "i")) (.idx "b" (.var "i")))))
+                    (.assign "i" (.uadd (.var "i") (.lit (.u32 one))))))
+            (.return_ (.var "s"))))⟩ =>
+    if s0 == 0 && i0 == 0 && one == 1 then some .sumTwo else none
   | ⟨_, [⟨"n", .u 32, .owned⟩], _,
       .seq (.let_ "v" _ (.vnew (.var "n")))
       (.seq (.let_ "i" _ (.lit (.u32 i0)))
@@ -1176,6 +1188,7 @@ theorem matchFrag_sha256Compress : matchFrag sha256Func = some .sha256Compress :
   rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl
+theorem matchFrag_sumTwo : matchFrag sumTwoFunc = some .sumTwo := rfl
 theorem matchFrag_vec : matchFrag vecFunc = some .vec := rfl
 theorem matchFrag_vec64 : matchFrag vec64Func = some .vec64 := rfl
 theorem matchFrag_vec2 : matchFrag vec2Func = some .vec2 := rfl

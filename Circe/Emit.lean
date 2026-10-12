@@ -72,6 +72,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .incr => .ok (emitIncrSpecText f.name)
   | some .choose => .ok (emitChooseSpecText f.name)
   | some .sum => .ok (emitSumSpecText f.name)
+  | some .sumTwo => .ok (emitSumTwoSpecText f.name)
   | some .vec => .ok (emitVecSpecText f.name)
   | some .vec64 => .ok (emitVec64SpecText f.name)
   | some .vec2 => .ok (emitVec2SpecText f.name)
@@ -196,6 +197,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .choose =>
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩
   | some .sum => .ok ⟨emitSumText f.name, none⟩
+  | some .sumTwo => .ok ⟨emitSumTwoText f.name, none⟩
   | some .vec => .ok ⟨emitVecText f.name, none⟩
   | some .vec64 => .ok ⟨emitVec64Text f.name, none⟩
   | some .vec2 => .ok ⟨emitVec2Text f.name, none⟩

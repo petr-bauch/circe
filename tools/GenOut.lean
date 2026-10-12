@@ -29,6 +29,7 @@ def main : IO Unit := do
   let choose ← emitOrDie chooseFunc
   let sum ← emitOrDie sumFunc
   let sumNr ← emitOrDie { sumFunc with name := "sum_norestrict" }
+  let sumTwo ← emitOrDie sumTwoFunc
   let vec ← emitOrDie vecFunc
   let vec64 ← emitOrDie vec64Func
   let vec2 ← emitOrDie vec2Func
@@ -137,6 +138,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
   IO.FS.writeFile "out/SumArray.lean" (emitFileText (.ok sum))
   IO.FS.writeFile "out/SumNorestrict.lean" (emitFileText (.ok sumNr))
+  IO.FS.writeFile "out/SumTwo.lean" (emitFileText (.ok sumTwo))
   IO.FS.writeFile "out/VecAlloc.lean" (emitFileText (.ok vec))
   IO.FS.writeFile "out/VecAllocU64.lean" (emitFileText (.ok vec64))
   IO.FS.writeFile "out/VecCopySum.lean" (emitFileText (.ok vec2))
@@ -245,6 +247,7 @@ def main : IO Unit := do
   let chooseSpec ← specOrDie chooseFunc
   let sumSpec ← specOrDie sumFunc
   let sumNrSpec ← specOrDie { sumFunc with name := "sum_norestrict" }
+  let sumTwoSpec ← specOrDie sumTwoFunc
   let vecSpec ← specOrDie vecFunc
   let vec64Spec ← specOrDie vec64Func
   let vec2Spec ← specOrDie vec2Func
@@ -353,6 +356,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
   IO.FS.writeFile "out/SumArray_Spec.lean" sumSpec
   IO.FS.writeFile "out/SumNorestrict_Spec.lean" sumNrSpec
+  IO.FS.writeFile "out/SumTwo_Spec.lean" sumTwoSpec
   IO.FS.writeFile "out/VecAlloc_Spec.lean" vecSpec
   IO.FS.writeFile "out/VecAllocU64_Spec.lean" vec64Spec
   IO.FS.writeFile "out/VecCopySum_Spec.lean" vec2Spec
@@ -529,6 +533,8 @@ def main : IO Unit := do
     throw (IO.userError "shrU32 must not have a backward definition")
   if xorN.backward.isSome then
     throw (IO.userError "xorN must not have a backward definition")
+  if sumTwo.backward.isSome then
+    throw (IO.userError "sumTwo must not have a backward definition")
   if chacha.backward.isSome then
     throw (IO.userError "chacha20_block must not have a backward definition")
   if sha256.backward.isSome then
@@ -597,4 +603,4 @@ def main : IO Unit := do
     throw (IO.userError "vecGrowPushBack must not have a backward definition")
   if vecGrowEntry.backward.isSome then
     throw (IO.userError "vecGrowEntry must not have a backward definition")
-  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/ClsFall.lean out/ClsDense.lean out/ClsBreak.lean out/ClsAdd.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/ArrayRefU32.lean out/ArrayAtU32.lean out/InsertionSort.lean out/ArraySortSum.lean out/ArrayRefU328.lean out/ArrayAtU328.lean out/InsertionSort8.lean out/ArraySortSum8.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/ViewBegin.lean out/ViewEnd.lean out/ViewSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean out/VecGrowComposerRealloc.lean out/VecGrowComposerEmplace.lean out/VecGrowComposerPushBack.lean out/VecGrowComposerEntry.lean out/VecGrowCapacity.lean out/VecGrowComposerReserve.lean out/VecGrowComposerReserveEntry.lean out/XorU32.lean out/AndU32.lean out/OrU32.lean out/ShlU32.lean out/ShrU32.lean out/XorN.lean out/ChachaBlock.lean out/Sha256Compress.lean + 108 *_Spec.lean stubs"
+  IO.println "wrote out/Add.lean out/Incr.lean out/Choose.lean out/SumArray.lean out/SumNorestrict.lean out/SumTwo.lean out/VecAlloc.lean out/VecAllocU64.lean out/VecCopySum.lean out/VecRealloc.lean out/AddCaller.lean out/SumCaller.lean out/StructByValue.lean out/MethodSum.lean out/PointSumRef.lean out/AccCtor.lean out/AccAdd.lean out/AccGet.lean out/AccDtor.lean out/AccTwo.lean out/BoxThrough.lean out/NestedSum.lean out/SkipSum.lean out/FindEq.lean out/Cls.lean out/ClsFall.lean out/ClsDense.lean out/ClsBreak.lean out/ClsAdd.lean out/Add64.lean out/Addu64.lean out/OverloadAdd.lean out/Add3.lean out/UseAdd.lean out/NsAdd.lean out/UseNsAdd.lean out/MoveInt.lean out/MoveCtor.lean out/MoveAcc.lean out/ScopeEarly.lean out/Tadd32.lean out/Tadd64.lean out/UseTadd32.lean out/UseTadd64.lean out/ArrayRef.lean out/ArrayAt.lean out/ArraySum.lean out/ArrayRefU32.lean out/ArrayAtU32.lean out/InsertionSort.lean out/ArraySortSum.lean out/ArrayRefU328.lean out/ArrayAtU328.lean out/InsertionSort8.lean out/ArraySortSum8.lean out/OptHas.lean out/OptHasValue.lean out/OptGet.lean out/OptImplGet.lean out/OptDerefOp.lean out/OptDeref.lean out/SpanExtent.lean out/SpanSize.lean out/SpanIndex.lean out/SpanSum.lean out/ViewBegin.lean out/ViewEnd.lean out/ViewSum.lean out/VecSize.lean out/VecIndex.lean out/VecReadSum.lean out/VecGrowEmptyCtor.lean out/VecGrowUnit.lean out/VecGrowDtor.lean out/VecGrowDestroyNoop.lean out/VecGrowDestroyPtr.lean out/VecGrowGetTp.lean out/VecGrowDiffMax.lean out/VecGrowMax.lean out/VecGrowMin.lean out/VecGrowCheckLen.lean out/VecGrowBegin.lean out/VecGrowEnd.lean out/VecGrowBack.lean out/VecGrowIterId.lean out/VecGrowMinusEl.lean out/VecGrowMinus.lean out/VecGrowAlloc.lean out/VecGrowDealloc.lean out/VecGrowDeallocGuard.lean out/VecGrowConstruct.lean out/VecGrowReloc.lean out/VecGrowComposerRealloc.lean out/VecGrowComposerEmplace.lean out/VecGrowComposerPushBack.lean out/VecGrowComposerEntry.lean out/VecGrowCapacity.lean out/VecGrowComposerReserve.lean out/VecGrowComposerReserveEntry.lean out/XorU32.lean out/AndU32.lean out/OrU32.lean out/ShlU32.lean out/ShrU32.lean out/XorN.lean out/ChachaBlock.lean out/Sha256Compress.lean + 109 *_Spec.lean stubs"

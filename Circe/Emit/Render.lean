@@ -187,6 +187,18 @@ def emitSumText (name : String) : String :=
   ++ "def " ++ name ++ "_fwd {n : Nat} (a : BoundedList (BitVec 32) n) : Result (BitVec 32) :=\n"
   ++ "  .ok (prefixSumU32 a.val a.val.length)\n"
 
+/-- Render the `sum_two` forward definition (`sum_two_fwd`): two
+    reader lists in, pairwise wrapping sum out; `OOB` past either
+    array (the verified `pairSum` fold). -/
+def emitSumTwoText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.SumTwo\n\n"
+  ++ s!"/-- Pure translation of `{name}` (two-reader bounded `u32` accumulation, wrapping). -/\n"
+  ++ s!"def {name}_fwd (a b : List (BitVec 32)) (n : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  if n.toNat ≤ a.length ∧ n.toNat ≤ b.length then\n"
+  ++ "    .ok (pairSum a b n.toNat)\n"
+  ++ "  else .error .OOB\n"
+
 /-- Render the `vec_alloc` forward definition (`vec_alloc_fwd`): the
     length comes in as a word, so the body is the verified
     `vecFillSumU32` fold over `n.toNat`. -/

@@ -692,6 +692,21 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     trial, native on 24-word states incl. all-zero, Lean-Lean
     `OOB` on short states, 24-word-prefix agreement on long
     states, 1000 fuzz trials).
+28g. Two-reader admission (N2d, the N2a gate wiring): `sum_two`
+    (two `const __restrict__` u32 readers + `size_t` length, `s +=
+    a[i] + b[i]`, wrapping). Admission is the N2a read-only-sharing
+    discipline as a text gate: `isSumTwoShape` (two `noalias`
+    pointers + length, `u32` return, one `cir.for`, two
+    `cir.ptr_stride`, exactly two plain `cir.add`, no `nsw`, no
+    calls/branches), the pair-check exemption for the exact shape,
+    and `derivedNoalias` as the second admitted two-pointer case
+    (two reader blocks, disjoint by construction). The verdict
+    gate still demands the explicit `noalias` verdict (attrs are
+    claims, the verdict confirms); missing-`restrict`, `nsw`-add,
+    and single-add variants keep dedicated `alias-reject` codes.
+    Readers never write, so aliasing (`a == b`) is value-sound
+    (`twoShared_alias_sound`, exercised by an aliased-readers fuzz
+    leg). `OOB` fires past either array.
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +
@@ -914,4 +929,5 @@ Coverage: `tests/lean/GoldenPhase4.lean` (19) + `GoldenPhase6.lean` (18) + `Gold
 + `GoldenVec64.lean` (6) + `GoldenVecRealloc.lean` (7)
 + `GoldenFreeDiscipline.lean` (13) + `GoldenM2Setup.lean` (5)
 + `GoldenMethod.lean` (8) + `GoldenAcc.lean` (12) + `GoldenBox.lean` (9)
-+ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (13: 5 alias/escape + 8 arithmetic).
++ `GoldenReadOnly.lean` (5) + `GoldenRejectCatalog.lean` (13: 5 alias/escape + 8 arithmetic)
++ `GoldenSumTwo.lean` (8: 1 pipeline + 2 verdicts + 3 adversaries + 1 probe + 1 shape-exactness).

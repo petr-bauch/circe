@@ -43,3 +43,4 @@ _Z4taddIiET_S0_S0_ unknown
 _Z4taddIlET_S0_S0_ unknown
 _Z10use_tadd32ii unknown
 _Z10use_tadd64ll unknown
+sum_two noalias

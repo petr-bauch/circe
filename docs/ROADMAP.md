@@ -38,6 +38,12 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
 - L-track consumers: first consumer landed report-only (L2 scoped
   above — admission wiring needs last-use analysis; N4b
   real-region-number wiring stays the other candidate).
+- Next STD/C slice: two-reader pure admission — DONE (2026-10-12,
+  N2d; see `DELIVERED.md`). Next candidate: `vector::at()`
+  checked read (probed: `at()` → `_M_range_check` (`cmp ge` + `if`
+  + `noreturn __throw_out_of_range_fmt`) over the admitted
+  `size`/`operator[]` leaves; needs branch-plus-throw-as-`OOB`
+  modeling over frozen leaves).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,

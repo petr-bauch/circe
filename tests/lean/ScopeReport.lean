@@ -129,6 +129,10 @@ def main : IO Unit := do
   let c ← checkScopeFile "tests/cir/alias_cond.cir"
     [("_Z10alias_condRiS_b", [("p", 0), ("q", 0), ("c", 0)], 0)]
   passed := passed + c
+  -- Two-reader admission: flat two-reader loop (both arrays depth 0).
+  let c ← checkScopeFile "tests/cir/sum_two.cir"
+    [("sum_two", [("a", 0), ("b", 0), ("n", 0), ("__retval", 0), ("s", 0), ("i", 1)], 1)]
+  passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.
   if (extractScopes "cir.func @t { cir.alloca \"a\"").balanced != false then

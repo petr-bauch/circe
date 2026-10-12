@@ -115,6 +115,34 @@ theorem sum_correct_oob (l : List (BitVec 32)) (n : BitVec 32)
     sumFwd l n = .error .OOB :=
   sumFwd_oob l n h
 
+/-! ## `sum_two`: pairwise sum is the sum of the two prefix sums -/
+
+/-- Functional correctness for `sum_two` (two-reader admission): an
+    in-range length delivers the pairwise wrapping sum, which is the
+    sum of the two prefix sums (so `List.sum` lemmas apply via
+    `prefixSumU32_take_sum`). Applies verbatim to
+    `out/SumTwo.lean:sum_two_fwd`. -/
+theorem sum_two_correct (l₁ l₂ : List (BitVec 32)) (n : BitVec 32)
+    (h₁ : n.toNat ≤ l₁.length) (h₂ : n.toNat ≤ l₂.length) :
+    sumTwoFwd l₁ l₂ n =
+      .ok (.u32 (prefixSumU32 l₁ n.toNat + prefixSumU32 l₂ n.toNat)) := by
+  rw [sumTwoFwd_ok l₁ l₂ n ⟨h₁, h₂⟩, pairSum_distrib l₁ l₂ n.toNat h₁ h₂]
+
+/-- Aliased readers (`a == b`) read identically through either pin —
+    the value-soundness claim the N2a discipline rests on, at the
+    spec level. -/
+theorem sum_two_aliased (l : List (BitVec 32)) (n : BitVec 32)
+    (h : n.toNat ≤ l.length) :
+    sumTwoFwd l l n =
+      .ok (.u32 (prefixSumU32 l n.toNat + prefixSumU32 l n.toNat)) :=
+  sum_two_correct l l n h h
+
+/-- Over-long lengths stay loud past either array. -/
+theorem sum_two_correct_oob (l₁ l₂ : List (BitVec 32)) (n : BitVec 32)
+    (h : ¬ (n.toNat ≤ l₁.length ∧ n.toNat ≤ l₂.length)) :
+    sumTwoFwd l₁ l₂ n = .error .OOB :=
+  sumTwoFwd_oob l₁ l₂ n h
+
 /-! ## `vec_alloc`: index-sum is `List.sum` of the filled range -/
 
 /-- Functional correctness for `vec_alloc` (Phase 7 heap spec): the pure

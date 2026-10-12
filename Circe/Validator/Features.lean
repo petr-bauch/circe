@@ -268,6 +268,32 @@ def isSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.get_member"
   | _ => false
 
+/-- `sum_two`: two `noalias` pointers + length, `u32` return, one
+    bounded loop reading both arrays (`s += a[i] + b[i]` — exactly
+    two plain `cir.add`, two `cir.ptr_stride`; no `nsw`, so signed
+    two-reader loops stay out). Readers never write, so the pair is
+    value-sound under the N2a discipline (the verdict gate below
+    still demands the explicit `noalias` verdict — attrs are claims,
+    the verdict confirms). -/
+def isSumTwoShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && isPtrType b.ctype &&
+    isLengthType n.ctype && !isPtrType n.ctype &&
+    isU32 raw.ret &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.ptr_stride" == 2 &&
+    opCount raw.text "cir.add " == 2 &&
+    !containsSubstr raw.text "nsw" &&
+    !hasNonHeapCall raw.text &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.switch"
+  | _ => false
+
 /-! ## Heap-plumbing predicates (line-aware) -/
 
 /-- A line defining a real global (`cir.global @g = ...`), as opposed to

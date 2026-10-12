@@ -343,6 +343,34 @@ for what we do not.
     sides. `derivedNoalias` stays strictly attr-demanding (M3b trust
     story untouched). No new `Func`: recovery reuses the whole sum
     pipeline, gate-only change.)
+- N2d: two-reader admission — DONE (2026-10-12: the text-gate
+  admission N2a deferred. New corpus `sum_two`
+  (`uint32_t sum_two(const uint32_t *__restrict__ a, const uint32_t
+  *__restrict__ b, size_t n)` returning the wrapping pairwise sum,
+  real CIRGen, `cir-opt` VERIFY-OK, oracle verdict honestly
+  `noalias`): `isSumTwoShape` pins two `noalias` pointers + length,
+  one `cir.for`, two `cir.ptr_stride`, exactly two plain `cir.add`
+  (no `nsw`), no calls/branches; the pair check exempts the exact
+  shape (verdict still required — attrs are claims, the verdict
+  confirms) and `derivedNoalias` admits it as the second two-pointer
+  case (disjoint by construction under N2a). New `sumTwoFunc`
+  (params exactly `twoReaderParams`, so the N2a footprint lemmas
+  apply directly) with the `pairSum` fold forward (`OOB` past either
+  array), value proofs (`emit_correct_sumTwo` + OOB, fuel EVAL_FUEL),
+  footprint witness (`oracleNoalias_sumTwo` via `twoShared_noalias`)
+  and memory transfer (`memTransfer_sumTwo` + OOB: reads agree on
+  both sides), `FragKind.sumTwo` + structural match arm, tag-erased
+  rendering + spec stub (6 edges incl. aliased readers and
+  either-side `OOB`), `Specs` gallery equations (`sum_two_correct`
+  via `pairSum_distrib`, `sum_two_aliased`, OOB). Pinned by
+  `GoldenSumTwo` (8: pipeline + inconclusive/`mayAlias` verdicts +
+  missing-`restrict` + `nsw` + single-add + `alias_add_restrict`
+  probe + `sum_array`-not-sum-two shape-exactness), `DiffSumTwo`
+  (eval-vs-forward on every trial, native in-range on `n`-prefixes
+  incl. an aliased-readers leg, Lean-Lean `OOB`, 9 edges + 1000 fuzz
+  trials), `DerivedNoalias` cache agreement and the `ScopeReport`
+  row. Readers never write, so aliasing (`a == b`) is value-sound —
+  the first slice that turns the N2a discipline into an admission.)
 
 Non-goals: true mutable aliasing, raw-pointer arithmetic, lifetime
 inference — if the discipline is not visible in CIR text, it rejects.

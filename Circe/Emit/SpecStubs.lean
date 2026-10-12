@@ -375,6 +375,34 @@ def emitSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun l =>\n"
   ++ "    (repr (prefixSumU32 l l.length)).pretty == (repr ((l.take l.length).sum)).pretty\n"
 
+/-- Spec stub for the `sum_two` shape (forward + aliasing edge: both
+    readers over the same list reads identically through either pin). -/
+def emitSumTwoSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.SumTwo\n\n"
+  ++ s!"/-- C signature: `uint32_t {name}(const uint32_t *a, const uint32_t *b, size_t n)` (two length-paired readers, wrapping).\n"
+  ++ s!"    Body reference: the `pairSum` fold (cf. emitted `{name}_fwd`, `emit_correct_sumTwo`). -/\n"
+  ++ s!"def {name}_spec_fwd (a b : List (BitVec 32)) (n : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  if n.toNat ≤ a.length ∧ n.toNat ≤ b.length then\n"
+  ++ "    .ok (pairSum a b n.toNat)\n"
+  ++ "  else .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, disjoint readers, aliased readers (`a == b`), `OOB` past either side, wrapping. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32) × BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [((([1, 2, 3], [4, 5, 6], 3)), .ok 21),\n"
+  ++ "   ((([1, 2], [1, 2], 2)), .ok 6),\n"
+  ++ "   ((([], [], 0)), .ok 0),\n"
+  ++ "   ((([1], [1, 2], 2)), .error .OOB),\n"
+  ++ "   ((([1, 2], [1], 2)), .error .OOB),\n"
+  ++ "   ((([0xFFFFFFFF], [1], 1)), .ok 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge.\n"
+  ++ "    TODO (user): strengthen to a gallery equation over `pairSum`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun ⟨⟨a, b, n⟩, want⟩ =>\n"
+  ++ s!"    (repr ({name}_spec_fwd a b n)).pretty == (repr want).pretty\n"
+
 /-- Spec stub for the `vec_alloc` shape. -/
 def emitVecSpecText (name : String) : String :=
   emitSpecHeader

@@ -20,9 +20,11 @@ stops at both sides independently + the verdict-cache agreement check
 (`tests/lean/DerivedNoalias.lean`).
 -/
 import Circe.Mem
+import Circe.ReadOnly
 import Circe.Validator
 import Circe.Emit.Add
 import Circe.Emit.Choose
+import Circe.Emit.SumTwo
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -93,6 +95,38 @@ theorem oracleNoalias_addCaller (x y z : BitVec 32) :
       [.i32 x, .i32 y, .i32 z] emptyMem = _
     exact bindMemArgs_addCaller x y z
   exact ⟨_, _, _, hb, layoutNoAlias_nil⟩
+
+/-! ## Two-reader footprints (N2a gate wiring: disjoint by construction) -/
+
+/-- `sum_two` binding pins two fresh blocks (the N2a two-reader
+    discipline — `twoReaderParams` are exactly `sumTwoFunc.args`). -/
+theorem bindMemArgs_sumTwo (l₁ l₂ : List (BitVec 32)) (nv : BitVec 32) :
+    bindMemArgs
+      [{ name := "a", ty := .array (.u 32) 4096, role := .sharedBorrow },
+       { name := "b", ty := .array (.u 32) 4096, role := .sharedBorrow },
+       { name := "n", ty := .u 32, role := .owned }]
+      [.arr32 l₁, .arr32 l₂, .u32 nv] emptyMem =
+      some ([("a", .arr32 l₁), ("b", .arr32 l₂), ("n", .u32 nv)],
+        ⟨2, [(1, ⟨1, true, l₁⟩), (0, ⟨0, true, l₂⟩)], []⟩,
+        [("a", 1, 1), ("b", 0, 0)]) := by
+  rfl
+
+/-- `sum_two` entry footprints are pairwise disjoint (the N2a
+    `twoShared_noalias` fact, over the bound params). -/
+theorem oracleNoalias_sumTwo (l₁ l₂ : List (BitVec 32)) (nv : BitVec 32) :
+    oracleNoalias sumTwoFunc [.arr32 l₁, .arr32 l₂, .u32 nv] := by
+  have hb : bindMemArgs sumTwoFunc.args [.arr32 l₁, .arr32 l₂, .u32 nv]
+      emptyMem =
+      some ([("a", .arr32 l₁), ("b", .arr32 l₂), ("n", .u32 nv)],
+        ⟨2, [(1, ⟨1, true, l₁⟩), (0, ⟨0, true, l₂⟩)], []⟩,
+        [("a", 1, 1), ("b", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "a", ty := .array (.u 32) 4096, role := .sharedBorrow },
+       { name := "b", ty := .array (.u 32) 4096, role := .sharedBorrow },
+       { name := "n", ty := .u 32, role := .owned }]
+      [.arr32 l₁, .arr32 l₂, .u32 nv] emptyMem = _
+    exact bindMemArgs_sumTwo l₁ l₂ nv
+  exact ⟨_, _, _, hb, twoShared_noalias⟩
 
 /-! ## N4a: overload / namespace footprints (empty: owned scalars) -/
 
