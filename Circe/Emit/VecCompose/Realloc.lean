@@ -239,52 +239,19 @@ theorem evalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32) (len cap : Nat)
   have hkd : pos - BitVec.ofNat 64 0 = pos := BitVec.sub_zero pos
   have hpos64 : pos.toNat < 2 ^ 64 := BitVec.isLt _
   have hfindCk : findFunc vecGrowProg stdVecCheckLenName =
-      some stdVecCheckLenFunc := findFunc_hit _ _
+      some stdVecCheckLenFunc := findFunc_stdVecCheckLen
   have hfindBg : findFunc vecGrowProg stdVecBeginName =
-      some stdVecBeginFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecBeginFunc := findFunc_stdVecBegin
   have hfindMi : findFunc vecGrowProg stdVecMinusName =
-      some stdVecMinusFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecMinusFunc := findFunc_stdVecMinus
   have hfindAl : findFunc vecGrowProg stdVecAllocateName =
-      some stdVecAllocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecAllocFunc := findFunc_stdVecAlloc
   have hfindCon : findFunc vecGrowProg stdVecTraitsConstructName =
-      some stdVecConstructFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecConstructFunc := findFunc_stdVecConstruct
   have hfindRe : findFunc vecGrowProg stdVecRelocName =
-      some stdVecRelocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecRelocFunc := findFunc_stdVecReloc
   have hfindGd : findFunc vecGrowProg stdVecDeallocName =
-      some stdVecDeallocGuardFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecDeallocGuardFunc := findFunc_stdVecDeallocGuard
   have hone : evalExpr (.lit (.u64 (BitVec.ofNat 64 1)))
       [("t", .stdVecOwned b len cap), ("pos", .u64 pos),
         ("x", .i32 x)] = .ok (.u64 (BitVec.ofNat 64 1)) := rfl

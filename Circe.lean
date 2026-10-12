@@ -10,5 +10,6 @@ import Circe.Derived
 import Circe.ReadOnly
 import Circe.Scope
 import Circe.Transfer
+import Circe.LeafTactics
 import Circe.Tactics
 import Circe.Specs

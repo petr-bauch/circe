@@ -6,6 +6,7 @@ leaf, over `Circe.Emit.VecCompose.Realloc`.
 import Circe.Emit.Fragment
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose.Realloc
+import Circe.Emit.VecCompose.Base
 
 /-! ## N4d-iv-b2: `emplace_back` (fast/slow growth composer) -/
 
@@ -131,36 +132,11 @@ theorem evalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32) (len cap : Nat)
       show ("x" : String) ≠ "cap" by decide,
       show ("x" : String) ≠ "len" by decide]
   have hfindCon : findFunc vecGrowProg stdVecTraitsConstructName =
-      some stdVecConstructFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecConstructFunc := findFunc_stdVecConstruct
   have hfindEnd : findFunc vecGrowProg stdVecEndName =
-      some stdVecEndFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecEndFunc := findFunc_stdVecEnd
   have hfindR : findFunc vecGrowProg stdVecGrowReallocName =
-      some stdVecGrowReallocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecGrowReallocFunc := findFunc_stdVecGrowRealloc
   by_cases hlc : len = cap
   · -- Slow path: `len = cap`, the `end()` position feeds the
     -- realloc composer via `callProg` at depth `F'`.
@@ -490,24 +466,6 @@ theorem evalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32) (len cap : Nat)
 def stdVecPushBackFwd (b : Vec32) (len cap : Nat) (x : BitVec 32) :
     Result Value :=
   stdVecEmplaceBackFwd b len cap x
-
-/-- `findFunc` resolves the `emplace_back` callee in the grown
-    program (standalone, reused by both the value and memory
-    forwarder proofs). -/
-theorem findFunc_stdVecEmplaceBack :
-    findFunc vecGrowProg stdVecEmplaceBackName =
-      some stdVecEmplaceBackFunc := by
-  unfold vecGrowProg
-  rw [findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide)]
-  exact findFunc_hit _ _
 
 set_option maxRecDepth 8192 in
 /-- `emit_correct` for `push_back`: the single-`callProg` forwarder

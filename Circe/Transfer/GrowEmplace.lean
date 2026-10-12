@@ -1,9 +1,11 @@
+import Circe.LeafTactics
 /-
 Circe.Transfer.GrowEmplace — N4d-iv-b2 `emplace_back` / `push_back` transfers, the ix leaf,
 and the `let_` memory bridge.
 Over `Circe.Transfer.GrowRealloc`.
 -/
 import Circe.Transfer.GrowRealloc
+import Circe.Emit.VecCompose.Base
 
 /-! ## N4d-iv-b2 `emplace_back` composer: memory agreement -/
 
@@ -80,7 +82,7 @@ theorem memEvalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32)
       .ok (((envExtend [("t", .stdVecOwned b len cap), ("x", .i32 x)]
         "len" (.u64 (BitVec.ofNat 64 len)),
         tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-    by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hlenMem hlenEval
+    by simp only [memEvalProgStmt]; let_pure_step (hlenMem, hlenEval)
   have ht1 : envLookup (envExtend
       [("t", .stdVecOwned b len cap), ("x", .i32 x)]
       "len" (.u64 (BitVec.ofNat 64 len))) "t" =
@@ -108,7 +110,7 @@ theorem memEvalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32)
         "len" (.u64 (BitVec.ofNat 64 len)))
         "cap" (.u64 (BitVec.ofNat 64 cap)),
         tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-    by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hcapMem hcapEval
+    by simp only [memEvalProgStmt]; let_pure_step (hcapMem, hcapEval)
   have hlen2 : envLookup (envExtend (envExtend
       [("t", .stdVecOwned b len cap), ("x", .i32 x)]
       "len" (.u64 (BitVec.ofNat 64 len)))
@@ -138,36 +140,11 @@ theorem memEvalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32)
       show ("x" : String) ≠ "cap" by decide,
       show ("x" : String) ≠ "len" by decide]
   have hfindCon : findFunc vecGrowProg stdVecTraitsConstructName =
-      some stdVecConstructFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecConstructFunc := findFunc_stdVecConstruct
   have hfindEnd : findFunc vecGrowProg stdVecEndName =
-      some stdVecEndFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecEndFunc := findFunc_stdVecEnd
   have hfindR : findFunc vecGrowProg stdVecGrowReallocName =
-      some stdVecGrowReallocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecGrowReallocFunc := findFunc_stdVecGrowRealloc
   by_cases hlc : len = cap
   · -- Slow path (memory side): `end()` is pure, the realloc
     -- composer runs under the memory program evaluator at `F'`.
@@ -474,7 +451,7 @@ theorem memEvalProgFunc_stdVecEmplaceBack (F : Nat) (b : Vec32)
           "tF" (.stdVecOwned bC len cap))
           "len1" (.u64 ((BitVec.ofNat 64 len) + (BitVec.ofNat 64 1))),
           tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-        by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hlen1Mem hlen1Eval
+        by simp only [memEvalProgStmt]; let_pure_step (hlen1Mem, hlen1Eval)
       have htFret : envLookup (envExtend (envExtend (envExtend (envExtend
           [("t", .stdVecOwned b len cap), ("x", .i32 x)]
           "len" (.u64 (BitVec.ofNat 64 len)))

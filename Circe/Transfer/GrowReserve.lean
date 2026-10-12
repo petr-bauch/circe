@@ -9,6 +9,7 @@ arm); the entry mirrors `evalProgFunc_vecReserveSumEntry` like
 `memEvalProgFunc_vecPushSumEntry` mirrors its value side.
 -/
 import Circe.Transfer.GrowEntry
+import Circe.Emit.VecCompose.Base
 
 /-! ## N7b `reserve` composer: memory agreement -/
 
@@ -57,31 +58,11 @@ theorem memEvalProgFunc_stdVecReserve (F : Nat) (b : Vec32) (len cap : Nat)
     ofNat64_toNat _ hcap64
   have hz : (BitVec.ofNat 64 0).toNat = 0 := ofNat64_toNat 0 (by decide)
   have hfindAl : findFunc vecGrowProg stdVecAllocateName =
-      some stdVecAllocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecAllocFunc := findFunc_stdVecAlloc
   have hfindRe : findFunc vecGrowProg stdVecRelocName =
-      some stdVecRelocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecRelocFunc := findFunc_stdVecReloc
   have hfindGd : findFunc vecGrowProg stdVecDeallocName =
-      some stdVecDeallocGuardFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecDeallocGuardFunc := findFunc_stdVecDeallocGuard
   have hmaxEval : evalExpr
       (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
       [("t", .stdVecOwned b len cap), ("n", .u64 n)] =

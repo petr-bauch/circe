@@ -134,31 +134,11 @@ theorem evalProgFunc_stdVecReserve (F : Nat) (b : Vec32) (len cap : Nat)
     ofNat64_toNat _ hcap64
   have hz : (BitVec.ofNat 64 0).toNat = 0 := ofNat64_toNat 0 (by decide)
   have hfindAl : findFunc vecGrowProg stdVecAllocateName =
-      some stdVecAllocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecAllocFunc := findFunc_stdVecAlloc
   have hfindRe : findFunc vecGrowProg stdVecRelocName =
-      some stdVecRelocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecRelocFunc := findFunc_stdVecReloc
   have hfindGd : findFunc vecGrowProg stdVecDeallocName =
-      some stdVecDeallocGuardFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecDeallocGuardFunc := findFunc_stdVecDeallocGuard
   have hmaxEval : evalExpr
       (.ult (.lit (.u64 stdVecMaxDiffBV)) (.var "n"))
       [("t", .stdVecOwned b len cap), ("n", .u64 n)] =
@@ -586,28 +566,6 @@ def vecReserveSumEntryFwd : Result Value :=
   (checkedAddI32 e0 e1).bind fun s =>
   (stdVecDtorFwd b3 l3 c3).bind fun _ =>
   .ok (.i32 s)
-
-/-- `findFunc` resolves the `reserve` callee in the grown program
-    (now trailing the list, after the destructor). -/
-theorem findFunc_stdVecReserve :
-    findFunc vecGrowProg stdVecReserveName =
-      some stdVecReserveFunc := by
-  unfold vecGrowProg
-  rw [findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide),
-    findFunc_miss _ _ _ (by decide)]
-  exact findFunc_hit _ _
 
 /-- The `reserve(10)` step computes the ten-word spare triple
     (reallocation arm over the empty buffer, nothing relocated). -/

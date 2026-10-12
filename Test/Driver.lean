@@ -1091,7 +1091,7 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Specs.lean", "theorem stdVecPushBack_correct_err_construct"),
      ("Circe/Specs.lean", "theorem stdVecPushBack_correct_ok_fast"),
      ("Circe/Emit/VecCompose/Emplace.lean", "theorem evalProgFunc_stdVecPushBack"),
-     ("Circe/Emit/VecCompose/Emplace.lean", "theorem findFunc_stdVecEmplaceBack"),
+     ("Circe/Emit/VecCompose/Base.lean", "theorem findFunc_stdVecEmplaceBack"),
      ("Circe/Transfer/GrowEmplace.lean", "theorem memEvalProgFunc_stdVecPushBack"),
      ("Circe/Transfer/GrowEmplace.lean", "theorem memTransfer_stdVecPushBack"),
      ("Circe/Derived.lean", "theorem bindMemArgs_stdVecPushBack"),

@@ -1,3 +1,4 @@
+import Circe.LeafTactics
 /-
 Circe.Emit.ArraySort — N9 insertion sort over `std::array<uint32_t, 4>`:
 the `__array_traits::_S_ref` unchecked-index leaf (u32 monomorph) +
@@ -1723,16 +1724,12 @@ def arraySortProg : Prog :=
 /-- `findFunc` resolves the sort callee. -/
 theorem findFunc_insertionSort :
     findFunc arraySortProg insertionSortName = some (insertionSortFunc 4) := by
-  unfold arraySortProg
-  rw [findFunc_miss _ _ _ (by decide), findFunc_miss _ _ _ (by decide)]
-  exact findFunc_hit _ _
+  find_leaf arraySortProg
 
 /-- `findFunc` resolves the indexed-read leaf. -/
 theorem findFunc_arrayAtU32 :
     findFunc arraySortProg arrayAtU32Name = some arrayAtU32Func := by
-  unfold arraySortProg
-  rw [findFunc_miss _ _ _ (by decide)]
-  exact findFunc_hit _ _
+  find_leaf arraySortProg
 
 /-- `emit_correct` for `array_sort_sum`: the closed entry over the
     sort program agrees with the compute-to-`6` forward.

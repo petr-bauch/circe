@@ -25,6 +25,8 @@ files cannot import `Tactics` back). Plain `simp` /
 saves re-listing the set.
 -/
 import Circe.Emit
+import Circe.LeafTactics
+import Lean
 
 /-- `Result` bind on success computes (for caller-side `←` chains). -/
 theorem result_bind_ok {α β : Type} (a : α) (f : α → Result β) :
@@ -108,3 +110,9 @@ macro "cir_simp" : tactic =>
     addFwd_ok, addFwd_err, sumFwd_ok, sumFwd_oob,
     nestedFwd, skipFwd, findEqFwd, clsFwd, clsFallFwd, clsDenseFwd,
     clsBreakFwd, clsAddFwd, add64Fwd, addu64Fwd])
+
+/-! ## R1 tactics (re-exported from `Circe.LeafTactics`).
+
+`find_leaf` / `let_pure_step` live in `Circe.LeafTactics` (imported
+above): that module sits directly over `Eval.Stmt` + `Mem.Agree`,
+low enough for `Emit.*` files that cannot import `Tactics`. -/

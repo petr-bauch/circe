@@ -941,32 +941,9 @@ theorem evalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
       (.seq (.callRet "t4" stdVecTraitsConstructName ["t3", "pos", "x"])
         (.return_ (.var "t4")))))))))) := rfl
   have hfindC : findFunc vecGrowProg stdVecTraitsConstructName =
-      some stdVecConstructFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecConstructFunc := findFunc_stdVecConstruct
   have hfindS : findFunc vecGrowProg stdVecShiftBackName =
-      some stdVecShiftBackFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecShiftBackFunc := findFunc_stdVecShiftBack
   have ht0 : envLookup [("t", .stdVecOwned b len cap),
       ("pos", .u64 pos), ("x", .i32 x)] "t" =
       some (.stdVecOwned b len cap) := by simp [envLookup]

@@ -1,3 +1,4 @@
+import Circe.LeafTactics
 /-
 Circe.Emit.ArraySort8 — N9b closed `array_sort_sum8` program over
 `std::array<uint32_t, 8>`: the 8-word entry + closed program +
@@ -61,17 +62,13 @@ def arraySortProg8 : Prog :=
 theorem findFunc_insertionSort8 :
     findFunc arraySortProg8 insertionSort8Name =
       some ({ (insertionSortFunc 8) with name := insertionSort8Name }) := by
-  unfold arraySortProg8
-  rw [findFunc_miss _ _ _ (by decide), findFunc_miss _ _ _ (by decide)]
-  exact findFunc_hit _ _
+  find_leaf arraySortProg8
 
 /-- `findFunc` resolves the indexed-read leaf. -/
 theorem findFunc_arrayAtU32_8 :
     findFunc arraySortProg8 arrayAtU32_8Name =
       some ({ arrayAtU32Func with name := arrayAtU32_8Name }) := by
-  unfold arraySortProg8
-  rw [findFunc_miss _ _ _ (by decide)]
-  exact findFunc_hit _ _
+  find_leaf arraySortProg8
 
 /-- `emit_correct` for `array_sort_sum8`: the closed entry over the
     sort program agrees with the compute-to-`28` forward.

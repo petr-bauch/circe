@@ -7,6 +7,7 @@ composers live in `Realloc` / `Emplace` / `Entry`.
 import Circe.Emit.Fragment
 import Circe.Emit.GrowFwd
 import Circe.Emit.VecGrow
+import Circe.LeafTactics
 
 /-! ## N4d-iv-b2: `_M_realloc_insert` (growth reallocation) -/
 
@@ -526,3 +527,108 @@ def vecGrowProg : Prog :=
     stdVecShiftBackFunc, stdVecPlusElFunc, stdVecIterEqFunc,
     stdVecInsertAuxFunc, stdVecInsertRvalFunc, stdVecInsertFunc,
     stdVecShiftDownFunc, stdVecEraseCoreFunc, stdVecEraseFunc]
+
+/-! ## Shared-leaf dispatch theorems (R1).
+
+The composer files each re-proved these `vecGrowProg` lookups by
+`unfold` + miss-chain (one chain per use site); composer-specific
+leaves already have standalone theorems beside their composers
+(`findFunc_stdVecEmplaceBack`, the `Entry`/`Erase`/`Reserve`/
+`InsertRouter` families). These seven shared b1 leaves are proved
+once here — one `find_leaf` per command, each with a fresh
+heartbeat budget — and every use site cites them by `exact`
+(near-zero elaboration cost inside the giant composer proofs). -/
+theorem findFunc_stdVecCheckLen :
+    findFunc vecGrowProg stdVecCheckLenName = some stdVecCheckLenFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecMinus :
+    findFunc vecGrowProg stdVecMinusName = some stdVecMinusFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecAlloc :
+    findFunc vecGrowProg stdVecAllocateName = some stdVecAllocFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecReloc :
+    findFunc vecGrowProg stdVecRelocName = some stdVecRelocFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecDeallocGuard :
+    findFunc vecGrowProg stdVecDeallocName = some stdVecDeallocGuardFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecEnd :
+    findFunc vecGrowProg stdVecEndName = some stdVecEndFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecShiftBack :
+    findFunc vecGrowProg stdVecShiftBackName = some stdVecShiftBackFunc := by
+  find_leaf vecGrowProg
+
+/-- `findFunc` resolves the `begin` leaf in the grown program. -/
+theorem findFunc_stdVecBegin :
+    findFunc vecGrowProg stdVecBeginName =
+      some stdVecBeginFunc := by
+  find_leaf vecGrowProg
+
+/-- `findFunc` resolves the construct leaf in the grown program. -/
+theorem findFunc_stdVecConstruct :
+    findFunc vecGrowProg stdVecTraitsConstructName =
+      some stdVecConstructFunc := by
+  find_leaf vecGrowProg
+theorem findFunc_stdVecPushBack :
+    findFunc vecGrowProg stdVecPushBackName = some stdVecPushBackFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecPlusEl :
+    findFunc vecGrowProg stdVecPlusElName = some stdVecPlusElFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecGrowIndex :
+    findFunc vecGrowProg stdVecGrowIndexName = some stdVecGrowIndexFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecEmptyCtor :
+    findFunc vecGrowProg stdVecCtorName = some stdVecEmptyCtorFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecDtor :
+    findFunc vecGrowProg stdVecDtorName = some stdVecDtorFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecShiftDown :
+    findFunc vecGrowProg stdVecShiftDownName = some stdVecShiftDownFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecEraseCore :
+    findFunc vecGrowProg stdVecEraseCoreName = some stdVecEraseCoreFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecErase :
+    findFunc vecGrowProg stdVecEraseName = some stdVecEraseFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecReserve :
+    findFunc vecGrowProg stdVecReserveName = some stdVecReserveFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecGrowRealloc :
+    findFunc vecGrowProg stdVecGrowReallocName = some stdVecGrowReallocFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecInsertAux :
+    findFunc vecGrowProg stdVecInsertAuxName = some stdVecInsertAuxFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecInsertRval :
+    findFunc vecGrowProg stdVecInsertRvalName = some stdVecInsertRvalFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecInsert :
+    findFunc vecGrowProg stdVecInsertName = some stdVecInsertFunc := by
+  find_leaf vecGrowProg
+
+theorem findFunc_stdVecEmplaceBack :
+    findFunc vecGrowProg stdVecEmplaceBackName = some stdVecEmplaceBackFunc := by
+  find_leaf vecGrowProg

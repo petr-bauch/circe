@@ -3,6 +3,8 @@ Circe.Transfer.GrowRealloc — N4d-iv-b2 `_M_realloc_insert` composer transfer.
 Over `Circe.Transfer.GrowReloc`.
 -/
 import Circe.Transfer.GrowReloc
+import Circe.Emit.VecCompose.Base
+import Circe.LeafTactics
 
 /-! ## N4d-iv-b2 `_M_realloc_insert` composer: memory agreement -/
 
@@ -67,52 +69,19 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
       .ok (BitVec.ofNat 32 cap) := by
     simp [tripleMem, memLoad, memFind, hlive]
   have hfindCk : findFunc vecGrowProg stdVecCheckLenName =
-      some stdVecCheckLenFunc := findFunc_hit _ _
+      some stdVecCheckLenFunc := findFunc_stdVecCheckLen
   have hfindBg : findFunc vecGrowProg stdVecBeginName =
-      some stdVecBeginFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecBeginFunc := findFunc_stdVecBegin
   have hfindMi : findFunc vecGrowProg stdVecMinusName =
-      some stdVecMinusFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecMinusFunc := findFunc_stdVecMinus
   have hfindAl : findFunc vecGrowProg stdVecAllocateName =
-      some stdVecAllocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecAllocFunc := findFunc_stdVecAlloc
   have hfindCon : findFunc vecGrowProg stdVecTraitsConstructName =
-      some stdVecConstructFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecConstructFunc := findFunc_stdVecConstruct
   have hfindRe : findFunc vecGrowProg stdVecRelocName =
-      some stdVecRelocFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecRelocFunc := findFunc_stdVecReloc
   have hfindGd : findFunc vecGrowProg stdVecDeallocName =
-      some stdVecDeallocGuardFunc := by
-    unfold vecGrowProg
-    rw [findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide),
-      findFunc_miss _ _ _ (by decide)]
-    exact findFunc_hit _ _
+      some stdVecDeallocGuardFunc := findFunc_stdVecDeallocGuard
   have hone : evalExpr (.lit (.u64 (BitVec.ofNat 64 1)))
       [("t", .stdVecOwned b len cap), ("pos", .u64 pos),
         ("x", .i32 x)] = .ok (.u64 (BitVec.ofNat 64 1)) := rfl
@@ -129,7 +98,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
       .ok (((envExtend [("t", .stdVecOwned b len cap), ("pos", .u64 pos),
         ("x", .i32 x)] "one" (.u64 (BitVec.ofNat 64 1)),
         tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-    by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hmemOne hone
+    by simp only [memEvalProgStmt]; let_pure_step (hmemOne, hone)
   have hzero : evalExpr (.lit (.u64 (BitVec.ofNat 64 0)))
       (envExtend [("t", .stdVecOwned b len cap), ("pos", .u64 pos),
         ("x", .i32 x)] "one" (.u64 (BitVec.ofNat 64 1))) =
@@ -150,7 +119,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
         ("pos", .u64 pos), ("x", .i32 x)] "one"
         (.u64 (BitVec.ofNat 64 1))) "zero" (.u64 (BitVec.ofNat 64 0)),
         tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-    by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hmemZero hzero
+    by simp only [memEvalProgStmt]; let_pure_step (hmemZero, hzero)
   have htCk : envLookup (envExtend (envExtend
       [("t", .stdVecOwned b len cap), ("pos", .u64 pos), ("x", .i32 x)]
       "one" (.u64 (BitVec.ofNat 64 1))) "zero"
@@ -344,7 +313,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
             (.i64 (pos - BitVec.ofNat 64 0))) "k"
             (.u64 (pos - BitVec.ofNat 64 0)),
             tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-          by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hkmem hkEvalBase
+          by simp only [memEvalProgStmt]; let_pure_step (hkmem, hkEvalBase)
         have htLen : envLookup (envExtend (envExtend (envExtend (envExtend
           (envExtend (envExtend
           [("t", .stdVecOwned b len cap), ("pos", .u64 pos), ("x", .i32 x)]
@@ -403,7 +372,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
             (.u64 (pos - BitVec.ofNat 64 0))) "lenOld"
             (.u64 (BitVec.ofNat 64 len)),
             tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-          by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hlenOldmem hlenOldEval
+          by simp only [memEvalProgStmt]; let_pure_step (hlenOldmem, hlenOldEval)
         have htCap : envLookup (envExtend (envExtend (envExtend (envExtend
           (envExtend (envExtend (envExtend
           [("t", .stdVecOwned b len cap), ("pos", .u64 pos), ("x", .i32 x)]
@@ -468,7 +437,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
             (.u64 (BitVec.ofNat 64 len))) "capOld"
             (.u64 (BitVec.ofNat 64 cap)),
             tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-          by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hcapOldmem hcapOldEval
+          by simp only [memEvalProgStmt]; let_pure_step (hcapOldmem, hcapOldEval)
         have hnewlenAl : envLookup (envExtend (envExtend (envExtend
           (envExtend (envExtend (envExtend (envExtend (envExtend
           [("t", .stdVecOwned b len cap), ("pos", .u64 pos), ("x", .i32 x)]
@@ -941,7 +910,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
                   (.u64 ((pos - BitVec.ofNat 64 0) +
                     BitVec.ofNat 64 1)),
                   tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-                by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hkp1mem hkp1Eval
+                by simp only [memEvalProgStmt]; let_pure_step (hkp1mem, hkp1Eval)
               have hpos1lt : pos.toNat + 1 < 2 ^ 64 := by omega
               have hkp1rt : (pos - BitVec.ofNat 64 0 +
                   BitVec.ofNat 64 1).toNat = pos.toNat + 1 := by
@@ -1315,7 +1284,7 @@ theorem memEvalProgFunc_stdVecGrowRealloc (F : Nat) (b : Vec32)
                     (.u64 ((BitVec.ofNat 64 len) +
                       BitVec.ofNat 64 1)),
                     tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) :=
-                  by simp only [memEvalProgStmt]; exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _ (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) hlenNewmem hlenNewEval
+                  by simp only [memEvalProgStmt]; let_pure_step (hlenNewmem, hlenNewEval)
                 have htGd : envLookup (envExtend (envExtend (envExtend
                   (envExtend (envExtend (envExtend (envExtend (envExtend
                   (envExtend (envExtend (envExtend (envExtend (envExtend
