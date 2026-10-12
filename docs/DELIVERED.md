@@ -705,3 +705,33 @@ native driver, eval-vs-forward agreement on every trial) +
 containment rejections) ride the driver roster with a `k4-chacha`
 content suite; spec stubs grow 106 → 107.
 - Acceptance: 475 jobs TEST-OK, CHECK-OK.
+
+### K5. SHA-256 compress vs FIPS 180-4 §8.1.1 "abc" KAT — DONE (2026-10-12)
+
+Second crypto primitive over a single-`&mut` 24-word state (8 digest
++ 16 block), verified end to end: real CIRGen corpus
+(`tests/c/sha256_compress.c` → `tests/cir/sha256_compress.cir`,
+678 lines: one `__restrict__` u32 state buffer, void return, five
+`cir.for`, no calls) admitted by exact op-count gate
+(`isSha256Shape`, no oracle change — the pair check still demands
+the explicit `noalias` verdict). New `Circe/Crypto/Sha.lean`: the
+value-level fold (`sha256CompressFwd`, tail passthrough) with the
+FIPS §8.1.1 "abc" vector proved by `decide`
+(`sha256Compress_kat`). New `Circe/Crypto/ShaBlock.lean`:
+`initWhile`/`schedWhile`/`vinitWhile`/`compressWhile`/`shaAddWhile`
+fragments with forward-eval agreement plus the `OOB` corollary
+legs. New `Circe/Crypto/ShaFunc.lean`: whole-function
+`evalFuncFuel_sha256` (+ `_oob`) collapsing to `emit_correct_sha256`
+at the default fuel. Gate/match/render wiring
+(`FragKind.sha256Compress`, `matchFrag_sha256Compress`,
+`emitSha256CompressText`/`emitSha256CompressSpecText`); pipeline
+output is byte-identical to the checked-in
+`tests/golden/Sha256Compress.lean` (+ `_Spec.lean`,
+`spec_check=true`). The "abc" vector is pinned three ways
+(`decide` KAT, forward-KAT leg, native-vs-forward leg). `DiffSha`
+(pipeline + KAT + zero/short/long edges + 1000 fuzz trials vs the
+corpus-linked native driver, eval-vs-forward agreement on every
+trial) + `GoldenSha` (pipeline-vs-golden + rename acceptance + 3
+containment rejections) ride the driver roster with a `k5-sha`
+content suite; spec stubs grow 107 → 108.
+- Acceptance: 588 jobs TEST-OK, CHECK-OK.

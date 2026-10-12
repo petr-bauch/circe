@@ -661,6 +661,37 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     16-word states incl. all-zero, Lean-Lean `OOB` on short
     states, 16-word-prefix agreement on long states, 1000 fuzz
     trials).
+28f. SHA-256 compress kernel (K5, single-`&mut` state containment):
+    `sha256_compress` (one `__restrict__` u32 state buffer, 24
+    words: 8 digest + 16 block, void return, five `cir.for` —
+    block-init, schedule, work-init, 64 compress rounds,
+    add-back — no calls). Admission is the same single-`&mut`
+    containment as K2/K4, widened to a digest+block writer: one
+    writer + `noalias`-verdict over the exact op-count shape
+    (`isSha256Shape`: 5 `for` / 11 `alloca` / 85 loads /
+    26 stores / 12 `add` / 22 `sub` / 12 `xor` / 22 `shift` /
+    10 `or` / 4 `and` (Ch/Maj are K1 `and_u32` leaves — unlike
+    the ChaCha gate this shape allows `cir.and`) / 5 `cmp` /
+    5 `condition` / 10 `cast` / 3 `ptr_stride` / 5 `inc` /
+    one `cir.const_array` (the folded K-table init), no
+    calls/branches), so no oracle change was needed — but the
+    verdict check still demands the explicit `noalias` verdict
+    (attrs are claims, the verdict confirms) and the work
+    buffers are abstracted as whole-list `let_` copies (never
+    address-taken). The `Func` threads one 24-word state list
+    through `initWhile` + `schedWhile` + `vinitWhile` +
+    `compressWhile` + `shaAddWhile`; the forward is
+    `sha256CompressFwd` over the K5b fold (`OOB` on short
+    states); the FIPS 180-4 §8.1.1 "abc" vector is pinned by
+    computation in the `DiffSha` KAT leg (forward agrees with
+    the digest words, native agrees with both). Pinned by the
+    `GoldenSha` pipeline-vs-golden row + 3 containment
+    rejections (inconclusive verdict, missing `__restrict__`,
+    2-param arity — all dedicated `alias-reject` codes) and
+    the `DiffSha` legs (eval-vs-forward agreement on every
+    trial, native on 24-word states incl. all-zero, Lean-Lean
+    `OOB` on short states, 24-word-prefix agreement on long
+    states, 1000 fuzz trials).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

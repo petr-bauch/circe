@@ -93,8 +93,10 @@ DONE (`DELIVERED.md`); K3 quarter-round-as-fold + QR KAT —
 DONE (`DELIVERED.md`); K4 full block vs §2.3.2 KAT
 (single-`&mut` state containment, no oracle change — the quarter
 round is inlined because a 4-writer QR leaf could never pass the
-pair check) — DONE (`DELIVERED.md`); K5 second primitive (SHA-256)
-or written stop-decision. Non-goals: streaming/Poly1305, pointer
+pair check) — DONE (`DELIVERED.md`); K5 second primitive (SHA-256
+compress vs FIPS 180-4 §8.1.1 "abc" KAT, same single-`&mut`
+containment, no oracle change) — DONE (`DELIVERED.md`).
+Non-goals: streaming/Poly1305, pointer
 idioms, heap, Iris, speculative STD. C++-lite only (`std::array`).
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)
