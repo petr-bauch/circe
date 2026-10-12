@@ -25,6 +25,7 @@ import Circe.Validator
 import Circe.Emit.Add
 import Circe.Emit.Choose
 import Circe.Emit.SumTwo
+import Circe.Emit.VecAt
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -689,6 +690,58 @@ theorem oracleNoalias_stdVecIndex (l : List (BitVec 32)) (n : BitVec 64) :
       [.stdVecVal l, .u64 n] emptyMem = _
     exact bindMemArgs_stdVecIndex l n
   have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `_M_range_check` footprints are a singleton (the guard reads
+    the reified length; the throw arm never touches memory). -/
+theorem oracleNoalias_stdVecRangeCheck (l : List (BitVec 32))
+    (n : BitVec 64) :
+    oracleNoalias stdVecRangeCheckFunc [.stdVecVal l, .u64 n] := by
+  have hb : bindMemArgs stdVecRangeCheckFunc.args [.stdVecVal l, .u64 n]
+      emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecVal l, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecIndex l n
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `at()` footprints are a singleton (guard + read over the same
+    reified block). -/
+theorem oracleNoalias_stdVecAt (l : List (BitVec 32)) (n : BitVec 64) :
+    oracleNoalias stdVecAtFunc [.stdVecVal l, .u64 n] := by
+  have hb : bindMemArgs stdVecAtFunc.args [.stdVecVal l, .u64 n] emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "s", ty := stdVecObjTy, role := .sharedBorrow },
+       { name := "n", ty := .u 64, role := .owned }]
+      [.stdVecVal l, .u64 n] emptyMem = _
+    exact bindMemArgs_stdVecIndex l n
+  have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `vec_at_one` footprints are a singleton (const-index guard +
+    read). -/
+theorem oracleNoalias_vecAtOne (l : List (BitVec 32)) :
+    oracleNoalias vecAtOneFunc [.stdVecVal l] := by
+  have hb : bindMemArgs vecAtOneFunc.args [.stdVecVal l] emptyMem =
+      some ([("v", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "v", ty := stdVecObjTy, role := .sharedBorrow }]
+      [.stdVecVal l] emptyMem = _
+    exact bindMemArgs_stdVecVal "v" stdVecObjTy l
+  have hn : LayoutNoAlias [("v", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
 /-- `vec_read_sum` footprints are a singleton (the loop runs after

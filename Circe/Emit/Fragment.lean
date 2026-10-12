@@ -121,6 +121,9 @@ inductive FragKind : Type
   | vecSize
   | vecIndex
   | vecReadSum
+  | vecRangeCheck
+  | vecAt
+  | vecAtOne
   | vecEmptyCtor
   | vecUnit
   | vecDtor

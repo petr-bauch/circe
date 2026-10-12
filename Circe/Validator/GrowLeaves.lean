@@ -7,6 +7,7 @@ import Circe.Parser
 import Circe.Oracle
 import Circe.Emit
 import Circe.Emit.VecGrow
+import Circe.Emit.VecAt
 import Circe.Emit.VecCompose
 import Circe.Validator.Shapes
 
@@ -96,6 +97,28 @@ def isVecDtorExemptText (text : String) : Bool :=
     (callsFunc text stdVecAllocDtorName ||
      callsFunc text stdVecNewAllocDtorName))
 
+/-- `_M_range_check` `get_global` exemption: the throw-message
+    materialization (`get_global` of the `.str` format array +
+    `array_to_ptrdecay`) feeding exactly the noreturn
+    `__throw_out_of_range_fmt` call, with the `ge` guard + `if` and
+    exactly `2 × size + 1 × throw` calls. The message bytes are
+    read-only format data consumed by a noreturn abort — no readable
+    or writable global state. This is the `forbiddenOp` exemption
+    gate (cf. `isVecDtorExemptText`); full admission additionally
+    pins the signature (`isStdVecRangeCheckShape`). -/
+def isVecRangeCheckExemptText (text : String) : Bool :=
+  hasNonHeapGlobal text &&
+  containsSubstr text "cir.get_global @\".str\"" &&
+  containsSubstr text "array_to_ptrdecay" &&
+  callsFunc text "_ZSt24__throw_out_of_range_fmtPKcz" &&
+  opCount text "cir.call @" == 3 &&
+  containsSubstr text "cir.cmp ge" &&
+  opCount text "cir.if" == 1 &&
+  !containsSubstr text "cir.call @malloc" &&
+  !containsSubstr text "cir.call @free(" &&
+  !containsSubstr text "cir.try" &&
+  !containsSubstr text "cir.while"
+
 /-- Known `std::vector<int32_t>` leaf callees (mangled): the `size`
     projection leaf and the fused `operator[]` leaf (N4d-iv-a), plus
     every N4d-iv-b1 growth leaf (the ctor/dtor/consume/max/iterator/
@@ -105,6 +128,7 @@ def isVecDtorExemptText (text : String) : Bool :=
     for the wrong-shape rejection. -/
 def stdVecLeafCallees : List String :=
   [stdVecSizeName, stdVecCapacityName, stdVecIndexName,
+   stdVecRangeCheckName, stdVecAtName,
    stdVecCtorName, stdVecBaseCtorName, stdVecImplCtorName,
    stdVecImplDataCtorName, stdVecNewAllocCtorName, stdVecAllocCtorName,
    stdVecDtorName, stdVecBaseDtorName, stdVecImplDtorName,

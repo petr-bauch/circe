@@ -1137,6 +1137,70 @@ def emitStdVecIndexSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `_M_range_check` shape. The mirror is the
+    fused guard; edges carry ground truth (hit, miss, empty). -/
+def emitStdVecRangeCheckSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s, n)` checks `n < size(s)`.\n"
+  ++ s!"    Base body reference: the fused guard itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecRangeCheckFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (n : BitVec 64) : Result Unit :=\n"
+  ++ "  if n.toNat < l.length then .ok () else .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hit, miss, empty. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64) × Result Unit) :=\n"
+  ++ "  [(([1], 0), .ok ()), (([1], 1), .error .AssertFail), (([], 0), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the `at()` shape. The mirror is the fused guarded
+    read; edges carry ground truth (first hit, miss, empty). -/
+def emitStdVecAtSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(s, n)` reads the word at index `n`, checked.\n"
+  ++ s!"    Base body reference: the guarded read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stdVecAtFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match l[n.toNat]? with\n"
+  ++ "  | some x => if n.toNat < l.length then .ok x else .error .AssertFail\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: first hit, miss, empty. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64) × Result (BitVec 32)) :=\n"
+  ++ "  [(([7], 0), .ok 7), (([7], 1), .error .AssertFail), (([], 0), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the `vec_at_one` entry. The mirror is the `at(0)`
+    read; edges carry ground truth (singleton hit, empty abort). -/
+def emitVecAtOneSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v)` reads `v.at(0)`.\n"
+  ++ s!"    Base body reference: the `at(0)` read itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecAtOneFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match l[0]? with\n"
+  ++ "  | some x => if 0 < l.length then .ok x else .error .AssertFail\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: singleton hit, empty abort. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [([7], .ok 7), ([], .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/

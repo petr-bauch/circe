@@ -3,6 +3,7 @@ Circe.Transfer.Slice — N4d-i/ii/iii/iv-a slice transfers plus the M3d `methodS
 Over `Circe.Transfer.Flow`.
 -/
 import Circe.Transfer.Flow
+import Circe.Emit.VecAt
 
 /-! ## N4d-i `std::array` transfers: reads agree, hit and `OOB` -/
 
@@ -2244,3 +2245,380 @@ theorem memTransferProg_pointSumRef (F : Nat) (px py : BitVec 32)
         [.structVal "Point" [("x", px), ("y", py)]] := by
   rw [memEvalProgFunc_pointSumRef, evalProgFunc_pointSumRef]
 
+
+/-! ## `at()` checked reads: guard agrees, reads agree, aborts agree -/
+
+/-- Shared guard agreement: the `ult n size` condition evaluates
+    identically on both sides (memory rides alongside, untouched). -/
+theorem memStdVecGuard_agree (l : List (BitVec 32)) (n : BitVec 64)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (hs : envLookup ρ "s" = some (.stdVecVal l))
+    (_hn : envLookup ρ "n" = some (.u64 n))
+    (hlay : layoutLookup π "s" = some (0, 0))
+    (hmem : memLoad m 0 0 0 = .ok (BitVec.ofNat 32 l.length)) :
+    memEvalExpr (.ult (.var "n") (.stdVecLen "s")) ρ m π =
+      evalExpr (.ult (.var "n") (.stdVecLen "s")) ρ := by
+  have hmlen : memEvalExpr (.stdVecLen "s") ρ m π =
+      evalExpr (.stdVecLen "s") ρ :=
+    memEvalExpr_stdVecLen_hit "s" _ _ _ l 0 0 hlay hs hmem
+  have hmnv : memEvalExpr (.var "n") ρ m π =
+      evalExpr (.var "n") ρ :=
+    memEvalExpr_var _ _ _ _
+  exact memEvalExpr_ult_agree (.var "n") (.stdVecLen "s") _ _ _ hmnv hmlen
+
+/-- `memEval` for `_M_range_check` (hit): guard true, echo index. -/
+theorem memEvalFuncFuel_stdVecRangeCheck_hit (F : Nat)
+    (l : List (BitVec 32)) (n : BitVec 64)
+    (hlen64 : l.length < 2 ^ 64) (hle : n.toNat < l.length) :
+    memEvalFuncFuel F stdVecRangeCheckFunc [.stdVecVal l, .u64 n] =
+      stdVecRangeCheckFwd l n := by
+  have hb : bindMemArgs stdVecRangeCheckFunc.args [.stdVecVal l, .u64 n]
+      emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_stdVecIndex l n
+  have hbody : stdVecRangeCheckFunc.body =
+      .if_ (.ult (.var "n") (.stdVecLen "s"))
+        (.return_ (.var "n"))
+        .fail := rfl
+  have hs : envLookup [("s", .stdVecVal l), ("n", .u64 n)] "s" =
+      some (.stdVecVal l) := by
+    simp [envLookup]
+  have hn : envLookup [("s", .stdVecVal l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "s" by decide]
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmc := memStdVecGuard_agree l n _ _ _ hs hn hlay hmem
+  have hc : memEvalExpr (.ult (.var "n") (.stdVecLen "s"))
+      [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] = .ok (.b true) := by
+    rw [hmc]
+    have hv := stdVecRangeCheckCond_eval l n hlen64
+    simpa [hle] using hv
+  have hfwd : stdVecRangeCheckFwd l n = .ok (.u64 n) :=
+    stdVecRangeCheckFwd_ok l n hle
+  have hnv : evalExpr (.var "n") [("s", .stdVecVal l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hmnv : memEvalExpr (.var "n") [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] =
+      evalExpr (.var "n") [("s", .stdVecVal l), ("n", .u64 n)] :=
+    memEvalExpr_var _ _ _ _
+  have hret := memEvalStmtFuel_return F (.var "n") _ _ _ _ hmnv hnv
+  have hstmt : memEvalStmtFuel F stdVecRangeCheckFunc.body
+      [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] =
+      .ok ((([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)])),
+        .returned (.u64 n)) := by
+    rw [hbody]
+    exact (memEvalStmtFuel_if_true F _ _ _ _ _ _ hc).trans hret
+  simp only [memEvalFuncFuel, hb, hstmt, hfwd]
+
+/-- `memEval` for `_M_range_check` (abort): guard false, loud abort
+    on both sides (the throw never touches memory). -/
+theorem memEvalFuncFuel_stdVecRangeCheck_fail (F : Nat)
+    (l : List (BitVec 32)) (n : BitVec 64)
+    (hlen64 : l.length < 2 ^ 64) (hlt : ¬ n.toNat < l.length) :
+    memEvalFuncFuel F stdVecRangeCheckFunc [.stdVecVal l, .u64 n] =
+      stdVecRangeCheckFwd l n := by
+  have hb : bindMemArgs stdVecRangeCheckFunc.args [.stdVecVal l, .u64 n]
+      emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_stdVecIndex l n
+  have hbody : stdVecRangeCheckFunc.body =
+      .if_ (.ult (.var "n") (.stdVecLen "s"))
+        (.return_ (.var "n"))
+        .fail := rfl
+  have hs : envLookup [("s", .stdVecVal l), ("n", .u64 n)] "s" =
+      some (.stdVecVal l) := by
+    simp [envLookup]
+  have hn : envLookup [("s", .stdVecVal l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "s" by decide]
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmc := memStdVecGuard_agree l n _ _ _ hs hn hlay hmem
+  have hc : memEvalExpr (.ult (.var "n") (.stdVecLen "s"))
+      [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] = .ok (.b false) := by
+    rw [hmc]
+    have hv := stdVecRangeCheckCond_eval l n hlen64
+    simpa [hlt] using hv
+  have hfwd : stdVecRangeCheckFwd l n = .error .AssertFail :=
+    stdVecRangeCheckFwd_fail l n hlt
+  have hmfail : memEvalStmtFuel F .fail
+      [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] = .error .AssertFail :=
+    memEvalStmtFuel_fail F _ _ _
+  have hstmt : memEvalStmtFuel F stdVecRangeCheckFunc.body
+      [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] = .error .AssertFail := by
+    rw [hbody]
+    exact (memEvalStmtFuel_if_false F _ _ _ _ _ _ hc).trans hmfail
+  simp only [memEvalFuncFuel, hb, hstmt, hfwd]
+
+/-- Transfer for `_M_range_check` (both paths). -/
+theorem memTransfer_stdVecRangeCheck_hit (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (hlen64 : l.length < 2 ^ 64)
+    (hle : n.toNat < l.length)
+    (_h : oracleNoalias stdVecRangeCheckFunc [.stdVecVal l, .u64 n]) :
+    memEvalFuncFuel F stdVecRangeCheckFunc [.stdVecVal l, .u64 n] =
+      evalFuncFuel F stdVecRangeCheckFunc [.stdVecVal l, .u64 n] := by
+  rw [memEvalFuncFuel_stdVecRangeCheck_hit F l n hlen64 hle,
+    evalFuncFuel_stdVecRangeCheck F l n hlen64]
+
+/-- Transfer for `_M_range_check` (abort path). -/
+theorem memTransfer_stdVecRangeCheck_fail (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (hlen64 : l.length < 2 ^ 64)
+    (hlt : ¬ n.toNat < l.length)
+    (_h : oracleNoalias stdVecRangeCheckFunc [.stdVecVal l, .u64 n]) :
+    memEvalFuncFuel F stdVecRangeCheckFunc [.stdVecVal l, .u64 n] =
+      evalFuncFuel F stdVecRangeCheckFunc [.stdVecVal l, .u64 n] := by
+  rw [memEvalFuncFuel_stdVecRangeCheck_fail F l n hlen64 hlt,
+    evalFuncFuel_stdVecRangeCheck_fail F l n hlen64 hlt]
+  exact stdVecRangeCheckFwd_fail l n hlt
+
+/-- `memEval` for `at()` (all inputs; the guard splits internally,
+    mirroring `evalFuncFuel_stdVecAt`). -/
+theorem memEvalFuncFuel_stdVecAt (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (hlen64 : l.length < 2 ^ 64) :
+    memEvalFuncFuel F stdVecAtFunc [.stdVecVal l, .u64 n] =
+      stdVecAtFwd l n := by
+  have hb : bindMemArgs stdVecAtFunc.args [.stdVecVal l, .u64 n] emptyMem =
+      some ([("s", .stdVecVal l), ("n", .u64 n)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("s", 0, 0)]) :=
+    bindMemArgs_stdVecIndex l n
+  have hbody : stdVecAtFunc.body =
+      .if_ (.ult (.var "n") (.stdVecLen "s"))
+        (.return_ (.stdVecAt "s" (.var "n")))
+        .fail := rfl
+  have hs : envLookup [("s", .stdVecVal l), ("n", .u64 n)] "s" =
+      some (.stdVecVal l) := by
+    simp [envLookup]
+  have hn : envLookup [("s", .stdVecVal l), ("n", .u64 n)] "n" =
+      some (.u64 n) := by
+    simp [envLookup, show ("n" : String) ≠ "s" by decide]
+  have hlay : layoutLookup [("s", 0, 0)] "s" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmc := memStdVecGuard_agree l n _ _ _ hs hn hlay hmem
+  have hnv : evalExpr (.var "n") [("s", .stdVecVal l), ("n", .u64 n)] =
+      .ok (.u64 n) := by
+    simp [evalExpr, hn]
+  have hmnv : memEvalExpr (.var "n") [("s", .stdVecVal l), ("n", .u64 n)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("s", 0, 0)] =
+      evalExpr (.var "n") [("s", .stdVecVal l), ("n", .u64 n)] :=
+    memEvalExpr_var _ _ _ _
+  by_cases h : n.toNat < l.length
+  · have hne : l[n.toNat]? ≠ none := by
+      rw [ne_eq, List.getElem?_eq_none_iff]
+      omega
+    obtain ⟨x, hget'⟩ := Option.ne_none_iff_exists.mp hne
+    have hget : l[n.toNat]? = some x := by simpa using hget'.symm
+    have hc : memEvalExpr (.ult (.var "n") (.stdVecLen "s"))
+        [("s", .stdVecVal l), ("n", .u64 n)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("s", 0, 0)] = .ok (.b true) := by
+      rw [hmc]
+      simpa [h] using stdVecRangeCheckCond_eval l n hlen64
+    have hfwd : stdVecAtFwd l n = .ok (.i32 x) :=
+      stdVecAtFwd_ok l n x h hget
+    have hmemload : memLoad
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        0 0 (n.toNat + 1) = .ok x := by
+      simp [memLoad, memFind, hget]
+    have hagree := memEvalExpr_stdVecAt_hit "s" (.var "n") _ _ _
+      l n x 0 0 hlay hs hmnv hnv hmemload hget
+    have heval : evalExpr (.stdVecAt "s" (.var "n"))
+        [("s", .stdVecVal l), ("n", .u64 n)] = .ok (.i32 x) :=
+      evalExpr_stdVecAt_some "s" _ _ _ _ _ hs hnv hget
+    have hret := memEvalStmtFuel_return F (.stdVecAt "s" (.var "n"))
+      _ _ _ _ hagree heval
+    have hstmt : memEvalStmtFuel F stdVecAtFunc.body
+        [("s", .stdVecVal l), ("n", .u64 n)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("s", 0, 0)] =
+        .ok ((([("s", .stdVecVal l), ("n", .u64 n)],
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+          [("s", 0, 0)])),
+          .returned (.i32 x)) := by
+      rw [hbody]
+      exact (memEvalStmtFuel_if_true F _ _ _ _ _ _ hc).trans hret
+    simp only [memEvalFuncFuel, hb, hstmt, hfwd]
+  · have hc : memEvalExpr (.ult (.var "n") (.stdVecLen "s"))
+        [("s", .stdVecVal l), ("n", .u64 n)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("s", 0, 0)] = .ok (.b false) := by
+      rw [hmc]
+      simpa [h] using stdVecRangeCheckCond_eval l n hlen64
+    have hfwd : stdVecAtFwd l n = .error .AssertFail :=
+      stdVecAtFwd_fail l n h
+    have hmfail : memEvalStmtFuel F .fail
+        [("s", .stdVecVal l), ("n", .u64 n)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("s", 0, 0)] = .error .AssertFail :=
+      memEvalStmtFuel_fail F _ _ _
+    have hstmt : memEvalStmtFuel F stdVecAtFunc.body
+        [("s", .stdVecVal l), ("n", .u64 n)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("s", 0, 0)] = .error .AssertFail := by
+      rw [hbody]
+      exact (memEvalStmtFuel_if_false F _ _ _ _ _ _ hc).trans hmfail
+    simp only [memEvalFuncFuel, hb, hstmt, hfwd]
+
+/-- Transfer for `at()` (both paths). -/
+theorem memTransfer_stdVecAt (F : Nat) (l : List (BitVec 32))
+    (n : BitVec 64) (hlen64 : l.length < 2 ^ 64)
+    (_h : oracleNoalias stdVecAtFunc [.stdVecVal l, .u64 n]) :
+    memEvalFuncFuel F stdVecAtFunc [.stdVecVal l, .u64 n] =
+      evalFuncFuel F stdVecAtFunc [.stdVecVal l, .u64 n] := by
+  rw [memEvalFuncFuel_stdVecAt F l n hlen64,
+    evalFuncFuel_stdVecAt F l n hlen64]
+
+/-- `memEval` for the entry (all inputs; the guard splits internally,
+    mirroring `evalFuncFuel_vecAtOne`). -/
+theorem memEvalFuncFuel_vecAtOne (F : Nat) (l : List (BitVec 32))
+    (hlen64 : l.length < 2 ^ 64) :
+    memEvalFuncFuel F vecAtOneFunc [.stdVecVal l] = vecAtOneFwd l := by
+  have hb : bindMemArgs vecAtOneFunc.args [.stdVecVal l] emptyMem =
+      some ([("v", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)]) :=
+    bindMemArgs_stdVecVal "v" stdVecObjTy l
+  have hbody : vecAtOneFunc.body =
+      .if_ (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.stdVecLen "v"))
+        (.return_ (.stdVecAt "v" (.lit (.u64 (BitVec.ofNat 64 0)))))
+        .fail := rfl
+  have hv : envLookup [("v", .stdVecVal l)] "v" =
+      some (.stdVecVal l) := by
+    simp [envLookup]
+  have hlay : layoutLookup [("v", 0, 0)] "v" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem : memLoad
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      0 0 0 = .ok (BitVec.ofNat 32 l.length) := by
+    simp [memLoad, memFind]
+  have hmlen : memEvalExpr (.stdVecLen "v") [("v", .stdVecVal l)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("v", 0, 0)] =
+      evalExpr (.stdVecLen "v") [("v", .stdVecVal l)] :=
+    memEvalExpr_stdVecLen_hit "v" _ _ _ l 0 0 hlay hv hmem
+  have hmlit : memEvalExpr (.lit (.u64 (BitVec.ofNat 64 0)))
+      [("v", .stdVecVal l)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("v", 0, 0)] =
+      evalExpr (.lit (.u64 (BitVec.ofNat 64 0))) [("v", .stdVecVal l)] :=
+    memEvalExpr_lit _ _ _ _
+  have hmc : memEvalExpr
+      (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.stdVecLen "v"))
+      [("v", .stdVecVal l)]
+      ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+      [("v", 0, 0)] =
+      evalExpr
+        (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.stdVecLen "v"))
+        [("v", .stdVecVal l)] :=
+    memEvalExpr_ult_agree (.lit (.u64 (BitVec.ofNat 64 0)))
+      (.stdVecLen "v") _ _ _ hmlit hmlen
+  have hzero : (BitVec.ofNat 64 0).toNat = 0 := ofNat64_toNat 0 (by omega)
+  have hlit : evalExpr (.lit (.u64 (BitVec.ofNat 64 0)))
+      [("v", .stdVecVal l)] = .ok (.u64 (BitVec.ofNat 64 0)) := by
+    simp [evalExpr, litVal]
+  by_cases h : 0 < l.length
+  · have hne : l[(0 : Nat)]? ≠ none := by
+      rw [ne_eq, List.getElem?_eq_none_iff]
+      omega
+    obtain ⟨x, hget'⟩ := Option.ne_none_iff_exists.mp hne
+    have hget : l[0]? = some x := by simpa using hget'.symm
+    have hc : memEvalExpr
+        (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.stdVecLen "v"))
+        [("v", .stdVecVal l)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("v", 0, 0)] = .ok (.b true) := by
+      rw [hmc]
+      simpa [h] using vecAtOneCond_eval l hlen64
+    have hfwd : vecAtOneFwd l = .ok (.i32 x) := by
+      simp [vecAtOneFwd, hget]
+    have hget0 : l[(BitVec.ofNat 64 0).toNat]? = some x := by
+      rw [hzero]; exact hget
+    have hmemload : memLoad
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        0 0 ((BitVec.ofNat 64 0).toNat + 1) = .ok x := by
+      rw [hzero]; simp [memLoad, memFind, hget]
+    have hagree := memEvalExpr_stdVecAt_hit "v"
+      (.lit (.u64 (BitVec.ofNat 64 0))) _ _ _
+      l (BitVec.ofNat 64 0) x 0 0 hlay hv hmlit hlit hmemload hget0
+    have heval : evalExpr
+        (.stdVecAt "v" (.lit (.u64 (BitVec.ofNat 64 0))))
+        [("v", .stdVecVal l)] = .ok (.i32 x) :=
+      evalExpr_stdVecAt_some "v" _ _ _ _ _ hv hlit hget0
+    have hret := memEvalStmtFuel_return F
+      (.stdVecAt "v" (.lit (.u64 (BitVec.ofNat 64 0)))) _ _ _ _
+      hagree heval
+    have hstmt : memEvalStmtFuel F vecAtOneFunc.body
+        [("v", .stdVecVal l)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("v", 0, 0)] =
+        .ok ((([("v", .stdVecVal l)],
+          ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+          [("v", 0, 0)])),
+          .returned (.i32 x)) := by
+      rw [hbody]
+      exact (memEvalStmtFuel_if_true F _ _ _ _ _ _ hc).trans hret
+    simp only [memEvalFuncFuel, hb, hstmt, hfwd]
+  · have hc : memEvalExpr
+        (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.stdVecLen "v"))
+        [("v", .stdVecVal l)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("v", 0, 0)] = .ok (.b false) := by
+      rw [hmc]
+      simpa [h] using vecAtOneCond_eval l hlen64
+    have hempty : l[0]? = none := by
+      rw [List.getElem?_eq_none]
+      simpa using h
+    have hfwd : vecAtOneFwd l = .error .AssertFail := by
+      simp [vecAtOneFwd, hempty]
+    have hmfail : memEvalStmtFuel F .fail
+        [("v", .stdVecVal l)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("v", 0, 0)] = .error .AssertFail :=
+      memEvalStmtFuel_fail F _ _ _
+    have hstmt : memEvalStmtFuel F vecAtOneFunc.body
+        [("v", .stdVecVal l)]
+        ⟨1, [(0, ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
+        [("v", 0, 0)] = .error .AssertFail := by
+      rw [hbody]
+      exact (memEvalStmtFuel_if_false F _ _ _ _ _ _ hc).trans hmfail
+    simp only [memEvalFuncFuel, hb, hstmt, hfwd]
+
+/-- Transfer for the entry (both paths). -/
+theorem memTransfer_vecAtOne (F : Nat) (l : List (BitVec 32))
+    (hlen64 : l.length < 2 ^ 64)
+    (_h : oracleNoalias vecAtOneFunc [.stdVecVal l]) :
+    memEvalFuncFuel F vecAtOneFunc [.stdVecVal l] =
+      evalFuncFuel F vecAtOneFunc [.stdVecVal l] := by
+  rw [memEvalFuncFuel_vecAtOne F l hlen64, evalFuncFuel_vecAtOne F l hlen64]

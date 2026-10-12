@@ -10,6 +10,7 @@ import Circe.Emit
 import Circe.Emit.ArraySort8
 import Circe.Emit.View
 import Circe.Emit.VecGrow
+import Circe.Emit.VecAt
 import Circe.Emit.VecCompose
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
@@ -1510,7 +1511,7 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "setjmp" then some "`setjmp` (non-local control flow)"
   else if containsSubstr text "longjmp" then some "`longjmp` (non-local control flow)"
   else if hasGlobalDef text then some "global state (`cir.global`: only read-only `const` globals, and none yet in v0.1)"
-  else if hasNonHeapGlobal text then some "global access (`cir.get_global`: only read-only `const` globals, and none yet in v0.1)"
+  else if hasNonHeapGlobal text && !isVecRangeCheckExemptText text then some "global access (`cir.get_global`: only read-only `const` globals, and none yet in v0.1)"
   else if containsSubstr text "call_indirect" then some "function pointer (indirect call: no function pointers in v0.1)"
   else if hasBareFuncPtr text then some "function pointer type (no function pointers in v0.1)"
   else if containsSubstr text "stack_save" then some "variable-length array (`stack_save`: no VLAs in v0.1)"
@@ -1706,6 +1707,12 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecIndexFunc with name := raw.name }
       else if isStdVecReadSumShape raw then
         .ok { stdVecReadSumFunc with name := raw.name }
+      else if isStdVecRangeCheckShape raw then
+        .ok { stdVecRangeCheckFunc with name := raw.name }
+      else if isStdVecAtShape raw then
+        .ok { stdVecAtFunc with name := raw.name }
+      else if isVecAtOneShape raw then
+        .ok { vecAtOneFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then
@@ -1756,7 +1763,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecRelocFunc with name := raw.name }
       else if callsStdVecWrongShape raw then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the `capacity` projection leaf (`vec_capacity`), the call-free `operator[]` fused leaf (`vec_index`), the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`), and the N4d-iv-b1 growth leaves (ctor chain `vec_empty_ctor`, empty-effect `vec_unit`, dtor `vec_dtor`, destroy `vec_destroy_noop` / `vec_destroy_ptr`, allocator projection `vec_get_tp`, max-size `vec_diffmax`, `vec_max` / `vec_min`, `vec_check_len`, `vec_begin` / `vec_end` / `vec_back`, iterator identities `vec_iter_id`, `vec_minus_el` / `vec_minus`, `vec_plus_el`, const-iterator `operator==` (`vec_iter_eq`), the const-iterator twins (`cbegin` / `cend`, const `base` / `mi`, const-iterator ctors, `__miter_base` / `__niter_wrap`), allocate `vec_alloc`, deallocate `vec_dealloc` / `vec_dealloc_guard`, construct `vec_construct`, relocate `vec_reloc`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}` + the b1 registry; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' calls a known `std::vector` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `size` projection leaf (`vec_size`), the `capacity` projection leaf (`vec_capacity`), the call-free `operator[]` fused leaf (`vec_index`), the 2-site `vec_read_sum` index-loop entry (`vec_read_sum`), the `_M_range_check` guard leaf (`vec_range_check`), the guarded `at()` read (`vec_at`), the `at(0)` entry (`vec_at_one`), and the N4d-iv-b1 growth leaves (ctor chain `vec_empty_ctor`, empty-effect `vec_unit`, dtor `vec_dtor`, destroy `vec_destroy_noop` / `vec_destroy_ptr`, allocator projection `vec_get_tp`, max-size `vec_diffmax`, `vec_max` / `vec_min`, `vec_check_len`, `vec_begin` / `vec_end` / `vec_back`, iterator identities `vec_iter_id`, `vec_minus_el` / `vec_minus`, `vec_plus_el`, const-iterator `operator==` (`vec_iter_eq`), the const-iterator twins (`cbegin` / `cend`, const `base` / `mi`, const-iterator ctors, `__miter_base` / `__niter_wrap`), allocate `vec_alloc`, deallocate `vec_dealloc` / `vec_dealloc_guard`, construct `vec_construct`, relocate `vec_reloc`) only (known vector leaves `{stdVecSizeName}` / `{stdVecIndexName}` + the b1 registry; see docs/SUBSET.md)"
       else if isTranslateShape raw then
         .ok { translateFunc with name := raw.name }
       else if isMethodSumShape raw then

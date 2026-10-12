@@ -707,6 +707,28 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Readers never write, so aliasing (`a == b`) is value-sound
     (`twoShared_alias_sound`, exercised by an aliased-readers fuzz
     leg). `OOB` fires past either array.
+28h. Checked read (N4d-iv-c, over the N4d-iv-a leaves):
+    `vec_at_one` (`const vector<int>&` in, `i32` out, `v.at(0)`).
+    Admission is three call-free fused Funcs: the `_M_range_check`
+    guard leaf (single-ref vector + `u64` index, void body, `ge`
+    guard + `if`, exactly `2 × size + 1 × throw` calls, the
+    `get_global`/`array_to_ptrdecay` message-materialization pair)
+    + the `at()` composer (same params, `i32*` return, exactly
+    guard + `operator[]` calls, no throw of its own) + the entry
+    (one vector param, `i32` return, one `at()` call, both `0`
+    consts). The noreturn `__throw_out_of_range_fmt` arm fuses to
+    `fail`/`AssertFail` — deliberately distinct from
+    `operator[]`'s catchable `OOB` (the throw aborts; OOB legs
+    assert Lean-Lean agreement plus the native-abort leg). The
+    message `get_global` is admitted by the exact-text
+    `isVecRangeCheckExemptText` `forbiddenOp` exemption (format
+    bytes are read-only data consumed by a noreturn abort — no
+    readable or writable global state); `lt`-flavor guards,
+    throw-less guards, guard-stripped composers, direct-throw
+    composers, unchecked entries, and bare vector pointers keep
+    dedicated rejections. The verdict is honestly `unknown`
+    (single-ref exempt, the `vec_alloc` precedent — attrs are
+    claims, here the triple itself).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

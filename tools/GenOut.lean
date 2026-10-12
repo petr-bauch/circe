@@ -8,6 +8,7 @@
 -- from `Circe.Emit.emitFunc` / `Circe.Emit.emitSpec` (single source of truth;
 -- `tests/golden/*.lean` pins the forward bytes).
 import Circe.Emit
+import Circe.Emit.VecAt
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
 
@@ -105,6 +106,9 @@ def main : IO Unit := do
   let vecSize ← emitOrDie stdVecSizeFunc
   let vecIndex ← emitOrDie stdVecIndexFunc
   let vecReadSum ← emitOrDie stdVecReadSumFunc
+  let vecRangeCheck ← emitOrDie stdVecRangeCheckFunc
+  let vecAt ← emitOrDie stdVecAtFunc
+  let vecAtOne ← emitOrDie vecAtOneFunc
   let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
   let vecUnit ← emitOrDie stdVecUnitFunc
   let vecDtor ← emitOrDie stdVecDtorFunc
@@ -214,6 +218,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecSize.lean" (emitFileText (.ok vecSize))
   IO.FS.writeFile "out/VecIndex.lean" (emitFileText (.ok vecIndex))
   IO.FS.writeFile "out/VecReadSum.lean" (emitFileText (.ok vecReadSum))
+  IO.FS.writeFile "out/VecRangeCheck.lean" (emitFileText (.ok vecRangeCheck))
+  IO.FS.writeFile "out/VecAt.lean" (emitFileText (.ok vecAt))
+  IO.FS.writeFile "out/VecAtOne.lean" (emitFileText (.ok vecAtOne))
   IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
   IO.FS.writeFile "out/VecGrowUnit.lean" (emitFileText (.ok vecUnit))
   IO.FS.writeFile "out/VecGrowDtor.lean" (emitFileText (.ok vecDtor))
@@ -323,6 +330,9 @@ def main : IO Unit := do
   let vecSizeSpec ← specOrDie stdVecSizeFunc
   let vecIndexSpec ← specOrDie stdVecIndexFunc
   let vecReadSumSpec ← specOrDie stdVecReadSumFunc
+  let vecRangeCheckSpec ← specOrDie stdVecRangeCheckFunc
+  let vecAtSpec ← specOrDie stdVecAtFunc
+  let vecAtOneSpec ← specOrDie vecAtOneFunc
   let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
   let vecUnitSpec ← specOrDie stdVecUnitFunc
   let vecDtorSpec ← specOrDie stdVecDtorFunc
@@ -432,6 +442,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecSize_Spec.lean" vecSizeSpec
   IO.FS.writeFile "out/VecIndex_Spec.lean" vecIndexSpec
   IO.FS.writeFile "out/VecReadSum_Spec.lean" vecReadSumSpec
+  IO.FS.writeFile "out/VecRangeCheck_Spec.lean" vecRangeCheckSpec
+  IO.FS.writeFile "out/VecAt_Spec.lean" vecAtSpec
+  IO.FS.writeFile "out/VecAtOne_Spec.lean" vecAtOneSpec
   IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec
   IO.FS.writeFile "out/VecGrowUnit_Spec.lean" vecUnitSpec
   IO.FS.writeFile "out/VecGrowDtor_Spec.lean" vecDtorSpec

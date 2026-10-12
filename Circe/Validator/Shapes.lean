@@ -7,6 +7,7 @@ import Circe.Parser
 import Circe.Oracle
 import Circe.Emit
 import Circe.Emit.VecGrow
+import Circe.Emit.VecAt
 import Circe.Emit.VecCompose
 import Circe.Validator.Features
 
@@ -1256,5 +1257,75 @@ def isStdVecReadSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.derived_class_addr" &&
     !containsSubstr raw.text "cir.base_class_addr" &&
     !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- `_M_range_check` shape: single-ref vector + `u64` index, void body,
+    `ge` guard with an `if`, exactly `2 × size + 1 × throw` calls, and the
+    `get_global`/`array_to_ptrdecay` message-materialization pair. -/
+def isStdVecRangeCheckShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecRangeCheckThrowName &&
+    opCount raw.text "cir.call @" == 3 &&
+    containsSubstr raw.text "cir.cmp ge" &&
+    !containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.if" == 1 &&
+    containsSubstr raw.text "cir.get_global" &&
+    containsSubstr raw.text "array_to_ptrdecay" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- `at()` shape: single-ref vector + `u64` index, returns `i32*`, body
+    calls exactly `_M_range_check` + `operator[]`, no throw of its own. -/
+def isStdVecAtShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    isPtrType raw.ret &&
+    callsFunc raw.text stdVecRangeCheckName &&
+    callsFunc raw.text stdVecIndexName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- `vec_at_one` entry shape: single-ref vector, returns `i32`, one `at()`
+    call, both `0` consts pinned (index + value-init), no direct guard. -/
+def isVecAtOneShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.const" == 2 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
   | _ => false
 

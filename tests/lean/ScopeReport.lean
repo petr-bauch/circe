@@ -133,6 +133,15 @@ def main : IO Unit := do
   let c ← checkScopeFile "tests/cir/sum_two.cir"
     [("sum_two", [("a", 0), ("b", 0), ("n", 0), ("__retval", 0), ("s", 0), ("i", 1)], 1)]
   passed := passed + c
+  -- Checked read: entry + composers are flat (all depth 0; the
+  -- `cir.scope` region in `_M_range_check` nests no allocas).
+  let c ← checkScopeFile "tests/cir/vec_at_one.cir"
+    [("_Z10vec_at_oneRKSt6vectorIiSaIiEE", [("v", 0), ("__retval", 0)], 0),
+     ("_ZNKSt6vectorIiSaIiEE2atEm", [("this", 0), ("__n", 0), ("__retval", 0)], 0),
+     ("_ZNKSt6vectorIiSaIiEE14_M_range_checkEm", [("this", 0), ("__n", 0)], 0),
+     ("_ZNKSt6vectorIiSaIiEEixEm", [("this", 0), ("__n", 0), ("__retval", 0)], 0),
+     ("_ZNKSt6vectorIiSaIiEE4sizeEv", [("this", 0), ("__retval", 0)], 0)]
+  passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.
   if (extractScopes "cir.func @t { cir.alloca \"a\"").balanced != false then

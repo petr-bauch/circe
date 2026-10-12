@@ -574,6 +574,38 @@ def emitStdVecIndexText (name : String) : String :=
   ++ "  | some x => .ok x\n"
   ++ "  | none => .error .OOB\n"
 
+/-- Render the `_M_range_check` forward definition: the fused `ge`
+    guard; the throw arm fuses to `fail` (noreturn abort), so OOB is
+    the loud `AssertFail`, never `OOB`. -/
+def emitStdVecRangeCheckText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the fused range guard; `AssertFail` past the end). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (n : BitVec 64) : Result Unit :=\n"
+  ++ "  if n.toNat < l.length then .ok () else .error .AssertFail\n"
+
+/-- Render the `at()` forward definition: the guarded read; both the
+    fused-throw arm and a (here unreachable) short read abort loudly. -/
+def emitStdVecAtText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the fused guarded read; `AssertFail` past the end). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (n : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match l[n.toNat]? with\n"
+  ++ "  | some x => if n.toNat < l.length then .ok x else .error .AssertFail\n"
+  ++ "  | none => .error .AssertFail\n"
+
+/-- Render the `vec_at_one` entry forward definition: the `at(0)` read
+    over the reified words. -/
+def emitVecAtOneText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (the `at(0)` read; `AssertFail` on empty). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match l[0]? with\n"
+  ++ "  | some x => if 0 < l.length then .ok x else .error .AssertFail\n"
+  ++ "  | none => .error .AssertFail\n"
+
 /-- Render the `vec_read_sum` entry forward definition: the
     checked-add fold over the reified words (the tag-erased
     `stdVecReadSumFwd`; the local `go` mirrors `stdVecFold` arm for

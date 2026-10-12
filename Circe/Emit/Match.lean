@@ -11,6 +11,7 @@ import Circe.Emit.Add
 import Circe.Emit.Choose
 import Circe.Emit.Sum
 import Circe.Emit.SumTwo
+import Circe.Emit.VecAt
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -705,6 +706,28 @@ def matchFrag : Func → Option FragKind
       .return_ (.stdVecAt "s" (.var "n"))⟩ =>
     some .vecIndex
   | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"n", .u 64, .owned⟩], _,
+      .if_ (.ult (.var "n") (.stdVecLen "s"))
+        (.return_ (.var "n"))
+        .fail⟩ =>
+    some .vecRangeCheck
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"n", .u 64, .owned⟩], _,
+      .if_ (.ult (.var "n") (.stdVecLen "s"))
+        (.return_ (.stdVecAt "s" (.var "n")))
+        .fail⟩ =>
+    some .vecAt
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩], _,
+      .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
+        (.return_ (.stdVecAt "v" (.lit (.u64 zero'))))
+        .fail⟩ =>
+    if zero == BitVec.ofNat 64 0 && zero' == BitVec.ofNat 64 0 then
+      some .vecAtOne
+    else none
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _, body⟩ =>
     match body with
     | .seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
@@ -1240,6 +1263,9 @@ theorem matchFrag_viewSum : matchFrag viewSumFunc = some .viewSum := rfl
 theorem matchFrag_stdVecSize : matchFrag stdVecSizeFunc = some .vecSize := rfl
 theorem matchFrag_stdVecIndex : matchFrag stdVecIndexFunc = some .vecIndex := rfl
 theorem matchFrag_stdVecReadSum : matchFrag stdVecReadSumFunc = some .vecReadSum := rfl
+theorem matchFrag_stdVecRangeCheck : matchFrag stdVecRangeCheckFunc = some .vecRangeCheck := rfl
+theorem matchFrag_stdVecAt : matchFrag stdVecAtFunc = some .vecAt := rfl
+theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

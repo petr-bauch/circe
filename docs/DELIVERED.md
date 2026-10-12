@@ -498,6 +498,25 @@ is not value-faithful):
   `VecGrowComposerEntry*.lean` goldens byte-identical, spec stub
   mirror-agreement check true; containment result — the full
   53-def frontier is IN, N4d-iv-b2 is complete).
+  N4d-iv-c `std::vector::at` checked read — DONE (2026-10-12: new
+  corpus `vec_at_one` (`return v.at(0)` on `const vector<int>&`,
+  real CIRGen, `cir-opt` VERIFY-OK): three call-free fused Funcs
+  (the `_M_range_check` guard leaf + the `at()` composer + the
+  entry) over the admitted `size`/`operator[]` leaves; the noreturn
+  `__throw_out_of_range_fmt` arm fuses to `fail`/`AssertFail`
+  (deliberately distinct from `operator[]`'s catchable `OOB` — the
+  throw aborts); the throw-message `get_global` +
+  `array_to_ptrdecay` sites pin the arm textually via the
+  `isVecRangeCheckExemptText` `forbiddenOp` exemption (cf.
+  `isVecDtorExemptText`); value proofs + memory transfers +
+  footprint witnesses green, tag-erased rendering + spec stubs
+  byte-identical, `GoldenVecAt` (11: 5-pipeline + guard-stripped +
+  throw-less + `lt`-flavor + direct-throw + unchecked-entry +
+  bare-ptr) + `DiffVecAt` (eval-vs-forward every trial, native
+  in-range on exact words, Lean-Lean OOB + native-abort leg, 6
+  edges + 1000 fuzz trials) green; containment result — checked
+  single reads are IN, checked sums (`at()` + `checkedAddI32`)
+  stay OUT as the deferred follow-up).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 
