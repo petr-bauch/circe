@@ -81,22 +81,13 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   free single-`&mut` writers are shape admissions (cheap-rule
   candidates), not oracle or Iris problems.
 
-## K. Verified crypto programs — PLAN (2026-10-10)
+## K. Verified crypto programs — DONE (see `DELIVERED.md` K1–K5)
 
-North star: the ChaCha20 block function over
-`std::array<uint32_t,16>`, proved as emitted-forward-vs-executable-spec
-agreement plus RFC 8439 known-answer vectors. Staged: K1 `u32`
-bitwise leaves — DONE (`DELIVERED.md`); K2 buffer entries
-(`mutBorrow` out-param + `sharedBorrow` in-params, tag-erased
-buffer-result rendering, directed + fuzz KAT oracle leg) —
-DONE (`DELIVERED.md`); K3 quarter-round-as-fold + QR KAT —
-DONE (`DELIVERED.md`); K4 full block vs §2.3.2 KAT
-(single-`&mut` state containment, no oracle change — the quarter
-round is inlined because a 4-writer QR leaf could never pass the
-pair check) — DONE (`DELIVERED.md`); K5 second primitive (SHA-256
-compress vs FIPS 180-4 §8.1.1 "abc" KAT, same single-`&mut`
-containment, no oracle change) — DONE (`DELIVERED.md`).
-Non-goals: streaming/Poly1305, pointer
+North star met: ChaCha20 block over `std::array<uint32_t,16>`
+(emitted-forward agreement + RFC 8439 KATs) plus a second
+primitive (SHA-256 compress vs FIPS 180-4 §8.1.1 "abc" KAT),
+both under single-`&mut` containment with no oracle change.
+Standing non-goals: streaming/Poly1305, pointer
 idioms, heap, Iris, speculative STD. C++-lite only (`std::array`).
 
 ## L. Lifetime-relevant evidence (extract-only) — PLAN (2026-10-03)
