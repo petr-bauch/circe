@@ -150,6 +150,18 @@ def emitChachaBlockText (name : String) : String :=
   ++ "    .ok (addBackList s (chachaRounds 10 s) 16)\n"
   ++ "  else .error .OOB\n"
 
+/-- Render the SHA-256 compress forward definition (`sha256_compress_fwd`:
+    third buffer-result shape after K2/K4: 24-word state in (8 state +
+    16 block), compressed state out, tag-erased). -/
+def emitSha256CompressText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Crypto.Sha\n\n"
+  ++ s!"/-- Pure translation of `{name}`: 24-word state in, compressed state out. -/\n"
+  ++ s!"def {name}_fwd (s : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  if 24 ≤ s.length then\n"
+  ++ "    .ok (sha256CompressFwd s)\n"
+  ++ "  else .error .OOB\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader

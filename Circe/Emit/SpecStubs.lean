@@ -304,6 +304,35 @@ def emitChachaBlockSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun ⟨s, want⟩ =>\n"
   ++ s!"    (repr ({name}_spec_fwd s)).pretty == (repr want).pretty\n"
 
+/-- Spec stub for the SHA-256 compress shape (forward + FIPS 180-4 §8.1.1
+    "abc" KAT edge; values cross-checked against `sha256Compress_kat`). -/
+def emitSha256CompressSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\nimport Circe.Crypto.Sha\n\n"
+  ++ s!"/-- C signature: `void {name}(uint32_t *__restrict st)` (compress the 16-word block at `st[8..24]` into the 8-word state; short states are `OOB`, long states pass the tail through).\n"
+  ++ s!"    Base body reference: the `sha256CompressFwd` fold (cf. emitted `{name}_fwd`, `emit_correct_sha256`). -/\n"
+  ++ s!"def {name}_spec_fwd (s : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  if 24 ≤ s.length then\n"
+  ++ "    .ok (sha256CompressFwd s)\n"
+  ++ "  else .error .OOB\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: FIPS 180-4 §8.1.1 \"abc\" KAT, all-zero state, short state (`OOB`), long state (tail passes through). -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (List (BitVec 32))) :=\n"
+  ++ "  [(([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19, 0x61626380, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000018]),\n"
+  ++ "    .ok [0xba7816bf, 0x8f01cfea, 0x414140de, 0x5dae2223, 0xb00361a3, 0x96177a9c, 0xb410ff61, 0xf20015ad, 0x61626380, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000018]),\n"
+  ++ "   (([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),\n"
+  ++ "    .ok [0x7ca51614, 0x425c3ba8, 0xce54dd2f, 0xc2020ae7, 0xb6e574d1, 0x98136d0f, 0xae7e26cc, 0xbf0be7a6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),\n"
+  ++ "   (([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19, 0x61626380, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000]), .error .OOB),\n"
+  ++ "   (([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xdeadbeef]),\n"
+  ++ "    .ok [0x7ca51614, 0x425c3ba8, 0xce54dd2f, 0xc2020ae7, 0xb6e574d1, 0x98136d0f, 0xae7e26cc, 0xbf0be7a6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xdeadbeef])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge.\n"
+  ++ "    TODO (user): strengthen to a gallery equation over `sha256CompressFwd`\n"
+  ++ "    (proved by hand in `Circe.Specs`). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun ⟨s, want⟩ =>\n"
+  ++ s!"    (repr ({name}_spec_fwd s)).pretty == (repr want).pretty\n"
+
 /-- Spec stub for the `choose` shape (forward + backward). -/
 def emitChooseSpecText (name : String) : String :=
   emitSpecHeader

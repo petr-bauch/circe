@@ -67,6 +67,7 @@ inductive FragKind : Type
   | shrU32
   | xorN
   | chachaBlock
+  | sha256Compress
   | incr
   | choose
   | sum

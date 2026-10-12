@@ -68,6 +68,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .shrU32 => .ok (emitShrU32SpecText f.name)
   | some .xorN => .ok (emitXorNSpecText f.name)
   | some .chachaBlock => .ok (emitChachaBlockSpecText f.name)
+  | some .sha256Compress => .ok (emitSha256CompressSpecText f.name)
   | some .incr => .ok (emitIncrSpecText f.name)
   | some .choose => .ok (emitChooseSpecText f.name)
   | some .sum => .ok (emitSumSpecText f.name)
@@ -190,6 +191,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .shrU32 => .ok ⟨emitShrU32Text f.name, none⟩
   | some .xorN => .ok ⟨emitXorNText f.name, none⟩
   | some .chachaBlock => .ok ⟨emitChachaBlockText f.name, none⟩
+  | some .sha256Compress => .ok ⟨emitSha256CompressText f.name, none⟩
   | some .incr => .ok ⟨emitIncrText f.name, none⟩
   | some .choose =>
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩

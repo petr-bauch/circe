@@ -21,6 +21,7 @@ import Circe.Emit.Acc
 import Circe.Emit.Bitwise
 import Circe.Emit.XorBuf
 import Circe.Crypto.Block
+import Circe.Crypto.ShaBlock
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.ArraySort
@@ -301,6 +302,31 @@ def matchFrag : Func → Option FragKind
         (.seq aw (.return_ (.var "state")))))) =>
       if rzero.toNat == 0 && izero.toNat == 0 && beqStmt rw roundWhile &&
           beqStmt aw addWhile then some .chachaBlock
+      else none
+    | _ => none
+  | ⟨_, [⟨"st", .array (.u 32) _, .mutBorrow _⟩], _, body⟩ =>
+    -- K5c block kernel: five fixed loops in fixed order (`init`,
+    -- `sched`, `vinit`, `compress`, `add`), separated by buffer/counter
+    -- lets with exact names (`w`, `t`, `u`, `v`, `i`, `K`, `r`, `j`),
+    -- returning the state buffer. The loop bodies are exact constants,
+    -- compared via `beqStmt` against `Circe.Crypto.ShaBlock`.
+    match body with
+    | .seq (.let_ "w" _ _)
+      (.seq (.let_ "t" _ _)
+      (.seq iw
+      (.seq (.let_ "u" _ _)
+      (.seq sw
+      (.seq (.let_ "v" _ _)
+      (.seq (.let_ "i" _ _)
+      (.seq vw
+      (.seq (.let_ "K" _ _)
+      (.seq (.let_ "r" _ _)
+      (.seq cw
+      (.seq (.let_ "j" _ _)
+      (.seq aw (.return_ (.var "st")))))))))))))) =>
+      if beqStmt iw initWhile && beqStmt sw schedWhile &&
+          beqStmt vw vinitWhile && beqStmt cw compressWhile &&
+          beqStmt aw shaAddWhile then some .sha256Compress
       else none
     | _ => none
   | ⟨_, [⟨"p", .struct "Point" _, .owned⟩,
@@ -1145,6 +1171,8 @@ theorem matchFrag_shlU32 : matchFrag shlU32Func = some .shlU32 := rfl
 theorem matchFrag_shrU32 : matchFrag shrU32Func = some .shrU32 := rfl
 theorem matchFrag_xorN : matchFrag xorNFunc = some .xorN := rfl
 theorem matchFrag_chachaBlock : matchFrag chachaBlockFunc = some .chachaBlock :=
+  rfl
+theorem matchFrag_sha256Compress : matchFrag sha256Func = some .sha256Compress :=
   rfl
 theorem matchFrag_choose : matchFrag chooseFunc = some .choose := rfl
 theorem matchFrag_sum : matchFrag sumFunc = some .sum := rfl

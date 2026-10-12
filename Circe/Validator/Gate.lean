@@ -12,6 +12,7 @@ import Circe.Emit.View
 import Circe.Emit.VecGrow
 import Circe.Emit.VecCompose
 import Circe.Crypto.Block
+import Circe.Crypto.ShaBlock
 import Circe.Validator.GrowLeaves
 
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
@@ -437,8 +438,8 @@ def isChachaBlockShape (raw : RawFunc) : Bool :=
     schedule, work-init, 64 compress rounds, add-back), no calls.
     Unlike the ChaCha gate this shape allows `cir.and` (Ch/Maj are
     K1 `and_u32` leaves) and pins one `cir.const_array` (the folded
-    K-table init). Dispatch waits for `sha256Func` (K5c); until then
-    this predicate is the K5a admission check. -/
+    K-table init). Dispatched to `sha256Func` (K5c slice E); the
+    predicate doubles as the K5a admission check. -/
 def isSha256Shape (raw : RawFunc) : Bool :=
   match raw.params with
   | [state] =>
@@ -1807,6 +1808,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { xorNFunc with name := raw.name }
       else if isChachaBlockShape raw then
         .ok { chachaBlockFunc with name := raw.name }
+      else if isSha256Shape raw then
+        .ok { sha256Func with name := raw.name }
       else if isUnadmittedArithLeaf raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses integer arithmetic outside the admitted single-op leaves: {arithRejectWhy raw.text} (see docs/SUBSET.md)"
