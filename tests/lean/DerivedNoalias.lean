@@ -127,6 +127,7 @@ def main : IO Unit := do
   for cir in ["tests/cir/add.cir", "tests/cir/incr_ptr.cir",
       "tests/cir/choose_ptr.cir", "tests/cir/sum_array.cir",
       "tests/cir/sum_two.cir", "tests/cir/wr_pair.cir",
+      "tests/cir/cond_pair.cir",
       "tests/cir/struct_by_value.cir", "tests/cir/vec_alloc.cir",
       "tests/cir/vec_alloc_leak.cir", "tests/cir/vec_alloc_u64.cir",
       "tests/cir/vec_copy_sum.cir", "tests/cir/vec_realloc.cir",

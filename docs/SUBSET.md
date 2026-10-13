@@ -781,6 +781,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     keep dedicated rejections). Aliased callers are caller-UB
     under `noalias`: documented, never fuzzed (unlike the
     value-sound reader aliasing of the two-reader rule).
+28l. Branch-writer admission (G2b): `cond_pair`
+    (`int32_t *__restrict__` × 2 plus `bool` in, `IPair` out,
+    `*p += 1` under `c`, `*q += 2` always — the C-pointer twin of
+    the deferred `alias_cond`, made sound by the `noalias`
+    verdict). Admission is one fused Func: two mutBorrow `i32`
+    params plus an owned `bool`, `struct "IPair"` return,
+    `c ? p + 1 : p` let-bound by the lazy `tif`, then `q + 2`
+    let-bound, then `pair` return. Exact shape: `void`, 3 allocas
+    (three arg inits) / 7 loads / 5 stores / 2 consts / 2 `nsw`
+    adds, one scope-wrapped `cir.if`, no calls / comparisons /
+    loops / switches / strides / members, plus the G2 dataflow
+    pin extended with branch placement (first run strictly
+    inside the `if` region into `arg0`'s cell, second run
+    outside into `arg1`'s cell, condition reading the `bool`
+    slot — rejects unbranched, fully-conditional, wrong-cell,
+    same-cell, swapped, and cross-read shapes). The `tif`
+    masks the first add (and its overflow) when `c = false`.
+    Same verdict discipline as 28k (inconclusive/`mayAlias`
+    verdicts, missing-`restrict`, wrapping adds, wrong consts
+    keep dedicated rejections; aliased callers are caller-UB,
+    never fuzzed).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

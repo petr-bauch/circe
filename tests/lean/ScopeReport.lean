@@ -208,6 +208,10 @@ def main : IO Unit := do
   let c ← checkScopeFile "tests/cir/wr_pair.cir"
     [("wr_pair", [("p", 0), ("q", 0)], 0)]
   passed := passed + c
+  -- Branch-writer admission: flat cells plus the `bool` (depth 0).
+  let c ← checkScopeFile "tests/cir/cond_pair.cir"
+    [("cond_pair", [("p", 0), ("q", 0), ("c", 0)], 0)]
+  passed := passed + c
   -- Checked read: entry + composers are flat (all depth 0; the
   -- `cir.scope` region in `_M_range_check` nests no allocas).
   let c ← checkScopeFile "tests/cir/vec_at_one.cir"
@@ -288,6 +292,20 @@ def main : IO Unit := do
     [("p", "ref", "param0", "param0"), ("q", "ref", "param1", "param1")]
   passed := passed + c
   let c ← checkUnique "tests/cir/wr_pair.cir" "wr_pair"
+  passed := passed + c
+  -- L2 live ranges: the writers overlap (`q` spans lines 6–24
+  -- across `p`; the `bool` is read once) — no sequencing license;
+  -- disjointness comes from the `noalias` verdict instead.
+  let c ← checkScopeUses "tests/cir/cond_pair.cir"
+    [("cond_pair", [("p", 5, 16), ("q", 6, 24), ("c", 7, 10)])]
+  passed := passed + c
+  -- F0 content roots: the writers name different addresses and the
+  -- condition names the `bool` slot (`c` → `param2`, value kind).
+  let c ← checkSlotRoots "tests/cir/cond_pair.cir" "cond_pair"
+    [("p", "ref", "param0", "param0"), ("q", "ref", "param1", "param1"),
+     ("c", "val", "param2", "param2")]
+  passed := passed + c
+  let c ← checkUnique "tests/cir/cond_pair.cir" "cond_pair"
   passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.

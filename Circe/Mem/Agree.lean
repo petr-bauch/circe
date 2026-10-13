@@ -101,6 +101,19 @@ theorem bindMemArgs_wrPair (p q : BitVec 32) :
       some ([("p", .i32 p), ("q", .i32 q)], emptyMem, []) := by
   rfl
 
+/-- `cond_pair` binding pins nothing (branch-masked writer plus
+    unconditional writer, functionalized to values; the license —
+    branch placement plus in-order dataflow plus the `noalias`
+    verdict — is gate-side). -/
+theorem bindMemArgs_condPair (p q : BitVec 32) (c : Bool) :
+    bindMemArgs [{ name := "p", ty := .i 32, role := .mutBorrow 0 },
+      { name := "q", ty := .i 32, role := .mutBorrow 0 },
+      { name := "c", ty := .bool, role := .owned }]
+      [.i32 p, .i32 q, .b c] emptyMem =
+      some ([("p", .i32 p), ("q", .i32 q), ("c", .b c)], emptyMem,
+        []) := by
+  rfl
+
 /-! ## Statement agreement combinators (straight-line code) -/
 
 /-- `skip` agrees with memory untouched. -/

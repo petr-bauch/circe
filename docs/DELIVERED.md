@@ -899,3 +899,43 @@ adversarial dataflow rows + admission + message routing) +
 F0 roots) + `DerivedNoalias` agreement ride the driver roster with
 a `g2-wrpair` content suite; spec stubs grow 114 → 115.
 - Acceptance: 639 jobs TEST-OK, CHECK-OK.
+
+### N13. Branch-writer admission (G2b, noalias cond) — DONE (2026-10-13)
+
+One conditional writer plus one unconditional writer through
+`__restrict__` pointers: `cond_pair` (`*p += 1` under `c`,
+`*q += 2` always) — the C-pointer twin of the deferred
+`alias_cond`, made sound by the `noalias` verdict (the G3
+investigation showed B2 scalar stores are neither sufficient nor
+necessary for the unknown-verdict twin: transfer discards `Mem`,
+and `bind` cannot express caller aliasing, so full framing needs
+a new caller-side contract kind — deferred). Functionalized with
+the lazy `tif` (`a = c ? p + 1 : p`, masking the first add and
+its overflow when `c = false`) plus the G1 `pair` carrier; the
+forward matches on `c` (not `if` — an `if`'s `Decidable` instance
+gets stuck under `rw`'s closer) in body evaluation order
+(branch first, so short-circuits agree on both sides with no
+uniformity argument). Exact shape: `void`, two non-single-ref
+`i32` pointers plus `bool`, one scope-wrapped `cir.if`, 3
+allocas / 7 loads / 5 stores / 2 consts / 2 `nsw` adds, plus
+branch placement (first run strictly inside the `if` region
+— region-path proper prefix — second run outside, condition
+chased to the `bool` slot). New `Circe/Emit/CondPair.lean`:
+`condPairFunc`, `condPairFwd` with ok-true/ok-false/err-q×2/err-p
+bridges, `evalFuncFuel_condPair` (branch × outcome cases)
+(+ `emit_correct`); `isCondPairBody` (two-level `matchFrag`
+arm). `memEvalFuncFuel_condPair` reuses the `tif` agreement
+lemmas on both sides (no new model — the step-0 probe found
+everything present) + `memTransfer_condPair`;
+`bindMemArgs_condPair` / `oracleNoalias_condPair` (empty
+footprint). Pair-check exemption + fourth `derivedNoalias` arm
+(mechanical theorem extension). `DiffCondPair` (10 edges incl.
+both legs, masking, and both overflows + 1000 fuzz trials,
+in-range native, Lean-Lean overflow, tamper-checked: `+9`
+perturbation fails exactly one job) + `GoldenCondPair`
+(pipeline + 5 rejections + `wr_pair` shape-exactness) +
+`CondPairGate` (7 corpus + 4 adversarial branch rows + admission
++ message) + `ScopeReport` (flat cells + `bool`, overlapping L2
+ranges, `c` value-rooted) + `DerivedNoalias` ride the roster
+with a `g2b-condpair` content suite; spec stubs grow 115 → 116.
+- Acceptance: 648 jobs TEST-OK, CHECK-OK.

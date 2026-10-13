@@ -2246,6 +2246,131 @@ def structuralWrPair (raw : RawFunc) : Bool :=
 def isWrPairShape (raw : RawFunc) : Bool :=
   structuralWrPair raw && wrPairDataflow raw.text
 
+/-! ## G2b-admission: branch-writer recognition (`cond_pair`) -/
+
+/-- The branch condition reads the `bool` param: the single `cir.if`
+    line's operand chases to the `%arg2`-initialized alloca. -/
+def condBranchPin (ls : List String) : Bool :=
+  match ls.filter (fun ln => containsSubstr ln "cir.if") with
+  | [ifl] =>
+    match ssaOperands ifl with
+    | [v] =>
+      match chaseLoadAlloca ls v 8 with
+      | some m => allocaArgIdx ls m == some 2
+      | none => false
+    | _ => false
+  | _ => false
+
+/-- Region path of a text line (`none` when the line is absent). -/
+def linePath (ls : List String) (paths : List (List Nat))
+    (ln : String) : Option (List Nat) :=
+  let i := ls.idxOf ln
+  if i < ls.length then paths[i]? else none
+
+/-- Strict region containment via paths (the `if` line's path is a
+    proper prefix of the inner line's). -/
+def insideIf (pIf p : List Nat) : Bool :=
+  pIf.isPrefixOf p && pIf.length < p.length
+
+/-- Branch placement: the first writer run lies strictly inside the
+    `cir.if` region, the second outside it (an unconditional second
+    run would make the functionalized `q + 2` wrong; a fully
+    conditional pair is a different, unadmitted shape). -/
+def condBranchPlacement (ls : List String) (a1 s1 a2 s2 : String) : Bool :=
+  let paths := regionPaths ls
+  match ls.filter (fun ln => containsSubstr ln "cir.if") with
+  | [ifl] =>
+    match linePath ls paths ifl, linePath ls paths a1,
+        linePath ls paths s1, linePath ls paths a2,
+        linePath ls paths s2 with
+    | some pIf, some pA1, some pS1, some pA2, some pS2 =>
+      insideIf pIf pA1 && insideIf pIf pS1 &&
+      !insideIf pIf pA2 && !insideIf pIf pS2
+    | _, _, _, _, _ => false
+  | _ => false
+
+/-- Full dataflow pin for the branch-writer pair: the G2 in-order
+    add→store→cell linkage (each run into its in-order param cell
+    from that same cell) plus the branch pins (condition reads the
+    `bool` param; first run inside the branch, second outside).
+    Same-cell, swapped, cross-read, unbranched, and fully-conditional
+    shapes keep their op counts but fail exactly one conjunct. -/
+def condPairDataflow (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  let const1 := ls.filter (fun ln =>
+    containsSubstr ln "cir.const #cir.int<1> : !s32i")
+  let const2 := ls.filter (fun ln =>
+    containsSubstr ln "cir.const #cir.int<2> : !s32i")
+  let stores := ls.filter (fun ln => containsSubstr ln "cir.store align(4)")
+  let adds := ls.filter (fun ln => containsSubstr ln "cir.add nsw")
+  match const1, const2, stores, adds with
+  | [k1], [k2], [s1, s2], [a1, a2] =>
+    match ssaDefOn k1, ssaDefOn k2, ssaDefOn a1, ssaDefOn a2 with
+    | some c1, some c2, some d1, some d2 =>
+      match ssaOperands a1, ssaOperands a2,
+          ssaOperands s1, ssaOperands s2 with
+      | [e1, k1'], [e2, k2'], [v1, _], [v2, _] =>
+        k1' == c1 && k2' == c2 && v1 == d1 && v2 == d2 &&
+        match storeCellAlloca ls s1, storeCellAlloca ls s2 with
+        | some m1, some m2 =>
+          m1 != m2 && allocaArgIdx ls m1 == some 0 &&
+          allocaArgIdx ls m2 == some 1 &&
+          chaseLoadAlloca ls e1 8 == some m1 &&
+          chaseLoadAlloca ls e2 8 == some m2 &&
+          condBranchPin ls && condBranchPlacement ls a1 s1 a2 s2
+        | _, _ => false
+      | _, _, _, _ => false
+    | _, _, _, _ => false
+  | _, _, _, _ => false
+
+/-- Structural half of branch-writer recognition: `void`, two
+    non-single-reference `i32` pointer params plus a `bool`, three
+    allocas, five stores (three arg inits), seven loads, exactly the
+    `1`/`2` consts and two `nsw` adds, one scope-wrapped `cir.if`,
+    no calls / comparisons / loops / switches / strides / members /
+    cleanup / traps / globals. -/
+def structuralCondPair (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.alloca" == 3 &&
+  opCount raw.text "cir.store" == 5 &&
+  opCount raw.text "cir.store %arg" == 3 &&
+  opCount raw.text "cir.load" == 7 &&
+  opCount raw.text "cir.const" == 2 &&
+  opCount raw.text "cir.add nsw" == 2 &&
+  arithOpCount raw.text == 2 &&
+  opCount raw.text "cir.call @" == 0 &&
+  opCount raw.text "cir.cmp" == 0 &&
+  opCount raw.text "cir.for" == 0 &&
+  opCount raw.text "cir.if" == 1 &&
+  opCount raw.text "cir.scope" == 1 &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "get_global" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.while" &&
+  !containsSubstr raw.text "cir.switch" &&
+  !containsSubstr raw.text "cir.cond_br" &&
+  noBreakContinueSwitch raw.text &&
+  !hasNonHeapCall raw.text &&
+  (match raw.params with
+   | [p, q, c] =>
+    !p.singleRef && !q.singleRef && !c.singleRef &&
+    isPtrType p.ctype && isPtrType q.ctype && !isPtrType c.ctype &&
+    isBoolType c.ctype &&
+    (match ptrInner p.ctype, ptrInner q.ctype with
+     | some i, some j => isI32 i && isI32 j
+     | _, _ => false)
+   | _ => false)
+
+/-- Exact `cond_pair` admission shape (G2b): the structural skeleton
+    plus the dataflow pin (in-order cells plus branch placement).
+    The `noalias` verdict gate below still demands the explicit
+    verdict — attrs are claims, the verdict confirms. -/
+def isCondPairShape (raw : RawFunc) : Bool :=
+  structuralCondPair raw && condPairDataflow raw.text
+
 /-- Soundness of the L2 admission predicate: `true` yields the three
     recorded locals with the first writer's range ending strictly
     before the second writer's begins. Admission will consume exactly

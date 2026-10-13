@@ -111,6 +111,38 @@ def emitWrPairSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1)).pretty == (repr t.2.2).pretty\n"
 
+/-- Spec stub for the `cond_pair` shape (G2b). The mirror follows
+    body order (branch first); edges cover both `c` legs, masking
+    (`MAX` under `c = false` succeeds), and `nsw` overflow on
+    either add. -/
+def emitCondPairSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `void {name}(int32_t *__restrict p, int32_t *__restrict q, bool c)` (`*p += 1` under `c`, `*q += 2`).\n"
+  ++ s!"    Base body reference: branch-masked checked add plus unconditional add (cf. emitted `{name}_fwd`, `condPairFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (p q : BitVec 32) (c : Bool) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  match c with\n"
+  ++ "  | true =>\n"
+  ++ "    match checkedAddI32 p 1 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok a =>\n"
+  ++ "      match checkedAddI32 q 2 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok b => .ok (a, b)\n"
+  ++ "  | false =>\n"
+  ++ "    match checkedAddI32 q 2 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b => .ok (p, b)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: both legs, masking, `nsw` overflow on either add, `INT32_MIN`, `-1`. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32 × Bool × Result (BitVec 32 × BitVec 32)) :=\n"
+  ++ "  [(0, 0, true, .ok (1, 2)), (10, 20, false, .ok (10, 22)), (0xFFFFFFFF, 0, true, .ok (0, 2)), (0, 0xFFFFFFFF, true, .ok (1, 1)), (0x7FFFFFFF, 0, true, .error .Overflow), (0x7FFFFFFF, 0, false, .ok (0x7FFFFFFF, 2)), (0, 0x7FFFFFFF, true, .error .Overflow), (0, 0x7FFFFFFF, false, .error .Overflow), (0x80000000, 0x80000000, true, .ok (0x80000001, 0x80000002))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2.1)).pretty == (repr t.2.2.2).pretty\n"
+
 /-- Spec stub for the 64-bit `add64` shape (S3b). -/
 def emitAdd64SpecText (name : String) : String :=
   emitSpecHeader

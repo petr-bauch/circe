@@ -44,6 +44,7 @@ import DiffErase
 import DiffSort
 import DiffView
 import DiffWidth
+import DiffCondPair
 import DiffWrPair
 import DiffXorN
 import DiffQr
@@ -82,6 +83,7 @@ import GoldenVecRealloc
 import GoldenView
 import GoldenVecGrow
 import GoldenWidth
+import GoldenCondPair
 import GoldenWrPair
 import GoldenXorN
 import GoldenChacha
@@ -89,6 +91,7 @@ import GoldenSha
 import ScopeReport
 import ReborrowGate
 import WrPairGate
+import CondPairGate
 import Circe.CondFrame
 import Circe.Parser
 
@@ -208,7 +211,8 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/alias_reborrow.cpp", "tests/diff/driver_reborrow.cpp"], bin "circe_reborrow_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
    ("cc", ["tests/c/sum_two.c", "tests/diff/driver_sum_two.c"], bin "circe_sum_two_native"),
-   ("cc", ["tests/c/wr_pair.c", "tests/diff/driver_wr_pair.c"], bin "circe_wr_pair_native")]
+   ("cc", ["tests/c/wr_pair.c", "tests/diff/driver_wr_pair.c"], bin "circe_wr_pair_native"),
+   ("cc", ["tests/c/cond_pair.c", "tests/diff/driver_cond_pair.c"], bin "circe_cond_pair_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
 def goldenPairs : List (String × String) :=
@@ -280,6 +284,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/Reborrow_Spec.lean", "out/Reborrow_Spec.lean"),
    ("tests/golden/WrPair.lean", "out/WrPair.lean"),
    ("tests/golden/WrPair_Spec.lean", "out/WrPair_Spec.lean"),
+   ("tests/golden/CondPair.lean", "out/CondPair.lean"),
+   ("tests/golden/CondPair_Spec.lean", "out/CondPair_Spec.lean"),
    ("tests/golden/OverloadAdd.lean", "out/OverloadAdd.lean"),
    ("tests/golden/Add3.lean", "out/Add3.lean"),
    ("tests/golden/UseAdd.lean", "out/UseAdd.lean"),
@@ -390,7 +396,7 @@ def goldenPairs : List (String × String) :=
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
 def emittedTypechecks : List String :=
-  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/WrPair.lean", "out/WrPair_Spec.lean", "out/Choose.lean", "out/SumArray.lean",
+  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/WrPair.lean", "out/WrPair_Spec.lean", "out/CondPair.lean", "out/CondPair_Spec.lean", "out/Choose.lean", "out/SumArray.lean",
    "out/AddCaller.lean", "out/SumCaller.lean", "out/StructByValue.lean",
    "out/NestedSum.lean", "out/SkipSum.lean", "out/FindEq.lean", "out/Cls.lean",
    "out/ClsFall.lean", "out/ClsDense.lean", "out/ClsBreak.lean",
@@ -505,6 +511,7 @@ def contentAsserts : List (String × List (String × String)) :=
      ("out/Incr.lean", "checkedIncrI32 p"),
      ("out/Reborrow.lean", "checkedAddI32 t 2"),
      ("out/WrPair.lean", "match checkedAddI32 p 1, checkedAddI32 q 2"),
+     ("out/CondPair.lean", "match c with"),
      ("out/Choose.lean", ".ok (if b then x else y)"),
      ("out/Choose.lean", ".ok (if b then (ret, y) else (x, ret))"),
      ("out/SumArray.lean", "prefixSumU32 a.val a.val.length"),
@@ -1187,6 +1194,25 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer/Slice.lean", "theorem memTransfer_wrPair"),
      ("out/WrPair.lean", "wr_pair_fwd"),
      ("tests/golden/WrPair.lean", "wr_pair_fwd")]),
+   ("g2b-condpair",
+    [("Circe/Emit/CondPair.lean", "theorem evalFuncFuel_condPair"),
+     ("Circe/Emit/CondPair.lean", "theorem condPairFwd_ok_true"),
+     ("Circe/Emit/CondPair.lean", "theorem condPairFwd_ok_false"),
+     ("Circe/Emit/CondPair.lean", "def isCondPairBody"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_condPair"),
+     ("Circe/Emit/Render.lean", "def emitCondPairText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitCondPairSpecText"),
+     ("Circe/Mem/Agree.lean", "theorem bindMemArgs_condPair"),
+     ("Circe/Validator/GrowLeaves.lean", "def isCondPairShape"),
+     ("Circe/Validator/GrowLeaves.lean", "def condPairDataflow"),
+     ("Circe/Validator/GrowLeaves.lean", "def structuralCondPair"),
+     ("Circe/Validator/GrowLeaves.lean", "def condBranchPlacement"),
+     ("Circe/Validator/Gate.lean", "isCondPairShape raw"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_condPair"),
+     ("Circe/Transfer/Slice.lean", "theorem memEvalFuncFuel_condPair"),
+     ("Circe/Transfer/Slice.lean", "theorem memTransfer_condPair"),
+     ("out/CondPair.lean", "cond_pair_fwd"),
+     ("tests/golden/CondPair.lean", "cond_pair_fwd")]),
    ("n4d-vecgrow",
     [("Circe/Validator/GrowLeaves.lean", "def isVecGrowComposerText"),
      ("Circe/Validator/Gate.lean", "N4d-iv-b2 growth composer"),
@@ -1394,8 +1420,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 115 then
-    throw (IO.userError s!"expected 115 spec stubs, found {stubs.length}")
+  if stubs.length != 116 then
+    throw (IO.userError s!"expected 116 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1440,6 +1466,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecatsum", DiffVecAtSum.main [bin "circe_vec_at_sum_native", trials]),
    ("diff-reborrow", DiffReborrow.main [bin "circe_reborrow_native", trials]),
    ("diff-wrpair", DiffWrPair.main [bin "circe_wr_pair_native", trials]),
+   ("diff-condpair", DiffCondPair.main [bin "circe_cond_pair_native", trials]),
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
@@ -1483,6 +1510,7 @@ def checkSuites : List Job :=
    ("golden-vecatsum", GoldenVecAtSum.main),
    ("golden-reborrow", GoldenReborrow.main),
    ("golden-wrpair", GoldenWrPair.main),
+   ("golden-condpair", GoldenCondPair.main),
    ("golden-vecgrow", GoldenVecGrow.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-sum-two", GoldenSumTwo.main),
@@ -1490,7 +1518,8 @@ def checkSuites : List Job :=
    ("derived-noalias", DerivedNoalias.main),
    ("scope-report", ScopeReport.main),
    ("reborrow-gate", ReborrowGate.main),
-   ("wrpair-gate", WrPairGate.main)]
+   ("wrpair-gate", WrPairGate.main),
+   ("condpair-gate", CondPairGate.main)]
 
 /-- Registered suite module names (mirrors the `Suites` roots: a new
     `tests/lean` runner without registration fails loudly here). -/
@@ -1506,7 +1535,8 @@ def suiteModules : List String :=
    "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow",
-   "WrPairGate", "GoldenWrPair", "DiffWrPair"]
+   "WrPairGate", "GoldenWrPair", "DiffWrPair",
+   "CondPairGate", "GoldenCondPair", "DiffCondPair"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

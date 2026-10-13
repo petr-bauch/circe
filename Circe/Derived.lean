@@ -76,6 +76,22 @@ theorem oracleNoalias_wrPair (p q : BitVec 32) :
       [.i32 p, .i32 q] := by
   exact ⟨_, _, _, bindMemArgs_wrPair p q, layoutNoAlias_nil⟩
 
+/-- `cond_pair` binding pins nothing (branch-masked writer plus
+    unconditional writer, functionalized to values; the license is
+    gate-side). -/
+theorem oracleNoalias_condPair (p q : BitVec 32) (c : Bool) :
+    oracleNoalias
+      ⟨"cond_pair", [{ name := "p", ty := .i 32, role := .mutBorrow 0 },
+        { name := "q", ty := .i 32, role := .mutBorrow 0 },
+        { name := "c", ty := .bool, role := .owned }],
+       .struct "IPair" [.i 32, .i 32],
+       .seq (.let_ "a" (.i 32)
+         (.tif (.var "c") (.add (.var "p") (.lit (.i32 1))) (.var "p")))
+       (.seq (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+             (.return_ (.pair (.var "a") (.var "b"))))⟩
+      [.i32 p, .i32 q, .b c] := by
+  exact ⟨_, _, _, bindMemArgs_condPair p q c, layoutNoAlias_nil⟩
+
 /-- `choose` binding pins nothing (both borrows functionalized to
     values; selection is pure). -/
 theorem bindMemArgs_choose (b : Bool) (x y : BitVec 32) :

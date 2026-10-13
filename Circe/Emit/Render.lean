@@ -78,6 +78,28 @@ def emitWrPairText (name : String) : String :=
   ++ "  | .error e, _ => .error e\n"
   ++ "  | _, .error e => .error e\n"
 
+/-- Render the `cond_pair` forward definition (`cond_pair_fwd`):
+    branch-masked first add plus the unconditional second add
+    (body order: branch first). Tag-erased pair as in G2. -/
+def emitCondPairText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`*p += 1` under `c`, `*q += 2` always, over two disjoint cells, functionalized).\n"
+  ++ s!"    Caller rewrite: `(a, b) ← {name}_fwd p q c`, writing both words back. -/\n"
+  ++ s!"def {name}_fwd (p q : BitVec 32) (c : Bool) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  match c with\n"
+  ++ "  | true =>\n"
+  ++ "    match checkedAddI32 p 1 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok a =>\n"
+  ++ "      match checkedAddI32 q 2 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok b => .ok (a, b)\n"
+  ++ "  | false =>\n"
+  ++ "    match checkedAddI32 q 2 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b => .ok (p, b)\n"
+
 /-- Render the `add64` forward definition (`add64_fwd`, S3b). -/
 def emitAdd64Text (name : String) : String :=
   emitHeader

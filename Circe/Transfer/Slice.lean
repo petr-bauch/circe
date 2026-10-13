@@ -7,6 +7,7 @@ import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
+import Circe.Emit.CondPair
 
 /-! ## N4d-i `std::array` transfers: reads agree, hit and `OOB` -/
 
@@ -3079,3 +3080,274 @@ theorem memTransfer_wrPair (F : Nat) (p q : BitVec 32)
     memEvalFuncFuel F wrPairFunc [.i32 p, .i32 q] =
       evalFuncFuel F wrPairFunc [.i32 p, .i32 q] := by
   rw [memEvalFuncFuel_wrPair F p q, evalFuncFuel_wrPair F p q]
+
+/-! ## G2b: branch-writer transfer (memory threaded untouched) -/
+
+/-- Memory evaluation of `cond_pair`: the `tif` is branch-lazy on
+    both sides (the existing `memEvalExpr_tif_*` agreement), then
+    the second let and the `pair` return run as in G2. Post-let
+    facts use the literal `::`-cons env form (G2 transfer lesson). -/
+theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
+    (c : Bool) :
+    memEvalFuncFuel F condPairFunc [.i32 p, .i32 q, .b c] =
+      condPairFwd p q c := by
+  have hbf : condPairFunc.args =
+      [{ name := "p", ty := .i 32, role := .mutBorrow 0 },
+       { name := "q", ty := .i 32, role := .mutBorrow 0 },
+       { name := "c", ty := .bool, role := .owned }] := rfl
+  have hbody : condPairFunc.body =
+      .seq (.let_ "a" (.i 32)
+        (.tif (.var "c") (.add (.var "p") (.lit (.i32 1))) (.var "p")))
+      (.seq (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+            (.return_ (.pair (.var "a") (.var "b")))) := rfl
+  have hb := bindMemArgs_condPair p q c
+  have hx : envLookup [("p", .i32 p), ("q", .i32 q), ("c", .b c)]
+      "p" = some (.i32 p) := by
+    simp [envLookup]
+  have hc0 : envLookup [("p", .i32 p), ("q", .i32 q), ("c", .b c)]
+      "c" = some (.b c) := by
+    simp [envLookup]
+  simp only [memEvalFuncFuel, bindArgs, hbf, hbody, hb]
+  have hcm : memEvalExpr (.var "c")
+      [("p", .i32 p), ("q", .i32 q), ("c", .b c)] emptyMem [] =
+      evalExpr (.var "c")
+        [("p", .i32 p), ("q", .i32 q), ("c", .b c)] :=
+    memEvalExpr_var _ _ _ _
+  cases c with
+  | true =>
+    have hvc : evalExpr (.var "c")
+        [("p", .i32 p), ("q", .i32 q), ("c", .b true)] =
+        .ok (.b true) :=
+      evalExpr_var_hit _ _ _ hc0
+    have htAgree : memEvalExpr (.add (.var "p") (.lit (.i32 1)))
+        [("p", .i32 p), ("q", .i32 q), ("c", .b true)] emptyMem [] =
+        evalExpr (.add (.var "p") (.lit (.i32 1)))
+          [("p", .i32 p), ("q", .i32 q), ("c", .b true)] := by
+      rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hx,
+        evalExpr_add_var_lit _ _ _ _ hx]
+    have hagree : memEvalExpr
+        (.tif (.var "c") (.add (.var "p") (.lit (.i32 1))) (.var "p"))
+        [("p", .i32 p), ("q", .i32 q), ("c", .b true)] emptyMem [] =
+        evalExpr
+          (.tif (.var "c") (.add (.var "p") (.lit (.i32 1)))
+            (.var "p"))
+          [("p", .i32 p), ("q", .i32 q), ("c", .b true)] :=
+      memEvalExpr_tif_true _ _ _ _ _ _ hcm hvc htAgree
+    cases h1 : checkedAddI32 p 1 with
+    | error e =>
+      have hme : memEvalExpr
+          (.tif (.var "c") (.add (.var "p") (.lit (.i32 1)))
+            (.var "p"))
+          [("p", .i32 p), ("q", .i32 q), ("c", .b true)] emptyMem [] =
+          .error e := by
+        rw [hagree, evalExpr_tif_true _ _ _ _
+          (evalExpr_var_hit _ _ _ hc0)]
+        rw [evalExpr_add_var_lit _ _ _ _ hx, h1]
+        exact i32_map_error e
+      have hlet := memEvalStmtFuel_let_err F "a" (.i 32) _ _ _ _ e
+        (fun _ h => by cases h) (fun _ h => by cases h)
+        (fun _ h => by cases h) hme
+      rw [memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet]
+      exact (condPairFwd_err_p p q e h1).symm
+    | ok a =>
+      have hvT : evalExpr (.add (.var "p") (.lit (.i32 1)))
+          [("p", .i32 p), ("q", .i32 q), ("c", .b true)] =
+          .ok (.i32 a) := by
+        rw [evalExpr_add_var_lit _ _ _ _ hx, h1]
+        exact i32_map_ok a
+      have hv : evalExpr
+          (.tif (.var "c") (.add (.var "p") (.lit (.i32 1)))
+            (.var "p"))
+          [("p", .i32 p), ("q", .i32 q), ("c", .b true)] =
+          .ok (.i32 a) := by
+        rw [evalExpr_tif_true _ _ _ _
+          (evalExpr_var_hit _ _ _ hc0), hvT]
+      have hlet := memEvalStmtFuel_let_pure F "a" (.i 32) _ _ _ _
+        (.i32 a) (fun _ h => by cases h) (fun _ h => by cases h)
+        (fun _ h => by cases h) hagree hv
+      have hq : envLookup [("a", .i32 a), ("p", .i32 p),
+          ("q", .i32 q), ("c", .b true)] "q" = some (.i32 q) := by
+        simp [envLookup, show ("q" : String) ≠ "a" by decide]
+      cases h2 : checkedAddI32 q 2 with
+      | error e =>
+        have hme2 : memEvalExpr (.add (.var "q") (.lit (.i32 2)))
+            [("a", .i32 a), ("p", .i32 p), ("q", .i32 q),
+              ("c", .b true)] emptyMem [] = .error e := by
+          rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hq, h2]
+          exact i32_map_error e
+        have hlet2 := memEvalStmtFuel_let_err F "b" (.i 32) _ _ _ _ e
+          (fun _ h => by cases h) (fun _ h => by cases h)
+          (fun _ h => by cases h) hme2
+        rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
+          memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet2]
+        exact (condPairFwd_err_q_true p q a e h1 h2).symm
+      | ok b =>
+        have hagree2 : memEvalExpr (.add (.var "q") (.lit (.i32 2)))
+            [("a", .i32 a), ("p", .i32 p), ("q", .i32 q),
+              ("c", .b true)] emptyMem [] =
+            evalExpr (.add (.var "q") (.lit (.i32 2)))
+              [("a", .i32 a), ("p", .i32 p), ("q", .i32 q),
+                ("c", .b true)] := by
+          rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hq,
+            evalExpr_add_var_lit _ _ _ _ hq]
+        have hv2 : evalExpr (.add (.var "q") (.lit (.i32 2)))
+            [("a", .i32 a), ("p", .i32 p), ("q", .i32 q),
+              ("c", .b true)] = .ok (.i32 b) := by
+          rw [evalExpr_add_var_lit _ _ _ _ hq, h2]
+          exact i32_map_ok b
+        have hlet2 := memEvalStmtFuel_let_pure F "b" (.i 32) _ _ _ _
+          (.i32 b) (fun _ h => by cases h) (fun _ h => by cases h)
+          (fun _ h => by cases h) hagree2 hv2
+        have ha2 : envLookup [("b", .i32 b), ("a", .i32 a),
+            ("p", .i32 p), ("q", .i32 q), ("c", .b true)] "a" =
+            some (.i32 a) := by
+          simp [envLookup, show ("a" : String) ≠ "b" by decide]
+        have hb2 : envLookup [("b", .i32 b), ("a", .i32 a),
+            ("p", .i32 p), ("q", .i32 q), ("c", .b true)] "b" =
+            some (.i32 b) :=
+          envExtend_hit _ _ _
+        have hva : memEvalExpr (.var "a")
+            [("b", .i32 b), ("a", .i32 a), ("p", .i32 p),
+              ("q", .i32 q), ("c", .b true)] emptyMem [] =
+            .ok (.i32 a) := by
+          rw [memEvalExpr_var]
+          exact evalExpr_var_hit _ _ _ ha2
+        have hvb : memEvalExpr (.var "b")
+            [("b", .i32 b), ("a", .i32 a), ("p", .i32 p),
+              ("q", .i32 q), ("c", .b true)] emptyMem [] =
+            .ok (.i32 b) := by
+          rw [memEvalExpr_var]
+          exact evalExpr_var_hit _ _ _ hb2
+        have hmeP : memEvalExpr (.pair (.var "a") (.var "b"))
+            [("b", .i32 b), ("a", .i32 a), ("p", .i32 p),
+              ("q", .i32 q), ("c", .b true)] emptyMem [] =
+            .ok (.structVal "IPair" [("a", a), ("b", b)]) :=
+          memEvalExpr_pair_ok _ _ _ _ _ _ _ hva hvb
+        have hret : memEvalStmtFuel F
+            (.return_ (.pair (.var "a") (.var "b")))
+            [("b", .i32 b), ("a", .i32 a), ("p", .i32 p),
+              ("q", .i32 q), ("c", .b true)] emptyMem [] =
+            .ok ((([("b", .i32 b), ("a", .i32 a), ("p", .i32 p),
+              ("q", .i32 q), ("c", .b true)], emptyMem, [])),
+              .returned (.structVal "IPair" [("a", a), ("b", b)])) := by
+          cases F with
+          | zero =>
+            simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, hmeP]
+          | succ n =>
+            simp [memEvalStmtFuel, memEvalStmtWith, hmeP]
+        rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
+          memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet2,
+          hret]
+        exact (condPairFwd_ok_true p q a b h1 h2).symm
+  | false =>
+    have hvc : evalExpr (.var "c")
+        [("p", .i32 p), ("q", .i32 q), ("c", .b false)] =
+        .ok (.b false) :=
+      evalExpr_var_hit _ _ _ hc0
+    have heAgree : memEvalExpr (.var "p")
+        [("p", .i32 p), ("q", .i32 q), ("c", .b false)] emptyMem [] =
+        evalExpr (.var "p")
+          [("p", .i32 p), ("q", .i32 q), ("c", .b false)] :=
+      memEvalExpr_var _ _ _ _
+    have hagree : memEvalExpr
+        (.tif (.var "c") (.add (.var "p") (.lit (.i32 1))) (.var "p"))
+        [("p", .i32 p), ("q", .i32 q), ("c", .b false)] emptyMem [] =
+        evalExpr
+          (.tif (.var "c") (.add (.var "p") (.lit (.i32 1)))
+            (.var "p"))
+          [("p", .i32 p), ("q", .i32 q), ("c", .b false)] :=
+      memEvalExpr_tif_false _ _ _ _ _ _ hcm hvc heAgree
+    have hpE : evalExpr (.var "p")
+        [("p", .i32 p), ("q", .i32 q), ("c", .b false)] =
+        .ok (.i32 p) :=
+      evalExpr_var_hit _ _ _ hx
+    have hv : evalExpr
+        (.tif (.var "c") (.add (.var "p") (.lit (.i32 1))) (.var "p"))
+        [("p", .i32 p), ("q", .i32 q), ("c", .b false)] =
+        .ok (.i32 p) := by
+      rw [evalExpr_tif_false _ _ _ _
+        (evalExpr_var_hit _ _ _ hc0), hpE]
+    have hlet := memEvalStmtFuel_let_pure F "a" (.i 32) _ _ _ _
+      (.i32 p) (fun _ h => by cases h) (fun _ h => by cases h)
+      (fun _ h => by cases h) hagree hv
+    have hq : envLookup [("a", .i32 p), ("p", .i32 p),
+        ("q", .i32 q), ("c", .b false)] "q" = some (.i32 q) := by
+      simp [envLookup, show ("q" : String) ≠ "a" by decide]
+    cases h2 : checkedAddI32 q 2 with
+    | error e =>
+      have hme2 : memEvalExpr (.add (.var "q") (.lit (.i32 2)))
+          [("a", .i32 p), ("p", .i32 p), ("q", .i32 q),
+            ("c", .b false)] emptyMem [] = .error e := by
+        rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hq, h2]
+        exact i32_map_error e
+      have hlet2 := memEvalStmtFuel_let_err F "b" (.i 32) _ _ _ _ e
+        (fun _ h => by cases h) (fun _ h => by cases h)
+        (fun _ h => by cases h) hme2
+      rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
+        memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet2]
+      exact (condPairFwd_err_q_false p q e h2).symm
+    | ok b =>
+      have hagree2 : memEvalExpr (.add (.var "q") (.lit (.i32 2)))
+          [("a", .i32 p), ("p", .i32 p), ("q", .i32 q),
+            ("c", .b false)] emptyMem [] =
+          evalExpr (.add (.var "q") (.lit (.i32 2)))
+            [("a", .i32 p), ("p", .i32 p), ("q", .i32 q),
+              ("c", .b false)] := by
+        rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hq,
+          evalExpr_add_var_lit _ _ _ _ hq]
+      have hv2 : evalExpr (.add (.var "q") (.lit (.i32 2)))
+          [("a", .i32 p), ("p", .i32 p), ("q", .i32 q),
+            ("c", .b false)] = .ok (.i32 b) := by
+        rw [evalExpr_add_var_lit _ _ _ _ hq, h2]
+        exact i32_map_ok b
+      have hlet2 := memEvalStmtFuel_let_pure F "b" (.i 32) _ _ _ _
+        (.i32 b) (fun _ h => by cases h) (fun _ h => by cases h)
+        (fun _ h => by cases h) hagree2 hv2
+      have ha2 : envLookup [("b", .i32 b), ("a", .i32 p),
+          ("p", .i32 p), ("q", .i32 q), ("c", .b false)] "a" =
+          some (.i32 p) := by
+        simp [envLookup, show ("a" : String) ≠ "b" by decide]
+      have hb2 : envLookup [("b", .i32 b), ("a", .i32 p),
+          ("p", .i32 p), ("q", .i32 q), ("c", .b false)] "b" =
+          some (.i32 b) :=
+        envExtend_hit _ _ _
+      have hva : memEvalExpr (.var "a")
+          [("b", .i32 b), ("a", .i32 p), ("p", .i32 p),
+            ("q", .i32 q), ("c", .b false)] emptyMem [] =
+          .ok (.i32 p) := by
+        rw [memEvalExpr_var]
+        exact evalExpr_var_hit _ _ _ ha2
+      have hvb : memEvalExpr (.var "b")
+          [("b", .i32 b), ("a", .i32 p), ("p", .i32 p),
+            ("q", .i32 q), ("c", .b false)] emptyMem [] =
+          .ok (.i32 b) := by
+        rw [memEvalExpr_var]
+        exact evalExpr_var_hit _ _ _ hb2
+      have hmeP : memEvalExpr (.pair (.var "a") (.var "b"))
+          [("b", .i32 b), ("a", .i32 p), ("p", .i32 p),
+            ("q", .i32 q), ("c", .b false)] emptyMem [] =
+          .ok (.structVal "IPair" [("a", p), ("b", b)]) :=
+        memEvalExpr_pair_ok _ _ _ _ _ _ _ hva hvb
+      have hret : memEvalStmtFuel F
+          (.return_ (.pair (.var "a") (.var "b")))
+          [("b", .i32 b), ("a", .i32 p), ("p", .i32 p),
+            ("q", .i32 q), ("c", .b false)] emptyMem [] =
+          .ok ((([("b", .i32 b), ("a", .i32 p), ("p", .i32 p),
+            ("q", .i32 q), ("c", .b false)], emptyMem, [])),
+            .returned (.structVal "IPair" [("a", p), ("b", b)])) := by
+        cases F with
+        | zero =>
+          simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, hmeP]
+        | succ n =>
+          simp [memEvalStmtFuel, memEvalStmtWith, hmeP]
+      rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
+        memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet2,
+        hret]
+      exact (condPairFwd_ok_false p q b h2).symm
+
+/-- Transfer for `cond_pair`: both sides equal the forward function. -/
+theorem memTransfer_condPair (F : Nat) (p q : BitVec 32) (c : Bool)
+    (_h : oracleNoalias condPairFunc [.i32 p, .i32 q, .b c]) :
+    memEvalFuncFuel F condPairFunc [.i32 p, .i32 q, .b c] =
+      evalFuncFuel F condPairFunc [.i32 p, .i32 q, .b c] := by
+  rw [memEvalFuncFuel_condPair F p q c, evalFuncFuel_condPair F p q c]

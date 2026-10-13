@@ -64,7 +64,10 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   admission — DONE (2026-10-13, N12: `wr_pair`, first consumer;
   `alias_cond` is NOT one — no pure `(p,q,c)→(p′,q′)` is sound
   for ordered writers under unknown aliasing; it needs the G3
-  framing track — see `DELIVERED.md`).
+  framing track — see `DELIVERED.md`). G2b branch-writer
+  admission — DONE (2026-10-13, N13: `cond_pair`, the noalias
+  twin of `alias_cond`; full unknown-verdict framing stays
+  deferred pending a caller-side contract kind).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,

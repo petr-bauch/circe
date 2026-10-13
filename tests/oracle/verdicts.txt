@@ -11,6 +11,7 @@
 add unknown
 incr noalias
 wr_pair noalias
+cond_pair noalias
 choose noalias
 sum_array noalias
 translate unknown
