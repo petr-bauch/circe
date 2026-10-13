@@ -204,6 +204,35 @@ theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
 
+/-- `mstore` runs the `Layout` pin to `memStore` (G3/S1 B2 scalar
+    store, any fuel): the value env and layout are untouched —
+    there is no value mirror. -/
+theorem memEvalStmtFuel_mstore_ok (f : Nat) (s : String) (ie ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (i : BitVec 64) (xv : BitVec 32) (a t : Nat) (m' : Mem)
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 xv))
+    (hlay : layoutLookup π s = some (a, t))
+    (hstore : memStore m a t i.toNat xv = .ok m') :
+    memEvalStmtFuel f (.mstore s ie ve) ρ m π =
+      .ok (((ρ, m', π)), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hi, hv, hlay, hstore]
+
+/-- `mstore` propagates `memStore` errors (any fuel). -/
+theorem memEvalStmtFuel_mstore_err (f : Nat) (s : String) (ie ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (i : BitVec 64) (xv : BitVec 32) (a t : Nat) (e : Panic)
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 xv))
+    (hlay : layoutLookup π s = some (a, t))
+    (hstore : memStore m a t i.toNat xv = .error e) :
+    memEvalStmtFuel f (.mstore s ie ve) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hi, hv, hlay, hstore]
+
 /-- Allocating `let_` (`vnew`): the value side runs `vecNew`, the
     memory side additionally pins a fresh block holding the same words,
     extending the layout. -/

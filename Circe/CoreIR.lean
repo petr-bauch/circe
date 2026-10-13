@@ -210,7 +210,15 @@ inductive CExpr : Type
     (noreturn-throw call sites fused: `_M_check_len`'s
     `length_error`, `new_allocator::allocate`'s `bad_alloc` /
     `bad_array_new_length` — hitting it is `AssertFail`, never a
-    silent model). -/
+    silent model). B2 scalar store (G3/S1): `mstore s ie ve`
+    stores the `i32` word `ve` at `u64` offset `ie` of the cell
+    pinned to slot `s` in the `Layout` (address + tag come from
+    the pin, which S2 opt-in pinning provides; the value env is
+    untouched — there is no value mirror, cell stores are
+    `Mem`-space). The pure evaluator reports `AssertFail`
+    (value-only by design: incompleteness, never unsoundness,
+    mirroring `break_`/`continue_` outside loops); G3 open
+    contracts are proved directly in `Mem` space. -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
@@ -224,6 +232,7 @@ inductive CStmt : Type
   | vgrowSet (t : String) (idx val : CExpr)
   | vgrowFree (t : String)
   | arrSet (arr : String) (idx val : CExpr)
+  | mstore (slot : String) (idx val : CExpr)
   | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)

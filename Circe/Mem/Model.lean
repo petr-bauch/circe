@@ -1491,6 +1491,16 @@ def memEvalStmtWith
     | .ok _, .ok _, _, _ => .error .AssertFail
     | .error e, _, _, _ => .error e
     | _, .error e, _, _ => .error e
+  | .mstore s ie ve, ρ, m, π =>
+    match memEvalExpr ie ρ m π, memEvalExpr ve ρ m π,
+        layoutLookup π s with
+    | .ok (.u64 i), .ok (.i32 xv), some (a, t) =>
+      match memStore m a t i.toNat xv with
+      | .error e => .error e
+      | .ok m' => .ok ((ρ, m', π), .fellThrough)
+    | .ok _, .ok _, _ => .error .AssertFail
+    | .error e, _, _ => .error e
+    | _, .error e, _ => .error e
   | .vgrowFree x, ρ, m, π =>
     match envLookup ρ x, layoutLookup π x with
     | some (.stdVecOwned b len cap), some (a, t) =>

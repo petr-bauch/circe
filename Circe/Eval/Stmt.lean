@@ -204,6 +204,11 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .mstore _ ie ve, ρ =>
+    match evalExpr ie ρ, evalExpr ve ρ with
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .vgrowFree x, ρ =>
     match envLookup ρ x with
     | none => .error .Uninit
@@ -427,6 +432,18 @@ theorem evalStmtFuel_arrSet_oob (f : Nat) (x : String) (ie ve : CExpr)
     evalStmtFuel f (.arrSet x ie ve) ρ = .error .OOB := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hget]
+
+/-- `mstore` has no value mirror (G3/S1 B2 scalar store): the pure
+    evaluator reports `AssertFail` on well-typed operands (any
+    fuel). Cell stores are `Mem`-space by design; G3 open
+    contracts are proved directly in `Mem` space. -/
+theorem evalStmtFuel_mstore (f : Nat) (s : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.i32 xv)) :
+    evalStmtFuel f (.mstore s ie ve) ρ = .error .AssertFail := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv]
 
 /-- `vgrowFree` consumes the triple's buffer token and updates the
     binding, keeping `len`/`cap` (any fuel; N4d-iv-b1:
