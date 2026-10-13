@@ -68,6 +68,51 @@ def checkScopeFile (cir : String) (wants : List ScopeWant) : IO Nat := do
       n := n + 1
   pure n
 
+/-- One F0 expectation: slot name, kind (`"ref"`/`"val"`), direct
+    and ultimate roots in display form (`showRoot`). -/
+abbrev SlotRootWant := String × String × String × String
+
+def checkSlotRoots (cir func : String) (wants : List SlotRootWant) :
+    IO Nat := do
+  let text ← IO.FS.readFile cir
+  let raw ← match parseModule text with
+    | none => throw (IO.userError s!"scope-report: parse failed for {cir}")
+    | some r => pure r
+  match raw.funcs.find? (fun f => f.name == func) with
+  | none =>
+    throw (IO.userError s!"scope-report: {cir}: no definition {func}")
+  | some fn =>
+    let lines := fn.text.splitOn "\n"
+    let kinds := slotKinds lines
+    let roots := contentRoots lines
+    let mut n := 0
+    for (nm, k, d, u) in wants do
+      match kinds.find? (fun x => x.1 == nm),
+          roots.find? (fun x => x.1 == nm) with
+      | some (_, kk), some (_, dd, uu) =>
+        let kd := match kk with | .Ref => "ref" | .Val => "val"
+        if kd != k || showRoot dd != d || showRoot uu != u then
+          throw (IO.userError s!"scope-report: {cir}:{func}:{nm}: roots ({kd}, {showRoot dd}, {showRoot uu}) != ({k}, {d}, {u})")
+        IO.println s!"PASS slot-roots {func}:{nm}"
+        n := n + 1
+      | _, _ =>
+        throw (IO.userError s!"scope-report: {cir}:{func}: no slot {nm}")
+    pure n
+
+def checkUnique (cir func : String) : IO Nat := do
+  let text ← IO.FS.readFile cir
+  let raw ← match parseModule text with
+    | none => throw (IO.userError s!"scope-report: parse failed for {cir}")
+    | some r => pure r
+  match raw.funcs.find? (fun f => f.name == func) with
+  | none =>
+    throw (IO.userError s!"scope-report: {cir}: no definition {func}")
+  | some fn =>
+    if uniqueCopies (fn.text.splitOn "\n") != true then
+      throw (IO.userError s!"scope-report: {cir}:{func}: ambiguous copies")
+    IO.println s!"PASS slot-unique {func}"
+    pure 1
+
 def main : IO Unit := do
   let mut passed := 0
   let c ← checkScopeFile "tests/cir/add.cir"
@@ -198,6 +243,33 @@ def main : IO Unit := do
     [("sum_two",
       [("a", 7, 29), ("b", 8, 33), ("n", 9, 21), ("__retval", 49, 51),
        ("s", 12, 49), ("i", 17, 44)])]
+  passed := passed + c
+  -- F0 content roots: sequential reborrows share one address (`r`/`s`
+  -- chain to `x`, ultimately `param0`) — the WHERE to L2's WHEN, and
+  -- the F1 sequencing license in waiting.
+  let c ← checkSlotRoots "tests/cir/alias_reborrow.cir" "_Z14alias_reborrowRi"
+    [("x", "ref", "param0", "param0"), ("r", "ref", "slot:x", "param0"),
+     ("s", "ref", "slot:x", "param0")]
+  passed := passed + c
+  let c ← checkUnique "tests/cir/alias_reborrow.cir" "_Z14alias_reborrowRi"
+  passed := passed + c
+  -- F0 content roots: conditionally-live writers name DIFFERENT
+  -- addresses (`p` → `param0`, `q` → `param1`) — caller-dependent
+  -- footprints, the framing gap, made textual.
+  let c ← checkSlotRoots "tests/cir/alias_cond.cir" "_Z10alias_condRiS_b"
+    [("p", "ref", "param0", "param0"), ("q", "ref", "param1", "param1"),
+     ("c", "val", "param2", "param2")]
+  passed := passed + c
+  let c ← checkUnique "tests/cir/alias_cond.cir" "_Z10alias_condRiS_b"
+  passed := passed + c
+  -- F0 control: two readers resolve to different params (attribute
+  -- disjointness territory); value slots claim no address (`?`).
+  let c ← checkSlotRoots "tests/cir/sum_two.cir" "sum_two"
+    [("a", "ref", "param0", "param0"), ("b", "ref", "param1", "param1"),
+     ("n", "val", "param2", "param2"), ("__retval", "val", "?", "?"),
+     ("s", "val", "?", "?"), ("i", "val", "?", "?")]
+  passed := passed + c
+  let c ← checkUnique "tests/cir/sum_two.cir" "sum_two"
   passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.

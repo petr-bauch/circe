@@ -190,3 +190,35 @@ admitted is shadowed; the corpus sweep shows `alias_reborrow` is the
 only match — `alias_cond` keeps the generic message). Full admission
 still needs writer `Func` semantics + Iris framing; N4b
 real-region-number wiring stays the other candidate consumer.
+
+### L3. Content-root (loan/address) bridge spike — DONE (2026-10-12, extract-only, report-only)
+
+F0 go/no-go input for the Iris framing track: can we resolve, from
+`RawFunc.text`, which address each writer local holds at each point
+(L2 gives WHEN, this gives WHERE)? Verdict: GO for F1, with the
+framing gap for F2 made textual. New `Circe.Scope` extraction
+(computed predicates, no `RawFunc` churn, `validate`/`Emit`/
+transfer untouched): slot classes from the alloca ctype (`Ref` iff
+the pointee is itself `!cir.ptr<...>` — the C++ reference lowering;
+unparseable admits less as `Val`), `cir.store` operand parsing
+(`%argN` vs `%M`, `align` skipped, destination must be an alloca id
+so stores to computed addresses stay writes, never initializers),
+exact copy-owner resolution through the L2 load-copy sets (no
+conservative arm: ambiguous copies claim nothing), first-store init
+pattern, fuel-bounded transitive ultimates. A `Slot` answer is an
+address-identity claim and requires both ends `Ref` (value copies
+through `Val` slots report `Unknown`, never an address link).
+Proved: fuel-zero/param/unknown stability of `ultimateRoot`
+(direct answers are fuel-independent). `ScopeReport` pins
+(`SCOPEREPORT-OK` 45 → 60): `alias_reborrow` shares one address
+(`r`/`s` → `slot:x` → `param0` — the F1 sequencing license in
+waiting); `alias_cond` names DIFFERENT addresses (`p` → `param0`,
+`q` → `param1` — caller-dependent footprints confirmed textually,
+framing stays Iris); `sum_two` control resolves readers to different
+params with value slots claiming nothing (`?`); copy-sets are
+ambiguity-free (`uniqueCopies`) on all three. Known limits (sound
+direction, all admit less): reassigned slots keep the first init;
+value-operand inits (`const`/`add` results) and copy ambiguity
+report `Unknown`; multi-region same-id collisions resolve
+inward-outward per L2 (unresolvable counts conservatively in
+use-facts but claims nothing here).

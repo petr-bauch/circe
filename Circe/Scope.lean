@@ -465,3 +465,199 @@ theorem useFacts_last_bound (lines : List String) (e : String × Nat × Nat)
       (fun a ha => rootUses_mem_bound _ _ _ _ _ _ ha)
   · simp
 
+/-! ## F0 loan/address bridge (content-root resolution, extract-only) -/
+
+/-- What an alloca slot holds: a `Ref` slot holds an address (the C++
+    reference lowering `!cir.ptr<!cir.ptr<...>>`); anything else holds
+    a value. Only `Ref` slots name an address. -/
+inductive SlotKind | Ref | Val
+  deriving DecidableEq, Repr
+
+/-- Slot class from the alloca ctype: `Ref` iff the pointee is itself
+    a `!cir.ptr<...>` (unparseable ctype admits less: `Val`). -/
+def slotKindOf (ctype : String) : SlotKind :=
+  if ctype.startsWith "!cir.ptr<" && (ctype.drop 9).startsWith "!cir.ptr<"
+  then .Ref else .Val
+
+/-- The ctype on an alloca line (text between `" : "` and `" loc("`;
+    `none` unless the line is well-formed). -/
+def allocaCtype (line : String) : Option String := do
+  let _ ← allocaOn line
+  let k ← findSubstr? line " : " 0
+  let rest := String.ofList (line.toList.drop (k + 3))
+  let e ← findSubstr? rest " loc(" 0
+  pure ((rest.take e).toString)
+
+/-- Slot classes in line order: (name, kind). -/
+def slotKinds (lines : List String) : List (String × SlotKind) :=
+  lines.filterMap fun ln =>
+    match allocaOn ln, allocaCtype ln with
+    | some nm, some ct => some (nm, slotKindOf ct)
+    | _, _ => none
+
+/-- What a slot's content resolves to: a function param (`%argN`), a
+    sibling slot (initialized from a copy of that slot's content), or
+    `Unknown` (no store, ambiguous copy, fuel/cycle exhaustion —
+    admits less, never more). -/
+inductive RootRef | Param (n : Nat) | Slot (name : String) | Unknown
+  deriving DecidableEq, Repr
+
+/-- Display form for report pins. -/
+def showRoot : RootRef → String
+  | .Param n => s!"param{n}"
+  | .Slot nm => s!"slot:{nm}"
+  | .Unknown => "?"
+
+/-- A `cir.store` value operand: `%argN` (param) or `%M` (SSA). -/
+inductive StoreVal | Arg (n : Nat) | Ssa (m : Nat)
+  deriving DecidableEq, Repr
+
+/-- Parse a `%`-operand at the head of a char list. -/
+def parsePctOp : List Char → Option (StoreVal × List Char)
+  | '%' :: 'a' :: 'r' :: 'g' :: cs =>
+    let ds := cs.takeWhile (·.isDigit)
+    if ds.isEmpty then none
+    else some (.Arg (String.toNat! (String.ofList ds)), cs.drop ds.length)
+  | '%' :: cs =>
+    let ds := cs.takeWhile (·.isDigit)
+    if ds.isEmpty then none
+    else some (.Ssa (String.toNat! (String.ofList ds)), cs.drop ds.length)
+  | _ => none
+
+/-- `cir.store` operands (value, destination slot id), skipping an
+    optional `align(N)`. The destination must be a numeric SSA id;
+    stores to computed addresses are writes, never initializers. -/
+def storeOps (line : String) : Option (StoreVal × Nat) := do
+  let k ← findSubstr? line "cir.store" 0
+  let cs := (line.toList.drop (k + 9)).dropWhile (· == ' ')
+  let cs' :=
+    if isPrefixOfList "align(".toList cs then
+      (((cs.drop 6).dropWhile (· != ')')).drop 1).dropWhile (· == ' ')
+    else cs
+  let (v, rest) ← parsePctOp cs'
+  match rest.dropWhile (· == ' ') with
+  | ',' :: _ =>
+    let rest' := ((rest.dropWhile (· == ' ')).drop 1).dropWhile (· == ' ')
+    match parsePctOp rest' with
+    | some (.Ssa slot, _) => pure (v, slot)
+    | _ => none
+  | _ => none
+
+/-- Every `cir.store` with its region path, in line order:
+    (value, destination slot, path). -/
+def storeLines (lines : List String) (paths : List (List Nat)) :
+    List (StoreVal × Nat × List Nat) :=
+  (lines.zip paths).filterMap fun (ln, p) =>
+    (storeOps (stripQuotes ln)).map fun (v, s) => (v, s, p)
+
+/-- Roots whose tracked copy-set owns SSA `m` visibly at `path`
+    (exact: the visible definition must be a tracked copy — unlike
+    use-facts, resolution claims nothing on unresolvable mentions). -/
+def copyOwners (closed : List (Nat × List (List Nat × Nat)))
+    (defs : List (List Nat × Nat)) (p : List Nat) (m : Nat) : List Nat :=
+  closed.filterMap fun (r, t) =>
+    if t.any fun (rd, n) => n == m && resolveDef defs p n == some rd
+    then some r else none
+
+/-- Direct content root of a slot: the first `cir.store` to the slot
+    id (the init pattern; reassignment keeps the first init and the
+    consumer must treat later stores as writes). `%argN` → `Param`;
+    `%M` → the slot owning the visible copy (exactly one owner, else
+    `Unknown`); no store → `Unknown`. -/
+def contentRootOf (stores : List (StoreVal × Nat × List Nat))
+    (closed : List (Nat × List (List Nat × Nat)))
+    (alldefs : List (List Nat × Nat)) (nameOf : Nat → Option String)
+    (kindOf : Nat → SlotKind)
+    (slot : Nat) : RootRef :=
+  match stores.find? (fun s => s.2.1 == slot) with
+  | none => .Unknown
+  | some (.Arg n, _, _) => .Param n
+  | some (.Ssa m, _, p) =>
+    -- A `Slot` answer is an address-identity claim: both ends must be
+    -- `Ref` slots (a value copy through a `Val` slot, e.g. the
+    -- `__retval` epilogue, is not an address link).
+    match copyOwners closed alldefs p m with
+    | [r] =>
+      match nameOf r with
+      | some nm =>
+        if kindOf slot == .Ref && kindOf r == .Ref then .Slot nm
+        else .Unknown
+      | none => .Unknown
+    | _ => .Unknown
+
+/-- Transitive ultimate root (fuel-bounded; self-reference cycles and
+    fuel exhaustion report `Unknown`). -/
+def ultimateRoot (content : Nat → RootRef) (byName : List (String × Nat)) :
+    Nat → List String → Nat → RootRef
+  | 0, _, _ => .Unknown
+  | fuel + 1, vis, ssa =>
+    match content ssa with
+    | .Param n => .Param n
+    | .Unknown => .Unknown
+    | .Slot nm =>
+      if nm ∈ vis then .Unknown
+      else match byName.find? (fun b => b.1 == nm) with
+        | none => .Unknown
+        | some (_, ssa') => ultimateRoot content byName fuel (nm :: vis) ssa'
+
+/-- Content roots for every alloca, in line order:
+    (slot name, direct root, ultimate root). -/
+def contentRoots (lines : List String) :
+    List (String × RootRef × RootRef) :=
+  let paths := regionPaths lines
+  let alldefs := allSsaDefs lines paths
+  let allocs := allocaDefs lines
+  let stores := storeLines lines paths
+  let closed :=
+    closeTracked (lines.length + 1) lines paths alldefs
+      (allocs.map fun (_, ssa, _, dp) => (ssa, [(dp, ssa)]))
+  let nameOf (s : Nat) : Option String :=
+    (allocs.find? (fun a => a.2.1 == s)).map (·.1)
+  let kinds := slotKinds lines
+  let kindOf (s : Nat) : SlotKind :=
+    match allocs.find? (fun a => a.2.1 == s) with
+    | some (nm, _, _, _) =>
+      (kinds.find? (fun k => k.1 == nm)).map (·.2) |>.getD .Val
+    | none => .Val
+  let byName : List (String × Nat) :=
+    allocs.map fun (nm, ssa, _, _) => (nm, ssa)
+  let content (s : Nat) : RootRef :=
+    contentRootOf stores closed alldefs nameOf kindOf s
+  allocs.map fun (nm, ssa, _, _) =>
+    (nm, content ssa, ultimateRoot content byName (allocs.length + 1) [] ssa)
+
+/-- No tracked copy-set ambiguity: every recorded (region, id) pair
+    belongs to at most one root's set (duplicate pairs would mean one
+    copy resolves to two slots). -/
+def uniqueCopies (lines : List String) : Bool :=
+  let paths := regionPaths lines
+  let alldefs := allSsaDefs lines paths
+  let allocs := allocaDefs lines
+  let closed :=
+    closeTracked (lines.length + 1) lines paths alldefs
+      (allocs.map fun (_, ssa, _, dp) => (ssa, [(dp, ssa)]))
+  let pairs := closed.flatMap (·.2)
+  pairs.length == pairs.eraseDups.length
+
+/-- Zero fuel reports `Unknown` (termination is by construction). -/
+theorem ultimateRoot_zero (content : Nat → RootRef)
+    (byName : List (String × Nat)) (vis : List String) (ssa : Nat) :
+    ultimateRoot content byName 0 vis ssa = .Unknown := by
+  rfl
+
+/-- A direct `Param` answer is fuel-independent (the chain ends here). -/
+theorem ultimateRoot_param_stable (content : Nat → RootRef)
+    (byName : List (String × Nat)) (fuel : Nat) (vis : List String)
+    (ssa n : Nat) (h : content ssa = .Param n) :
+    ultimateRoot content byName (fuel + 1) vis ssa = .Param n := by
+  unfold ultimateRoot
+  simp [h]
+
+/-- A direct `Unknown` answer is fuel-independent (no claim to grow). -/
+theorem ultimateRoot_unknown_stable (content : Nat → RootRef)
+    (byName : List (String × Nat)) (fuel : Nat) (vis : List String)
+    (ssa : Nat) (h : content ssa = .Unknown) :
+    ultimateRoot content byName (fuel + 1) vis ssa = .Unknown := by
+  unfold ultimateRoot
+  simp [h]
+
