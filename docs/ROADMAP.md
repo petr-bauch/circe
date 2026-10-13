@@ -56,6 +56,14 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   spike — DONE (2026-10-12, F2 report-only: disjunctive post
   proved natively, MoSeL deferred, admission blocked on
   triple-output/scalar-store model gaps).
+- G-track (multi-output `Func`): G1 pair carrier — DONE
+  (model-only: `CExpr.pair` building `structVal "IPair"`
+  with `Eval`/`Mem` arms + per-op lemmas mirroring `pmk`;
+  fixed 2×i32 by the monomorphization precedent, no
+  `validate`/`Emit`/golden churn). Next: G2 restrict writer-pair
+  admission (first consumer — `alias_cond` is NOT one: no pure
+  `(p,q,c)→(p′,q′)` is sound for ordered writers under unknown
+  aliasing; it needs the G3 framing track).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,

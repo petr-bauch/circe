@@ -774,6 +774,13 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .pair x y, ρ, m, π =>
+    match memEvalExpr x ρ m π, memEvalExpr y ρ m π with
+    | .ok (.i32 xv), .ok (.i32 yv) =>
+      .ok (.structVal "IPair" [("a", xv), ("b", yv)])
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
 
 /-- Pure-expression agreement for closed shapes: `lit`/`var` hold by
     definition; binary operators agree once their discriminants are

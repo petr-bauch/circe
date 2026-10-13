@@ -342,6 +342,7 @@ theorem fieldLookup_miss (k f : String) (v : BitVec 32)
     - `fget o f` projects field `f` from `structVal` `o` (missing
       field / non-struct is `AssertFail`);
     - `pmk x y` builds the S2 `Point` `structVal` from two `i32`s;
+    - `pair x y` builds the G1 `IPair` `structVal` from two `i32`s;
     mismatched types are `AssertFail`; unbound variables are `Uninit`. -/
 def evalExpr : CExpr → Env → Result Value
   | .lit l, _ => .ok (litVal l)
@@ -662,6 +663,13 @@ def evalExpr : CExpr → Env → Result Value
     match evalExpr x ρ, evalExpr y ρ with
     | .ok (.i32 xv), .ok (.i32 yv) =>
       .ok (.structVal "Point" [("x", xv), ("y", yv)])
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .pair x y, ρ =>
+    match evalExpr x ρ, evalExpr y ρ with
+    | .ok (.i32 xv), .ok (.i32 yv) =>
+      .ok (.structVal "IPair" [("a", xv), ("b", yv)])
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -1479,5 +1487,26 @@ theorem evalExpr_pmk_mismatch (ρ : Env) :
 theorem evalExpr_pmk_err_l (x y : CExpr) (ρ : Env) (e : Panic)
     (hx : evalExpr x ρ = .error e) :
     evalExpr (.pmk x y) ρ = .error e := by
+  simp [evalExpr, hx]
+
+/-- `pair` on two `i32`s builds the `IPair` struct value. -/
+theorem evalExpr_pair_ok (x y : CExpr) (ρ : Env)
+    (xv yv : BitVec 32)
+    (hx : evalExpr x ρ = .ok (.i32 xv))
+    (hy : evalExpr y ρ = .ok (.i32 yv)) :
+    evalExpr (.pair x y) ρ =
+      .ok (.structVal "IPair" [("a", xv), ("b", yv)]) := by
+  simp [evalExpr, hx, hy]
+
+/-- `pair` type mismatches are rejected. -/
+theorem evalExpr_pair_mismatch (ρ : Env) :
+    evalExpr (.pair (.lit (.i32 0)) (.lit (.b true))) ρ =
+      .error .AssertFail := by
+  simp [evalExpr, litVal]
+
+/-- `pair` propagates left errors. -/
+theorem evalExpr_pair_err_l (x y : CExpr) (ρ : Env) (e : Panic)
+    (hx : evalExpr x ρ = .error e) :
+    evalExpr (.pair x y) ρ = .error e := by
   simp [evalExpr, hx]
 

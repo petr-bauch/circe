@@ -111,7 +111,10 @@ inductive CLit : Type
     `fget o f` is struct field projection (`cir.get_member` + `cir.load`
     fused: `o` must be a `structVal`, `f` one of its fields); `pmk x y`
     builds the S2 `Point` value from two `i32` field exprs (field-wise
-    update functionalized: `q.x = …; q.y = …; return q`).
+    update functionalized: `q.x = …; q.y = …; return q`); `pair x y`
+    builds the G1 two-output `IPair` value from two `i32` exprs
+    (multi-writer functionalization: `*p = …; *q = …` returns both
+    updated words; model-only until a G2 consumer admits it).
     `boxNew e` is `new Box{…}` (`cir.call @_Znwm` + bitcast + field
     store fused: `e` must be an `i32`); `boxGet b` is `p->x`
     (`cir.get_member` + `cir.load` fused: `b` must be a `boxVal`;
@@ -166,6 +169,7 @@ inductive CExpr : Type
   | boxGet : String → CExpr
   | fget : String → String → CExpr
   | pmk : CExpr → CExpr → CExpr
+  | pair : CExpr → CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and
