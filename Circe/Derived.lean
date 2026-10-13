@@ -61,6 +61,21 @@ theorem oracleNoalias_reborrow (x : BitVec 32) :
             (.return_ (.add (.var "t") (.lit (.i32 2))))⟩ [.i32 x] := by
   exact ⟨_, _, _, bindMemArgs_reborrow x, layoutNoAlias_nil⟩
 
+/-- `wr_pair` binding pins nothing (two disjoint writers
+    functionalized to values; the disjointness license — the
+    in-order dataflow pin over different param cells plus the
+    `noalias` verdict — is gate-side). -/
+theorem oracleNoalias_wrPair (p q : BitVec 32) :
+    oracleNoalias
+      ⟨"wr_pair", [{ name := "p", ty := .i 32, role := .mutBorrow 0 },
+        { name := "q", ty := .i 32, role := .mutBorrow 0 }],
+       .struct "IPair" [.i 32, .i 32],
+       .seq (.let_ "a" (.i 32) (.add (.var "p") (.lit (.i32 1))))
+       (.seq (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+             (.return_ (.pair (.var "a") (.var "b"))))⟩
+      [.i32 p, .i32 q] := by
+  exact ⟨_, _, _, bindMemArgs_wrPair p q, layoutNoAlias_nil⟩
+
 /-- `choose` binding pins nothing (both borrows functionalized to
     values; selection is pure). -/
 theorem bindMemArgs_choose (b : Bool) (x y : BitVec 32) :

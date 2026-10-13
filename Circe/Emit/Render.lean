@@ -62,6 +62,22 @@ def emitReborrowText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok t => checkedAddI32 t 2\n"
 
+/-- Render the `wr_pair` forward definition (`wr_pair_fwd`), with the
+    caller-side rewrite in the doc comment: two disjoint checked adds
+    (`*p += 1`, `*q += 2`), fail-fast first-add-first. The pair is
+    tag-erased to `(BitVec 32 × BitVec 32)` (the `IPair` structVal
+    with tags dropped, like every rendered forward). -/
+def emitWrPairText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`*p += 1`, `*q += 2` over two disjoint cells, functionalized).\n"
+  ++ s!"    Caller rewrite: `(p, q) ← {name}_fwd p q`, writing both words back. -/\n"
+  ++ s!"def {name}_fwd (p q : BitVec 32) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  match checkedAddI32 p 1, checkedAddI32 q 2 with\n"
+  ++ "  | .ok a, .ok b => .ok (a, b)\n"
+  ++ "  | .error e, _ => .error e\n"
+  ++ "  | _, .error e => .error e\n"
+
 /-- Render the `add64` forward definition (`add64_fwd`, S3b). -/
 def emitAdd64Text (name : String) : String :=
   emitHeader

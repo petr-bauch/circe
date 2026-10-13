@@ -88,6 +88,29 @@ def emitReborrowSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `wr_pair` shape (G2). The mirror is the
+    independent checked-add pair; edges carry ground truth (small
+    increments, `nsw` overflow on either add, `INT32_MIN`, `-1`). -/
+def emitWrPairSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C signature: `void {name}(int32_t *__restrict p, int32_t *__restrict q)` (`*p += 1`, `*q += 2`).\n"
+  ++ s!"    Base body reference: independent checked adds (cf. emitted `{name}_fwd`, `wrPairFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (p q : BitVec 32) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  match checkedAddI32 p 1, checkedAddI32 q 2 with\n"
+  ++ "  | .ok a, .ok b => .ok (a, b)\n"
+  ++ "  | .error e, _ => .error e\n"
+  ++ "  | _, .error e => .error e\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, small increments, `nsw` overflow on either add, `INT32_MIN`, `-1`. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32 × Result (BitVec 32 × BitVec 32)) :=\n"
+  ++ "  [(0, 0, .ok (1, 2)), (10, 20, .ok (11, 22)), (0xFFFFFFFF, 0, .ok (0, 2)), (0, 0xFFFFFFFF, .ok (1, 1)), (0x7FFFFFFF, 0, .error .Overflow), (0, 0x7FFFFFFF, .error .Overflow), (0x80000000, 0x80000000, .ok (0x80000001, 0x80000002))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1)).pretty == (repr t.2.2).pretty\n"
+
 /-- Spec stub for the 64-bit `add64` shape (S3b). -/
 def emitAdd64SpecText (name : String) : String :=
   emitSpecHeader

@@ -825,6 +825,16 @@ theorem memEvalExpr_add_var_lit (ρ : Env) (m : Mem) (π : Layout)
       (checkedAddI32 v k).map .i32 := by
   simp [memEvalExpr, litVal, hx]
 
+/-- `pair` on two `i32`s builds the `IPair` struct value (G2: the
+    writer-pair outputs; mirror of `evalExpr_pair_ok`). -/
+theorem memEvalExpr_pair_ok (x y : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout) (xv yv : BitVec 32)
+    (hx : memEvalExpr x ρ m π = .ok (.i32 xv))
+    (hy : memEvalExpr y ρ m π = .ok (.i32 yv)) :
+    memEvalExpr (.pair x y) ρ m π =
+      .ok (.structVal "IPair" [("a", xv), ("b", yv)]) := by
+  simp [memEvalExpr, hx, hy]
+
 /-- `idx` agreement under consistency: the layout pin resolves, the tag
     matches, the block is live, and the memory word equals the
     value-level element — so the cross-check succeeds and both sides

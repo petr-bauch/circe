@@ -13,6 +13,7 @@ import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.Reborrow
+import Circe.Emit.WrPair
 import Circe.Emit.VecCompose
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
@@ -907,7 +908,8 @@ def isCNoPtrShape (raw : RawFunc) : Bool :=
     singleton footprint), or two `noalias` params in an admitted
     two-pointer shape (`choose`: functionalized scalars, empty
     footprint; `sum_two`: two reader blocks, disjoint by construction
-    under the N2a discipline).
+    under the N2a discipline; `wr_pair`: two functionalized scalar
+    writers, empty footprint under the `noalias` verdict).
     Everything else — including all C++ — is `false` (out of M3b scope).
     `Oracle.lookupOracle` / `verdictAdmits` are unchanged; `validate`
     behavior is unchanged (this is a parallel check, not a gate). -/
@@ -920,7 +922,7 @@ def derivedNoalias (raw : RawFunc) : Bool :=
       isFindEqShape raw)
   | [p1, p2] =>
     p1.noalias && p2.noalias &&
-      (isChooseShape raw || isSumTwoShape raw)
+      (isChooseShape raw || isSumTwoShape raw || isWrPairShape raw)
   | _ => false
 
 /-- `derivedNoalias` never claims a param without its `noalias` attr:
@@ -950,7 +952,7 @@ theorem derivedNoalias_all_noalias (raw : RawFunc)
       cases rest2 with
       | nil =>
         have hD : (p.noalias && p2.noalias &&
-            (isChooseShape raw || isSumTwoShape raw)) = true := by
+            (isChooseShape raw || isSumTwoShape raw || isWrPairShape raw)) = true := by
           have hT : derivedNoalias raw = true := h
           unfold derivedNoalias at hT
           rw [hps] at hT
@@ -979,7 +981,7 @@ theorem derivedNoalias_admitted_c (raw : RawFunc)
     (h : derivedNoalias raw = true) :
     (isCNoPtrShape raw || isIncrShape raw || isSumShape raw ||
       isSumCallerShape raw || isFindEqShape raw || isChooseShape raw ||
-      isSumTwoShape raw) = true := by
+      isSumTwoShape raw || isWrPairShape raw) = true := by
   cases hps : oracleParams raw with
   | nil =>
     have hD : isCNoPtrShape raw = true := by
@@ -1015,16 +1017,20 @@ theorem derivedNoalias_admitted_c (raw : RawFunc)
       cases rest2 with
       | nil =>
         have hD : (p.noalias && p2.noalias &&
-            (isChooseShape raw || isSumTwoShape raw)) = true := by
+            (isChooseShape raw || isSumTwoShape raw || isWrPairShape raw)) = true := by
           have hT : derivedNoalias raw = true := h
           unfold derivedNoalias at hT
           rw [hps] at hT
           exact hT
-        have hc : (isChooseShape raw || isSumTwoShape raw) = true :=
+        have hc : (isChooseShape raw || isSumTwoShape raw || isWrPairShape raw) = true :=
           (Bool.and_eq_true_iff.mp hD).2
         rw [Bool.or_eq_true] at hc
         cases hc with
-        | inl h => simp [h]
+        | inl h =>
+          rw [Bool.or_eq_true] at h
+          cases h with
+          | inl h => simp [h]
+          | inr h => simp [h]
         | inr h => simp [h]
       | cons _ _ =>
         have hD : (false : Bool) = true := by
@@ -1602,9 +1608,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"alias-reject: function '{raw.name}': oracle {why}: live pointer params require an explicit `noalias` verdict (see docs/OWNERSHIP.md)"
       else if 2 ≤ (oracleParams raw).length && !isChooseShape raw &&
           !isVecGrowShape raw && !isXorNShape raw &&
-          !isSumTwoShape raw then
+          !isSumTwoShape raw && !isWrPairShape raw then
         reject raw.name .aliasReject
-          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), and the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline) are admitted (see docs/SUBSET.md rules 2, 6)"
+          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline), and the exact `wr_pair` shape (two `noalias` writers over two disjoint cells with the in-order dataflow pin, G2 writer-pair discipline) are admitted (see docs/SUBSET.md rules 2, 6)"
       else if isAddShape raw then
         .ok { addFunc with name := raw.name }
       else if isIncrShape raw then
@@ -1615,6 +1621,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { sumFunc with name := raw.name }
       else if isSumTwoShape raw then
         .ok { sumTwoFunc with name := raw.name }
+      else if isWrPairShape raw then
+        .ok { wrPairFunc with name := raw.name }
       else if isVecShape raw then
         .ok { vecFunc with name := raw.name }
       else if isVec2Shape raw then

@@ -2102,6 +2102,150 @@ def isReborrowShape (raw : RawFunc) : Bool :=
   hasSequentialWriterRanges raw.text &&
   reborrowSameAddress raw.text
 
+/-! ## G2-admission: disjoint writer-pair recognition (`wr_pair`) -/
+
+/-- SSA operands in order: every `%N` token with a digit run and a
+    non-alphanumeric boundary (`%5,` and `%6` count; `%arg0`,
+    `#cir.int<1>`, `loc(#loc22)` never do). Tokens are
+    space-separated, so no recursion is needed. -/
+def tokSSA (tok : String) : Option Nat :=
+  match tok.toList with
+  | '%' :: d :: ds =>
+    if d.isDigit then
+      let digs := d :: ds.takeWhile (·.isDigit)
+      let rest := ds.dropWhile (·.isDigit)
+      if rest.all (fun c => !c.isDigit && !c.isAlpha) then
+        some (String.toNat! (String.ofList digs))
+      else none
+    else none
+  | _ => none
+
+/-- Operand list of a line (definition prefix dropped, so the birth
+    is never a use). -/
+def ssaOperands (line : String) : List Nat :=
+  ((defRest line).splitOn " ").filterMap tokSSA
+
+/-- Load chain to an alloca (fuel-bounded, like `ultimateRoot`):
+    `v` resolves when its definition is `cir.alloca`, otherwise a
+    single-operand `cir.load` hops to its source. Multi-operand
+    definitions (adds, consts) and loads of non-allocas resolve to
+    nothing — elt reads cannot be addresses and addresses cannot be
+    values. The corpus needs two hops (elt-load → addr-load →
+    alloca); the store dest needs one (reloaded alloca). -/
+def chaseLoadAlloca : List String → Nat → Nat → Option Nat
+  | _, _, 0 => none
+  | ls, v, fuel + 1 =>
+    match ls.find? (fun ln => ssaDefOn ln == some v) with
+    | none => none
+    | some defLn =>
+      if containsSubstr (defRest defLn) "cir.alloca" then some v
+      else
+        match ssaOperands defLn with
+        | [src] => chaseLoadAlloca ls src fuel
+        | _ => none
+
+/-- The cell a writer store lands in: the dest operand chased to its
+    alloca (the corpus reloads the param alloca; a direct alloca
+    dest resolves too). -/
+def storeCellAlloca (ls : List String) (storeLine : String) : Option Nat :=
+  match ssaOperands storeLine with
+  | [_, dest] => chaseLoadAlloca ls dest 8
+  | _ => none
+
+/-- Which `%argK` initializes an alloca (the `cir.store %argK, %M`
+    init pattern; writer stores carry no `%arg`). -/
+def allocaArgIdx (ls : List String) (m : Nat) : Option Nat :=
+  match ls.find? (fun ln =>
+      containsSubstr ln "cir.store %arg" && mentionsSSA (defRest ln) m) with
+  | some ln =>
+    match ln.splitOn "%arg" with
+    | [_, rest] =>
+      let digs := rest.toList.takeWhile (·.isDigit)
+      if digs.isEmpty then none
+      else some (String.toNat! (String.ofList digs))
+    | _ => none
+  | none => none
+
+/-- Full dataflow pin for the writer pair (what op counts alone
+    cannot say): the `1`-add feeds the first store into `%arg0`'s
+    cell from that same cell, and the `2`-add feeds the second store
+    into `%arg1`'s cell from that same cell. This rejects the three
+    near-miss shapes with identical op counts: same-cell writers
+    (`*p += 1; *p += 2` — cells equal), swapped writers
+    (`*q += 1; *p += 2` — arg order flipped), and cross reads
+    (`*q = *p + 1` — elt source is the other cell). -/
+def wrPairDataflow (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  let const1 := ls.filter (fun ln =>
+    containsSubstr ln "cir.const #cir.int<1> : !s32i")
+  let const2 := ls.filter (fun ln =>
+    containsSubstr ln "cir.const #cir.int<2> : !s32i")
+  let stores := ls.filter (fun ln => containsSubstr ln "cir.store align(4)")
+  let adds := ls.filter (fun ln => containsSubstr ln "cir.add nsw")
+  match const1, const2, stores, adds with
+  | [k1], [k2], [s1, s2], [a1, a2] =>
+    match ssaDefOn k1, ssaDefOn k2, ssaDefOn a1, ssaDefOn a2 with
+    | some c1, some c2, some d1, some d2 =>
+      match ssaOperands a1, ssaOperands a2,
+          ssaOperands s1, ssaOperands s2 with
+      | [e1, k1'], [e2, k2'], [v1, _], [v2, _] =>
+        k1' == c1 && k2' == c2 && v1 == d1 && v2 == d2 &&
+        match storeCellAlloca ls s1, storeCellAlloca ls s2 with
+        | some m1, some m2 =>
+          m1 != m2 && allocaArgIdx ls m1 == some 0 &&
+          allocaArgIdx ls m2 == some 1 &&
+          chaseLoadAlloca ls e1 8 == some m1 &&
+          chaseLoadAlloca ls e2 8 == some m2
+        | _, _ => false
+      | _, _, _, _ => false
+    | _, _, _, _ => false
+  | _, _, _, _ => false
+
+/-- Structural half of writer-pair recognition: `void`, two
+    non-single-reference `i32` pointer params (C `__restrict__`, never
+    the C++ triple), two allocas, four stores, six loads, exactly the
+    `1`/`2` consts and two `nsw` adds, no calls / comparisons / loops /
+    branches / scopes / cleanup / traps / globals / strides / members. -/
+def structuralWrPair (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.alloca" == 2 &&
+  opCount raw.text "cir.store" == 4 &&
+  opCount raw.text "cir.load" == 6 &&
+  opCount raw.text "cir.const" == 2 &&
+  opCount raw.text "cir.add nsw" == 2 &&
+  arithOpCount raw.text == 2 &&
+  opCount raw.text "cir.call @" == 0 &&
+  opCount raw.text "cir.cmp" == 0 &&
+  opCount raw.text "cir.for" == 0 &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "get_global" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.while" &&
+  !containsSubstr raw.text "cir.scope" &&
+  noBreakContinueSwitch raw.text &&
+  !hasNonHeapCall raw.text &&
+  (match raw.params with
+   | [p, q] =>
+    !p.singleRef && !q.singleRef &&
+    isPtrType p.ctype && isPtrType q.ctype &&
+    (match ptrInner p.ctype, ptrInner q.ctype with
+     | some i, some j => isI32 i && isI32 j
+     | _, _ => false)
+   | _ => false)
+
+/-- Exact `wr_pair` admission shape (G2): the structural skeleton plus
+    the dataflow pin (each add feeds its in-order store into its
+    in-order param cell from that same cell). Disjoint writes commute,
+    so no L2 sequencing license is needed (unlike F1); the `noalias`
+    verdict gate below still demands the explicit verdict — attrs are
+    claims, the verdict confirms. -/
+def isWrPairShape (raw : RawFunc) : Bool :=
+  structuralWrPair raw && wrPairDataflow raw.text
+
 /-- Soundness of the L2 admission predicate: `true` yields the three
     recorded locals with the first writer's range ending strictly
     before the second writer's begins. Admission will consume exactly

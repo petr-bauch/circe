@@ -762,6 +762,25 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     root pointers keep dedicated rejections. Verdict honestly
     `unknown` (single-ref, no oracle facts — the M2a triple
     precedent).
+28k. Disjoint writer-pair admission (G2, first multi-output):
+    `wr_pair` (`int32_t *__restrict__` × 2 in, `IPair` out,
+    `*p += 1` and `*q += 2`, functionalized to the updated pair —
+    the `incr` precedent doubled with the G1 `pair` carrier).
+    Admission is one fused Func: two mutBorrow `i32` params,
+    `struct "IPair"` return, `p + 1` and `q + 2` let-bound then
+    `pair` return. Exact shape: 2 allocas / 6 loads / 4 stores /
+    2 consts / 2 `nsw` adds, no calls / comparisons / loops /
+    branches / scopes, plus the in-order dataflow pin (each add
+    feeds its in-order store into its in-order param cell from
+    that same cell — rejects same-cell, swapped, and cross-read
+    shapes with identical op counts). Disjoint writes commute, so
+    no L2 sequencing license is needed (unlike 28j); the license
+    is the dataflow pin plus the explicit `noalias` verdict (attrs
+    are claims, the verdict confirms — inconclusive/`mayAlias`
+    verdicts, missing-`restrict`, wrapping adds, and wrong consts
+    keep dedicated rejections). Aliased callers are caller-UB
+    under `noalias`: documented, never fuzzed (unlike the
+    value-sound reader aliasing of the two-reader rule).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

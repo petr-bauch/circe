@@ -204,6 +204,10 @@ def main : IO Unit := do
   let c ← checkScopeFile "tests/cir/sum_two.cir"
     [("sum_two", [("a", 0), ("b", 0), ("n", 0), ("__retval", 0), ("s", 0), ("i", 1)], 1)]
   passed := passed + c
+  -- Writer-pair admission: flat two-writer body (both cells depth 0).
+  let c ← checkScopeFile "tests/cir/wr_pair.cir"
+    [("wr_pair", [("p", 0), ("q", 0)], 0)]
+  passed := passed + c
   -- Checked read: entry + composers are flat (all depth 0; the
   -- `cir.scope` region in `_M_range_check` nests no allocas).
   let c ← checkScopeFile "tests/cir/vec_at_one.cir"
@@ -270,6 +274,20 @@ def main : IO Unit := do
      ("s", "val", "?", "?"), ("i", "val", "?", "?")]
   passed := passed + c
   let c ← checkUnique "tests/cir/sum_two.cir" "sum_two"
+  passed := passed + c
+  -- L2 live ranges: the two writers overlap (`q` spans lines 5–17
+  -- across `p` — no sequencing license, unlike F1; disjointness
+  -- comes from the `noalias` verdict instead).
+  let c ← checkScopeUses "tests/cir/wr_pair.cir"
+    [("wr_pair", [("p", 4, 11), ("q", 5, 17)])]
+  passed := passed + c
+  -- F0 content roots: the writers name different addresses (`p` →
+  -- `param0`, `q` → `param1`) — the dataflow pin's address half,
+  -- made textual.
+  let c ← checkSlotRoots "tests/cir/wr_pair.cir" "wr_pair"
+    [("p", "ref", "param0", "param0"), ("q", "ref", "param1", "param1")]
+  passed := passed + c
+  let c ← checkUnique "tests/cir/wr_pair.cir" "wr_pair"
   passed := passed + c
   -- Unit negatives: truncated input never closes, malformed `cir.alloca`
   -- lines never parse — both report `balanced = false`, never silent.

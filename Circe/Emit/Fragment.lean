@@ -70,6 +70,7 @@ inductive FragKind : Type
   | sha256Compress
   | incr
   | reborrow
+  | wrPair
   | choose
   | sum
   | sumTwo

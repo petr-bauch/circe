@@ -10,6 +10,7 @@
 # rejected downstream of the oracle gate (`cir.get_member`), also `unknown`.
 add unknown
 incr noalias
+wr_pair noalias
 choose noalias
 sum_array noalias
 translate unknown

@@ -90,6 +90,17 @@ theorem bindMemArgs_reborrow (x : BitVec 32) :
       some ([("x", .i32 x)], emptyMem, []) := by
   rfl
 
+/-- `wr_pair` binding pins nothing (two disjoint writers
+    functionalized to values; the disjointness license — the
+    in-order dataflow pin over different param cells plus the
+    `noalias` verdict — is gate-side). -/
+theorem bindMemArgs_wrPair (p q : BitVec 32) :
+    bindMemArgs [{ name := "p", ty := .i 32, role := .mutBorrow 0 },
+      { name := "q", ty := .i 32, role := .mutBorrow 0 }]
+      [.i32 p, .i32 q] emptyMem =
+      some ([("p", .i32 p), ("q", .i32 q)], emptyMem, []) := by
+  rfl
+
 /-! ## Statement agreement combinators (straight-line code) -/
 
 /-- `skip` agrees with memory untouched. -/

@@ -850,3 +850,52 @@ rejections + `incr` shape-exactness) + reworked `ReborrowGate`
 driver roster with an `f1-reborrow` content suite; spec stubs grow
 113 → 114; `GoldenAliasProbe` gains its third admit control.
 - Acceptance: 630 jobs TEST-OK, CHECK-OK.
+
+### N12. Disjoint writer-pair admission (G2, first multi-output) — DONE (2026-10-13)
+
+Two disjoint mutable writers through `__restrict__` pointers:
+`wr_pair` (`*p += 1`, `*q += 2`), functionalized to the updated
+pair — the `incr` precedent doubled with the G1 `pair` carrier
+(`structVal "IPair"`, tag-erased to `BitVec 32 × BitVec 32` in the
+rendering). Disjoint writes commute, so no L2 sequencing license is
+needed (unlike N11); the license is gate-side and twofold: the
+in-order dataflow pin (`wrPairDataflow` — each add feeds its
+in-order store into its in-order param cell from that same cell,
+chased through the reload loads with the fuel-bounded
+`chaseLoadAlloca`; rejects the same-cell, swapped, and cross-read
+near-misses with identical op counts) plus the explicit `noalias`
+verdict (attrs are claims, the verdict confirms —
+inconclusive/`mayAlias` verdicts keep dedicated `alias-reject`
+codes). Exact shape: `void`, two non-single-ref `i32` pointer
+params, 2 allocas / 6 loads / 4 stores / 2 consts / 2 `nsw` adds,
+no calls / comparisons / loops / branches / scopes
+(`isWrPairShape`; the pair-check exemption and the third
+`derivedNoalias` two-pointer arm). New `Circe/Emit/WrPair.lean`:
+`wrPairFunc`, `wrPairFwd` with ok/err1/err2 bridges (pair matches
+reduce definitionally after both discriminants rewrite — no
+`dsimp`), `evalFuncFuel_wrPair` (+ `emit_correct` + err/ok
+corollaries) on the two-let/return skeleton, `isWrPairBody`
+(two-level `matchFrag` arm from the start). New
+`memEvalExpr_pair_ok` (mirror of `evalExpr_pair_ok`); new
+`Circe/Transfer/Slice.lean` `memEvalFuncFuel_wrPair` (Mem threaded
+untouched; Mem-side `let_pure` concludes with `::`-cons envs, so
+post-let facts use the literal cons form) + `memTransfer_wrPair`;
+`bindMemArgs_wrPair` / `oracleNoalias_wrPair` mirror `incr`
+(empty footprint — the aliased-caller case is caller-UB under
+`noalias`, so no N2a-style alias-soundness leg exists).
+Gate/match/render wiring (`isWrPairShape` admission after
+`sum_two`, `FragKind.wrPair`, `matchFrag_wrPair`,
+`emitWrPairText`/`emitWrPairSpecText` with verified ground-truth
+spec edges); pipeline output is byte-identical to the checked-in
+`tests/golden/WrPair.lean` (+ `_Spec.lean`, `spec_check=true`).
+`DiffWrPair` (eval-vs-forward on every trial, 7 edges + 1000 fuzz
+trials vs the corpus-linked native driver observing both cells,
+Lean-Lean only on `nsw` overflow, tamper-checked: `+5` perturbation
+fails exactly one job) + `GoldenWrPair` (pipeline-vs-golden under
+`noalias` + 5 corpus-transformed rejections + `incr`
+shape-exactness) + `WrPairGate` (6 corpus predicate rows + 3
+adversarial dataflow rows + admission + message routing) +
+`ScopeReport` rows (flat locals, overlapping L2 ranges, different
+F0 roots) + `DerivedNoalias` agreement ride the driver roster with
+a `g2-wrpair` content suite; spec stubs grow 114 → 115.
+- Acceptance: 639 jobs TEST-OK, CHECK-OK.

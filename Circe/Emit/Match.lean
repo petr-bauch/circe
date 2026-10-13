@@ -31,6 +31,7 @@ import Circe.Emit.ArraySort
 import Circe.Emit.ArraySort8
 import Circe.Emit.Optional
 import Circe.Emit.Reborrow
+import Circe.Emit.WrPair
 import Circe.Emit.Span
 import Circe.Emit.View
 import Circe.Emit.VecRead
@@ -147,6 +148,9 @@ def matchFrag : Func → Option FragKind
   | ⟨_, [⟨"x", .i 32, .mutBorrow _⟩], _,
       .seq (.let_ "t" _ e1) e2⟩ =>
     if isReborrowBody e1 e2 then some .reborrow else none
+  | ⟨_, [⟨"p", .i 32, .mutBorrow _⟩, ⟨"q", .i 32, .mutBorrow _⟩], _,
+      .seq (.let_ "a" _ e1) rest⟩ =>
+    if isWrPairBody e1 rest then some .wrPair else none
   | ⟨_, [⟨"b", .bool, .owned⟩, ⟨"x", .i 32, .mutBorrow r1⟩,
          ⟨"y", .i 32, .mutBorrow r2⟩], _,
       .if_ (.var "b") (.return_ (.var "x")) (.return_ (.var "y"))⟩ =>
@@ -1218,6 +1222,7 @@ theorem matchFrag_useTadd32 : matchFrag useTadd32Func = some .useTadd32 := rfl
 theorem matchFrag_useTadd64 : matchFrag useTadd64Func = some .useTadd64 := rfl
 theorem matchFrag_incr : matchFrag incrFunc = some .incr := rfl
 theorem matchFrag_reborrow : matchFrag reborrowFunc = some .reborrow := rfl
+theorem matchFrag_wrPair : matchFrag wrPairFunc = some .wrPair := rfl
 theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
 theorem matchFrag_neg : matchFrag negFunc = some .neg := rfl

@@ -60,10 +60,11 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   (model-only: `CExpr.pair` building `structVal "IPair"`
   with `Eval`/`Mem` arms + per-op lemmas mirroring `pmk`;
   fixed 2×i32 by the monomorphization precedent, no
-  `validate`/`Emit`/golden churn). Next: G2 restrict writer-pair
-  admission (first consumer — `alias_cond` is NOT one: no pure
-  `(p,q,c)→(p′,q′)` is sound for ordered writers under unknown
-  aliasing; it needs the G3 framing track).
+  `validate`/`Emit`/golden churn). G2 restrict writer-pair
+  admission — DONE (2026-10-13, N12: `wr_pair`, first consumer;
+  `alias_cond` is NOT one — no pure `(p,q,c)→(p′,q′)` is sound
+  for ordered writers under unknown aliasing; it needs the G3
+  framing track — see `DELIVERED.md`).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,
