@@ -1615,35 +1615,39 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
     match bindMemArgs ps vs m with
     | none => none
     | some (ρ, m', π) =>
-      match v with
-      | .arr32 l =>
+      match p.role, v with
+      | .pinnedCell, .i32 x =>
+        let (m'', a) := memAllocData m' [x]
+        some (((p.name, .i32 x) :: ρ), m'', (p.name, a, a) :: π)
+      | .pinnedCell, _ => none
+      | _, .arr32 l =>
         let (m'', a) := memAllocData m' l
         some (((p.name, v) :: ρ), m'', (p.name, a, a) :: π)
-      | .vecVal b =>
+      | _, .vecVal b =>
         let (m'', a) := memAllocData m' b.val
         some (((p.name, v) :: ρ),
           ⟨m''.next, (a, ⟨a, !b.freed, b.val⟩) :: m''.blocks, m''.blocks64⟩,
           (p.name, a, a) :: π)
-      | .vecVal64 b =>
+      | _, .vecVal64 b =>
         let (m'', a) := memAllocData64 m' b.val
         some (((p.name, v) :: ρ),
           ⟨m''.next, m''.blocks,
             (a, ⟨a, !b.freed, b.val⟩) :: m''.blocks64⟩,
           (p.name, a, a) :: π)
-      | .optVal v =>
+      | _, .optVal v =>
         let words : List (BitVec 32) :=
           match v with
           | some x => [x, 1]
           | none => [0, 0]
         let (m'', a) := memAllocData m' words
         some (((p.name, .optVal v) :: ρ), m'', (p.name, a, a) :: π)
-      | .spanVal l =>
+      | _, .spanVal l =>
         -- The reified view plus the 32-bit extent word up front
         -- (the `{ptr, extent}` object model: word 0 is the extent,
         -- words `1+i` are the viewed elements; N4d-iii).
         let (m'', a) := memAllocData m' ((BitVec.ofNat 32 l.length) :: l)
         some (((p.name, .spanVal l) :: ρ), m'', (p.name, a, a) :: π)
-      | .viewVal l =>
+      | _, .viewVal l =>
         -- The reified bytes plus the 32-bit length word up front
         -- (one byte per word cell, zero-extended — the word-level
         -- abstraction, matching `memEvalExpr_viewAt_hit`; N7a).
@@ -1651,13 +1655,13 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
           ((BitVec.ofNat 32 l.length) ::
             l.map (fun x => BitVec.ofNat 32 x.toNat))
         some (((p.name, .viewVal l) :: ρ), m'', (p.name, a, a) :: π)
-      | .stdVecVal l =>
+      | _, .stdVecVal l =>
         -- The reified elements plus the 32-bit length word up front
         -- (the heap-triple snapshot model: word 0 is the length,
         -- words `1+i` are the elements; N4d-iv-a, reads only).
         let (m'', a) := memAllocData m' ((BitVec.ofNat 32 l.length) :: l)
         some (((p.name, .stdVecVal l) :: ρ), m'', (p.name, a, a) :: π)
-      | .stdVecOwned b len cap =>
+      | _, .stdVecOwned b len cap =>
         -- The owned triple pins the two-word header plus the storage
         -- words (word 0 is the length, word 1 the capacity, words
         -- `2+i` the elements; N4d-iv-b1, growth leaves). Lifting a
@@ -1668,7 +1672,7 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
           ⟨m''.next, (a, ⟨a, !b.freed, (BitVec.ofNat 32 len) ::
             (BitVec.ofNat 32 cap) :: b.val⟩) :: m''.blocks, m''.blocks64⟩,
           (p.name, a, a) :: π)
-      | _ => some (((p.name, v) :: ρ), m', π)
+      | _, _ => some (((p.name, v) :: ρ), m', π)
   | _, _, _ => none
 
 /-- Whole-function memory semantics at explicit fuel (mirrors

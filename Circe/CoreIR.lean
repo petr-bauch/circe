@@ -19,11 +19,16 @@ inductive CType : Type
 
 /-- Ownership role of a function parameter or return. `mutBorrow` is a
     `T *__restrict` param unique for its region; `sharedBorrow` is a
-    `const T *` with a length param (pure copy semantics). -/
+    `const T *` with a length param (pure copy semantics); `pinnedCell`
+    (G3/S2) is a `T *` whose single word the callee may store through:
+    opt-in pinning allocates a live 1-word cell holding the value and
+    pins address + tag in the `Layout` (the S1 `mstore` target). Only
+    `.i32` values pin; anything else is `none` (loud at call). -/
 inductive BorrowRole : Type
   | owned
   | mutBorrow (region : Nat)
   | sharedBorrow
+  | pinnedCell
   deriving DecidableEq, Repr
 
 /-- A function parameter: name, type, and ownership role. -/

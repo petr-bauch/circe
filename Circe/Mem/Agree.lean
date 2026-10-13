@@ -114,6 +114,51 @@ theorem bindMemArgs_condPair (p q : BitVec 32) (c : Bool) :
         []) := by
   rfl
 
+/-- `pinnedCell` binding allocates a live 1-word cell holding the
+    value and pins address + tag in the `Layout` (G3/S2 opt-in
+    pinning, the S1 `mstore` target). -/
+theorem bindMemArgs_pinnedCell (n : String) (x : BitVec 32) :
+    bindMemArgs [{ name := n, ty := .i 32, role := .pinnedCell }]
+      [.i32 x] emptyMem =
+      some ([(n, .i32 x)], ⟨1, [(0, ⟨0, true, [x]⟩)], []⟩,
+        [(n, 0, 0)]) := by
+  rfl
+
+/-- Non-`i32` values do not pin (loud at call). -/
+theorem bindMemArgs_pinnedCell_reject (n : String) (x : BitVec 32) :
+    bindMemArgs [{ name := n, ty := .i 32, role := .pinnedCell }]
+      [.u32 x] emptyMem = none := by
+  rfl
+
+/-- Disjoint pinned pair (the `alias_cond` noalias-verdict entry:
+    tail binds first, so `q` takes address 0 and `p` address 1). -/
+theorem bindMemArgs_pinnedCell_pair (p q : BitVec 32) :
+    bindMemArgs [{ name := "p", ty := .i 32, role := .pinnedCell },
+      { name := "q", ty := .i 32, role := .pinnedCell }]
+      [.i32 p, .i32 q] emptyMem =
+      some ([("p", .i32 p), ("q", .i32 q)],
+        ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩,
+        [("p", 1, 1), ("q", 0, 0)]) := by
+  rfl
+
+/-- Pin lookups for the disjoint pair. -/
+theorem pinnedCell_pair_lookup (p q : BitVec 32) :
+    layoutLookup [("p", 1, 1), ("q", 0, 0)] "p" = some (1, 1) ∧
+      layoutLookup [("p", 1, 1), ("q", 0, 0)] "q" = some (0, 0) := by
+  refine ⟨?_, ?_⟩ <;> rfl
+
+/-- Both cells read back (first binding wins). -/
+theorem pinnedCell_pair_find (p q : BitVec 32)
+    (m : Mem)
+    (h : m = ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩) :
+    memFind m 1 = some ⟨1, true, [p]⟩ ∧
+      memFind m 0 = some ⟨0, true, [q]⟩ := by
+  subst h
+  refine ⟨?_, ?_⟩ <;> simp [memFind]
+
+/-- Freshness: the two pinned addresses differ (gate-side `hne`). -/
+theorem pinnedCell_pair_fresh : (0 : Addr) ≠ 1 := by decide
+
 /-! ## Statement agreement combinators (straight-line code) -/
 
 /-- `skip` agrees with memory untouched. -/
