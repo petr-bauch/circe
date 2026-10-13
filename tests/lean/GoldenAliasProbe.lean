@@ -75,9 +75,13 @@ def main : IO Unit := do
   let b5 ← checkProbeAccept "_Z14alias_reborrowRi"
     "tests/cir/alias_reborrow.cir" .unknown
   passed := passed + b5
-  let b6 ← checkProbeReject "_Z10alias_condRiS_b"
+  -- Unknown-verdict branch-writer: admitted since G3/S3 via the
+  -- open contract (the fourth admit control): exact branch/dataflow
+  -- skeleton with the fused C++ deref chain over two
+  -- single-reference-triple writers; transfer case-splits on the
+  -- addresses, covering `unknown` and `mayAlias` alike.
+  let b6 ← checkProbeAccept "_Z10alias_condRiS_b"
     "tests/cir/alias_cond.cir" .unknown
-    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + b6
   let b7 ← checkProbeReject "_Z19alias_readonly_pairRKiS0_"
     "tests/cir/alias_readonly_pair.cir" .unknown

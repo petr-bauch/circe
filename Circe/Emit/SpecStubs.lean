@@ -143,6 +143,39 @@ def emitCondPairSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2.1)).pretty == (repr t.2.2.2).pretty\n"
 
+/-- Spec stub for the unknown-verdict branch-writer shape (G3/S3):
+    the open-contract mirror takes the caller-supplied `aliased`
+    flag (no pure `(p,q,c)` translation is sound). Edges cover both
+    verdicts under both branches plus the overflow legs. -/
+def emitAliasCondSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `void {name}(int &p, int &q, bool c)` (`if (c) *p += 1; *q += 2` over caller-aliased cells).\n"
+  ++ s!"    Base body reference: branch-ordered checked adds with the `q` re-read (cf. emitted `{name}_spec`). -/\n"
+  ++ s!"def {name}_spec_fwd (p q : BitVec 32) (c aliased : Bool) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  match c with\n"
+  ++ "  | true =>\n"
+  ++ "    match checkedAddI32 p 1 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok a =>\n"
+  ++ "      let q' := if aliased then a else q\n"
+  ++ "      match checkedAddI32 q' 2 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok b => .ok (if aliased then (b, b) else (a, b))\n"
+  ++ "  | false =>\n"
+  ++ "    match checkedAddI32 q 2 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b => .ok (p, b)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: both verdicts under both branches, masking, `nsw` overflow on either add. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × BitVec 32 × Bool × Bool × Result (BitVec 32 × BitVec 32)) :=\n"
+  ++ "  [(10, 20, true, false, .ok (11, 22)), (10, 20, false, false, .ok (10, 22)), (10, 10, true, true, .ok (13, 13)), (10, 10, false, true, .ok (10, 12)), (0, 0, true, true, .ok (3, 3)), (0x7FFFFFFF, 0, true, false, .error .Overflow), (0x7FFFFFFF, 0, false, false, .ok (0x7FFFFFFF, 2)), (0, 0x7FFFFFFF, true, false, .error .Overflow), (0x7FFFFFFF, 0x7FFFFFFF, true, true, .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1 t.2.1 t.2.2.1 t.2.2.2.1)).pretty == (repr t.2.2.2.2).pretty\n"
+
 /-- Spec stub for the 64-bit `add64` shape (S3b). -/
 def emitAdd64SpecText (name : String) : String :=
   emitSpecHeader

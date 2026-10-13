@@ -14,8 +14,9 @@
 -- 2. Rejection suite (adversaries by corpus transformation, so the
 --    skeleton stays real): wrong const (`1`/`3`, still
 --    sequential-writer-shaped — the deferred message, not admission),
---    wrapping adds (same), the overlapping `alias_cond` corpus (not
---    reborrow-shaped at all — the generic fragment message), a bare
+--    wrapping adds (same), the overlapping `alias_cond` corpus (admitted
+--    since G3/S3 via the open contract — routed-away check, never the
+--    reborrow fusion), a bare
 --    root pointer without the attr triple (`alias-reject` before
 --    shapes are consulted), and the `incr` leaf (shape-exactness:
 --    one add is not the two-add fusion).
@@ -76,11 +77,19 @@ def main : IO Unit := do
     (corpus.replace "cir.add nsw" "cir.add") .unknown
     "out-of-subset" "wrapping arithmetic"
   passed := passed + r2
-  -- Overlapping writers: not reborrow-shaped at all (L2 comparison
-  -- fails) — the generic fragment message.
+  -- Overlapping writers: admitted since G3/S3 via the open contract,
+  -- never the reborrow fusion — the emission carries the
+  -- caller-supplied-`aliased` spec, which the reborrow fusion cannot
+  -- produce (shape-exactness, routed-away form).
   let cond ← IO.FS.readFile "tests/cir/alias_cond.cir"
-  let r3 ← checkRejectReborrow "_Z10alias_condRiS_b" cond .unknown
-    "out-of-subset" "admitted Phase-4 fragment"
+  let r3 ← match runPipeline cond ⟨"_Z10alias_condRiS_b", .unknown⟩ with
+    | .error msg =>
+      throw (IO.userError s!"reject-reborrow: alias_cond unexpectedly rejected: {msg}")
+    | .ok got =>
+      if !containsSubstr got "aliased" then
+        throw (IO.userError s!"reject-reborrow: alias_cond routed to reborrow fusion:\n{got}")
+      IO.println "PASS reject-reborrow _Z10alias_condRiS_b [open-contract]"
+      pure 1
   passed := passed + r3
   -- Bare root pointer without the attr triple: the alias discipline
   -- rejects before shapes are even consulted.

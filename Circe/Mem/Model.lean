@@ -629,6 +629,17 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | _, _ => .error .AssertFail
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
+  | .mload s ie, ρ, m, π =>
+    match layoutLookup π s with
+    | none => .error .AssertFail
+    | some (a, t) =>
+      match memEvalExpr ie ρ m π with
+      | .ok (.u64 i) =>
+        match memLoad m a t i.toNat with
+        | .ok w => .ok (.i32 w)
+        | .error e => .error e
+      | .ok _ => .error .AssertFail
+      | .error e => .error e
   | .stdVecLen s, ρ, m, π =>
     match layoutLookup π s with
     | none => .error .AssertFail
@@ -825,6 +836,16 @@ theorem memEvalExpr_add_var_lit (ρ : Env) (m : Mem) (π : Layout)
       (checkedAddI32 v k).map .i32 := by
   simp [memEvalExpr, litVal, hx]
 
+/-- General `add` combinator (G3/S3): the checked add runs on the
+    evaluated operands (mirror of `memEvalExpr_pair_ok`). -/
+theorem memEvalExpr_add_ok (e₁ e₂ : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout) (x y : BitVec 32)
+    (h₁ : memEvalExpr e₁ ρ m π = .ok (.i32 x))
+    (h₂ : memEvalExpr e₂ ρ m π = .ok (.i32 y)) :
+    memEvalExpr (.add e₁ e₂) ρ m π =
+      (checkedAddI32 x y).map .i32 := by
+  simp [memEvalExpr, h₁, h₂]
+
 /-- `pair` on two `i32`s builds the `IPair` struct value (G2: the
     writer-pair outputs; mirror of `evalExpr_pair_ok`). -/
 theorem memEvalExpr_pair_ok (x y : CExpr) (ρ : Env) (m : Mem)
@@ -980,6 +1001,28 @@ theorem memEvalExpr_spanAt_hit (s : String) (ie : CExpr) (ρ : Env)
     memEvalExpr (.spanAt s ie) ρ m π = evalExpr (.spanAt s ie) ρ := by
   simp only [memEvalExpr, evalExpr, hlay, hie, hieval, hs, hmem, hval,
     beq_self_eq_true, ↓reduceIte]
+
+/-- `mload` delivers the pinned word (G3/S3 `B2` load, the equation
+    twin of `memEvalStmtFuel_mstore_ok`). -/
+theorem memEvalExpr_mload_hit (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (i : BitVec 64) (w : BitVec 32)
+    (a : Addr) (t : Nat)
+    (hlay : layoutLookup π s = some (a, t))
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hmem : memLoad m a t i.toNat = .ok w) :
+    memEvalExpr (.mload s ie) ρ m π = .ok (.i32 w) := by
+  simp only [memEvalExpr, hlay, hi, hmem]
+
+/-- `mload` propagates `memLoad` errors (tag mismatch, dead block,
+    short read, unpinned slot via the arm). -/
+theorem memEvalExpr_mload_err (s : String) (ie : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (i : BitVec 64)
+    (a : Addr) (t : Nat) (e : Panic)
+    (hlay : layoutLookup π s = some (a, t))
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hmem : memLoad m a t i.toNat = .error e) :
+    memEvalExpr (.mload s ie) ρ m π = .error e := by
+  simp only [memEvalExpr, hlay, hi, hmem]
 
 /-- `spanAt` OOB agreement: the memory load itself fails `OOB`
     past the reified words, so both sides fail `OOB` loudly

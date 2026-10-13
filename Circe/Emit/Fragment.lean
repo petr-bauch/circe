@@ -72,6 +72,7 @@ inductive FragKind : Type
   | reborrow
   | wrPair
   | condPair
+  | aliasCond
   | choose
   | sum
   | sumTwo

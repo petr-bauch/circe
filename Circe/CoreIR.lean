@@ -120,6 +120,11 @@ inductive CLit : Type
     builds the G1 two-output `IPair` value from two `i32` exprs
     (multi-writer functionalization: `*p = …; *q = …` returns both
     updated words; model-only until a G2 consumer admits it).
+    `mload s ie` (G3/S3) is the `B2` load twin of `mstore`: reads
+    the `i32` word at `u64` offset `ie` of the cell pinned to slot
+    `s` (address + tag from the `Layout` pin; unpinned slot, tag
+    mismatch, dead block, or short read is loud). The pure
+    evaluator reports `AssertFail` (no value mirror, as `mstore`).
     `boxNew e` is `new Box{…}` (`cir.call @_Znwm` + bitcast + field
     store fused: `e` must be an `i32`); `boxGet b` is `p->x`
     (`cir.get_member` + `cir.load` fused: `b` must be a `boxVal`;
@@ -175,6 +180,7 @@ inductive CExpr : Type
   | fget : String → String → CExpr
   | pmk : CExpr → CExpr → CExpr
   | pair : CExpr → CExpr → CExpr
+  | mload : String → CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and

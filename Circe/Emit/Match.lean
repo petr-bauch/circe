@@ -33,6 +33,7 @@ import Circe.Emit.Optional
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
+import Circe.Emit.AliasCond
 import Circe.Emit.Span
 import Circe.Emit.View
 import Circe.Emit.VecRead
@@ -156,6 +157,10 @@ def matchFrag : Func → Option FragKind
       ⟨"c", .bool, .owned⟩], _,
       .seq (.let_ "a" _ e1) rest⟩ =>
     if isCondPairBody e1 rest then some .condPair else none
+  | ⟨_, [⟨"p", .i 32, .pinnedCell⟩, ⟨"q", .i 32, .pinnedCell⟩,
+      ⟨"c", .bool, .owned⟩], _,
+      .seq (.if_ (.var c) t .skip) rest⟩ =>
+    if isAliasCondBody c t rest then some .aliasCond else none
   | ⟨_, [⟨"b", .bool, .owned⟩, ⟨"x", .i 32, .mutBorrow r1⟩,
          ⟨"y", .i 32, .mutBorrow r2⟩], _,
       .if_ (.var "b") (.return_ (.var "x")) (.return_ (.var "y"))⟩ =>

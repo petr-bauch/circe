@@ -8,6 +8,8 @@ import Circe.Emit.VecAtSum
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
+import Circe.Emit.AliasCond
+import Circe.CondFrame
 
 /-! ## N4d-i `std::array` transfers: reads agree, hit and `OOB` -/
 
@@ -246,7 +248,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i0" (.u 64) _ _ _ _
-      (.u64 (0 : BitVec 64)) (by simp) (by simp) (by simp) rfl
+      (.u64 0) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs0 : lookupArgs (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0))
       ["a", "i0"] = some [.arr32 [a, b, c, d], .u64 0] := by
@@ -3351,3 +3353,575 @@ theorem memTransfer_condPair (F : Nat) (p q : BitVec 32) (c : Bool)
     memEvalFuncFuel F condPairFunc [.i32 p, .i32 q, .b c] =
       evalFuncFuel F condPairFunc [.i32 p, .i32 q, .b c] := by
   rw [memEvalFuncFuel_condPair F p q c, evalFuncFuel_condPair F p q c]
+
+/-! ## G3 open-contract transfer (`alias_cond`, S3).
+
+No pure equality is owed (the S1 `mstore` arm is `AssertFail`
+pure-side by design): each leg evaluates the emitted body
+symbolically, then closes the cell posts with the S0 arm lemmas in
+`Circe.CondFrame`. Store equations stay hypotheses (S0 contract
+style); the S4 Diff harness covers success factually. -/
+
+/-- Pinned entry, branch taken: both stores land, the re-read
+    frames across the first store (gate-side `hne` is
+    `pinnedCell_pair_fresh`). -/
+theorem memEvalStmt_aliasCond_true (F : Nat) (p q r₁ r₂ : BitVec 32)
+    (hp1 : checkedAddI32 p 1 = .ok r₁)
+    (hq2 : checkedAddI32 q 2 = .ok r₂)
+    (m₁ m' : Mem)
+    (hsto1 : memStore ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 1 1 0 r₁ = .ok m₁)
+    (hsto2 : memStore m₁ 0 0 0 r₂ = .ok m') :
+    memEvalStmtFuel F aliasCondFunc.body
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b true)], m',
+        [("p", 1, 1), ("q", 0, 0)]), .returned (.u32 0)) ∧
+    cellAt m' 1 1 r₁ ∧ cellAt m' 0 0 r₂ := by
+  have hbody : aliasCondFunc.body =
+      .seq (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0)))) := rfl
+  have hcl : envLookup [("p", .i32 p), ("q", .i32 q),
+      ("c", .b true)] "c" = some (.b true) := by
+    simp [envLookup]
+  have hc : memEvalExpr (.var "c") [("p", .i32 p), ("q", .i32 q),
+      ("c", .b true)] ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ [("p", 1, 1), ("q", 0, 0)] =
+      .ok (.b true) := by
+    rw [memEvalExpr_var, evalExpr_var_hit _ _ _ hcl]
+  have hlit0 : memEvalExpr (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.u64 0) := by
+    simp [memEvalExpr, litVal]
+  have hfindp : memFind ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 1 = some ⟨1, true, [p]⟩ :=
+    (pinnedCell_pair_find p q _ rfl).1
+  have hmemp : memLoad ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 1 1 0 = .ok p := by
+    simp [memLoad, hfindp]
+  have hloadp : memEvalExpr
+      (.mload "p" (.lit (.u64 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 p) :=
+    memEvalExpr_mload_hit "p" (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] 0 p 1 1
+      (pinnedCell_pair_lookup).1 hlit0 hmemp
+  have hlitI32_1 : memEvalExpr (.lit (.i32 1))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 1) := by
+    simp [memEvalExpr, litVal]
+  have haddp : memEvalExpr
+      (.add (.mload "p" (.lit (.u64 0)))
+        (.lit (.i32 1)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 r₁) := by
+    rw [memEvalExpr_add_ok _ _ _ _ _ p 1 hloadp hlitI32_1, hp1]
+    exact i32_map_ok r₁
+  have hmp := memEvalStmtFuel_mstore_ok F "p"
+    (.lit (.u64 0))
+    (.add (.mload "p" (.lit (.u64 0)))
+      (.lit (.i32 1)))
+    [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+    ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+    [("p", 1, 1), ("q", 0, 0)] 0 r₁ 1 1 m₁
+    hlit0 haddp (pinnedCell_pair_lookup).1 hsto1
+  have hfind1 : memFind m₁ 0 = some ⟨0, true, [q]⟩ := by
+    rw [memFind_memStore_other _ _ 1 0 1 0 _ hsto1
+      pinnedCell_pair_fresh]
+    exact (pinnedCell_pair_find p q _ rfl).2
+  have hmemq : memLoad m₁ 0 0 0 = .ok q := by
+    simp [memLoad, hfind1]
+  have hq1 : loadCell m₁ 0 0 = .ok q := by
+    simp [loadCell, hfind1]
+  have hlit1 : memEvalExpr (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m₁ [("p", 1, 1), ("q", 0, 0)] = .ok (.u64 0) := by
+    simp [memEvalExpr, litVal]
+  have hloadq : memEvalExpr
+      (.mload "q" (.lit (.u64 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m₁ [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 q) :=
+    memEvalExpr_mload_hit "q" (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m₁ [("p", 1, 1), ("q", 0, 0)] 0 q 0 0
+      (pinnedCell_pair_lookup).2 hlit1 hmemq
+  have hlitI32_2 : memEvalExpr (.lit (.i32 2))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m₁ [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 2) := by
+    simp [memEvalExpr, litVal]
+  have haddq : memEvalExpr
+      (.add (.mload "q" (.lit (.u64 0)))
+        (.lit (.i32 2)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m₁ [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 r₂) := by
+    rw [memEvalExpr_add_ok _ _ _ _ _ q 2 hloadq hlitI32_2, hq2]
+    exact i32_map_ok r₂
+  have hmq := memEvalStmtFuel_mstore_ok F "q"
+    (.lit (.u64 0))
+    (.add (.mload "q" (.lit (.u64 0)))
+      (.lit (.i32 2)))
+    [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+    m₁ [("p", 1, 1), ("q", 0, 0)] 0 r₂ 0 0 m'
+    hlit1 haddq (pinnedCell_pair_lookup).2 hsto2
+  have hret : memEvalStmtFuel F (.return_ (.lit (.u32 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m' [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b true)], m',
+        [("p", 1, 1), ("q", 0, 0)]), .returned (.u32 0)) := by
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal]
+  have hp : cellAt ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 1 1 p := hfindp
+  have hq : cellAt ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 0 0 q :=
+    (pinnedCell_pair_find p q _ rfl).2
+  have hposts := condExec_disjoint_true _ m₁ m' 1 0 1 0 p q r₁ r₂
+    hp hq pinnedCell_pair_fresh hsto1 hq1 hsto2
+  have ha : memEvalStmtFuel F
+      (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b true)], m₁,
+        [("p", 1, 1), ("q", 0, 0)]), .fellThrough) := by
+    rw [memEvalStmtFuel_if_true _ _ _ _ _ _ _ hc]
+    exact hmp
+  have hrest : memEvalStmtFuel F
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0))))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m₁ [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b true)], m',
+        [("p", 1, 1), ("q", 0, 0)]), .returned (.u32 0)) := by
+    rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hmq]
+    exact hret
+  refine ⟨?_, hposts.1, hposts.2⟩
+  rw [hbody, memEvalStmtFuel_seq _ _ _ _ _ _ _ _ _ _ _ _ _ ha hrest]
+
+/-- Pinned entry, branch masked: the `p`-store never runs, `p`
+    keeps its value, the `q`-store lands. -/
+theorem memEvalStmt_aliasCond_false (F : Nat) (p q r₂ : BitVec 32)
+    (hq2 : checkedAddI32 q 2 = .ok r₂)
+    (m' : Mem)
+    (hsto : memStore ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 0 0 0 r₂ = .ok m') :
+    memEvalStmtFuel F aliasCondFunc.body
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)], m',
+        [("p", 1, 1), ("q", 0, 0)]), .returned (.u32 0)) ∧
+    cellAt m' 1 1 p ∧ cellAt m' 0 0 r₂ := by
+  have hbody : aliasCondFunc.body =
+      .seq (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0)))) := rfl
+  have hcl : envLookup [("p", .i32 p), ("q", .i32 q),
+      ("c", .b false)] "c" = some (.b false) := by
+    simp [envLookup]
+  have hc : memEvalExpr (.var "c") [("p", .i32 p), ("q", .i32 q),
+      ("c", .b false)] ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ [("p", 1, 1), ("q", 0, 0)] =
+      .ok (.b false) := by
+    rw [memEvalExpr_var, evalExpr_var_hit _ _ _ hcl]
+  have hskip : memEvalStmtFuel F .skip
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)],
+        ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩,
+        [("p", 1, 1), ("q", 0, 0)]), .fellThrough) := by
+    cases F <;> rfl
+  have hlit0 : memEvalExpr (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.u64 0) := by
+    simp [memEvalExpr, litVal]
+  have hfindq : memFind ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 0 = some ⟨0, true, [q]⟩ :=
+    (pinnedCell_pair_find p q _ rfl).2
+  have hmemq : memLoad ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 0 0 0 = .ok q := by
+    simp [memLoad, hfindq]
+  have hloadq : memEvalExpr
+      (.mload "q" (.lit (.u64 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 q) :=
+    memEvalExpr_mload_hit "q" (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] 0 q 0 0
+      (pinnedCell_pair_lookup).2 hlit0 hmemq
+  have hlitI32_2 : memEvalExpr (.lit (.i32 2))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 2) := by
+    simp [memEvalExpr, litVal]
+  have haddq : memEvalExpr
+      (.add (.mload "q" (.lit (.u64 0)))
+        (.lit (.i32 2)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] = .ok (.i32 r₂) := by
+    rw [memEvalExpr_add_ok _ _ _ _ _ q 2 hloadq hlitI32_2, hq2]
+    exact i32_map_ok r₂
+  have hmq := memEvalStmtFuel_mstore_ok F "q"
+    (.lit (.u64 0))
+    (.add (.mload "q" (.lit (.u64 0)))
+      (.lit (.i32 2)))
+    [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+    ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+    [("p", 1, 1), ("q", 0, 0)] 0 r₂ 0 0 m'
+    hlit0 haddq (pinnedCell_pair_lookup).2 hsto
+  have hret : memEvalStmtFuel F (.return_ (.lit (.u32 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m' [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)], m',
+        [("p", 1, 1), ("q", 0, 0)]), .returned (.u32 0)) := by
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal]
+  have hp : cellAt ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 1 1 p :=
+    (pinnedCell_pair_find p q _ rfl).1
+  have hpostp : cellAt m' 1 1 p := by
+    unfold cellAt
+    rw [memFind_memStore_other _ _ 0 1 0 0 _ hsto
+      (Ne.symm pinnedCell_pair_fresh)]
+    exact hp
+  have hq : cellAt ⟨2, [(1, ⟨1, true, [p]⟩),
+      (0, ⟨0, true, [q]⟩)], []⟩ 0 0 q :=
+    (pinnedCell_pair_find p q _ rfl).2
+  have hpostq : cellAt m' 0 0 r₂ :=
+    memFind_cell_store _ _ _ _ _ hq _ hsto
+  have ha : memEvalStmtFuel F
+      (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)],
+        ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩,
+        [("p", 1, 1), ("q", 0, 0)]), .fellThrough) := by
+    rw [memEvalStmtFuel_if_false _ _ _ _ _ _ _ hc]
+    exact hskip
+  have hrest : memEvalStmtFuel F
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0))))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩
+      [("p", 1, 1), ("q", 0, 0)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)], m',
+        [("p", 1, 1), ("q", 0, 0)]), .returned (.u32 0)) := by
+    rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hmq]
+    exact hret
+  refine ⟨?_, hpostp, hpostq⟩
+  rw [hbody, memEvalStmtFuel_seq _ _ _ _ _ _ _ _ _ _ _ _ _ ha hrest]
+
+/-- Caller-`Mem` entry, branch taken, aliased addresses: the re-read
+    observes the first store, so the second addition runs on the
+    stored value and the second store wins. Shared-address pins
+    (`("p",a,_)`, `("q",a,_)`) are well-defined — `layoutLookup` is
+    per-name, first match wins, and the names differ. -/
+theorem memEvalStmt_aliasCond_aliased_true (F : Nat) (a b t₁ t₂ : Nat)
+    (m : Mem) (p q r₁ r₂ : BitVec 32)
+    (hp : cellAt m a t₁ p) (hq : cellAt m b t₂ q) (heq : b = a)
+    (hp1 : checkedAddI32 p 1 = .ok r₁)
+    (hpa2 : checkedAddI32 r₁ 2 = .ok r₂)
+    (m₁ m' : Mem)
+    (hsto1 : memStore m a t₁ 0 r₁ = .ok m₁)
+    (hsto2 : memStore m₁ b t₂ 0 r₂ = .ok m') :
+    memEvalStmtFuel F aliasCondFunc.body
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₂)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b true)], m',
+        [("p", a, t₁), ("q", b, t₂)]), .returned (.u32 0)) ∧
+    cellAt m' a t₁ r₂ := by
+  have hbody : aliasCondFunc.body =
+      .seq (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0)))) := rfl
+  have hcl : envLookup [("p", .i32 p), ("q", .i32 q),
+      ("c", .b true)] "c" = some (.b true) := by
+    simp [envLookup]
+  have hc : memEvalExpr (.var "c") [("p", .i32 p), ("q", .i32 q),
+      ("c", .b true)] m [("p", a, t₁), ("q", b, t₂)] =
+      .ok (.b true) := by
+    rw [memEvalExpr_var, evalExpr_var_hit _ _ _ hcl]
+  have hlayp : layoutLookup [("p", a, t₁), ("q", b, t₂)] "p" =
+      some (a, t₁) := by
+    simp [layoutLookup]
+  have hlit0 : memEvalExpr (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.u64 0) := by
+    simp [memEvalExpr, litVal]
+  have hfm : memFind m a = some ⟨t₁, true, [p]⟩ := hp
+  have hmemp : memLoad m a t₁ 0 = .ok p := by
+    simp [memLoad, hfm]
+  have hloadp : memEvalExpr
+      (.mload "p" (.lit (.u64 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.i32 p) :=
+    memEvalExpr_mload_hit "p" (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₂)] 0 p a t₁
+      hlayp hlit0 hmemp
+  have hlitI32_1 : memEvalExpr (.lit (.i32 1))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.i32 1) := by
+    simp [memEvalExpr, litVal]
+  have haddp : memEvalExpr
+      (.add (.mload "p" (.lit (.u64 0)))
+        (.lit (.i32 1)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.i32 r₁) := by
+    rw [memEvalExpr_add_ok _ _ _ _ _ p 1 hloadp hlitI32_1, hp1]
+    exact i32_map_ok r₁
+  have hmp := memEvalStmtFuel_mstore_ok F "p"
+    (.lit (.u64 0))
+    (.add (.mload "p" (.lit (.u64 0)))
+      (.lit (.i32 1)))
+    [("p", .i32 p), ("q", .i32 q), ("c", .b true)]
+    m [("p", a, t₁), ("q", b, t₂)] 0 r₁ a t₁ m₁
+    hlit0 haddp hlayp hsto1
+  have hcell : cellAt m₁ a t₁ r₁ :=
+    memFind_cell_store _ _ _ _ _ hp _ hsto1
+  have hsame : (⟨t₁, true, [p]⟩ : Block) = ⟨t₂, true, [q]⟩ := by
+    have h1 := hp
+    have h2 := hq
+    unfold cellAt at h1 h2
+    rw [heq] at h2
+    rw [h1] at h2
+    exact (Option.some_inj.mp h2)
+  cases hsame
+  have hlayq : layoutLookup [("p", a, t₁), ("q", b, t₁)] "q" =
+      some (b, t₁) := by
+    simp [layoutLookup, show ("q" : String) ≠ "p" by decide]
+  have hfm1 : memFind m₁ a = some ⟨t₁, true, [r₁]⟩ := hcell
+  have hmemq : memLoad m₁ b t₁ 0 = .ok r₁ := by
+    have hfb : memFind m₁ b = some ⟨t₁, true, [r₁]⟩ := by
+      rw [heq]
+      exact hfm1
+    simp [memLoad, hfb]
+  have hlit1 : memEvalExpr (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m₁ [("p", a, t₁), ("q", b, t₁)] = .ok (.u64 0) := by
+    simp [memEvalExpr, litVal]
+  have hloadq : memEvalExpr
+      (.mload "q" (.lit (.u64 0)))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m₁ [("p", a, t₁), ("q", b, t₁)] = .ok (.i32 r₁) :=
+    memEvalExpr_mload_hit "q" (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m₁ [("p", a, t₁), ("q", b, t₁)] 0 r₁ b t₁
+      hlayq hlit1 hmemq
+  have hlitI32_2 : memEvalExpr (.lit (.i32 2))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m₁ [("p", a, t₁), ("q", b, t₁)] = .ok (.i32 2) := by
+    simp [memEvalExpr, litVal]
+  have haddq : memEvalExpr
+      (.add (.mload "q" (.lit (.u64 0)))
+        (.lit (.i32 2)))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m₁ [("p", a, t₁), ("q", b, t₁)] = .ok (.i32 r₂) := by
+    rw [memEvalExpr_add_ok _ _ _ _ _ r₁ 2 hloadq hlitI32_2, hpa2]
+    exact i32_map_ok r₂
+  have hmq := memEvalStmtFuel_mstore_ok F "q"
+    (.lit (.u64 0))
+    (.add (.mload "q" (.lit (.u64 0)))
+      (.lit (.i32 2)))
+    [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+    m₁ [("p", a, t₁), ("q", b, t₁)] 0 r₂ b t₁ m'
+    hlit1 haddq hlayq hsto2
+  have hret : memEvalStmtFuel F (.return_ (.lit (.u32 0)))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m' [("p", a, t₁), ("q", b, t₁)] =
+      .ok (([("p", .i32 p), ("q", .i32 p), ("c", .b true)], m',
+        [("p", a, t₁), ("q", b, t₁)]), .returned (.u32 0)) := by
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal]
+  have hpost : cellAt m' a t₁ r₂ := by
+    rw [heq] at hsto2
+    exact memFind_cell_store _ _ _ _ _ hcell _ hsto2
+  have ha : memEvalStmtFuel F
+      (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m [("p", a, t₁), ("q", b, t₁)] =
+      .ok (([("p", .i32 p), ("q", .i32 p), ("c", .b true)], m₁,
+        [("p", a, t₁), ("q", b, t₁)]), .fellThrough) := by
+    have hc' : memEvalExpr (.var "c") [("p", .i32 p), ("q", .i32 p),
+        ("c", .b true)] m [("p", a, t₁), ("q", b, t₁)] =
+        .ok (.b true) := by
+      rw [memEvalExpr_var, evalExpr_var_hit _ _ _ hcl]
+    rw [memEvalStmtFuel_if_true _ _ _ _ _ _ _ hc']
+    exact hmp
+  have hrest : memEvalStmtFuel F
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0))))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b true)]
+      m₁ [("p", a, t₁), ("q", b, t₁)] =
+      .ok (([("p", .i32 p), ("q", .i32 p), ("c", .b true)], m',
+        [("p", a, t₁), ("q", b, t₁)]), .returned (.u32 0)) := by
+    rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hmq]
+    exact hret
+  refine ⟨?_, hpost⟩
+  rw [hbody, memEvalStmtFuel_seq _ _ _ _ _ _ _ _ _ _ _ _ _ ha hrest]
+
+/-- Caller-`Mem` entry, branch masked, aliased addresses: only the
+    `q`-store runs, on the shared cell. -/
+theorem memEvalStmt_aliasCond_aliased_false (F : Nat) (a b t₁ t₂ : Nat)
+    (m : Mem) (p q r₂ : BitVec 32)
+    (hp : cellAt m a t₁ p) (hq : cellAt m b t₂ q) (heq : b = a)
+    (hq2 : checkedAddI32 q 2 = .ok r₂)
+    (m' : Mem)
+    (hsto : memStore m b t₂ 0 r₂ = .ok m') :
+    memEvalStmtFuel F aliasCondFunc.body
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)], m',
+        [("p", a, t₁), ("q", b, t₂)]), .returned (.u32 0)) ∧
+    cellAt m' a t₁ r₂ := by
+  have hbody : aliasCondFunc.body =
+      .seq (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0)))) := rfl
+  have hcl : envLookup [("p", .i32 p), ("q", .i32 q),
+      ("c", .b false)] "c" = some (.b false) := by
+    simp [envLookup]
+  have hc : memEvalExpr (.var "c") [("p", .i32 p), ("q", .i32 q),
+      ("c", .b false)] m [("p", a, t₁), ("q", b, t₂)] =
+      .ok (.b false) := by
+    rw [memEvalExpr_var, evalExpr_var_hit _ _ _ hcl]
+  have hskip : memEvalStmtFuel F .skip
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)],
+        m, [("p", a, t₁), ("q", b, t₂)]), .fellThrough) := by
+    cases F <;> rfl
+  have hlayq : layoutLookup [("p", a, t₁), ("q", b, t₂)] "q" =
+      some (b, t₂) := by
+    simp [layoutLookup, show ("q" : String) ≠ "p" by decide]
+  have hlit0 : memEvalExpr (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.u64 0) := by
+    simp [memEvalExpr, litVal]
+  have hfm : memFind m b = some ⟨t₂, true, [q]⟩ := hq
+  have hmemq : memLoad m b t₂ 0 = .ok q := by
+    simp [memLoad, hfm]
+  have hloadq : memEvalExpr
+      (.mload "q" (.lit (.u64 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.i32 q) :=
+    memEvalExpr_mload_hit "q" (.lit (.u64 0))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] 0 q b t₂
+      hlayq hlit0 hmemq
+  have hlitI32_2 : memEvalExpr (.lit (.i32 2))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.i32 2) := by
+    simp [memEvalExpr, litVal]
+  have haddq : memEvalExpr
+      (.add (.mload "q" (.lit (.u64 0)))
+        (.lit (.i32 2)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₂)] = .ok (.i32 r₂) := by
+    rw [memEvalExpr_add_ok _ _ _ _ _ q 2 hloadq hlitI32_2, hq2]
+    exact i32_map_ok r₂
+  have hmq := memEvalStmtFuel_mstore_ok F "q"
+    (.lit (.u64 0))
+    (.add (.mload "q" (.lit (.u64 0)))
+      (.lit (.i32 2)))
+    [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+    m [("p", a, t₁), ("q", b, t₂)] 0 r₂ b t₂ m'
+    hlit0 haddq hlayq hsto
+  have hret : memEvalStmtFuel F (.return_ (.lit (.u32 0)))
+      [("p", .i32 p), ("q", .i32 q), ("c", .b false)]
+      m' [("p", a, t₁), ("q", b, t₂)] =
+      .ok (([("p", .i32 p), ("q", .i32 q), ("c", .b false)], m',
+        [("p", a, t₁), ("q", b, t₂)]), .returned (.u32 0)) := by
+    cases F <;>
+      simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+        memEvalExpr, litVal]
+  have hsame : (⟨t₁, true, [p]⟩ : Block) = ⟨t₂, true, [q]⟩ := by
+    have h1 := hp
+    have h2 := hq
+    unfold cellAt at h1 h2
+    rw [heq] at h2
+    rw [h1] at h2
+    exact (Option.some_inj.mp h2)
+  cases hsame
+  have hpost : cellAt m' a t₁ r₂ := by
+    rw [←heq]
+    exact memFind_cell_store _ _ _ _ _ hq _ hsto
+  have ha : memEvalStmtFuel F
+      (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      [("p", .i32 p), ("q", .i32 p), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₁)] =
+      .ok (([("p", .i32 p), ("q", .i32 p), ("c", .b false)],
+        m, [("p", a, t₁), ("q", b, t₁)]), .fellThrough) := by
+    have hc' : memEvalExpr (.var "c") [("p", .i32 p), ("q", .i32 p),
+        ("c", .b false)] m [("p", a, t₁), ("q", b, t₁)] =
+        .ok (.b false) := by
+      rw [memEvalExpr_var, evalExpr_var_hit _ _ _ hcl]
+    rw [memEvalStmtFuel_if_false _ _ _ _ _ _ _ hc']
+    exact hskip
+  have hrest : memEvalStmtFuel F
+      (.seq (.mstore "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+      (.return_ (.lit (.u32 0))))
+      [("p", .i32 p), ("q", .i32 p), ("c", .b false)]
+      m [("p", a, t₁), ("q", b, t₁)] =
+      .ok (([("p", .i32 p), ("q", .i32 p), ("c", .b false)], m',
+        [("p", a, t₁), ("q", b, t₁)]), .returned (.u32 0)) := by
+    have hmq' : memEvalStmtFuel F
+        (.mstore "q" (.lit (.u64 0))
+          (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+        [("p", .i32 p), ("q", .i32 p), ("c", .b false)]
+        m [("p", a, t₁), ("q", b, t₁)] =
+        .ok (([("p", .i32 p), ("q", .i32 p), ("c", .b false)], m',
+          [("p", a, t₁), ("q", b, t₁)]), .fellThrough) := hmq
+    rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hmq']
+    exact hret
+  refine ⟨?_, hpost⟩
+  rw [hbody, memEvalStmtFuel_seq _ _ _ _ _ _ _ _ _ _ _ _ _ ha hrest]

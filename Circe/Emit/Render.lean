@@ -100,6 +100,33 @@ def emitCondPairText (name : String) : String :=
   ++ "    | .error e => .error e\n"
   ++ "    | .ok b => .ok (p, b)\n"
 
+/-- Render the `alias_cond` open-contract spec (`{name}_spec`): no
+    pure `(p,q,c)` translation is sound (G2 — the `q` re-read
+    observes `p`'s write), so the caller supplies `aliased` (`true`
+    when both params address one cell). Taken-branch under
+    aliasing runs the second addition on the stored value and the
+    second store wins, so both words read back the `q` result;
+    every other leg matches the `cond_pair` forward exactly. -/
+def emitAliasCondText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Open-contract spec of `{name}` (`if (c) *p += 1; *q += 2` over caller-aliased cells).\n"
+  ++ s!"    Caller supplies `aliased`; caller rewrite writes both words back. -/\n"
+  ++ s!"def {name}_spec (p q : BitVec 32) (c aliased : Bool) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  match c with\n"
+  ++ "  | true =>\n"
+  ++ "    match checkedAddI32 p 1 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok a =>\n"
+  ++ "      let q' := if aliased then a else q\n"
+  ++ "      match checkedAddI32 q' 2 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok b => .ok (if aliased then (b, b) else (a, b))\n"
+  ++ "  | false =>\n"
+  ++ "    match checkedAddI32 q 2 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok b => .ok (p, b)\n"
+
 /-- Render the `add64` forward definition (`add64_fwd`, S3b). -/
 def emitAdd64Text (name : String) : String :=
   emitHeader

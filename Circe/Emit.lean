@@ -73,6 +73,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .reborrow => .ok (emitReborrowSpecText f.name)
   | some .wrPair => .ok (emitWrPairSpecText f.name)
   | some .condPair => .ok (emitCondPairSpecText f.name)
+  | some .aliasCond => .ok (emitAliasCondSpecText f.name)
   | some .choose => .ok (emitChooseSpecText f.name)
   | some .sum => .ok (emitSumSpecText f.name)
   | some .sumTwo => .ok (emitSumTwoSpecText f.name)
@@ -204,6 +205,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .reborrow => .ok ⟨emitReborrowText f.name, none⟩
   | some .wrPair => .ok ⟨emitWrPairText f.name, none⟩
   | some .condPair => .ok ⟨emitCondPairText f.name, none⟩
+  | some .aliasCond => .ok ⟨emitAliasCondText f.name, none⟩
   | some .choose =>
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩
   | some .sum => .ok ⟨emitSumText f.name, none⟩

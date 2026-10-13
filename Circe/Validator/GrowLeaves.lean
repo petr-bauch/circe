@@ -2371,6 +2371,57 @@ def structuralCondPair (raw : RawFunc) : Bool :=
 def isCondPairShape (raw : RawFunc) : Bool :=
   structuralCondPair raw && condPairDataflow raw.text
 
+/-- Structural half of unknown-verdict branch-writer recognition
+    (G3/S3): the `alias_cond` skeleton — same `void` + 3-alloca +
+    5-store + `1`/`2` consts + two `nsw` adds + one scope-wrapped
+    `cir.if` shape as `cond_pair`, but FIVE loads (C++ refs fuse
+    the deref chain) and the C++ single-reference triple
+    (`nonnull + dereferenceable + noundef`) on both writers instead
+    of `noalias`. Disjoint from `structuralCondPair` on both counts
+    (7 loads, triple absent there). -/
+def structuralAliasCond (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.alloca" == 3 &&
+  opCount raw.text "cir.store" == 5 &&
+  opCount raw.text "cir.store %arg" == 3 &&
+  opCount raw.text "cir.load" == 5 &&
+  opCount raw.text "cir.const" == 2 &&
+  opCount raw.text "cir.add nsw" == 2 &&
+  arithOpCount raw.text == 2 &&
+  opCount raw.text "cir.call @" == 0 &&
+  opCount raw.text "cir.cmp" == 0 &&
+  opCount raw.text "cir.for" == 0 &&
+  opCount raw.text "cir.if" == 1 &&
+  opCount raw.text "cir.scope" == 1 &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "get_global" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.while" &&
+  !containsSubstr raw.text "cir.switch" &&
+  !containsSubstr raw.text "cir.cond_br" &&
+  noBreakContinueSwitch raw.text &&
+  !hasNonHeapCall raw.text &&
+  (match raw.params with
+   | [p, q, c] =>
+    p.singleRef && q.singleRef && !c.singleRef &&
+    isPtrType p.ctype && isPtrType q.ctype && !isPtrType c.ctype &&
+    isBoolType c.ctype &&
+    (match ptrInner p.ctype, ptrInner q.ctype with
+     | some i, some j => isI32 i && isI32 j
+     | _, _ => false)
+   | _ => false)
+
+/-- Exact `alias_cond` admission shape (G3/S3): the structural twin
+    above plus the SHARED dataflow pin (`condPairDataflow` already
+    holds on the `alias_cond` text — same in-order cells and branch
+    placement). No verdict is demanded: transfer case-splits on
+    `decide (a = b)`, covering `unknown` and `mayAlias` alike. -/
+def isAliasCondShape (raw : RawFunc) : Bool :=
+  structuralAliasCond raw && condPairDataflow raw.text
+
 /-- Soundness of the L2 admission predicate: `true` yields the three
     recorded locals with the first writer's range ending strictly
     before the second writer's begins. Admission will consume exactly

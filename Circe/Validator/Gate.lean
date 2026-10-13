@@ -15,6 +15,7 @@ import Circe.Emit.VecAtSum
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
+import Circe.Emit.AliasCond
 import Circe.Emit.VecCompose
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
@@ -1610,7 +1611,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`) or the full C++ single-reference triple (`nonnull + dereferenceable + noundef`): uniqueness cannot be established (see docs/SUBSET.md rule 1)"
     | none =>
       if !(oracleParams raw).isEmpty && !verdictAdmits oracle.verdict &&
-          !recoveredNoalias raw then
+          !recoveredNoalias raw && !isAliasCondShape raw then
         let why := match oracle.verdict with
           | .mayAlias => "reports `mayAlias`"
           | .unknown => "is inconclusive (`unknown`)"
@@ -1620,9 +1621,9 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
       else if 2 ≤ (oracleParams raw).length && !isChooseShape raw &&
           !isVecGrowShape raw && !isXorNShape raw &&
           !isSumTwoShape raw && !isWrPairShape raw &&
-          !isCondPairShape raw then
+          !isCondPairShape raw && !isAliasCondShape raw then
         reject raw.name .aliasReject
-          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline), the exact `wr_pair` shape (two `noalias` writers over two disjoint cells with the in-order dataflow pin, G2 writer-pair discipline), and the exact `cond_pair` shape (two `noalias` writers + `bool`, one scope-wrapped branch firing the first write with the in-order dataflow pin, G2b branch-writer discipline) are admitted (see docs/SUBSET.md rules 2, 6)"
+          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline), the exact `wr_pair` shape (two `noalias` writers over two disjoint cells with the in-order dataflow pin, G2 writer-pair discipline), and the exact `cond_pair` shape (two `noalias` writers + `bool`, one scope-wrapped branch firing the first write with the in-order dataflow pin, G2b branch-writer discipline), and the exact `alias_cond` shape (two single-reference-triple writers + `bool`, same branch/dataflow skeleton with the fused C++ deref chain, admitted under any verdict via the G3 open contract — transfer case-splits on the addresses) are admitted (see docs/SUBSET.md rules 2, 6)"
       else if isAddShape raw then
         .ok { addFunc with name := raw.name }
       else if isIncrShape raw then
@@ -1637,6 +1638,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { wrPairFunc with name := raw.name }
       else if isCondPairShape raw then
         .ok { condPairFunc with name := raw.name }
+      else if isAliasCondShape raw then
+        .ok { aliasCondFunc with name := raw.name }
       else if isVecShape raw then
         .ok { vecFunc with name := raw.name }
       else if isVec2Shape raw then

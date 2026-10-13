@@ -141,8 +141,21 @@ theorem bindMemArgs_pinnedCell_pair (p q : BitVec 32) :
         [("p", 1, 1), ("q", 0, 0)]) := by
   rfl
 
+/-- Three-param entry (`alias_cond`: pinned writers plus the owned
+    condition — the fallthrough arm threads `c` with no footprint,
+    so the pins match the pair above). -/
+theorem bindMemArgs_aliasCond (p q : BitVec 32) (c : Bool) :
+    bindMemArgs [{ name := "p", ty := .i 32, role := .pinnedCell },
+      { name := "q", ty := .i 32, role := .pinnedCell },
+      { name := "c", ty := .bool, role := .owned }]
+      [.i32 p, .i32 q, .b c] emptyMem =
+      some ([("p", .i32 p), ("q", .i32 q), ("c", .b c)],
+        ⟨2, [(1, ⟨1, true, [p]⟩), (0, ⟨0, true, [q]⟩)], []⟩,
+        [("p", 1, 1), ("q", 0, 0)]) := by
+  rfl
+
 /-- Pin lookups for the disjoint pair. -/
-theorem pinnedCell_pair_lookup (p q : BitVec 32) :
+theorem pinnedCell_pair_lookup :
     layoutLookup [("p", 1, 1), ("q", 0, 0)] "p" = some (1, 1) ∧
       layoutLookup [("p", 1, 1), ("q", 0, 0)] "q" = some (0, 0) := by
   refine ⟨?_, ?_⟩ <;> rfl

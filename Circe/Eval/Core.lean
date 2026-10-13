@@ -541,6 +541,10 @@ def evalExpr : CExpr → Env → Result Value
         | none => .error .OOB
       | .ok _ => .error .AssertFail
     | some _ => .error .AssertFail
+  | .mload _ ie, ρ =>
+    match evalExpr ie ρ with
+    | .error e => .error e
+    | .ok _ => .error .AssertFail
   | .stdVecLen s, ρ =>
     match envLookup ρ s with
     | none => .error .Uninit
@@ -1056,6 +1060,13 @@ theorem evalExpr_spanAt_nonu64 (s : String) (ie : CExpr) (ρ : Env)
     (hi : evalExpr ie ρ = .ok (.i32 v)) :
     evalExpr (.spanAt s ie) ρ = .error .AssertFail := by
   simp [evalExpr, hs, hi]
+
+/-- `mload` has no value mirror (G3/S3 `B2` load, twin of `mstore`):
+    the pure evaluator reports `AssertFail` on any evaluated index. -/
+theorem evalExpr_mload (s : String) (ie : CExpr) (ρ : Env) (v : Value)
+    (hi : evalExpr ie ρ = .ok v) :
+    evalExpr (.mload s ie) ρ = .error .AssertFail := by
+  simp [evalExpr, hi]
 
 /-- `spanAt` of a non-span is rejected, never silently modeled. -/
 theorem evalExpr_spanAt_notval (s : String) (ie : CExpr) (v : BitVec 32)

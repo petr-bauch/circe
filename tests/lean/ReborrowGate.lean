@@ -11,8 +11,8 @@
 -- `scope_early` leaf (no disjoint writer triple). Since F1, the exact
 -- `isReborrowShape` admits `alias_reborrow` (single check below);
 -- non-exact sequential writers keep the deferred "sequential writers"
--- message (pinned here for `alias_cond`'s absence: it keeps the
--- generic fragment message). The disjointness soundness lemmas
+-- message. The overlapping `alias_cond` pair admits since G3/S3 via
+-- the open contract (admit row below), never via reborrow. The disjointness soundness lemmas
 -- (`hasSequentialWriterRanges_disjoint`,
 -- `isSequentialReborrowShape_disjoint`) are compile-time proofs, not
 -- runtime checks.
@@ -75,8 +75,11 @@ def main : IO Unit := do
   passed := passed + c
   let c ← checkAdmit "tests/cir/alias_reborrow.cir" "_Z14alias_reborrowRi"
   passed := passed + c
-  let c ← checkMsg "tests/cir/alias_cond.cir"
-    "not in the admitted Phase-4 fragment"
+  -- Overlapping writers are not reborrow-shaped (pred row above
+  -- still pins `false`), but since G3/S3 they admit via the open
+  -- contract — even with no oracle facts (triple params default to
+  -- `unknown`, which the address case-split covers).
+  let c ← checkAdmit "tests/cir/alias_cond.cir" "_Z10alias_condRiS_b"
   passed := passed + c
   IO.println s!"REBORROWGATE-OK passed={passed}"
 
