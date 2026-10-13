@@ -67,7 +67,21 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   framing track — see `DELIVERED.md`). G2b branch-writer
   admission — DONE (2026-10-13, N13: `cond_pair`, the noalias
   twin of `alias_cond`; full unknown-verdict framing stays
-  deferred pending a caller-side contract kind).
+  deferred pending a caller-side contract kind). G3-full
+  framing S0 spike — DONE (2026-10-13, report only, /tmp
+  scratch `wrprobe/s0open.lean`, no repo churn): verdict GO
+  on a Mem-space open contract — a `Mem` program mirroring
+  the cond body (`condExec`) with `cellAt` hypotheses
+  inverts cleanly to per-cell posts under both verdicts
+  (`condExec_invert_disjoint` needs gate `b ≠ a`;
+  `condExec_invert_aliased` re-reads `p`'s write, second
+  addition runs on the stored value, second store wins);
+  artifact decision: Mem-space open contract, NOT OpenFunc
+  (reuses `cellAt`/`memStore_cell`/`memFind_memStore_other`,
+  executable via `memAllocData`, no new `Func`/render);
+  binds collapse via `simp only [Bind.bind, Except.bind]`
+  (`pure_bind`/`Except.bind` alone make no progress on
+  `Except.ok`-scrutinee `let ←`).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,
