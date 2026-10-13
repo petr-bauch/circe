@@ -49,6 +49,19 @@ def emitIncrText (name : String) : String :=
   ++ s!"def {name}_fwd (p : BitVec 32) : Result (BitVec 32) :=\n"
   ++ "  checkedIncrI32 p\n"
 
+/-- Render the `reborrow` forward definition (`reborrow_fwd`), with
+    the caller-side rewrite in the doc comment: two sequential
+    checked adds (`*x += 1`, then `*x += 2`), fail-fast. -/
+def emitReborrowText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`*x += 1`, then `*x += 2` through sequential reborrows, functionalized).\n"
+  ++ s!"    Caller rewrite: `reborrow(&y)` becomes `y ← {name}_fwd y`. -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  match checkedAddI32 x 1 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok t => checkedAddI32 t 2\n"
+
 /-- Render the `add64` forward definition (`add64_fwd`, S3b). -/
 def emitAdd64Text (name : String) : String :=
   emitHeader

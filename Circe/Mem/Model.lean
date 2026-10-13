@@ -807,6 +807,17 @@ theorem memEvalExpr_add_fget_var (ρ : Env) (m : Mem) (π : Layout)
       (checkedAddI32 px dx).map .i32 := by
   simp [memEvalExpr, hobj, hfield, hvar]
 
+/-- `add` of a variable and an `i32` literal agrees (F1: the fused
+    reborrow adds): both sides read the same variable, then run
+    `checkedAddI32`. All-variable statement, like its `Eval` twin —
+    see `evalExpr_add_var_lit` for why literals never appear here. -/
+theorem memEvalExpr_add_var_lit (ρ : Env) (m : Mem) (π : Layout)
+    (x : String) (k v : BitVec 32)
+    (hx : envLookup ρ x = some (.i32 v)) :
+    memEvalExpr (.add (.var x) (.lit (.i32 k))) ρ m π =
+      (checkedAddI32 v k).map .i32 := by
+  simp [memEvalExpr, litVal, hx]
+
 /-- `idx` agreement under consistency: the layout pin resolves, the tag
     matches, the block is live, and the memory word equals the
     value-level element — so the cross-check succeeds and both sides

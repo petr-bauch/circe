@@ -745,6 +745,23 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Unchecked entries, guard-bypassing entries, unrolled
     multi-`at` entries, and bare vector pointers keep dedicated
     rejections. Verdict honestly `unknown` (single-ref).
+28j. Sequential-writer admission (F1, first writer): `alias_reborrow`
+    (`int&` in, `void`, `r += 1` then `s += 2` through two loans
+    to one address, functionalized value in / updated value out —
+    the `incr` precedent with two sequenced checked adds).
+    Admission is one fused Func: single single-ref root param,
+    `i32` return, `x + 1` let-bound then `t + 2`. Exact shape:
+    3 allocas / 6 loads / 5 stores / 2 consts / 2 `nsw` adds, no
+    calls / comparisons / branches / loops / scopes, the `1`/`2`
+    consts consumed in order, L2-disjoint writer ranges over one
+    F0-resolved address (`param0`). The fusion is licensed
+    gate-side (both phases hit the same cell, disjoint in time);
+    checked-add order is unobservable (uniform `.Overflow`).
+    Non-exact sequential writers keep the deferred message;
+    overlapping writers, wrapping adds, wrong consts, and bare
+    root pointers keep dedicated rejections. Verdict honestly
+    `unknown` (single-ref, no oracle facts — the M2a triple
+    precedent).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

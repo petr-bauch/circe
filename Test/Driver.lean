@@ -34,6 +34,7 @@ import DiffVec2
 import DiffVec64
 import DiffVecAt
 import DiffVecAtSum
+import DiffReborrow
 import DiffVecLeak
 import DiffVecRead
 import DiffVecRealloc
@@ -74,6 +75,7 @@ import GoldenVec2
 import GoldenVec64
 import GoldenVecAt
 import GoldenVecAtSum
+import GoldenReborrow
 import GoldenVecRead
 import GoldenVecRealloc
 import GoldenView
@@ -199,6 +201,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
    ("c++", ["tests/cpp/vec_at_one.cpp", "tests/diff/driver_vec_at.cpp"], bin "circe_vec_at_native"),
    ("c++", ["tests/cpp/vec_at_sum.cpp", "tests/diff/driver_vec_at_sum.cpp"], bin "circe_vec_at_sum_native"),
+   ("c++", ["tests/cpp/alias_reborrow.cpp", "tests/diff/driver_reborrow.cpp"], bin "circe_reborrow_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
    ("cc", ["tests/c/sum_two.c", "tests/diff/driver_sum_two.c"], bin "circe_sum_two_native")]
 
@@ -268,6 +271,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecAtOne_Spec.lean", "out/VecAtOne_Spec.lean"),
    ("tests/golden/VecAtSum.lean", "out/VecAtSum.lean"),
    ("tests/golden/VecAtSum_Spec.lean", "out/VecAtSum_Spec.lean"),
+   ("tests/golden/Reborrow.lean", "out/Reborrow.lean"),
+   ("tests/golden/Reborrow_Spec.lean", "out/Reborrow_Spec.lean"),
    ("tests/golden/OverloadAdd.lean", "out/OverloadAdd.lean"),
    ("tests/golden/Add3.lean", "out/Add3.lean"),
    ("tests/golden/UseAdd.lean", "out/UseAdd.lean"),
@@ -378,7 +383,7 @@ def goldenPairs : List (String × String) :=
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
 def emittedTypechecks : List String :=
-  ["out/Add.lean", "out/Incr.lean", "out/Choose.lean", "out/SumArray.lean",
+  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/Choose.lean", "out/SumArray.lean",
    "out/AddCaller.lean", "out/SumCaller.lean", "out/StructByValue.lean",
    "out/NestedSum.lean", "out/SkipSum.lean", "out/FindEq.lean", "out/Cls.lean",
    "out/ClsFall.lean", "out/ClsDense.lean", "out/ClsBreak.lean",
@@ -491,6 +496,7 @@ def contentAsserts : List (String × List (String × String)) :=
   [("phase5-bodies",
     [("out/Add.lean", "checkedAddI32 a b"),
      ("out/Incr.lean", "checkedIncrI32 p"),
+     ("out/Reborrow.lean", "checkedAddI32 t 2"),
      ("out/Choose.lean", ".ok (if b then x else y)"),
      ("out/Choose.lean", ".ok (if b then (ret, y) else (x, ret))"),
      ("out/SumArray.lean", "prefixSumU32 a.val a.val.length"),
@@ -1135,6 +1141,25 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer/Slice.lean", "theorem memVecAtSumWhile_correct"),
      ("out/VecAtSum.lean", "_Z10vec_at_sumRKSt6vectorIiSaIiEE_fwd"),
      ("tests/golden/VecAtSum.lean", "_Z10vec_at_sumRKSt6vectorIiSaIiEE_fwd")]),
+   ("f1-reborrow",
+    [("Circe/Emit/Reborrow.lean", "theorem evalFuncFuel_reborrow"),
+     ("Circe/Emit/Reborrow.lean", "theorem reborrowFwd_ok"),
+     ("Circe/Emit/Reborrow.lean", "def isReborrowBody"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_reborrow"),
+     ("Circe/Emit/Render.lean", "def emitReborrowText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitReborrowSpecText"),
+     ("Circe/Eval/Core.lean", "theorem evalExpr_add_var_lit"),
+     ("Circe/Mem/Model.lean", "theorem memEvalExpr_add_var_lit"),
+     ("Circe/Mem/Agree.lean", "theorem bindMemArgs_reborrow"),
+     ("Circe/Validator/GrowLeaves.lean", "def isReborrowShape"),
+     ("Circe/Validator/GrowLeaves.lean", "def reborrowConstUse"),
+     ("Circe/Validator/GrowLeaves.lean", "def reborrowSameAddress"),
+     ("Circe/Validator/Gate.lean", "isReborrowShape raw"),
+     ("Circe/Derived.lean", "theorem oracleNoalias_reborrow"),
+     ("Circe/Transfer/Slice.lean", "theorem memEvalFuncFuel_reborrow"),
+     ("Circe/Transfer/Slice.lean", "theorem memTransfer_reborrow"),
+     ("out/Reborrow.lean", "_Z14alias_reborrowRi_fwd"),
+     ("tests/golden/Reborrow.lean", "_Z14alias_reborrowRi_fwd")]),
    ("n4d-vecgrow",
     [("Circe/Validator/GrowLeaves.lean", "def isVecGrowComposerText"),
      ("Circe/Validator/Gate.lean", "N4d-iv-b2 growth composer"),
@@ -1342,8 +1367,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 113 then
-    throw (IO.userError s!"expected 113 spec stubs, found {stubs.length}")
+  if stubs.length != 114 then
+    throw (IO.userError s!"expected 114 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1386,6 +1411,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
    ("diff-vecat", DiffVecAt.main [bin "circe_vec_at_native", trials]),
    ("diff-vecatsum", DiffVecAtSum.main [bin "circe_vec_at_sum_native", trials]),
+   ("diff-reborrow", DiffReborrow.main [bin "circe_reborrow_native", trials]),
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
@@ -1427,6 +1453,7 @@ def checkSuites : List Job :=
    ("golden-vecread", GoldenVecRead.main),
    ("golden-vecat", GoldenVecAt.main),
    ("golden-vecatsum", GoldenVecAtSum.main),
+   ("golden-reborrow", GoldenReborrow.main),
    ("golden-vecgrow", GoldenVecGrow.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-sum-two", GoldenSumTwo.main),
@@ -1448,7 +1475,7 @@ def suiteModules : List String :=
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
-   "ReborrowGate"]
+   "ReborrowGate", "GoldenReborrow", "DiffReborrow"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

@@ -7,10 +7,10 @@
 -- advisory `OracleFact` (synthetic by construction — the probe pins
 -- oracle *policy*, mirroring `llvm.noalias` attr presence or an explicit
 -- "oracle abstains" `unknown`). Controls on already-admitted corpus
--- (`add`, `sum_norestrict`) prove the harness can observe acceptance;
--- every boundary row must reject at its predicted stage with its
--- predicted code. Any in-subset divergence is P0; any ACCEPT outside
--- the two controls is a soundness P0.
+-- (`add`, `sum_norestrict`, `alias_reborrow`) prove the harness can
+-- observe acceptance; every boundary row must reject at its predicted
+-- stage with its predicted code. Any in-subset divergence is P0; any
+-- ACCEPT outside the three controls is a soundness P0.
 import Circe.Validator
 
 namespace GoldenAliasProbe
@@ -68,13 +68,12 @@ def main : IO Unit := do
     "tests/cir/alias_add_plain.cir" .noalias
     "alias-reject" "uniqueness cannot be established"
   passed := passed + b4
-  -- Triple params: oracle vacuous; novel bodies reject at the shape gate.
-  -- The sequential reborrow is recognized but deferred (L2-disjoint
-  -- writer ranges; writer admission needs Iris framing), so it carries
-  -- the deferred message instead of the generic fragment fallthrough.
-  let b5 ← checkProbeReject "_Z14alias_reborrowRi"
+  -- Triple params: oracle vacuous. The sequential reborrow is
+  -- admitted since F1 (the third admit control): exact two-phase
+  -- computation over L2-disjoint ranges through one F0-resolved
+  -- address, functionalized value in / updated value out.
+  let b5 ← checkProbeAccept "_Z14alias_reborrowRi"
     "tests/cir/alias_reborrow.cir" .unknown
-    "out-of-subset" "sequential writers"
   passed := passed + b5
   let b6 ← checkProbeReject "_Z10alias_condRiS_b"
     "tests/cir/alias_cond.cir" .unknown

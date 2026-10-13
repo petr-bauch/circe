@@ -49,7 +49,10 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   N2d; see `DELIVERED.md`). Next candidate: `vector::at()`
   checked read — DONE (2026-10-12, N4d-iv-c; see `DELIVERED.md`).
   Follow-up: `vector::at()` checked sum — DONE (2026-10-12,
-  N4d-iv-d; see `DELIVERED.md`).
+  N4d-iv-d; see `DELIVERED.md`). First writer admission — DONE
+  (2026-10-12, F1/N11: sequential reborrows functionalized
+  value in / updated value out, fused `x + 1 + 2` licensed by L2 +
+  F0; overlapping writers stay Iris-track).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,

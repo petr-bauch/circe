@@ -82,6 +82,14 @@ theorem memTransfer_incr (F : Nat) (p : BitVec 32)
       litVal, hp] <;>
     (cases h : checkedAddI32 p 1#32 <;> rfl)
 
+/-- `reborrow` binding pins nothing (sequential reborrows
+    functionalized to a value; the sequencing license is gate-side). -/
+theorem bindMemArgs_reborrow (x : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .i 32, role := .mutBorrow 0 }]
+      [.i32 x] emptyMem =
+      some ([("x", .i32 x)], emptyMem, []) := by
+  rfl
+
 /-! ## Statement agreement combinators (straight-line code) -/
 
 /-- `skip` agrees with memory untouched. -/

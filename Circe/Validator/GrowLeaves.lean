@@ -2055,6 +2055,53 @@ def structuralSequentialReborrow (raw : RawFunc) : Bool :=
 def isSequentialReborrowShape (raw : RawFunc) : Bool :=
   structuralSequentialReborrow raw && hasSequentialWriterRanges raw.text
 
+/-- The two `nsw` adds consume the `1`/`2` consts in order (first add
+    reads the `1`-const, never the `2`-const, and vice versa) — the
+    computation pin that makes the fused `x + 1 + 2` exact. The type
+    suffix pins `!s32i` (so `#cir.int<1>` never matches `#cir.int<10>`
+    and no other integer width slips in). -/
+def reborrowConstUse (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  let ones := ls.filterMap fun ln =>
+    if containsSubstr ln "cir.const #cir.int<1> : !s32i" then ssaDefOn ln
+    else none
+  let twos := ls.filterMap fun ln =>
+    if containsSubstr ln "cir.const #cir.int<2> : !s32i" then ssaDefOn ln
+    else none
+  let adds := ls.filter (fun ln => containsSubstr ln "cir.add nsw")
+  match ones, twos, adds with
+  | [c1], [c2], [a1, a2] =>
+    mentionsSSA (defRest a1) c1 && !mentionsSSA (defRest a1) c2 &&
+    mentionsSSA (defRest a2) c2 && !mentionsSSA (defRest a2) c1
+  | _, _, _ => false
+
+/-- Both derived writers resolve to `param0` (positional: the second
+    and third slots' ultimate roots) — the F0 same-address license
+    for fusing the two phases into one `x + 1 + 2` through one cell. -/
+def reborrowSameAddress (text : String) : Bool :=
+  match contentRoots (text.splitOn "\n") with
+  | [_, (_, _, u1), (_, _, u2)] =>
+    showRoot u1 == "param0" && showRoot u2 == "param0"
+  | _ => false
+
+/-- Exact `alias_reborrow` admission shape (F1): the
+    sequential-writer skeleton (L2-ordered disjoint ranges, one shared
+    address) computing exactly `x + 1` then `x + 2` — two `nsw` adds,
+    the `1`/`2` consts consumed in order, no other consts, calls,
+    branches, or scopes. Everything else sequential-writer-shaped
+    keeps the deferred message. -/
+def isReborrowShape (raw : RawFunc) : Bool :=
+  structuralSequentialReborrow raw &&
+  opCount raw.text "cir.store" == 5 &&
+  opCount raw.text "cir.load" == 6 &&
+  opCount raw.text "cir.const" == 2 &&
+  opCount raw.text "cir.add nsw" == 2 &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.scope" &&
+  reborrowConstUse raw.text &&
+  hasSequentialWriterRanges raw.text &&
+  reborrowSameAddress raw.text
+
 /-- Soundness of the L2 admission predicate: `true` yields the three
     recorded locals with the first writer's range ending strictly
     before the second writer's begins. Admission will consume exactly

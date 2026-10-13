@@ -70,6 +70,7 @@ def emitSpec (f : Func) : Except EmitError String :=
   | some .chachaBlock => .ok (emitChachaBlockSpecText f.name)
   | some .sha256Compress => .ok (emitSha256CompressSpecText f.name)
   | some .incr => .ok (emitIncrSpecText f.name)
+  | some .reborrow => .ok (emitReborrowSpecText f.name)
   | some .choose => .ok (emitChooseSpecText f.name)
   | some .sum => .ok (emitSumSpecText f.name)
   | some .sumTwo => .ok (emitSumTwoSpecText f.name)
@@ -198,6 +199,7 @@ def emitFunc (f : Func) : Except EmitError EmittedFunc :=
   | some .chachaBlock => .ok ⟨emitChachaBlockText f.name, none⟩
   | some .sha256Compress => .ok ⟨emitSha256CompressText f.name, none⟩
   | some .incr => .ok ⟨emitIncrText f.name, none⟩
+  | some .reborrow => .ok ⟨emitReborrowText f.name, none⟩
   | some .choose =>
     .ok ⟨emitChooseFwdText f.name, some (emitChooseBackText f.name)⟩
   | some .sum => .ok ⟨emitSumText f.name, none⟩

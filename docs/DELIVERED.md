@@ -803,3 +803,50 @@ trial) + `GoldenSha` (pipeline-vs-golden + rename acceptance + 3
 containment rejections) ride the driver roster with a `k5-sha`
 content suite; spec stubs grow 107 → 108.
 - Acceptance: 588 jobs TEST-OK, CHECK-OK.
+
+### N11. First writer admission: sequential reborrows (F1) — DONE (2026-10-12)
+
+First mutable writer through a borrowed reference: `alias_reborrow`
+(`int&` in, `void`, `r += 1` then `s += 2` through two loans to one
+address), functionalized value in / updated value out — the `incr`
+precedent with two sequenced checked adds. The fusion is licensed
+gate-side, not proved: L2-ordered disjoint writer ranges
+(`hasSequentialWriterRanges`) plus one F0-resolved address
+(`reborrowSameAddress`: both derived writers ultimate to `param0`)
+mean the text computes `x + 1 + 2` through one cell; checked-add
+order is unobservable (uniform `.Overflow`), but the gate pins the
+corpus order exactly anyway (3 allocas / 6 loads / 5 stores /
+2 consts / 2 `nsw` adds, `1`/`2` consts consumed in order, no
+calls / comparisons / branches / loops / scopes —
+`isReborrowShape`; anything else sequential-writer-shaped keeps the
+deferred message). New `Circe/Emit/Reborrow.lean`: `reborrowFunc`
+(the mangled entry name, so GenOut and pipeline agree),
+`reborrowFwd` with ok/err1/err2 bridges, `evalFuncFuel_reborrow`
+(+ `emit_correct` + err/ok corollaries) reusing the `add3`
+seq/let skeleton. New `Circe/Eval/Core.lean`
+`evalExpr_add_var_lit` + `Circe/Mem/Model.lean`
+`memEvalExpr_add_var_lit`: all-variable `add`-of-var-and-lit
+forwarding, the BitVec-literal-discipline fix — separately
+elaborated `1 : BitVec 32` terms do not match syntactically
+(`1` vs `1#32`), so literal hypotheses rewrite with `rw`, never
+as `simp` arguments (a deep nested `matchFrag` arm also timed out
+the equation compiler; the arm matches two-level via
+`isReborrowBody`). New `Circe/Transfer/Slice.lean`
+`memEvalFuncFuel_reborrow` (Mem threaded untouched through both
+adds) + `memTransfer_reborrow` (both sides equal the forward);
+`bindMemArgs_reborrow` / `oracleNoalias_reborrow` mirror `incr`
+(borrow functionalized, empty footprint). Gate/match/render
+wiring (`isReborrowShape` admission before the deferred branch,
+`FragKind.reborrow`, `matchFrag_reborrow`,
+`emitReborrowText`/`emitReborrowSpecText` with ground-truth spec
+edges); pipeline output is byte-identical to the checked-in
+`tests/golden/Reborrow.lean` (+ `_Spec.lean`, `spec_check=true`).
+`DiffReborrow` (eval-vs-forward on every trial, 7 edges + 1000
+fuzz trials vs the corpus-linked native driver observing `*x`,
+Lean-Lean only on `nsw` overflow) + `GoldenReborrow`
+(pipeline-vs-golden with no oracle facts + 4 corpus-transformed
+rejections + `incr` shape-exactness) + reworked `ReborrowGate`
+(predicate pins + admission check + `cond` message) ride the
+driver roster with an `f1-reborrow` content suite; spec stubs grow
+113 → 114; `GoldenAliasProbe` gains its third admit control.
+- Acceptance: 630 jobs TEST-OK, CHECK-OK.

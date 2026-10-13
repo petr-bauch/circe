@@ -1331,6 +1331,19 @@ theorem evalExpr_add_fget_var (ρ : Env) (obj f xv : String)
       (checkedAddI32 px dx).map .i32 := by
   simp [evalExpr, hobj, hfield, hvar]
 
+/-- `add` of a variable and an `i32` literal forwards to
+    `checkedAddI32` (F1: the fused reborrow adds). All-variable
+    statement by design: proofs mentioning checked-add literals must
+    rewrite through this helper, never unfold `litVal` over a
+    literal — separately elaborated `1 : BitVec 32` terms do not
+    match syntactically (`1` vs `1#32`, distinct `OfNat` instances),
+    so `simp` with a literal hypothesis leaves it unused. -/
+theorem evalExpr_add_var_lit (ρ : Env) (x : String) (k v : BitVec 32)
+    (hx : envLookup ρ x = some (.i32 v)) :
+    evalExpr (.add (.var x) (.lit (.i32 k))) ρ =
+      (checkedAddI32 v k).map .i32 := by
+  simp [evalExpr, litVal, hx]
+
 /-- Reading a non-block is rejected, never silently modeled. -/
 theorem evalExpr_vget_notvec (arr : String) (v : BitVec 32) (i : BitVec 32)
     (ρ : Env)

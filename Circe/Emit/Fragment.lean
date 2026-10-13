@@ -69,6 +69,7 @@ inductive FragKind : Type
   | chachaBlock
   | sha256Compress
   | incr
+  | reborrow
   | choose
   | sum
   | sumTwo

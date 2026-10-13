@@ -66,6 +66,28 @@ def emitIncrSpecText (name : String) : String :=
   ++ s!"def {name}_spec_check : Bool :=\n"
   ++ s!"  {name}_spec_edges.all fun p => (repr ({name}_spec_fwd p)).pretty == (repr (checkedIncrI32 p)).pretty\n"
 
+/-- Spec stub for the `reborrow` shape (F1). The mirror is the
+    sequential checked-add pair; edges carry ground truth (small
+    increments, `nsw` overflow on either add, `INT32_MIN`, `-1`). -/
+def emitReborrowSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `void {name}(int &x)` (`*x += 1`, then `*x += 2`).\n"
+  ++ s!"    Base body reference: sequential checked adds (cf. emitted `{name}_fwd`, `reborrowFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  match checkedAddI32 x 1 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok t => checkedAddI32 t 2\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: zero, small increments, `nsw` overflow on either add, `INT32_MIN`, `-1`. -/\n"
+  ++ s!"def {name}_spec_edges : List (BitVec 32 × Result (BitVec 32)) :=\n"
+  ++ "  [(0, .ok 3), (10, .ok 13), (0xFFFFFFFF, .ok 2), (0x80000000, .ok 0x80000003), (0x7FFFFFFE, .error .Overflow), (0x7FFFFFFF, .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the 64-bit `add64` shape (S3b). -/
 def emitAdd64SpecText (name : String) : String :=
   emitSpecHeader

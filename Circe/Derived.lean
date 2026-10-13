@@ -50,6 +50,17 @@ theorem oracleNoalias_incr (p : BitVec 32) :
        .return_ (.add (.var "p") (.lit (.i32 1)))⟩ [.i32 p] := by
   exact ⟨_, _, _, bindMemArgs_incr p, layoutNoAlias_nil⟩
 
+/-- `reborrow` binding pins nothing (sequential reborrows
+    functionalized to a value; the sequencing license — L2-ordered
+    disjoint ranges over one F0-resolved address — is gate-side). -/
+theorem oracleNoalias_reborrow (x : BitVec 32) :
+    oracleNoalias
+      ⟨"_Z14alias_reborrowRi", [{ name := "x", ty := .i 32, role := .mutBorrow 0 }],
+       .i 32,
+       .seq (.let_ "t" (.i 32) (.add (.var "x") (.lit (.i32 1))))
+            (.return_ (.add (.var "t") (.lit (.i32 2))))⟩ [.i32 x] := by
+  exact ⟨_, _, _, bindMemArgs_reborrow x, layoutNoAlias_nil⟩
+
 /-- `choose` binding pins nothing (both borrows functionalized to
     values; selection is pure). -/
 theorem bindMemArgs_choose (b : Bool) (x y : BitVec 32) :

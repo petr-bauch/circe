@@ -30,6 +30,7 @@ import Circe.Emit.Array
 import Circe.Emit.ArraySort
 import Circe.Emit.ArraySort8
 import Circe.Emit.Optional
+import Circe.Emit.Reborrow
 import Circe.Emit.Span
 import Circe.Emit.View
 import Circe.Emit.VecRead
@@ -97,6 +98,9 @@ def beqStmt : CStmt → CStmt → Bool
   | .return_ v, .return_ v' => decide (v = v')
   | _, _ => false
 
+-- The structural match is near the compiler heartbeat limit (each arm
+-- splits the equation compilation); F1's arm needs headroom.
+set_option maxHeartbeats 400000 in
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
     (and `emitFunc` rejects it loudly).
 
@@ -140,6 +144,9 @@ def matchFrag : Func → Option FragKind
   | ⟨_, [⟨"p", .i 32, .mutBorrow _⟩], _,
       .return_ (.add (.var "p") (.lit (.i32 one)))⟩ =>
     if one == 1 then some .incr else none
+  | ⟨_, [⟨"x", .i 32, .mutBorrow _⟩], _,
+      .seq (.let_ "t" _ e1) e2⟩ =>
+    if isReborrowBody e1 e2 then some .reborrow else none
   | ⟨_, [⟨"b", .bool, .owned⟩, ⟨"x", .i 32, .mutBorrow r1⟩,
          ⟨"y", .i 32, .mutBorrow r2⟩], _,
       .if_ (.var "b") (.return_ (.var "x")) (.return_ (.var "y"))⟩ =>
@@ -1210,6 +1217,7 @@ theorem matchFrag_useNsAdd : matchFrag useNsAddFunc = some .useNsAdd := rfl
 theorem matchFrag_useTadd32 : matchFrag useTadd32Func = some .useTadd32 := rfl
 theorem matchFrag_useTadd64 : matchFrag useTadd64Func = some .useTadd64 := rfl
 theorem matchFrag_incr : matchFrag incrFunc = some .incr := rfl
+theorem matchFrag_reborrow : matchFrag reborrowFunc = some .reborrow := rfl
 theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
 theorem matchFrag_neg : matchFrag negFunc = some .neg := rfl

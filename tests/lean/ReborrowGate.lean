@@ -1,16 +1,18 @@
--- Sequential-writer-pair gate (L2-admission predicate, deferred).
+-- Sequential-writer-pair gate (L2-admission predicate; F1 admits the
+-- exact shape).
 --
--- Run from the repo root: `lake env lean --run tests/lean/ReborrowGate.lean`
+-- Run from the repo root via the driver (`lake exe circe-test` runs
+-- `ReborrowGate.main`).
 -- The predicate `isSequentialReborrowShape` accepts exactly one corpus
 -- function (`alias_reborrow`: one single-reference root, three writer
 -- allocas, L2-disjoint writer ranges) and rejects the overlapping
 -- `alias_cond` pair (L2 comparison fails), the two-reader `sum_two`
 -- (two params), the `vec_at_sum` entry (loop), and the admitted
--- `scope_early` leaf (no disjoint writer triple). Recognition routes
--- to the deferred "sequential writers" message — still a rejection
--- (mutable writers need Iris framing over `Mem`; there is no writer
--- `Func` yet) — while `alias_cond` keeps the generic fragment message.
--- The disjointness soundness lemmas
+-- `scope_early` leaf (no disjoint writer triple). Since F1, the exact
+-- `isReborrowShape` admits `alias_reborrow` (single check below);
+-- non-exact sequential writers keep the deferred "sequential writers"
+-- message (pinned here for `alias_cond`'s absence: it keeps the
+-- generic fragment message). The disjointness soundness lemmas
 -- (`hasSequentialWriterRanges_disjoint`,
 -- `isSequentialReborrowShape_disjoint`) are compile-time proofs, not
 -- runtime checks.
@@ -47,6 +49,17 @@ def checkMsg (cir needle : String) : IO Nat := do
       n := n + 1
   pure n
 
+def checkAdmit (cir name : String) : IO Nat := do
+  let text ← IO.FS.readFile cir
+  match validateModule text [] with
+  | [(n, .ok _)] =>
+    if n != name then
+      throw (IO.userError s!"reborrow-gate: {cir}: admitted {n} != {name}")
+    IO.println s!"PASS reborrow-admit {n}"
+    pure 1
+  | rows =>
+    throw (IO.userError s!"reborrow-gate: {cir}: expected single admission, got {rows.length} rows")
+
 def main : IO Unit := do
   let mut passed := 0
   let c ← checkPred "tests/cir/alias_reborrow.cir" "_Z14alias_reborrowRi" true
@@ -60,7 +73,7 @@ def main : IO Unit := do
   passed := passed + c
   let c ← checkPred "tests/cir/scope_early.cir" "_Z11scope_earlyii" false
   passed := passed + c
-  let c ← checkMsg "tests/cir/alias_reborrow.cir" "sequential writers"
+  let c ← checkAdmit "tests/cir/alias_reborrow.cir" "_Z14alias_reborrowRi"
   passed := passed + c
   let c ← checkMsg "tests/cir/alias_cond.cir"
     "not in the admitted Phase-4 fragment"
