@@ -52,7 +52,10 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   N4d-iv-d; see `DELIVERED.md`). First writer admission — DONE
   (2026-10-12, F1/N11: sequential reborrows functionalized
   value in / updated value out, fused `x + 1 + 2` licensed by L2 +
-  F0; overlapping writers stay Iris-track).
+  F0; overlapping writers stay Iris-track). Conditional framing
+  spike — DONE (2026-10-12, F2 report-only: disjunctive post
+  proved natively, MoSeL deferred, admission blocked on
+  triple-output/scalar-store model gaps).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,
@@ -225,3 +228,41 @@ value-operand inits (`const`/`add` results) and copy ambiguity
 report `Unknown`; multi-region same-id collisions resolve
 inward-outward per L2 (unresolvable counts conservatively in
 use-facts but claims nothing here).
+
+### F2. Native conditional-framing spike — DONE (2026-10-12, report-only, no admission)
+
+The plan's MoSeL question, answered with evidence instead of
+speculation: `Circe/CondFrame.lean` (87 lines, 4 theorems, no
+`validate`/`Emit` churn — build-covered via a `Test/Driver`
+import, no suite row) proves the `alias_cond` disjunctive post
+natively over `Mem`. Per-arm frame reuses
+`memFind_memStore_other` with the F0 addresses as hypotheses
+(`p` → `param0`'s address, `q` → `param1`'s); one reusable helper
+(`memStore_cell`: storing to a known live 1-word cell succeeds)
+plus read-back (`memFind_cell_store`) discharge both write legs.
+The aliasing split is explicit and BOTH sides are proved:
+disjoint (`b ≠ a` — each arm frames the other block) and aliased
+(single cell, branch-exclusive update, no framing needed — the
+case the `unknown` verdict must also cover and a
+star-conjunction would conflate). Burden: two helpers + two
+posts, all first-try clean — manual `m`/`m₁`/`m₂` threading
+throughout. Verdict: MoSeL vendoring DEFERRED — the native cost
+for one conditional is small, and Iris would not unblock
+admission anyway. Revisit trigger: a second conditional shape
+(when frame threading recurs) or a B2-style shape needing
+`Mem`-level writes. Full admission is blocked on two model gaps,
+neither logical: (B1) triple outputs `(r, p', q')` are
+inexpressible — `pmk` builds exactly a two-field `Point`
+`structVal` (anything else is `AssertFail`), nesting fails, no
+other struct-building expression exists; (B2) scalar writes
+cannot land in `Mem` — no `CStmt` stores scalar blocks, so a
+single-output `Func` with a `Mem`-writing transfer is equally
+inexpressible (the read projection alone is NOT admitted — it
+would silently drop the writes). Deeper consequence, now
+evidence-backed: the functionalized pipeline (scalar mutation as
+value-in/value-out + gate-side L2/F0 licenses, F1-style)
+sidesteps Iris-style framing for scalars entirely — the frame
+rule is proven but currently has no pipeline consumer. Next
+track candidate: multi-output `Func` support (generalized struct
+construction), which unblocks `cond` and all multi-writers and
+subsumes B2's need.

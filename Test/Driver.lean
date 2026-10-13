@@ -86,6 +86,7 @@ import GoldenChacha
 import GoldenSha
 import ScopeReport
 import ReborrowGate
+import Circe.CondFrame
 import Circe.Parser
 
 /-- Scratch dir for native binaries + spec-eval temporaries (mirrors
