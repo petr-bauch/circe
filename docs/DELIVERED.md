@@ -1017,3 +1017,24 @@ so it cannot exercise the if-rules; it needs a new
 assertions stay deferred until the first array loop.
 - Acceptance: Hoare files warning-free, galleries sorry-free,
 658 jobs TEST-OK (`HOAREGALLERY-OK passed=4`).
+
+### H3. Let-rule + cond_pair gallery + micro-tactics — DONE (2026-10-14)
+
+H3a: `memEvalExpr_add_agree` / `pair_agree` (mirroring
+`usub_agree`), `htriple_let`, `heval_usub_u32` /
+`heval_une_u32` value-side helpers;
+`hoare_condPair_true/false` over the real `condPairFunc.body`
+(`tif` + lets + pair return; the `¬c` case owes no `p` debt —
+masking made explicit); driver `hoare-gallery` grows to 6
+closed-instance jobs (pure-env `cond_pair` × 2). H3b,
+measured: `hoare_lit_eval` + `hoare_guard_of` land in
+`Circe/Hoare/Rules.lean`, the gallery rewrites onto them
+(≈ 50 lines removed: seven lit blocks, five dead value
+haves, two guard closures); grand `cir_hoare` rejected (frame
+arguments not inferable), `hoare_eq` macro tried and
+abandoned with reason (no `at`-splicing on this toolchain;
+obtain-only flips the elimination side). Multi-word indexed
+assertions stay deferred until the first array loop (owns its
+own plan).
+- Acceptance: Hoare files warning-free, galleries sorry-free,
+658 jobs TEST-OK (`HOAREGALLERY-OK passed=6`).

@@ -11,6 +11,7 @@
 import Circe.Hoare.Def
 import Circe.Hoare.Rules
 import Circe.Emit.AliasCond
+import Circe.Emit.CondPair
 
 namespace HoareGallery
 
@@ -39,23 +40,13 @@ theorem hoare_gallery (ρ : Env) (m : Mem) (π : Layout)
       galleryBody
       (fun st o => st = (ρ, mb, π) ∧ o = .fellThrough ∧
         cellAt mb a t₁ (v + 1) ∧ cellAt mb b t₂ (w + 1)) := by
-  have hlit0 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.u64 0)) ρ' m' π = .ok (.u64 0) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
-  have hlit1 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.i32 1)) ρ' m' π = .ok (.i32 1) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
   have hv1 : memEvalExpr
       (.add (.mload "pa" (.lit (.u64 0))) (.lit (.i32 1))) ρ m π
       = .ok (.i32 (v + 1)) := by
     have h := memEvalExpr_add_ok _ _ ρ m π v 1
       (hexpr_mload "pa" (.lit (.u64 0)) ρ m π 0 v a t₁
-        hla (hlit0 ρ m) hma)
-      (hlit1 ρ m)
+        hla (hoare_lit_eval (.u64 0) ρ m π) hma)
+      (hoare_lit_eval (.i32 1) ρ m π)
     rw [hov] at h
     exact h
   have hv2 : memEvalExpr
@@ -63,8 +54,8 @@ theorem hoare_gallery (ρ : Env) (m : Mem) (π : Layout)
       = .ok (.i32 (w + 1)) := by
     have h := memEvalExpr_add_ok _ _ ρ ma π w 1
       (hexpr_mload "pb" (.lit (.u64 0)) ρ ma π 0 w b t₂
-        hlb (hlit0 ρ ma) hmb)
-      (hlit1 ρ ma)
+        hlb (hoare_lit_eval (.u64 0) ρ ma π) hmb)
+      (hoare_lit_eval (.i32 1) ρ ma π)
     rw [how] at h
     exact h
   have hfirst : HTriple (fun st => st = (ρ, m, π))
@@ -79,7 +70,7 @@ theorem hoare_gallery (ρ : Env) (m : Mem) (π : Layout)
       (htriple_mstore_frame "pa" (.lit (.u64 0))
         (.add (.mload "pa" (.lit (.u64 0))) (.lit (.i32 1)))
         ρ m π 0 (v + 1) a t₁ ma v b t₂ w
-        (hlit0 ρ m) rfl hv1 hla hsa hca hcb hne)
+        (hoare_lit_eval (.u64 0) ρ m π) rfl hv1 hla hsa hca hcb hne)
       (fun st o h => ⟨h.2.1, h.1, h.2.2.1, h.2.2.2⟩)
   have hsecond : HTriple
       (fun st => st = (ρ, ma, π) ∧
@@ -93,7 +84,7 @@ theorem hoare_gallery (ρ : Env) (m : Mem) (π : Layout)
     have hfr := htriple_mstore_frame "pb" (.lit (.u64 0))
       (.add (.mload "pb" (.lit (.u64 0))) (.lit (.i32 1)))
       ρ ma π 0 (w + 1) b t₂ mb w a t₁ (v + 1)
-      (hlit0 ρ ma) rfl hv2 hlb hsb hB hA (Ne.symm hne)
+      (hoare_lit_eval (.u64 0) ρ ma π) rfl hv2 hlb hsb hB hA (Ne.symm hne)
     obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ ma π rfl
     obtain ⟨⟨rfl, rfl, rfl⟩, rfl, hW, hF⟩ := hQ₂
     exact ⟨ρ, mb, π, .fellThrough, hev₂, rfl, rfl, hF, hW⟩
@@ -121,21 +112,6 @@ theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
       aliasCondFunc.body
       (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
         cellAt mb a t₁ (p + 1) ∧ cellAt mb b t₂ (q + 2)) := by
-  have hlit0 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.u64 0)) ρ' m' π = .ok (.u64 0) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
-  have hlit1 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.i32 1)) ρ' m' π = .ok (.i32 1) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
-  have hlit2 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.i32 2)) ρ' m' π = .ok (.i32 2) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
   have hguard : memEvalExpr (.var "c") ρ m π = .ok (.b true) := by
     rw [memEvalExpr_var]
     simp [evalExpr, hc]
@@ -144,8 +120,8 @@ theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
       = .ok (.i32 (p + 1)) := by
     have h := memEvalExpr_add_ok _ _ ρ m π p 1
       (hexpr_mload "p" (.lit (.u64 0)) ρ m π 0 p a t₁
-        hla (hlit0 ρ m) hma)
-      (hlit1 ρ m)
+        hla (hoare_lit_eval (.u64 0) ρ m π) hma)
+      (hoare_lit_eval (.i32 1) ρ m π)
     rw [hov] at h
     exact h
   have hvq : memEvalExpr
@@ -153,8 +129,8 @@ theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
       = .ok (.i32 (q + 2)) := by
     have h := memEvalExpr_add_ok _ _ ρ ma π q 2
       (hexpr_mload "q" (.lit (.u64 0)) ρ ma π 0 q b t₂
-        hlb (hlit0 ρ ma) hmb)
-      (hlit2 ρ ma)
+        hlb (hoare_lit_eval (.u64 0) ρ ma π) hmb)
+      (hoare_lit_eval (.i32 2) ρ ma π)
     rw [how] at h
     exact h
   have hif : HTriple (fun st => st = (ρ, m, π))
@@ -166,14 +142,11 @@ theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
         cellAt ma a t₁ (p + 1) ∧ cellAt ma b t₂ q) :=
     htriple_consequence _ _ _ _ _ (fun _ => id)
       (htriple_if_true _ _ _ _ _
-        (fun ρ' m' π' hP => by
-          simp only [Prod.mk.injEq] at hP
-          obtain ⟨rfl, rfl, rfl⟩ := hP
-          exact hguard)
+        (fun _ _ _ hP => hoare_guard_of _ _ _ _ _ hguard _ _ _ hP)
         (htriple_mstore_frame "p" (.lit (.u64 0))
           (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1)))
           ρ m π 0 (p + 1) a t₁ ma p b t₂ q
-          (hlit0 ρ m) rfl hvp hla hsa hca hcb hne))
+          (hoare_lit_eval (.u64 0) ρ m π) rfl hvp hla hsa hca hcb hne))
       (fun st o h => ⟨h.2.1, h.1, h.2.2.1, h.2.2.2⟩)
   have htail : HTriple
       (fun st => st = (ρ, ma, π) ∧
@@ -195,7 +168,7 @@ theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
       have hfr := htriple_mstore_frame "q" (.lit (.u64 0))
         (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2)))
         ρ ma π 0 (q + 2) b t₂ mb q a t₁ (p + 1)
-        (hlit0 ρ ma) rfl hvq hlb hsb hB hA (Ne.symm hne)
+        (hoare_lit_eval (.u64 0) ρ ma π) rfl hvq hlb hsb hB hA (Ne.symm hne)
       obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ ma π rfl
       obtain ⟨⟨rfl, rfl, rfl⟩, rfl, hW, hF⟩ := hQ₂
       exact ⟨ρ, mb, π, .fellThrough, hev₂, rfl, rfl, hF, hW⟩
@@ -221,7 +194,7 @@ theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
 theorem hoare_aliasCond_false (ρ : Env) (m : Mem) (π : Layout)
     (a b : Addr) (t₁ t₂ : Nat) (p q : BitVec 32)
     (mb : Mem)
-    (hla : layoutLookup π "p" = some (a, t₁))
+    (_hla : layoutLookup π "p" = some (a, t₁))
     (hlb : layoutLookup π "q" = some (b, t₂))
     (hc : envLookup ρ "c" = some (.b false))
     (hca : cellAt m a t₁ p) (hcb : cellAt m b t₂ q)
@@ -233,16 +206,6 @@ theorem hoare_aliasCond_false (ρ : Env) (m : Mem) (π : Layout)
       aliasCondFunc.body
       (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
         cellAt mb a t₁ p ∧ cellAt mb b t₂ (q + 2)) := by
-  have hlit0 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.u64 0)) ρ' m' π = .ok (.u64 0) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
-  have hlit2 : ∀ (ρ' : Env) (m' : Mem),
-      memEvalExpr (.lit (.i32 2)) ρ' m' π = .ok (.i32 2) := by
-    intro ρ' m'
-    rw [memEvalExpr_lit]
-    rfl
   have hguard : memEvalExpr (.var "c") ρ m π = .ok (.b false) := by
     rw [memEvalExpr_var]
     simp [evalExpr, hc]
@@ -251,8 +214,8 @@ theorem hoare_aliasCond_false (ρ : Env) (m : Mem) (π : Layout)
       = .ok (.i32 (q + 2)) := by
     have h := memEvalExpr_add_ok _ _ ρ m π q 2
       (hexpr_mload "q" (.lit (.u64 0)) ρ m π 0 q b t₂
-        hlb (hlit0 ρ m) hmb)
-      (hlit2 ρ m)
+        hlb (hoare_lit_eval (.u64 0) ρ m π) hmb)
+      (hoare_lit_eval (.i32 2) ρ m π)
     rw [how] at h
     exact h
   have hskip : HTriple (fun st => st = (ρ, m, π)) .skip
@@ -270,10 +233,7 @@ theorem hoare_aliasCond_false (ρ : Env) (m : Mem) (π : Layout)
         cellAt m a t₁ p ∧ cellAt m b t₂ q) :=
     htriple_consequence _ _ _ _ _ (fun _ => id)
       (htriple_if_false _ _ _ _ _
-        (fun ρ' m' π' hP => by
-          simp only [Prod.mk.injEq] at hP
-          obtain ⟨rfl, rfl, rfl⟩ := hP
-          exact hguard)
+        (fun _ _ _ hP => hoare_guard_of _ _ _ _ _ hguard _ _ _ hP)
         hskip)
       (fun st o h => h)
   have htail : HTriple
@@ -296,7 +256,7 @@ theorem hoare_aliasCond_false (ρ : Env) (m : Mem) (π : Layout)
       have hfr := htriple_mstore_frame "q" (.lit (.u64 0))
         (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2)))
         ρ m π 0 (q + 2) b t₂ mb q a t₁ p
-        (hlit0 ρ m) rfl hvq hlb hsb hB hA (Ne.symm hne)
+        (hoare_lit_eval (.u64 0) ρ m π) rfl hvq hlb hsb hB hA (Ne.symm hne)
       obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ m π rfl
       obtain ⟨⟨rfl, rfl, rfl⟩, rfl, hW, hF⟩ := hQ₂
       exact ⟨ρ, mb, π, .fellThrough, hev₂, rfl, rfl, hF, hW⟩
@@ -471,6 +431,236 @@ theorem hoare_countdown (m : Mem) (π : Layout) :
         heq1, rfl, hle1⟩
   exact htriple_while_at (countdownInv m π) _ _ _ hzero hexit hdec hstep
 
+/-- `cond_pair` under `c = true` over the real emitted body:
+    `tif` takes the incrementing branch (both overflow debts
+    live), two lets thread the environment, `return_` delivers
+    the pair. Exercises the new `htriple_let`. -/
+theorem hoare_condPair_true (ρ : Env) (m : Mem) (π : Layout)
+    (p q a b : BitVec 32)
+    (hp : envLookup ρ "p" = some (.i32 p))
+    (hq : envLookup ρ "q" = some (.i32 q))
+    (hc : envLookup ρ "c" = some (.b true))
+    (h1 : checkedAddI32 p 1 = .ok a)
+    (h2 : checkedAddI32 q 2 = .ok b) :
+    HTriple (fun st => st = (ρ, m, π))
+      condPairFunc.body
+      (fun st o => st = (((("b", .i32 b) :: ("a", .i32 a) :: ρ), m, π)) ∧
+        o = .returned (.structVal "IPair" [("a", a), ("b", b)])) := by
+  have hvc : evalExpr (.var "c") ρ = .ok (.b true) :=
+    evalExpr_var_hit _ _ _ hc
+  have hadd_agree :
+      memEvalExpr (.add (.var "p") (.lit (.i32 1))) ρ m π =
+        evalExpr (.add (.var "p") (.lit (.i32 1))) ρ :=
+    memEvalExpr_add_agree _ _ _ _ _
+      (memEvalExpr_var _ _ _ _) (memEvalExpr_lit _ _ _ _)
+  have htif_agree :
+      memEvalExpr (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")) ρ m π =
+      evalExpr (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")) ρ :=
+    memEvalExpr_tif_true _ _ _ _ _ _
+      (memEvalExpr_var _ _ _ _) hvc hadd_agree
+  have htif_val :
+      evalExpr (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")) ρ
+        = .ok (.i32 a) := by
+    rw [evalExpr_tif_true _ _ _ _ hvc,
+      evalExpr_add_var_lit _ _ _ _ hp, h1]
+    rfl
+  have hletA : HTriple (fun st => st = (ρ, m, π))
+      (.let_ "a" (.i 32) (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")))
+      (fun st o => st = ((("a", .i32 a) :: ρ, m, π)) ∧
+        o = .fellThrough) :=
+    htriple_let "a" (.i 32) _ ρ m π (.i32 a)
+      (fun _ h => by cases h) (fun _ h => by cases h)
+      (fun _ h => by cases h) htif_agree htif_val
+  have hseqA : HTriple (fun st => st = (ρ, m, π))
+      (.let_ "a" (.i 32) (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")))
+      (fun st o => o = .fellThrough ∧
+        st = ((("a", .i32 a) :: ρ, m, π))) :=
+    htriple_consequence _ _ _ _ _ (fun _ => id) hletA
+      (fun st o h => ⟨h.2, h.1⟩)
+  have htail : HTriple
+      (fun st => st = ((("a", .i32 a) :: ρ, m, π)))
+      (.seq (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+            (.return_ (.pair (.var "a") (.var "b"))))
+      (fun st o => st = (((("b", .i32 b) :: ("a", .i32 a) :: ρ), m, π)) ∧
+        o = .returned (.structVal "IPair" [("a", a), ("b", b)])) := by
+    have hq1 : envLookup (("a", .i32 a) :: ρ) "q" = some (.i32 q) := by
+      simp [envLookup, hq]
+    have hadd_agree1 :
+        memEvalExpr (.add (.var "q") (.lit (.i32 2)))
+          ((("a", .i32 a) :: ρ)) m π =
+        evalExpr (.add (.var "q") (.lit (.i32 2)))
+          ((("a", .i32 a) :: ρ)) :=
+      memEvalExpr_add_agree _ _ _ _ _
+        (memEvalExpr_var _ _ _ _) (memEvalExpr_lit _ _ _ _)
+    have hadd_val1 :
+        evalExpr (.add (.var "q") (.lit (.i32 2)))
+          ((("a", .i32 a) :: ρ)) = .ok (.i32 b) := by
+      rw [evalExpr_add_var_lit _ _ _ _ hq1, h2]
+      rfl
+    have hletB : HTriple
+        (fun st => st = ((("a", .i32 a) :: ρ, m, π)))
+        (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+        (fun st o => st = (((("b", .i32 b) :: ("a", .i32 a) :: ρ), m, π)) ∧
+          o = .fellThrough) := by
+      intro F ρ₀ m₀ π₀ hP
+      simp only [Prod.mk.injEq] at hP
+      obtain ⟨rfl, rfl, rfl⟩ := hP
+      exact htriple_let "b" (.i 32) _ _ _ _ (.i32 b)
+        (fun _ h => by cases h) (fun _ h => by cases h)
+        (fun _ h => by cases h) hadd_agree1 hadd_val1
+        F _ _ _ rfl
+    have hseqB : HTriple
+        (fun st => st = ((("a", .i32 a) :: ρ, m, π)))
+        (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+        (fun st o => o = .fellThrough ∧
+          st = (((("b", .i32 b) :: ("a", .i32 a) :: ρ), m, π))) :=
+      htriple_consequence _ _ _ _ _ (fun _ => id) hletB
+        (fun st o h => ⟨h.2, h.1⟩)
+    have hret : HTriple
+        (fun st => st = (((("b", .i32 b) :: ("a", .i32 a) :: ρ), m, π)))
+        (.return_ (.pair (.var "a") (.var "b")))
+        (fun st o => st = (((("b", .i32 b) :: ("a", .i32 a) :: ρ), m, π)) ∧
+          o = .returned (.structVal "IPair" [("a", a), ("b", b)])) := by
+      have hla : envLookup ((("b", .i32 b) :: ("a", .i32 a) :: ρ)) "a" =
+          some (.i32 a) := by simp [envLookup]
+      have hlb : envLookup ((("b", .i32 b) :: ("a", .i32 a) :: ρ)) "b" =
+          some (.i32 b) := by simp [envLookup]
+      have hagree :
+          memEvalExpr (.pair (.var "a") (.var "b"))
+            ((("b", .i32 b) :: ("a", .i32 a) :: ρ)) m π =
+          evalExpr (.pair (.var "a") (.var "b"))
+            ((("b", .i32 b) :: ("a", .i32 a) :: ρ)) :=
+        memEvalExpr_pair_agree _ _ _ _ _
+          (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _)
+      have hval :
+          evalExpr (.pair (.var "a") (.var "b"))
+            ((("b", .i32 b) :: ("a", .i32 a) :: ρ)) =
+          .ok (.structVal "IPair" [("a", a), ("b", b)]) := by
+        simp [evalExpr, hla, hlb]
+      intro F ρ₀ m₀ π₀ hP
+      simp only [Prod.mk.injEq] at hP
+      obtain ⟨rfl, rfl, rfl⟩ := hP
+      exact htriple_return _ _ _ _ _ hagree hval F _ _ _ rfl
+    exact htriple_seq _ _ _ _ _ hseqB hret
+  exact htriple_seq _ _ _ _ _ hseqA htail
+
+/-- `cond_pair` under `c = false`: `tif` takes the passthrough
+    branch, so the first add is never evaluated — no `p`
+    overflow debt (masking made explicit). Only the `q` debt
+    is owed. -/
+theorem hoare_condPair_false (ρ : Env) (m : Mem) (π : Layout)
+    (p q b : BitVec 32)
+    (hp : envLookup ρ "p" = some (.i32 p))
+    (hq : envLookup ρ "q" = some (.i32 q))
+    (hc : envLookup ρ "c" = some (.b false))
+    (h2 : checkedAddI32 q 2 = .ok b) :
+    HTriple (fun st => st = (ρ, m, π))
+      condPairFunc.body
+      (fun st o => st = (((("b", .i32 b) :: ("a", .i32 p) :: ρ), m, π)) ∧
+        o = .returned (.structVal "IPair" [("a", p), ("b", b)])) := by
+  have hvc : evalExpr (.var "c") ρ = .ok (.b false) :=
+    evalExpr_var_hit _ _ _ hc
+  have htif_agree :
+      memEvalExpr (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")) ρ m π =
+      evalExpr (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")) ρ :=
+    memEvalExpr_tif_false _ _ _ _ _ _
+      (memEvalExpr_var _ _ _ _) hvc
+      (memEvalExpr_var _ _ _ _)
+  have htif_val :
+      evalExpr (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")) ρ
+        = .ok (.i32 p) := by
+    rw [evalExpr_tif_false _ _ _ _ hvc,
+      evalExpr_var_hit _ _ _ hp]
+  have hletA : HTriple (fun st => st = (ρ, m, π))
+      (.let_ "a" (.i 32) (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")))
+      (fun st o => st = ((("a", .i32 p) :: ρ, m, π)) ∧
+        o = .fellThrough) :=
+    htriple_let "a" (.i 32) _ ρ m π (.i32 p)
+      (fun _ h => by cases h) (fun _ h => by cases h)
+      (fun _ h => by cases h) htif_agree htif_val
+  have hseqA : HTriple (fun st => st = (ρ, m, π))
+      (.let_ "a" (.i 32) (.tif (.var "c")
+        (.add (.var "p") (.lit (.i32 1))) (.var "p")))
+      (fun st o => o = .fellThrough ∧
+        st = ((("a", .i32 p) :: ρ, m, π))) :=
+    htriple_consequence _ _ _ _ _ (fun _ => id) hletA
+      (fun st o h => ⟨h.2, h.1⟩)
+  have htail : HTriple
+      (fun st => st = ((("a", .i32 p) :: ρ, m, π)))
+      (.seq (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+            (.return_ (.pair (.var "a") (.var "b"))))
+      (fun st o => st = (((("b", .i32 b) :: ("a", .i32 p) :: ρ), m, π)) ∧
+        o = .returned (.structVal "IPair" [("a", p), ("b", b)])) := by
+    have hq1 : envLookup (("a", .i32 p) :: ρ) "q" = some (.i32 q) := by
+      simp [envLookup, hq]
+    have hadd_agree1 :
+        memEvalExpr (.add (.var "q") (.lit (.i32 2)))
+          ((("a", .i32 p) :: ρ)) m π =
+        evalExpr (.add (.var "q") (.lit (.i32 2)))
+          ((("a", .i32 p) :: ρ)) :=
+      memEvalExpr_add_agree _ _ _ _ _
+        (memEvalExpr_var _ _ _ _) (memEvalExpr_lit _ _ _ _)
+    have hadd_val1 :
+        evalExpr (.add (.var "q") (.lit (.i32 2)))
+          ((("a", .i32 p) :: ρ)) = .ok (.i32 b) := by
+      rw [evalExpr_add_var_lit _ _ _ _ hq1, h2]
+      rfl
+    have hletB : HTriple
+        (fun st => st = ((("a", .i32 p) :: ρ, m, π)))
+        (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+        (fun st o => st = (((("b", .i32 b) :: ("a", .i32 p) :: ρ), m, π)) ∧
+          o = .fellThrough) := by
+      intro F ρ₀ m₀ π₀ hP
+      simp only [Prod.mk.injEq] at hP
+      obtain ⟨rfl, rfl, rfl⟩ := hP
+      exact htriple_let "b" (.i 32) _ _ _ _ (.i32 b)
+        (fun _ h => by cases h) (fun _ h => by cases h)
+        (fun _ h => by cases h) hadd_agree1 hadd_val1
+        F _ _ _ rfl
+    have hseqB : HTriple
+        (fun st => st = ((("a", .i32 p) :: ρ, m, π)))
+        (.let_ "b" (.i 32) (.add (.var "q") (.lit (.i32 2))))
+        (fun st o => o = .fellThrough ∧
+          st = (((("b", .i32 b) :: ("a", .i32 p) :: ρ), m, π))) :=
+      htriple_consequence _ _ _ _ _ (fun _ => id) hletB
+        (fun st o h => ⟨h.2, h.1⟩)
+    have hret : HTriple
+        (fun st => st = (((("b", .i32 b) :: ("a", .i32 p) :: ρ), m, π)))
+        (.return_ (.pair (.var "a") (.var "b")))
+        (fun st o => st = (((("b", .i32 b) :: ("a", .i32 p) :: ρ), m, π)) ∧
+          o = .returned (.structVal "IPair" [("a", p), ("b", b)])) := by
+      have hla : envLookup ((("b", .i32 b) :: ("a", .i32 p) :: ρ)) "a" =
+          some (.i32 p) := by simp [envLookup]
+      have hlb : envLookup ((("b", .i32 b) :: ("a", .i32 p) :: ρ)) "b" =
+          some (.i32 b) := by simp [envLookup]
+      have hagree :
+          memEvalExpr (.pair (.var "a") (.var "b"))
+            ((("b", .i32 b) :: ("a", .i32 p) :: ρ)) m π =
+          evalExpr (.pair (.var "a") (.var "b"))
+            ((("b", .i32 b) :: ("a", .i32 p) :: ρ)) :=
+        memEvalExpr_pair_agree _ _ _ _ _
+          (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _)
+      have hval :
+          evalExpr (.pair (.var "a") (.var "b"))
+            ((("b", .i32 b) :: ("a", .i32 p) :: ρ)) =
+          .ok (.structVal "IPair" [("a", p), ("b", b)]) := by
+        simp [evalExpr, hla, hlb]
+      intro F ρ₀ m₀ π₀ hP
+      simp only [Prod.mk.injEq] at hP
+      obtain ⟨rfl, rfl, rfl⟩ := hP
+      exact htriple_return _ _ _ _ _ hagree hval F _ _ _ rfl
+    exact htriple_seq _ _ _ _ _ hseqB hret
+  exact htriple_seq _ _ _ _ _ hseqA htail
+
 /-- Closed-instance runtime checks — executable shadows of the
     gallery triples at one point each (the proofs themselves are
     compile-gated): the two-cell incr, `alias_cond` under both
@@ -521,6 +711,22 @@ def main : IO Unit := do
     | .error e =>
       throw (IO.userError
         s!"hoare-gallery: alias_cond c={c} failed: {(repr e).pretty}")
+  -- `cond_pair` over the emitted body is pure-env: `(10, 20)`
+  -- answers `(11, 22)` under `c`, `(10, 22)` without (masking).
+  for (c, wantA, wantB) in [(true, 11, 22), (false, 10, 22)] do
+    let ρcp : Env := [("p", .i32 10), ("q", .i32 20), ("c", .b c)]
+    match memEvalStmtFuel 20 condPairFunc.body ρcp emptyMem [] with
+    | .ok (_, .returned (.structVal "IPair" [("a", a), ("b", b)])) =>
+      if a != wantA || b != wantB then
+        throw (IO.userError
+          s!"hoare-gallery: cond_pair c={c}: got ({a}, {b})")
+      else passed := passed + 1
+    | .ok _ =>
+      throw (IO.userError
+        s!"hoare-gallery: cond_pair c={c}: want returned pair")
+    | .error e =>
+      throw (IO.userError
+        s!"hoare-gallery: cond_pair c={c} failed: {(repr e).pretty}")
   -- Countdown from 3 ends at 0.
   match memEvalStmtFuel 20 countdownBody [("n", .u32 3)] emptyMem [] with
   | .ok ((ρ', _, _), .fellThrough) =>

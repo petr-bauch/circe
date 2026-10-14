@@ -319,3 +319,24 @@ countdown (`n ≤ F` at fuel `F`, exact decrement via
 with `rfl` keeps the inner-binder side — the outer names are
 gone after substitution, so inner applications must use the
 fresh names.
+
+### Lets and micro-tactics (H3)
+
+`htriple_let` wraps `memEvalStmtFuel_let_pure` (allocating
+arms excluded by constructor-discrimination hypotheses);
+`memEvalExpr_add_agree` / `pair_agree` fill the two missing
+agreement slots beside `usub_agree`. The `cond_pair` triples
+run over the real emitted body (pure-env entry): under `c`
+both overflow debts are owed, under `¬c` the `tif`
+passthrough masks the first add — no `p` debt. Tactic
+verdict (measured, not assumed): the gallery carried ~20%
+mechanical lines, but a general `cir_hoare` is rejected — the
+15-argument frame applications cannot be inferred. Shipped
+instead: `hoare_lit_eval` (one quantified literal-evaluation
+lemma replacing seven blocks) and `hoare_guard_of` (one-line
+guard-premise closures). A `hoare_eq` substitution macro was
+tried and abandoned with reason: quotations cannot splice
+into `at` on this toolchain, and the obtain-only fallback
+substitutes the wrong side (it drops the inner binders where
+the two-step keeps them) — negative result kept on record.
+Net rewrite savings ≈ 50 lines at unchanged coverage.
