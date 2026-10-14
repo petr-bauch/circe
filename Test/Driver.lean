@@ -84,6 +84,7 @@ import GoldenView
 import GoldenVecGrow
 import GoldenWidth
 import GoldenCondPair
+import GoldenAliasCond
 import GoldenWrPair
 import GoldenXorN
 import GoldenChacha
@@ -92,6 +93,7 @@ import ScopeReport
 import ReborrowGate
 import WrPairGate
 import CondPairGate
+import AliasCondGate
 import Circe.CondFrame
 import Circe.Parser
 
@@ -286,6 +288,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/WrPair_Spec.lean", "out/WrPair_Spec.lean"),
    ("tests/golden/CondPair.lean", "out/CondPair.lean"),
    ("tests/golden/CondPair_Spec.lean", "out/CondPair_Spec.lean"),
+   ("tests/golden/AliasCond.lean", "out/AliasCond.lean"),
+   ("tests/golden/AliasCond_Spec.lean", "out/AliasCond_Spec.lean"),
    ("tests/golden/OverloadAdd.lean", "out/OverloadAdd.lean"),
    ("tests/golden/Add3.lean", "out/Add3.lean"),
    ("tests/golden/UseAdd.lean", "out/UseAdd.lean"),
@@ -396,7 +400,7 @@ def goldenPairs : List (String × String) :=
 /-- Emitted files `check.sh` typechecks individually (beyond the spec
     loop, which covers every `out/*_Spec.lean`). -/
 def emittedTypechecks : List String :=
-  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/WrPair.lean", "out/WrPair_Spec.lean", "out/CondPair.lean", "out/CondPair_Spec.lean", "out/Choose.lean", "out/SumArray.lean",
+  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/WrPair.lean", "out/WrPair_Spec.lean", "out/CondPair.lean", "out/CondPair_Spec.lean", "out/AliasCond.lean", "out/AliasCond_Spec.lean", "out/Choose.lean", "out/SumArray.lean",
    "out/AddCaller.lean", "out/SumCaller.lean", "out/StructByValue.lean",
    "out/NestedSum.lean", "out/SkipSum.lean", "out/FindEq.lean", "out/Cls.lean",
    "out/ClsFall.lean", "out/ClsDense.lean", "out/ClsBreak.lean",
@@ -512,6 +516,8 @@ def contentAsserts : List (String × List (String × String)) :=
      ("out/Reborrow.lean", "checkedAddI32 t 2"),
      ("out/WrPair.lean", "match checkedAddI32 p 1, checkedAddI32 q 2"),
      ("out/CondPair.lean", "match c with"),
+     ("out/AliasCond.lean", "let q' := if aliased then a else q"),
+     ("out/AliasCond_Spec.lean", "_Z10alias_condRiS_b_spec_check"),
      ("out/Choose.lean", ".ok (if b then x else y)"),
      ("out/Choose.lean", ".ok (if b then (ret, y) else (x, ret))"),
      ("out/SumArray.lean", "prefixSumU32 a.val a.val.length"),
@@ -1213,6 +1219,26 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer/Slice.lean", "theorem memTransfer_condPair"),
      ("out/CondPair.lean", "cond_pair_fwd"),
      ("tests/golden/CondPair.lean", "cond_pair_fwd")]),
+   ("g3-aliascond",
+    [("Circe/Emit/AliasCond.lean", "def aliasCondFunc"),
+     ("Circe/Emit/AliasCond.lean", "def isAliasCondBody"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_aliasCond"),
+     ("Circe/Emit/Render.lean", "def emitAliasCondText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitAliasCondSpecText"),
+     ("Circe/Emit.lean", "some .aliasCond"),
+     ("Circe/Mem/Agree.lean", "theorem bindMemArgs_aliasCond"),
+     ("Circe/Validator/GrowLeaves.lean", "def isAliasCondShape"),
+     ("Circe/Validator/GrowLeaves.lean", "def structuralAliasCond"),
+     ("Circe/Validator/Gate.lean", "isAliasCondShape raw"),
+     ("Circe/Transfer/Slice.lean", "theorem memEvalStmt_aliasCond_true"),
+     ("Circe/Transfer/Slice.lean", "theorem memEvalStmt_aliasCond_false"),
+     ("Circe/Transfer/Slice.lean", "theorem memEvalStmt_aliasCond_aliased_true"),
+     ("Circe/Transfer/Slice.lean", "theorem memEvalStmt_aliasCond_aliased_false"),
+     ("Circe/CondFrame.lean", "theorem condExec_invert_disjoint"),
+     ("Circe/CondFrame.lean", "theorem condExec_invert_aliased"),
+     ("out/AliasCond.lean", "_Z10alias_condRiS_b_spec"),
+     ("tests/golden/AliasCond.lean", "_Z10alias_condRiS_b_spec"),
+     ("tests/golden/AliasCond_Spec.lean", "_Z10alias_condRiS_b_spec_check")]),
    ("n4d-vecgrow",
     [("Circe/Validator/GrowLeaves.lean", "def isVecGrowComposerText"),
      ("Circe/Validator/Gate.lean", "N4d-iv-b2 growth composer"),
@@ -1420,8 +1446,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 116 then
-    throw (IO.userError s!"expected 116 spec stubs, found {stubs.length}")
+  if stubs.length != 117 then
+    throw (IO.userError s!"expected 117 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1511,6 +1537,7 @@ def checkSuites : List Job :=
    ("golden-reborrow", GoldenReborrow.main),
    ("golden-wrpair", GoldenWrPair.main),
    ("golden-condpair", GoldenCondPair.main),
+   ("golden-aliascond", GoldenAliasCond.main),
    ("golden-vecgrow", GoldenVecGrow.main),
    ("golden-readonly", GoldenReadOnly.main),
    ("golden-sum-two", GoldenSumTwo.main),
@@ -1519,7 +1546,8 @@ def checkSuites : List Job :=
    ("scope-report", ScopeReport.main),
    ("reborrow-gate", ReborrowGate.main),
    ("wrpair-gate", WrPairGate.main),
-   ("condpair-gate", CondPairGate.main)]
+   ("condpair-gate", CondPairGate.main),
+   ("aliascond-gate", AliasCondGate.main)]
 
 /-- Registered suite module names (mirrors the `Suites` roots: a new
     `tests/lean` runner without registration fails loudly here). -/
@@ -1536,7 +1564,8 @@ def suiteModules : List String :=
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",
-   "CondPairGate", "GoldenCondPair", "DiffCondPair"]
+   "CondPairGate", "GoldenCondPair", "DiffCondPair",
+   "AliasCondGate", "GoldenAliasCond"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

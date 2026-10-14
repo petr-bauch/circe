@@ -13,6 +13,7 @@ import Circe.Emit.VecAtSum
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
+import Circe.Emit.AliasCond
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
 
@@ -34,6 +35,7 @@ def main : IO Unit := do
   let reborrow ← emitOrDie reborrowFunc
   let wrPair ← emitOrDie wrPairFunc
   let condPair ← emitOrDie condPairFunc
+  let aliasCond ← emitOrDie aliasCondFunc
   let choose ← emitOrDie chooseFunc
   let sum ← emitOrDie sumFunc
   let sumNr ← emitOrDie { sumFunc with name := "sum_norestrict" }
@@ -150,6 +152,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Reborrow.lean" reborrow.forward
   IO.FS.writeFile "out/WrPair.lean" wrPair.forward
   IO.FS.writeFile "out/CondPair.lean" condPair.forward
+  IO.FS.writeFile "out/AliasCond.lean" aliasCond.forward
   IO.FS.writeFile "out/Choose.lean" (emitFileText (.ok choose))
   IO.FS.writeFile "out/SumArray.lean" (emitFileText (.ok sum))
   IO.FS.writeFile "out/SumNorestrict.lean" (emitFileText (.ok sumNr))
@@ -266,6 +269,7 @@ def main : IO Unit := do
   let reborrowSpec ← specOrDie reborrowFunc
   let wrPairSpec ← specOrDie wrPairFunc
   let condPairSpec ← specOrDie condPairFunc
+  let aliasCondSpec ← specOrDie aliasCondFunc
   let chooseSpec ← specOrDie chooseFunc
   let sumSpec ← specOrDie sumFunc
   let sumNrSpec ← specOrDie { sumFunc with name := "sum_norestrict" }
@@ -382,6 +386,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Reborrow_Spec.lean" reborrowSpec
   IO.FS.writeFile "out/WrPair_Spec.lean" wrPairSpec
   IO.FS.writeFile "out/CondPair_Spec.lean" condPairSpec
+  IO.FS.writeFile "out/AliasCond_Spec.lean" aliasCondSpec
   IO.FS.writeFile "out/Choose_Spec.lean" chooseSpec
   IO.FS.writeFile "out/SumArray_Spec.lean" sumSpec
   IO.FS.writeFile "out/SumNorestrict_Spec.lean" sumNrSpec

@@ -16,11 +16,16 @@ meaningless.
 -/
 import Circe.Emit.Fragment
 
+/-- Mangled entry name (F1 `reborrowName` precedent: the canned
+    `Func` carries the CIRGen name so GenOut output matches pipeline
+    output byte-identically). -/
+def aliasCondName : String := "_Z10alias_condRiS_b"
+
 /-- Canonical CoreIR for `tests/cpp/alias_cond.cpp`
     (`void alias_cond(int &p, int &q, bool c)`: the branch-guarded
     `p`-store plus the unconditional `q`-store, both through pins). -/
 def aliasCondFunc : Func :=
-  ⟨"alias_cond",
+  ⟨aliasCondName,
    [{ name := "p", ty := .i 32, role := .pinnedCell },
     { name := "q", ty := .i 32, role := .pinnedCell },
     { name := "c", ty := .bool, role := .owned }],

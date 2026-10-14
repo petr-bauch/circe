@@ -1611,7 +1611,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`) or the full C++ single-reference triple (`nonnull + dereferenceable + noundef`): uniqueness cannot be established (see docs/SUBSET.md rule 1)"
     | none =>
       if !(oracleParams raw).isEmpty && !verdictAdmits oracle.verdict &&
-          !recoveredNoalias raw && !isAliasCondShape raw then
+          !recoveredNoalias raw then
         let why := match oracle.verdict with
           | .mayAlias => "reports `mayAlias`"
           | .unknown => "is inconclusive (`unknown`)"

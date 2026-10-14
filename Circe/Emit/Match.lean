@@ -1234,6 +1234,7 @@ theorem matchFrag_incr : matchFrag incrFunc = some .incr := rfl
 theorem matchFrag_reborrow : matchFrag reborrowFunc = some .reborrow := rfl
 theorem matchFrag_wrPair : matchFrag wrPairFunc = some .wrPair := rfl
 theorem matchFrag_condPair : matchFrag condPairFunc = some .condPair := rfl
+theorem matchFrag_aliasCond : matchFrag aliasCondFunc = some .aliasCond := rfl
 theorem matchFrag_add64 : matchFrag add64Func = some .add64 := rfl
 theorem matchFrag_addu64 : matchFrag addu64Func = some .addu64 := rfl
 theorem matchFrag_neg : matchFrag negFunc = some .neg := rfl
