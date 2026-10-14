@@ -360,4 +360,11 @@ the exit lemma carries its own layout pin. Tactic notes: a
 must use post-substitution names (traced, not assumed); a
 `rw` that closes its goal leaves no goals for continuations;
 accumulator witnesses go in explicitly rather than by
-unification assignment.
+unification assignment. The second gallery is an in-place
+increment (`hoare_incrLoop`, single array block, no side
+cell): the invariant carries the evolving prefix
+(`(take iv).map (· + 1) ++ drop iv`), and the store step
+bridges the operational `set`-form to the next prefix form
+(`set_append_right` + take/drop algebra, drop-head by
+extensionality) — a measured reminder that take/map/drop is
+the spec shape while `set` is the operational residue.

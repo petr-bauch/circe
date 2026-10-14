@@ -674,11 +674,21 @@ def sumLoopBody : CStmt :=
                 (.mload "arr" (.var "i"))))
           (.assign "i" (.uadd (.var "i") (.lit (.u64 1)))))
 
+/-- In-place increment body: `while (i < len) { arr[i] = arr[i] + 1;
+    i = i + 1 }`. Single array block, no side cell — the second
+    array gallery, with the contents evolving under the loop. -/
+def incrLoopBody : CStmt :=
+  .while_ (.ult (.var "i") (.var "len"))
+    (.seq (.mstore "arr" (.var "i")
+              (.add (.mload "arr" (.var "i")) (.lit (.i32 1))))
+          (.assign "i" (.uadd (.var "i") (.lit (.u64 1)))))
+
 /-- Closed-instance runtime checks — executable shadows of the
     gallery triples at one point each (the proofs themselves are
     compile-gated): the two-cell incr, `alias_cond` under both
     guard values over the real emitted body, the countdown
-    from 3, and the read-only sum loop over `[1,2,3,4]`. -/
+    from 3, the read-only sum loop over `[1,2,3,4]`, and the
+    in-place increment over `[1,2,3]`. -/
 def main : IO Unit := do
   let mut passed := 0
   -- Two-cell incr: `pa=10, pb=20` → `pa=11, pb=21`.
@@ -775,6 +785,25 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: sum loop failed: {(repr e).pretty}")
+  -- In-place increment over `[1,2,3]` gives `[2,3,4]`.
+  let (t0, ab) := memAllocData emptyMem [(1 : BitVec 32), 2, 3]
+  let πincr : Layout := [("arr", ab, ab)]
+  let ρincr : Env := [("i", .u64 0), ("len", .u64 3)]
+  match memEvalStmtFuel 40 incrLoopBody ρincr t0 πincr with
+  | .ok ((_, m', _), .fellThrough) =>
+    match memFind m' ab with
+    | some b =>
+      if b.data != [2, 3, 4] then
+        throw (IO.userError
+          s!"hoare-gallery: incr loop cells={b.data}, want [2,3,4]")
+      else passed := passed + 1
+    | _ =>
+      throw (IO.userError "hoare-gallery: incr loop lost array")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: incr loop want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: incr loop failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix
@@ -1044,5 +1073,280 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
     · rw [hguardv _ _ _ _ hi hlen, hultF _ (Nat.le_of_not_lt hlt)] at hgt
       simp at hgt
   exact htriple_while_at _ _ _ _ hzero hexit hdec hstep
+
+/-- Fuel-indexed increment invariant: the visited prefix is
+    incremented, the suffix untouched, `len - iv` fuel left.
+    Memory floats existentially, as in the sum loop. -/
+def incrLoopInv (π : Layout) (aa : Addr) (ta : Nat)
+    (l : List (BitVec 32)) (k : Nat) :
+    Env × Mem × Layout → Prop :=
+  fun st => ∃ ρ rest iv mc πc, st = (ρ, mc, πc) ∧ πc = π ∧
+    ρ = ("i", .u64 iv) :: ("len", .u64 (BitVec.ofNat 64 l.length)) :: rest ∧
+    iv.toNat ≤ l.length ∧
+    l.length - iv.toNat ≤ k ∧
+    cellsAt mc aa ta ((l.take iv.toNat).map (· + 1) ++ l.drop iv.toNat)
+
+/-- Increment post: every word incremented, index at length. -/
+def incrLoopPost (π : Layout) (aa : Addr) (ta : Nat)
+    (l : List (BitVec 32)) :
+    Env × Mem × Layout → Outcome → Prop :=
+  fun st o => o = .fellThrough ∧ ∃ ρ' mc πc, st = (ρ', mc, πc) ∧ πc = π ∧
+    envLookup ρ' "i" = some (.u64 (BitVec.ofNat 64 l.length)) ∧
+    cellsAt mc aa ta (l.map (· + 1))
+
+/-- In-place increment triple: per-word overflow freedom is
+    explicit caller debt (`hdebt`), lengths fit `u64` (`hn`). -/
+theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
+    (l : List (BitVec 32))
+    (hlaArr : layoutLookup π "arr" = some (aa, ta))
+    (hn : l.length < 2 ^ 64)
+    (hdebt : ∀ (j : Nat) (x : BitVec 32), l[j]? = some x →
+      checkedAddI32 x 1 = .ok (x + 1)) :
+    ∀ F, HTripleAt F (incrLoopInv π aa ta l F) incrLoopBody
+      (incrLoopPost π aa ta l) := by
+  have ihlenv : (BitVec.ofNat 64 l.length).toNat = l.length := by
+    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt hn
+  have ihguardv : ∀ (ρ : Env) (m' : Mem) (π' : Layout) (iv : BitVec 64),
+      envLookup ρ "i" = some (.u64 iv) →
+      envLookup ρ "len" = some (.u64 (BitVec.ofNat 64 l.length)) →
+      memEvalExpr (.ult (.var "i") (.var "len")) ρ m' π'
+        = .ok (.b (iv.ult (BitVec.ofNat 64 l.length))) := by
+    intro ρ m' π' iv hi hl
+    rw [memEvalExpr_ult_agree _ _ ρ m' π'
+      (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _),
+      evalExpr_ult_u64 _ _ ρ iv _ (evalExpr_var_hit _ _ _ hi)
+        (evalExpr_var_hit _ _ _ hl)]
+  have ihultT : ∀ (iv : BitVec 64), iv.toNat < l.length →
+      iv.ult (BitVec.ofNat 64 l.length) = true := by
+    intro iv hlt
+    rw [BitVec.ult_eq_decide, ihlenv]
+    exact decide_eq_true hlt
+  have ihultF : ∀ (iv : BitVec 64), l.length ≤ iv.toNat →
+      iv.ult (BitVec.ofNat 64 l.length) = false := by
+    intro iv hle
+    rw [BitVec.ult_eq_decide, ihlenv]
+    exact decide_eq_false (Nat.not_lt.mpr hle)
+  have ihincr : ∀ (iv : BitVec 64), iv.toNat < l.length →
+      (iv + 1).toNat = iv.toNat + 1 := by
+    intro iv hlt
+    have h1 : (1 : BitVec 64).toNat = 1 := rfl
+    rw [BitVec.toNat_add, h1, Nat.mod_eq_of_lt (by omega)]
+  have ihexitQ : ∀ (πq : Layout) (ρs : Env) (ms : Mem) (πs : Layout)
+      (iv : BitVec 64) (rest : Env),
+      πs = πq →
+      ρs = ("i", .u64 iv) ::
+        ("len", .u64 (BitVec.ofNat 64 l.length)) :: rest →
+      iv.toNat = l.length →
+      cellsAt ms aa ta ((l.take iv.toNat).map (· + 1) ++ l.drop iv.toNat) →
+      incrLoopPost πq aa ta l (ρs, ms, πs) .fellThrough := by
+    intro πq ρs ms πs iv rest hπ hρ heqn harr
+    have hiv : iv = BitVec.ofNat 64 l.length :=
+      BitVec.toNat_inj.mp (by rw [ihlenv]; exact heqn)
+    subst hiv
+    rw [ihlenv, List.take_length, List.drop_length] at harr
+    exact ⟨rfl, ρs, ms, πs, rfl, hπ, by rw [hρ]; simp [envLookup],
+      by simpa using harr⟩
+  have ihzero : ∀ (ρ' : Env) (m' : Mem) (π' : Layout),
+      incrLoopInv π aa ta l 0 (ρ', m', π') →
+      memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
+        = .ok (.b false) := by
+    intro ρ' m' π' hI
+    simp only [incrLoopInv] at hI
+    obtain ⟨ρ'', rest, iv, mc, πc, heq, _hπc, hρ, hle, hk, harr⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hi : envLookup ρ' "i" = some (.u64 iv) := by
+      rw [hρ]; simp [envLookup]
+    have hlen : envLookup ρ' "len" =
+        some (.u64 (BitVec.ofNat 64 l.length)) := by
+      rw [hρ]; simp [envLookup]
+    have hle' : l.length ≤ iv.toNat := by omega
+    rw [ihguardv _ _ _ _ hi hlen, ihultF _ hle']
+  have ihexit : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
+      incrLoopInv π aa ta l k (ρ', m', π') →
+      memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
+        = .ok (.b false) →
+      incrLoopPost π aa ta l (ρ', m', π') .fellThrough := by
+    intro k ρ' m' π' hI hgf
+    simp only [incrLoopInv] at hI
+    obtain ⟨ρ'', rest, iv, mc, πc, heq, hπc, hρ, hle, hk, harr⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hi : envLookup ρ' "i" = some (.u64 iv) := by
+      rw [hρ]; simp [envLookup]
+    have hlen : envLookup ρ' "len" =
+        some (.u64 (BitVec.ofNat 64 l.length)) := by
+      rw [hρ]; simp [envLookup]
+    have hnb : ¬ iv.toNat < l.length := by
+      intro hlt
+      rw [ihguardv _ _ _ _ hi hlen, ihultT _ hlt] at hgf
+      simp at hgf
+    have heqn : iv.toNat = l.length := by omega
+    exact ihexitQ π ρ' m' π' iv rest hπc hρ heqn harr
+  have ihdec : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
+      incrLoopInv π aa ta l (k + 1) (ρ', m', π') →
+      memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
+        = .ok (.b false) ∨
+      memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
+        = .ok (.b true) := by
+    intro k ρ' m' π' hI
+    simp only [incrLoopInv] at hI
+    obtain ⟨ρ'', rest, iv, mc, πc, heq, _hπc, hρ, hle, hk, harr⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hi : envLookup ρ' "i" = some (.u64 iv) := by
+      rw [hρ]; simp [envLookup]
+    have hlen : envLookup ρ' "len" =
+        some (.u64 (BitVec.ofNat 64 l.length)) := by
+      rw [hρ]; simp [envLookup]
+    by_cases hlt : iv.toNat < l.length
+    · right; rw [ihguardv _ _ _ _ hi hlen, ihultT _ hlt]
+    · left; rw [ihguardv _ _ _ _ hi hlen, ihultF _ (Nat.le_of_not_lt hlt)]
+  have ihstep : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
+      incrLoopInv π aa ta l (k + 1) (ρ', m', π') →
+      memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
+        = .ok (.b true) →
+      ∃ Pmid Qmid, HTriple Pmid
+        (.seq (.mstore "arr" (.var "i")
+                (.add (.mload "arr" (.var "i")) (.lit (.i32 1))))
+              (.assign "i" (.uadd (.var "i") (.lit (.u64 1))))) Qmid ∧
+        Pmid (ρ', m', π') ∧
+        (∀ ρ₁ m₁ π₁ o, Qmid (ρ₁, m₁, π₁) o →
+          (o = .fellThrough ∨ o = .continued) ∧
+          incrLoopInv π aa ta l k (ρ₁, m₁, π₁)) := by
+    intro k ρ' m' π' hI hgt
+    simp only [incrLoopInv] at hI
+    obtain ⟨ρ'', rest, iv, mc, πc, heq, hπc, hρ, hle, hk, harr⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hi : envLookup ρ' "i" = some (.u64 iv) := by
+      rw [hρ]; simp [envLookup]
+    have hlen : envLookup ρ' "len" =
+        some (.u64 (BitVec.ofNat 64 l.length)) := by
+      rw [hρ]; simp [envLookup]
+    have hlaArr' : layoutLookup π' "arr" = some (aa, ta) := by
+      rw [hπc]; exact hlaArr
+    by_cases hlt : iv.toNat < l.length
+    · have hget : l[iv.toNat]? = some l[iv.toNat] :=
+        List.getElem?_eq_getElem hlt
+      have hgetC : (((l.take iv.toNat).map (· + 1) ++
+          l.drop iv.toNat)[iv.toNat]? = some l[iv.toNat]) := by
+        have hlenA : ((l.take iv.toNat).map (· + 1)).length = iv.toNat := by
+          simp only [List.length_map, List.length_take]; omega
+        rw [List.getElem?_append_right (by omega), hlenA, Nat.sub_self,
+          List.getElem?_drop, Nat.add_zero]
+        exact List.getElem?_eq_getElem hlt
+      have hmemArr : memLoad m' aa ta iv.toNat = .ok l[iv.toNat] :=
+        memLoad_cellsAt _ _ _ _ _ _ harr hgetC
+      have hi_eval : memEvalExpr (.var "i") ρ' m' π' = .ok (.u64 iv) := by
+        rw [memEvalExpr_var]; exact evalExpr_var_hit _ _ _ hi
+      have hmArr : memEvalExpr (.mload "arr" (.var "i")) ρ' m' π'
+          = .ok (.i32 l[iv.toNat]) :=
+        hexpr_mload "arr" (.var "i") ρ' m' π' iv _ aa ta hlaArr' hi_eval hmemArr
+      have hlit1 : memEvalExpr (.lit (.i32 1)) ρ' m' π' = .ok (.i32 1) :=
+        hoare_lit_eval (.i32 1) _ _ _
+      have hadd : memEvalExpr
+          (.add (.mload "arr" (.var "i")) (.lit (.i32 1))) ρ' m' π'
+          = .ok (.i32 (l[iv.toNat] + 1)) := by
+        have h := memEvalExpr_add_ok _ _ ρ' m' π' _ _ hmArr hlit1
+        have hd := hdebt iv.toNat _ hget
+        rw [hd] at h
+        exact h
+      have hlenC : iv.toNat <
+          (((l.take iv.toNat).map (· + 1) ++ l.drop iv.toNat).length) := by
+        simp only [List.length_append, List.length_map, List.length_take,
+          List.length_drop]
+        omega
+      have hsa : memStore m' aa ta iv.toNat (l[iv.toNat] + 1)
+          = .ok ⟨m'.next, (aa, ⟨ta, true,
+            ((l.take iv.toNat).map (· + 1) ++ l.drop iv.toNat).set iv.toNat
+              (l[iv.toNat] + 1)⟩) :: m'.blocks,
+            m'.blocks64⟩ :=
+        memStore_cellsAt _ _ _ _ _ _ harr hlenC
+      have hstore : HTriple (fun st => st = (ρ', m', π'))
+          (.mstore "arr" (.var "i")
+            (.add (.mload "arr" (.var "i")) (.lit (.i32 1))))
+          (fun st o => o = .fellThrough ∧ ∃ m₁, st = (ρ', m₁, π') ∧
+            cellsAt m₁ aa ta (((l.take iv.toNat).map (· + 1) ++
+              l.drop iv.toNat).set iv.toNat (l[iv.toNat] + 1))) := by
+        intro F ρ₀ m₀ π₀ hP
+        simp only [Prod.mk.injEq] at hP
+        obtain ⟨rfl, rfl, rfl⟩ := hP
+        have hev := memEvalStmtFuel_mstore_ok F "arr" (.var "i")
+          (.add (.mload "arr" (.var "i")) (.lit (.i32 1)))
+          ρ₀ m₀ π₀ iv _ aa ta _
+          hi_eval hadd hlaArr' hsa
+        refine ⟨ρ₀, _, π₀, .fellThrough, hev, rfl, ⟨_, rfl, ?_⟩⟩
+        exact memFind_cellsAt_store _ _ _ _ _ _ _ harr hlenC hsa
+      have hassign : HTriple
+          (fun st => ∃ m₁, st = (ρ', m₁, π') ∧
+            cellsAt m₁ aa ta (((l.take iv.toNat).map (· + 1) ++
+              l.drop iv.toNat).set iv.toNat (l[iv.toNat] + 1)))
+          (.assign "i" (.uadd (.var "i") (.lit (.u64 1))))
+          (fun st o => (o = .fellThrough ∨ o = .continued) ∧
+            incrLoopInv π aa ta l k st) := by
+        intro F ρ₀ m₀ π₀ hP
+        obtain ⟨m₁, heq1, hA⟩ := hP
+        obtain ⟨rfl, rfl, rfl⟩ := heq1
+        have hi' : envLookup ρ' "i" = some (.u64 iv) := by
+          rw [hρ]; simp [envLookup]
+        have hagree :
+            memEvalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' m₀ π'
+              = evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' :=
+          memEvalExpr_uadd_agree _ _ _ _ _
+            (by rw [memEvalExpr_var])
+            (by rw [memEvalExpr_lit])
+        have hval :
+            evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ'
+              = .ok (.u64 (iv + 1)) :=
+          evalExpr_uadd_u64 _ _ _ _ _
+            (evalExpr_var_hit _ _ _ hi') rfl
+        have hu : envUpdate ρ' "i" (.u64 (iv + 1))
+            = some ((("i", .u64 (iv + 1)) ::
+              ("len", .u64 (BitVec.ofNat 64 l.length)) :: rest)) := by
+          rw [hρ]; exact envUpdate_hit _ _ _ _
+        have hfr := htriple_assign "i"
+          (.uadd (.var "i") (.lit (.u64 1)))
+          ρ' m₀ π' (.u64 (iv + 1))
+          ((("i", .u64 (iv + 1)) ::
+            ("len", .u64 (BitVec.ofNat 64 l.length)) :: rest))
+          hagree hval hu
+        obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ' m₀ π' rfl
+        obtain ⟨⟨rfl, rfl, rfl⟩, rfl⟩ := hQ₂
+        refine ⟨_, _, _, _, hev₂, Or.inl rfl, _, _, (iv + 1), _, _,
+          rfl, hπc, rfl, ?_, ?_, ?_⟩
+        · rw [ihincr _ hlt]; omega
+        · rw [ihincr _ hlt]; omega
+        · have hlenA : ((l.take iv.toNat).map (· + 1)).length = iv.toNat := by
+            simp only [List.length_map, List.length_take]; omega
+          have hdz : ((l.drop iv.toNat).set 0 (l[iv.toNat] + 1)
+              = (l[iv.toNat] + 1) :: l.drop (iv.toNat + 1)) := by
+            apply List.ext_getElem?
+            intro i
+            cases i with
+            | zero =>
+              have hne : l.length - iv.toNat ≠ 0 := by omega
+              simp [List.getElem?_set, hne]
+            | succ i =>
+              simp only [List.getElem?_set, show ¬(0 = i + 1) from by omega,
+                ite_false, List.getElem?_cons_succ, List.getElem?_drop]
+              congr 1
+              omega
+          have hbridge : ((((l.take iv.toNat).map (· + 1) ++
+              l.drop iv.toNat).set iv.toNat (l[iv.toNat] + 1)) =
+              (((l.take (iv.toNat + 1)).map (· + 1) ++
+                l.drop (iv.toNat + 1)))) := by
+            rw [List.set_append_right _ _ (by omega), hlenA, Nat.sub_self,
+              hdz, List.take_add_one, List.map_append, hget,
+              Option.toList_some, List.map_cons, List.map_nil,
+              List.append_assoc]
+            rfl
+          rw [ihincr _ hlt, ←hbridge]
+          exact hA
+      exact ⟨_, _, htriple_seq _ _ _ _ _ hstore hassign, rfl,
+        fun ρ₁ m₁ π₁ o h => h⟩
+    · rw [ihguardv _ _ _ _ hi hlen, ihultF _ (Nat.le_of_not_lt hlt)] at hgt
+      simp at hgt
+  exact htriple_while_at _ _ _ _ ihzero ihexit ihdec ihstep
 
 end HoareGallery

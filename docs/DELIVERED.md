@@ -1051,5 +1051,9 @@ cell; per-prefix `checkedAddI32` debt `hdebt`, `u64` lengths
 `hn`; memory floats existentially — see VERIFYING). Driver
 `hoare-gallery` grows to 7 closed-instance jobs (`[1,2,3,4]`
 totals 10).
+B: `hoare_incrLoop` — in-place `arr[i] = arr[i] + 1` over one
+block (no side cell); invariant carries the evolving prefix
+(`take`/`map`/`drop`), per-word debt `hdebt`. Driver grows to
+8 closed-instance jobs (`[1,2,3]` gives `[2,3,4]`).
 - Acceptance: Hoare files warning-free, galleries sorry-free,
-658 jobs TEST-OK (`HOAREGALLERY-OK passed=7`).
+658 jobs TEST-OK (`HOAREGALLERY-OK passed=8`).
