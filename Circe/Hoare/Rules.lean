@@ -88,6 +88,22 @@ theorem hexpr_mload (s : String) (ie : CExpr) (ρ : Env)
     memEvalExpr (.mload s ie) ρ m π = .ok (.i32 w) :=
   memEvalExpr_mload_hit s ie ρ m π i w a t hlay hi hmem
 
+/-- Value-side `usub` on two `u32`-valued expressions (mirrors
+    `evalExpr_usub_u64u64`; the countdown body decrements `u32`). -/
+theorem heval_usub_u32 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 32)
+    (h₁ : evalExpr e₁ ρ = .ok (.u32 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u32 y)) :
+    evalExpr (.usub e₁ e₂) ρ = .ok (.u32 (x - y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- Value-side `une` on two `u32`-valued expressions (the
+    countdown guard shape). -/
+theorem heval_une_u32 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 32)
+    (h₁ : evalExpr e₁ ρ = .ok (.u32 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u32 y)) :
+    evalExpr (.une e₁ e₂) ρ = .ok (.b (x != y)) := by
+  simp [evalExpr, h₁, h₂]
+
 /-- `if_` on a true guard runs the then-branch. -/
 theorem htriple_if_true (P : Env × Mem × Layout → Prop)
     (Q : Env × Mem × Layout → Outcome → Prop)
@@ -131,3 +147,66 @@ theorem htriple_return (e : CExpr)
   obtain ⟨rfl, rfl, rfl⟩ := hP
   exact ⟨ρ₀, m₀, π₀, .returned v,
     memEvalStmtFuel_return F e ρ₀ m₀ π₀ v h hv, rfl, rfl⟩
+
+/-- `assign` updates the environment binding, memory untouched. -/
+theorem htriple_assign (x : String) (e : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (v : Value) (ρ' : Env)
+    (h : memEvalExpr e ρ m π = evalExpr e ρ)
+    (hv : evalExpr e ρ = .ok v) (hu : envUpdate ρ x v = some ρ') :
+    HTriple (fun st => st = (ρ, m, π)) (.assign x e)
+      (fun st o => st = (ρ', m, π) ∧ o = .fellThrough) := by
+  intro F ρ₀ m₀ π₀ hP
+  simp only [Prod.mk.injEq] at hP
+  obtain ⟨rfl, rfl, rfl⟩ := hP
+  exact ⟨ρ', m₀, π₀, .fellThrough,
+    memEvalStmtFuel_assign F x e ρ₀ m₀ π₀ v ρ' h hv hu, rfl, rfl⟩
+
+/-- `while_` with a fuel-indexed invariant. The index is
+    load-bearing, not decorative: at fuel 0 a true-guard loop
+    errors (`AssertFail` via the zero handler), so a fuel-blind
+    `∀ F` triple over a looping state is unprovable — `I 0`
+    admits only guard-false states, and each true-guard step
+    delivers an `I k` state from `I (k+1)`. Fuel does the
+    bounding, so no separate termination measure is needed for
+    soundness. Body iterations must end `fellThrough` or
+    `continued`; `broke` / `returned` bodies are excluded (named
+    limitation — the handler arms exist but the exit-post
+    plumbing is deferred). -/
+theorem htriple_while_at (I : Nat → Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (c : CExpr) (b : CStmt)
+    (hzero : ∀ ρ m π, I 0 (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b false))
+    (hexit : ∀ k ρ m π, I k (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b false) → Q (ρ, m, π) .fellThrough)
+    (hdec : ∀ k ρ m π, I (k + 1) (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b false) ∨
+      memEvalExpr c ρ m π = .ok (.b true))
+    (hstep : ∀ k ρ m π, I (k + 1) (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b true) →
+      ∃ Pmid Qmid, HTriple Pmid b Qmid ∧ Pmid (ρ, m, π) ∧
+        (∀ ρ' m' π' o, Qmid (ρ', m', π') o →
+          (o = .fellThrough ∨ o = .continued) ∧ I k (ρ', m', π'))) :
+    ∀ F, HTripleAt F (fun st => I F st) (.while_ c b) Q := by
+  intro F
+  induction F with
+  | zero =>
+    intro ρ m π hP
+    have hguard := hzero ρ m π hP
+    exact ⟨ρ, m, π, .fellThrough,
+      memEvalStmtFuel_while_false 0 c b ρ m π hguard,
+      hexit 0 ρ m π hP hguard⟩
+  | succ k ih =>
+    intro ρ m π hP
+    obtain hgf | hgt := hdec k ρ m π hP
+    · exact ⟨ρ, m, π, .fellThrough,
+        memEvalStmtFuel_while_false (k + 1) c b ρ m π hgf,
+        hexit (k + 1) ρ m π hP hgf⟩
+    · obtain ⟨Pmid, Qmid, hbody, hpre, hpost⟩ := hstep k ρ m π hP hgt
+      obtain ⟨ρ₁, m₁, π₁, o₁, hev, hQ⟩ := hbody k ρ m π hpre
+      obtain ⟨ho, hI⟩ := hpost ρ₁ m₁ π₁ o₁ hQ
+      obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := ih ρ₁ m₁ π₁ hI
+      refine ⟨ρ₂, m₂, π₂, o₂, ?_, hQ₂⟩
+      rw [memEvalStmtFuel_while_true k c b ρ m π hgt, hev]
+      obtain rfl | rfl := ho
+      · exact hev₂
+      · exact hev₂

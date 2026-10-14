@@ -1613,6 +1613,35 @@ def memEvalStmtFuel : Nat → CStmt → Env → Mem → Layout →
   | f + 1, s, ρ, m, π =>
     memEvalStmtWith (memEvalSuccHandler (memEvalStmtFuel f)) s ρ m π
 
+/-- `while_` with a false guard exits immediately at any fuel
+    (both handlers agree on the false arm). -/
+theorem memEvalStmtFuel_while_false (f : Nat) (c : CExpr) (b : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b false)) :
+    memEvalStmtFuel f (.while_ c b) ρ m π =
+      .ok ((ρ, m, π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      memEvalStmtZeroHandler, memEvalSuccHandler, h]
+
+/-- `while_` with a true guard unfolds exactly one body iteration
+    at positive fuel (restates the successor handler arm). -/
+theorem memEvalStmtFuel_while_true (f : Nat) (c : CExpr) (b : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b true)) :
+    memEvalStmtFuel (f + 1) (.while_ c b) ρ m π =
+      match memEvalStmtFuel f b ρ m π with
+      | .error e => .error e
+      | .ok ((ρ', m', π'), .returned v) =>
+        .ok ((ρ', m', π'), .returned v)
+      | .ok ((ρ', m', π'), .broke) =>
+        .ok ((ρ', m', π'), .fellThrough)
+      | .ok ((ρ', m', π'), .continued) =>
+        memEvalStmtFuel f (.while_ c b) ρ' m' π'
+      | .ok ((ρ', m', π'), .fellThrough) =>
+        memEvalStmtFuel f (.while_ c b) ρ' m' π' := by
+  simp [memEvalStmtFuel, memEvalStmtWith, memEvalSuccHandler, h]
+
 /-- `return_` agrees when the returned expression does. -/
 theorem memEvalStmtFuel_return (f : Nat) (e : CExpr) (ρ : Env)
     (m : Mem) (π : Layout) (v : Value)
