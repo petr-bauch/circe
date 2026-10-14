@@ -802,6 +802,30 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     verdicts, missing-`restrict`, wrapping adds, wrong consts
     keep dedicated rejections; aliased callers are caller-UB,
     never fuzzed).
+28m. Unknown-verdict branch-writer admission (G3): `alias_cond`
+    (`int &` × 2 plus `bool` in, `void` out, `*p += 1` under
+    `c`, `*q += 2` always — the C++-reference twin of 28l,
+    sound under any verdict by proof-side case split instead
+    of a `noalias` claim). Admission is an open-contract
+    `Func`: two `pinnedCell` `i32` params (S2 opt-in pinning
+    allocates one live word each) plus an owned `bool`,
+    `void` return modeled as a zero word, body `if c`
+    (`mstore p`) `skip` then `mstore q` then return (S1
+    `mstore` / S3 `mload` through the pins, re-reading `q`
+    after the branch store). Exact shape: `void`,
+    triple-bearing params, 3 allocas / 5 loads (C++ refs fuse
+    the deref chain) / 5 stores / 2 consts / 2 `nsw` adds, one
+    scope-wrapped `cir.if`, plus the shared dataflow pin and
+    branch placement (rejects unbranched, fully-conditional,
+    wrong-cell, same-cell shapes). No pure translation is
+    sound (G2); the rendered `_spec` takes a caller-supplied
+    `aliased` flag — taken branch runs the second add on the
+    stored value with second-store-wins, masked leg reads the
+    shared cell, both words read back the stored result.
+    Dedicated rejections: missing triple (rule 1), wrapping
+    adds, triple-less shapes; triple-param near-misses fall to
+    the generic fragment tail (`oracleParams` excludes the
+    triple, so the verdict gate never sees them).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

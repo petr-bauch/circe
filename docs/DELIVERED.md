@@ -939,3 +939,41 @@ perturbation fails exactly one job) + `GoldenCondPair`
 ranges, `c` value-rooted) + `DerivedNoalias` ride the roster
 with a `g2b-condpair` content suite; spec stubs grow 115 → 116.
 - Acceptance: 648 jobs TEST-OK, CHECK-OK.
+
+### N14. Unknown-verdict branch-writer admission (G3 full framing) — DONE (2026-10-14)
+
+S0 spike (report-only, `/tmp` scratch): a `Mem` program mirroring
+the cond body plus `cellAt` hypotheses inverts to per-cell posts
+under both verdicts — GO on a Mem-space open contract, NOT
+OpenFunc (reuses `cellAt` / `memStore_cell` /
+`memFind_memStore_other`, executable via `memAllocData`). S1 B2
+scalar store (`CStmt.mstore` slot-addressed through the `Layout`
+pin; pure side `AssertFail` by design — cell stores are
+`Mem`-space, open contracts prove Mem-direct) + equation lemmas.
+S2 opt-in pinning (`BorrowRole.pinnedCell`; `bindMemArgs`
+matches `(role, value)`, disjoint-pair entry; every delivered
+`rfl` bind re-verifies, old roles byte-identical). S3: S0
+promoted to `CondFrame`, `CExpr.mload` + general
+`memEvalExpr_add_ok`, `isAliasCondShape` (5 loads + triple,
+shares `condPairDataflow`), verdict-independent admission arm
+emitting `aliasCondFunc` (`pinnedCell` params, `mstore` /
+`mload` body, `void` as zero word), 4-leg transfer (pinned ×
+masked, caller-`Mem` aliased × masked) over the emitted body,
+`FragKind.aliasCond` + `_spec` render with caller-supplied
+`aliased` (the pipeline's silent-empty emission for
+fragment-less admissions forced the render into S3 — no
+silent empty). S4: goldens byte-identical (`spec_check` true
+on 9 edges), `AliasCondGate` (pred + 4 adversarial + 2
+admissions + message) + `GoldenAliasCond` (pipeline × 2 +
+verdict-independence + 3 rejections + shape-exactness),
+`DiffAliasCond` (10 edges + 1000 LCG trials, spec mirror vs
+`Mem` evaluation of the emitted body vs native C++, both
+verdicts; tamper-checked: driver `q+5` fails at the first
+trial with the exact delta, restored green). S4b finding: the
+masked leg under aliasing reads the shared cell, so both words
+read back the stored result (`(10, 12)` → `(12, 12)` — caught
+by the third (`Mem`) path, fixed in mirror + render + spec +
+edge; the transfer leg already stated the single-cell post).
+Suites ride the roster with a `g3-aliascond` content suite
+(19 pins); spec stubs grow 116 → 117.
+- Acceptance: 657 jobs TEST-OK, CHECK-OK.

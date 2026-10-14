@@ -66,22 +66,36 @@ golden diff → tamper-checked `Diff*` fuzz → rejection suite →
   for ordered writers under unknown aliasing; it needs the G3
   framing track — see `DELIVERED.md`). G2b branch-writer
   admission — DONE (2026-10-13, N13: `cond_pair`, the noalias
-  twin of `alias_cond`; full unknown-verdict framing stays
-  deferred pending a caller-side contract kind). G3-full
-  framing S0 spike — DONE (2026-10-13, report only, /tmp
-  scratch `wrprobe/s0open.lean`, no repo churn): verdict GO
-  on a Mem-space open contract — a `Mem` program mirroring
-  the cond body (`condExec`) with `cellAt` hypotheses
-  inverts cleanly to per-cell posts under both verdicts
-  (`condExec_invert_disjoint` needs gate `b ≠ a`;
-  `condExec_invert_aliased` re-reads `p`'s write, second
-  addition runs on the stored value, second store wins);
-  artifact decision: Mem-space open contract, NOT OpenFunc
-  (reuses `cellAt`/`memStore_cell`/`memFind_memStore_other`,
-  executable via `memAllocData`, no new `Func`/render);
-  binds collapse via `simp only [Bind.bind, Except.bind]`
-  (`pure_bind`/`Except.bind` alone make no progress on
-  `Except.ok`-scrutinee `let ←`).
+  twin of `alias_cond`). G3-full framing — DONE (2026-10-14,
+  N14: `alias_cond` under any verdict via the Mem-space open
+  contract — the S0-promoted `condExec` + inversions in
+  `CondFrame`, fed by S1 `mstore` equations and S2 pin facts;
+  the contract kind the G2b deferral asked for). S0 spike
+  (2026-10-13, report only, /tmp scratch `wrprobe/s0open.lean`,
+  no repo churn): verdict GO on a Mem-space open contract —
+  a `Mem` program mirroring the cond body (`condExec`) with
+  `cellAt` hypotheses inverts cleanly to per-cell posts under
+  both verdicts (`condExec_invert_disjoint` needs gate
+  `b ≠ a`; `condExec_invert_aliased` re-reads `p`'s write,
+  second addition runs on the stored value, second store
+  wins); artifact decision: Mem-space open contract, NOT
+  OpenFunc (reuses `cellAt`/`memStore_cell`/
+  `memFind_memStore_other`, executable via `memAllocData`,
+  no new `Func`/render); binds collapse via
+  `simp only [Bind.bind, Except.bind]` (`pure_bind`/
+  `Except.bind` alone make no progress on `Except.ok`-
+  scrutinee `let ←`). S1 B2 scalar store (`mstore` +
+  `mload`, pure-side `AssertFail` by design). S2 opt-in
+  pinning (`pinnedCell`, disjoint-pair entry). S3 gate
+  (verdict-independent arm) + 4-leg transfer + `_spec`
+  render. S4 suites (goldens byte-identical, 14-gate +
+  7-golden + 1010-diff, tamper-checked) + docs. Standing
+  facts the track established: triple params never reach
+  the verdict gate (`oracleParams` excludes the triple —
+  near-misses fall to the fragment tail); `memStore`
+  shadow-conses, so read-back goes through `memFind`
+  (first-wins); `rfl` cannot compute `layoutLookup` over
+  variable addresses (`simp [layoutLookup, … ≠ …]`).
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 - Standing non-goals (platform-level): inheritance/vtables,
