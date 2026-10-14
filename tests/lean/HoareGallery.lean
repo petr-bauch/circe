@@ -10,6 +10,7 @@
 -- is the check.
 import Circe.Hoare.Def
 import Circe.Hoare.Rules
+import Circe.Emit.AliasCond
 
 namespace HoareGallery
 
@@ -98,28 +99,443 @@ theorem hoare_gallery (ρ : Env) (m : Mem) (π : Layout)
     exact ⟨ρ, mb, π, .fellThrough, hev₂, rfl, rfl, hF, hW⟩
   exact htriple_seq _ _ _ _ _ hfirst hsecond
 
-/-- Closed-instance runtime check: `pa=10, pb=20` evaluates to
-    `pa=11, pb=21` with `fellThrough` — the executable shadow of
-    `hoare_gallery` at one point (the proof itself is
-    compile-gated). -/
+/-- `alias_cond` under `c = true` over the real emitted body:
+    the `if_` rule fires the `p`-store, framing carries both
+    cells through the `q`-store, `return_` delivers the void
+    zero word. First triple exercising H1's `if`-rules. -/
+theorem hoare_aliasCond_true (ρ : Env) (m : Mem) (π : Layout)
+    (a b : Addr) (t₁ t₂ : Nat) (p q : BitVec 32)
+    (ma mb : Mem)
+    (hla : layoutLookup π "p" = some (a, t₁))
+    (hlb : layoutLookup π "q" = some (b, t₂))
+    (hc : envLookup ρ "c" = some (.b true))
+    (hca : cellAt m a t₁ p) (hcb : cellAt m b t₂ q)
+    (hne : b ≠ a)
+    (hma : memLoad m a t₁ 0 = .ok p)
+    (hmb : memLoad ma b t₂ 0 = .ok q)
+    (hov : checkedAddI32 p 1 = .ok (p + 1))
+    (how : checkedAddI32 q 2 = .ok (q + 2))
+    (hsa : memStore m a t₁ 0 (p + 1) = .ok ma)
+    (hsb : memStore ma b t₂ 0 (q + 2) = .ok mb) :
+    HTriple (fun st => st = (ρ, m, π))
+      aliasCondFunc.body
+      (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
+        cellAt mb a t₁ (p + 1) ∧ cellAt mb b t₂ (q + 2)) := by
+  have hlit0 : ∀ (ρ' : Env) (m' : Mem),
+      memEvalExpr (.lit (.u64 0)) ρ' m' π = .ok (.u64 0) := by
+    intro ρ' m'
+    rw [memEvalExpr_lit]
+    rfl
+  have hlit1 : ∀ (ρ' : Env) (m' : Mem),
+      memEvalExpr (.lit (.i32 1)) ρ' m' π = .ok (.i32 1) := by
+    intro ρ' m'
+    rw [memEvalExpr_lit]
+    rfl
+  have hlit2 : ∀ (ρ' : Env) (m' : Mem),
+      memEvalExpr (.lit (.i32 2)) ρ' m' π = .ok (.i32 2) := by
+    intro ρ' m'
+    rw [memEvalExpr_lit]
+    rfl
+  have hguard : memEvalExpr (.var "c") ρ m π = .ok (.b true) := by
+    rw [memEvalExpr_var]
+    simp [evalExpr, hc]
+  have hvp : memEvalExpr
+      (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))) ρ m π
+      = .ok (.i32 (p + 1)) := by
+    have h := memEvalExpr_add_ok _ _ ρ m π p 1
+      (hexpr_mload "p" (.lit (.u64 0)) ρ m π 0 p a t₁
+        hla (hlit0 ρ m) hma)
+      (hlit1 ρ m)
+    rw [hov] at h
+    exact h
+  have hvq : memEvalExpr
+      (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))) ρ ma π
+      = .ok (.i32 (q + 2)) := by
+    have h := memEvalExpr_add_ok _ _ ρ ma π q 2
+      (hexpr_mload "q" (.lit (.u64 0)) ρ ma π 0 q b t₂
+        hlb (hlit0 ρ ma) hmb)
+      (hlit2 ρ ma)
+    rw [how] at h
+    exact h
+  have hif : HTriple (fun st => st = (ρ, m, π))
+      (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      (fun st o => o = .fellThrough ∧ st = (ρ, ma, π) ∧
+        cellAt ma a t₁ (p + 1) ∧ cellAt ma b t₂ q) :=
+    htriple_consequence _ _ _ _ _ (fun _ => id)
+      (htriple_if_true _ _ _ _ _
+        (fun ρ' m' π' hP => by
+          simp only [Prod.mk.injEq] at hP
+          obtain ⟨rfl, rfl, rfl⟩ := hP
+          exact hguard)
+        (htriple_mstore_frame "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1)))
+          ρ m π 0 (p + 1) a t₁ ma p b t₂ q
+          (hlit0 ρ m) rfl hvp hla hsa hca hcb hne))
+      (fun st o h => ⟨h.2.1, h.1, h.2.2.1, h.2.2.2⟩)
+  have htail : HTriple
+      (fun st => st = (ρ, ma, π) ∧
+        cellAt ma a t₁ (p + 1) ∧ cellAt ma b t₂ q)
+      (.seq (.mstore "q" (.lit (.u64 0))
+              (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+            (.return_ (.lit (.u32 0))))
+      (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
+        cellAt mb a t₁ (p + 1) ∧ cellAt mb b t₂ (q + 2)) := by
+    have hstore : HTriple
+        (fun st => st = (ρ, ma, π) ∧
+          cellAt ma a t₁ (p + 1) ∧ cellAt ma b t₂ q)
+        (.mstore "q" (.lit (.u64 0))
+          (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+        (fun st o => o = .fellThrough ∧ st = (ρ, mb, π) ∧
+          cellAt mb a t₁ (p + 1) ∧ cellAt mb b t₂ (q + 2)) := by
+      intro F ρ₀ m₀ π₀ hP
+      obtain ⟨⟨rfl, rfl, rfl⟩, hA, hB⟩ := hP
+      have hfr := htriple_mstore_frame "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2)))
+        ρ ma π 0 (q + 2) b t₂ mb q a t₁ (p + 1)
+        (hlit0 ρ ma) rfl hvq hlb hsb hB hA (Ne.symm hne)
+      obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ ma π rfl
+      obtain ⟨⟨rfl, rfl, rfl⟩, rfl, hW, hF⟩ := hQ₂
+      exact ⟨ρ, mb, π, .fellThrough, hev₂, rfl, rfl, hF, hW⟩
+    have hret : HTriple
+        (fun st => st = (ρ, mb, π) ∧
+          cellAt mb a t₁ (p + 1) ∧ cellAt mb b t₂ (q + 2))
+        (.return_ (.lit (.u32 0)))
+        (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
+          cellAt mb a t₁ (p + 1) ∧ cellAt mb b t₂ (q + 2)) := by
+      intro F ρ₀ m₀ π₀ hP
+      obtain ⟨⟨rfl, rfl, rfl⟩, hA, hB⟩ := hP
+      have hfr := htriple_return (.lit (.u32 0)) ρ mb π (.u32 0)
+        (memEvalExpr_lit _ _ _ _) rfl
+      obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ mb π rfl
+      obtain ⟨⟨rfl, rfl, rfl⟩, rfl⟩ := hQ₂
+      exact ⟨ρ, mb, π, .returned (.u32 0), hev₂, rfl, rfl, hA, hB⟩
+    exact htriple_seq _ _ _ _ _ hstore hret
+  exact htriple_seq _ _ _ _ _ hif htail
+
+/-- `alias_cond` under `c = false`: the `skip` branch leaves `p`
+    alone (via consequence over `htriple_skip`), then the same
+    `q`-store + void return. -/
+theorem hoare_aliasCond_false (ρ : Env) (m : Mem) (π : Layout)
+    (a b : Addr) (t₁ t₂ : Nat) (p q : BitVec 32)
+    (mb : Mem)
+    (hla : layoutLookup π "p" = some (a, t₁))
+    (hlb : layoutLookup π "q" = some (b, t₂))
+    (hc : envLookup ρ "c" = some (.b false))
+    (hca : cellAt m a t₁ p) (hcb : cellAt m b t₂ q)
+    (hne : b ≠ a)
+    (hmb : memLoad m b t₂ 0 = .ok q)
+    (how : checkedAddI32 q 2 = .ok (q + 2))
+    (hsb : memStore m b t₂ 0 (q + 2) = .ok mb) :
+    HTriple (fun st => st = (ρ, m, π))
+      aliasCondFunc.body
+      (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
+        cellAt mb a t₁ p ∧ cellAt mb b t₂ (q + 2)) := by
+  have hlit0 : ∀ (ρ' : Env) (m' : Mem),
+      memEvalExpr (.lit (.u64 0)) ρ' m' π = .ok (.u64 0) := by
+    intro ρ' m'
+    rw [memEvalExpr_lit]
+    rfl
+  have hlit2 : ∀ (ρ' : Env) (m' : Mem),
+      memEvalExpr (.lit (.i32 2)) ρ' m' π = .ok (.i32 2) := by
+    intro ρ' m'
+    rw [memEvalExpr_lit]
+    rfl
+  have hguard : memEvalExpr (.var "c") ρ m π = .ok (.b false) := by
+    rw [memEvalExpr_var]
+    simp [evalExpr, hc]
+  have hvq : memEvalExpr
+      (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))) ρ m π
+      = .ok (.i32 (q + 2)) := by
+    have h := memEvalExpr_add_ok _ _ ρ m π q 2
+      (hexpr_mload "q" (.lit (.u64 0)) ρ m π 0 q b t₂
+        hlb (hlit0 ρ m) hmb)
+      (hlit2 ρ m)
+    rw [how] at h
+    exact h
+  have hskip : HTriple (fun st => st = (ρ, m, π)) .skip
+      (fun st o => o = .fellThrough ∧ st = (ρ, m, π) ∧
+        cellAt m a t₁ p ∧ cellAt m b t₂ q) :=
+    htriple_consequence _ _ _ _ .skip (fun _ => id)
+      (htriple_skip _)
+      (fun st o h => ⟨h.2, h.1, hca, hcb⟩)
+  have hif : HTriple (fun st => st = (ρ, m, π))
+      (.if_ (.var "c")
+        (.mstore "p" (.lit (.u64 0))
+          (.add (.mload "p" (.lit (.u64 0))) (.lit (.i32 1))))
+        .skip)
+      (fun st o => o = .fellThrough ∧ st = (ρ, m, π) ∧
+        cellAt m a t₁ p ∧ cellAt m b t₂ q) :=
+    htriple_consequence _ _ _ _ _ (fun _ => id)
+      (htriple_if_false _ _ _ _ _
+        (fun ρ' m' π' hP => by
+          simp only [Prod.mk.injEq] at hP
+          obtain ⟨rfl, rfl, rfl⟩ := hP
+          exact hguard)
+        hskip)
+      (fun st o h => h)
+  have htail : HTriple
+      (fun st => st = (ρ, m, π) ∧
+        cellAt m a t₁ p ∧ cellAt m b t₂ q)
+      (.seq (.mstore "q" (.lit (.u64 0))
+              (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+            (.return_ (.lit (.u32 0))))
+      (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
+        cellAt mb a t₁ p ∧ cellAt mb b t₂ (q + 2)) := by
+    have hstore : HTriple
+        (fun st => st = (ρ, m, π) ∧
+          cellAt m a t₁ p ∧ cellAt m b t₂ q)
+        (.mstore "q" (.lit (.u64 0))
+          (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2))))
+        (fun st o => o = .fellThrough ∧ st = (ρ, mb, π) ∧
+          cellAt mb a t₁ p ∧ cellAt mb b t₂ (q + 2)) := by
+      intro F ρ₀ m₀ π₀ hP
+      obtain ⟨⟨rfl, rfl, rfl⟩, hA, hB⟩ := hP
+      have hfr := htriple_mstore_frame "q" (.lit (.u64 0))
+        (.add (.mload "q" (.lit (.u64 0))) (.lit (.i32 2)))
+        ρ m π 0 (q + 2) b t₂ mb q a t₁ p
+        (hlit0 ρ m) rfl hvq hlb hsb hB hA (Ne.symm hne)
+      obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ m π rfl
+      obtain ⟨⟨rfl, rfl, rfl⟩, rfl, hW, hF⟩ := hQ₂
+      exact ⟨ρ, mb, π, .fellThrough, hev₂, rfl, rfl, hF, hW⟩
+    have hret : HTriple
+        (fun st => st = (ρ, mb, π) ∧
+          cellAt mb a t₁ p ∧ cellAt mb b t₂ (q + 2))
+        (.return_ (.lit (.u32 0)))
+        (fun st o => st = (ρ, mb, π) ∧ o = .returned (.u32 0) ∧
+          cellAt mb a t₁ p ∧ cellAt mb b t₂ (q + 2)) := by
+      intro F ρ₀ m₀ π₀ hP
+      obtain ⟨⟨rfl, rfl, rfl⟩, hA, hB⟩ := hP
+      have hfr := htriple_return (.lit (.u32 0)) ρ mb π (.u32 0)
+        (memEvalExpr_lit _ _ _ _) rfl
+      obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ mb π rfl
+      obtain ⟨⟨rfl, rfl, rfl⟩, rfl⟩ := hQ₂
+      exact ⟨ρ, mb, π, .returned (.u32 0), hev₂, rfl, rfl, hA, hB⟩
+    exact htriple_seq _ _ _ _ _ hstore hret
+  exact htriple_seq _ _ _ _ _ hif htail
+
+/-- Countdown body: `while (n != 0) { n = n - 1 }` over a `u32`
+    env variable — the first loop gallery (no Mem cells). -/
+def countdownBody : CStmt :=
+  .while_ (.une (.var "n") (.lit (.u32 0)))
+    (.assign "n" (.usub (.var "n") (.lit (.u32 1))))
+
+/-- Fuel-indexed countdown invariant: `n` holds `v` with
+    `v.toNat ≤ k` (memory and layout pinned — `assign` touches
+    neither). -/
+def countdownInv (m : Mem) (π : Layout) (k : Nat) :
+    Env × Mem × Layout → Prop :=
+  fun st => ∃ ρ rest v, st = (ρ, m, π) ∧
+    ρ = ("n", .u32 v) :: rest ∧ v.toNat ≤ k
+
+/-- Countdown post: exited with `n = 0`. -/
+def countdownPost (m : Mem) (π : Layout) :
+    Env × Mem × Layout → Outcome → Prop :=
+  fun st o => o = .fellThrough ∧ ∃ ρ', st = (ρ', m, π) ∧
+    envLookup ρ' "n" = some (.u32 0)
+
+/-- Countdown triple via `htriple_while_at`: the fuel index is
+    the bound (`n ≤ F` at fuel `F`), each iteration consumes one
+    level with an exact `u32` decrement. -/
+theorem hoare_countdown (m : Mem) (π : Layout) :
+    ∀ F, HTripleAt F (countdownInv m π F) countdownBody
+      (countdownPost m π) := by
+  have hguardv : ∀ (ρ : Env) (v : BitVec 32),
+      envLookup ρ "n" = some (.u32 v) →
+      memEvalExpr (.une (.var "n") (.lit (.u32 0))) ρ m π
+        = .ok (.b (v != 0)) := by
+    intro ρ v hl
+    rw [memEvalExpr_une_agree _ _ ρ m π
+      (memEvalExpr_var _ _ _ _) (memEvalExpr_lit _ _ _ _),
+      heval_une_u32 _ _ ρ v 0 (evalExpr_var_hit _ _ _ hl) rfl]
+  have hsub : ∀ (v : BitVec 32), 1 ≤ v.toNat →
+      (v - 1).toNat = v.toNat - 1 := by
+    intro v hle
+    rw [BitVec.toNat_sub]
+    have hx : v.toNat < 2 ^ 32 := v.isLt
+    have h1 : (1 : BitVec 32).toNat < 2 ^ 32 := (1 : BitVec 32).isLt
+    have h1v : (1 : BitVec 32).toNat = 1 := rfl
+    omega
+  have hzero : ∀ (ρ' : Env) (m' : Mem) (π' : Layout),
+      countdownInv m π 0 (ρ', m', π') →
+      memEvalExpr (.une (.var "n") (.lit (.u32 0))) ρ' m' π'
+        = .ok (.b false) := by
+    intro ρ' m' π' hI
+    simp only [countdownInv] at hI
+    obtain ⟨ρ'', rest, v, heq, hρ, hle⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hv0 : v = 0 :=
+      BitVec.toNat_inj.mp (by simpa using Nat.le_zero.mp hle)
+    have hl : envLookup ρ' "n" = some (.u32 v) := by
+      rw [hρ]; simp [envLookup]
+    rw [hguardv _ _ hl, hv0]
+    simp
+  have hexit : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
+      countdownInv m π k (ρ', m', π') →
+      memEvalExpr (.une (.var "n") (.lit (.u32 0))) ρ' m' π'
+        = .ok (.b false) →
+      countdownPost m π (ρ', m', π') .fellThrough := by
+    intro k ρ' m' π' hI hgf
+    simp only [countdownInv] at hI
+    obtain ⟨ρ'', rest, v, heq, hρ, hle⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hl : envLookup ρ' "n" = some (.u32 v) := by
+      rw [hρ]; simp [envLookup]
+    by_cases hv0 : v = 0
+    · subst hv0
+      exact ⟨rfl, ρ', rfl, hl⟩
+    · have htrue : (v != 0) = true := by simp; exact hv0
+      rw [hguardv _ _ hl, htrue] at hgf
+      simp at hgf
+  have hdec : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
+      countdownInv m π (k + 1) (ρ', m', π') →
+      memEvalExpr (.une (.var "n") (.lit (.u32 0))) ρ' m' π'
+        = .ok (.b false) ∨
+      memEvalExpr (.une (.var "n") (.lit (.u32 0))) ρ' m' π'
+        = .ok (.b true) := by
+    intro k ρ' m' π' hI
+    simp only [countdownInv] at hI
+    obtain ⟨ρ'', rest, v, heq, hρ, hle⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hl : envLookup ρ' "n" = some (.u32 v) := by
+      rw [hρ]; simp [envLookup]
+    by_cases hv0 : v = 0
+    · left; rw [hguardv _ _ hl, hv0]; simp
+    · right; rw [hguardv _ _ hl]; simp; exact hv0
+  have hstep : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
+      countdownInv m π (k + 1) (ρ', m', π') →
+      memEvalExpr (.une (.var "n") (.lit (.u32 0))) ρ' m' π'
+        = .ok (.b true) →
+      ∃ Pmid Qmid, HTriple Pmid
+        (.assign "n" (.usub (.var "n") (.lit (.u32 1)))) Qmid ∧
+        Pmid (ρ', m', π') ∧
+        (∀ ρ₁ m₁ π₁ o, Qmid (ρ₁, m₁, π₁) o →
+          (o = .fellThrough ∨ o = .continued) ∧
+          countdownInv m π k (ρ₁, m₁, π₁)) := by
+    intro k ρ' m' π' hI hgt
+    simp only [countdownInv] at hI
+    obtain ⟨ρ'', rest, v, heq, hρ, hle⟩ := hI
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hl : envLookup ρ' "n" = some (.u32 v) := by
+      rw [hρ]; simp [envLookup]
+    by_cases hv0 : v = 0
+    · subst hv0
+      have hb0 : ((0 : BitVec 32) != 0) = false := by simp
+      rw [hguardv ρ' 0 hl, hb0] at hgt
+      simp at hgt
+    · have hne1 : 1 ≤ v.toNat := by
+        match ht : v.toNat with
+        | 0 =>
+          have hv0' : v = 0 :=
+            BitVec.toNat_inj.mp (by simpa using ht)
+          exact absurd hv0' hv0
+        | Nat.succ _ => omega
+      have hagree :
+          memEvalExpr (.usub (.var "n") (.lit (.u32 1))) ρ' m' π'
+            = evalExpr (.usub (.var "n") (.lit (.u32 1))) ρ' :=
+        memEvalExpr_usub_agree _ _ _ _ _
+          (memEvalExpr_var _ _ _ _) (memEvalExpr_lit _ _ _ _)
+      have hval :
+          evalExpr (.usub (.var "n") (.lit (.u32 1))) ρ'
+            = .ok (.u32 (v - 1)) :=
+        heval_usub_u32 _ _ _ v 1 (evalExpr_var_hit _ _ _ hl) rfl
+      have hu : envUpdate ρ' "n" (.u32 (v - 1))
+          = some ((("n", .u32 (v - 1)) :: rest)) := by
+        rw [hρ]; exact envUpdate_hit _ _ _ _
+      have hbody : HTriple (fun st => st = (ρ', m', π'))
+          (.assign "n" (.usub (.var "n") (.lit (.u32 1))))
+          (fun st o => o = .fellThrough ∧ ∃ rest' w,
+            st = ((("n", .u32 w) :: rest'), m', π') ∧
+            w.toNat ≤ k) := by
+        intro F ρ₀ m₀ π₀ hP
+        simp only [Prod.mk.injEq] at hP
+        obtain ⟨rfl, rfl, rfl⟩ := hP
+        have hfr := htriple_assign "n"
+          (.usub (.var "n") (.lit (.u32 1)))
+          ρ₀ m₀ π₀ (.u32 (v - 1)) ((("n", .u32 (v - 1)) :: rest))
+          hagree hval hu
+        obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := hfr F ρ₀ m₀ π₀ rfl
+        obtain ⟨⟨rfl, rfl, rfl⟩, rfl⟩ := hQ₂
+        exact ⟨_, _, _, _, hev₂, rfl, rest, (v - 1), rfl,
+          by rw [hsub v hne1]; omega⟩
+      refine ⟨_, _, hbody, rfl, fun ρ₁ m₁ π₁ o hQ => ?_⟩
+      obtain ⟨rfl, rest', w, heq1, hle1⟩ := hQ
+      simp only [countdownInv]
+      exact ⟨Or.inl trivial, (("n", .u32 w) :: rest'), rest', w,
+        heq1, rfl, hle1⟩
+  exact htriple_while_at (countdownInv m π) _ _ _ hzero hexit hdec hstep
+
+/-- Closed-instance runtime checks — executable shadows of the
+    gallery triples at one point each (the proofs themselves are
+    compile-gated): the two-cell incr, `alias_cond` under both
+    guard values over the real emitted body, and the countdown
+    from 3. -/
 def main : IO Unit := do
+  let mut passed := 0
+  -- Two-cell incr: `pa=10, pb=20` → `pa=11, pb=21`.
   let (m0, a) := memAllocData emptyMem [10]
   let (m1, b) := memAllocData m0 [20]
   let π : Layout := [("pa", a, a), ("pb", b, b)]
   match memEvalStmtFuel 20 galleryBody [] m1 π with
   | .error e =>
     throw (IO.userError
-      s!"hoare-gallery: closed instance failed: {(repr e).pretty}")
+      s!"hoare-gallery: incr instance failed: {(repr e).pretty}")
   | .ok ((_, m', _), .fellThrough) =>
     match memFind m' a, memFind m' b with
     | some ba, some bb =>
       if ba.data != [11] || bb.data != [21] then
         throw (IO.userError
           s!"hoare-gallery: cells={ba.data},{bb.data}, want ([11],[21])")
-      else IO.println "HOAREGALLERY-OK passed=1"
+      else passed := passed + 1
     | _, _ =>
       throw (IO.userError "hoare-gallery: cells missing after run")
   | .ok _ =>
     throw (IO.userError "hoare-gallery: want fellThrough")
+  -- `alias_cond` over the emitted body: `(10, 20)` → `(11, 22)`
+  -- under `c`, `(10, 22)` without.
+  let (n0, p) := memAllocData emptyMem [10]
+  let (n1, q) := memAllocData n0 [20]
+  let πac : Layout := [("p", p, p), ("q", q, q)]
+  for (c, wantP, wantQ) in [(true, 11, 22), (false, 10, 22)] do
+    let ρ : Env := [("c", .b c)]
+    match memEvalStmtFuel 20 aliasCondFunc.body ρ n1 πac with
+    | .ok ((_, m', _), .returned (.u32 0)) =>
+      match memFind m' p, memFind m' q with
+      | some bp, some bq =>
+        if bp.data != [wantP] || bq.data != [wantQ] then
+          throw (IO.userError
+            s!"hoare-gallery: alias_cond c={c}: cells={bp.data},{bq.data}")
+        else passed := passed + 1
+      | _, _ =>
+        throw (IO.userError
+          s!"hoare-gallery: alias_cond c={c}: cells missing")
+    | .ok _ =>
+      throw (IO.userError
+        s!"hoare-gallery: alias_cond c={c}: want returned u32 0")
+    | .error e =>
+      throw (IO.userError
+        s!"hoare-gallery: alias_cond c={c} failed: {(repr e).pretty}")
+  -- Countdown from 3 ends at 0.
+  match memEvalStmtFuel 20 countdownBody [("n", .u32 3)] emptyMem [] with
+  | .ok ((ρ', _, _), .fellThrough) =>
+    match envLookup ρ' "n" with
+    | some (.u32 v) =>
+      if v != 0 then
+        throw (IO.userError "hoare-gallery: countdown did not reach 0")
+      else passed := passed + 1
+    | _ =>
+      throw (IO.userError "hoare-gallery: countdown lost its counter")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: countdown want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: countdown failed: {(repr e).pretty}")
+  IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 end HoareGallery

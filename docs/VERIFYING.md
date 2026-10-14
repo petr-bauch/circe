@@ -294,3 +294,28 @@ overflow-freedom (`checkedAddI32 v 1 = .ok (v + 1)`) is explicit
 hypothesis debt. Tactic trap recorded: `obtain` with `rfl`
 patterns substitutes witnesses out of scope — the final `exact`
 must use post-substitution values.
+
+### Loops (H2)
+
+`memEvalStmtFuel_while_false` (any fuel) and `while_true`
+(one-unfolding) promote the handler arms to equation lemmas.
+`HTripleAt` is the fixed-fuel triple; `HTriple` is `∀ F,
+HTripleAt F` (existing proofs elaborate unchanged).
+`htriple_while_at` takes a fuel-indexed invariant `I :
+Nat → state → Prop` — load-bearing, not decorative: at fuel 0
+a true-guard loop errors via the zero handler, so `I 0` admits
+only guard-false states and each true-guard step delivers an
+`I k` state from `I (k+1)` (fuel bounds, so no separate
+termination measure is needed); plus `htriple_assign`.
+Body iterations must end `fellThrough`/`continued`
+(`broke`/`returned` bodies deferred with the handler arms
+named). Galleries (`tests/lean/HoareGallery.lean`):
+`alias_cond` under both guards over the real emitted body
+(first `if`-rule exercise, both cases proved), and a `u32`
+countdown (`n ≤ F` at fuel `F`, exact decrement via
+`BitVec.toNat_sub`); runtime closed instances (incr +
+`alias_cond` × 2 + countdown) ride the existing
+`hoare-gallery` driver job. Tactic note: nested `obtain`
+with `rfl` keeps the inner-binder side — the outer names are
+gone after substitution, so inner applications must use the
+fresh names.

@@ -998,3 +998,22 @@ Deferred with reasons named: seq-return propagation (no
 Mem-side lemma), multi-word indexed assertions (H2 loops).
 - Acceptance: Hoare files warning-free, gallery sorry-free,
 658 jobs TEST-OK (657 + `hoare-gallery`).
+
+### H2. Loop rules + alias_cond / countdown galleries — DONE (2026-10-14)
+
+H2a: `memEvalStmtFuel_while_false` / `while_true` equations
+beside the handlers, `HTripleAt` + `htriple_at_of`,
+`htriple_while_at` (fuel-indexed invariant) and
+`htriple_assign` in `Circe/Hoare/Rules.lean`, plus
+`heval_usub_u32` / `heval_une_u32` value-side expression
+lemmas. H2b: `hoare_aliasCond_true/false` triples over the
+real `aliasCondFunc.body` (if-rules + framing + void return)
+and `hoare_countdown` (`u32`, fuel index as bound); driver
+`hoare-gallery` grows to 4 closed-instance jobs. Scope note:
+the planned `cond_pair` gallery became `alias_cond` — the
+real `cond_pair` body is `tif`+lets with no `if_` statement,
+so it cannot exercise the if-rules; it needs a new
+`htriple_let` rule and moves to H3. Multi-word indexed
+assertions stay deferred until the first array loop.
+- Acceptance: Hoare files warning-free, galleries sorry-free,
+658 jobs TEST-OK (`HOAREGALLERY-OK passed=4`).
