@@ -58,6 +58,57 @@ theorem memFind_cell_store (m : Mem) (a t : Nat) (p x : BitVec 32)
   unfold cellAt
   simp [memFind]
 
+/-- A live `i32`-word cell holding a whole word list (A-track):
+    `cellAt` is the singleton case. Array loops thread this
+    instead of one fact per index. -/
+def cellsAt (m : Mem) (a : Addr) (t : Nat)
+    (l : List (BitVec 32)) : Prop :=
+  memFind m a = some ⟨t, true, l⟩
+
+/-- Singleton bridge, both directions. -/
+theorem cellAt_cellsAt (m : Mem) (a : Addr) (t : Nat)
+    (v : BitVec 32) :
+    cellAt m a t v ↔ cellsAt m a t [v] := by
+  simp [cellAt, cellsAt]
+
+/-- Storing into a known live multi-word cell succeeds with the
+    `List.set` block pushed on top (generalizes `memStore_cell`,
+    which is the index-0 singleton case). -/
+theorem memStore_cellsAt (m : Mem) (a t i : Nat)
+    (l : List (BitVec 32)) (x : BitVec 32)
+    (hl : cellsAt m a t l) (hlt : i < l.length) :
+    memStore m a t i x =
+      .ok ⟨m.next, (a, ⟨t, true, l.set i x⟩) :: m.blocks,
+        m.blocks64⟩ := by
+  unfold cellsAt at hl
+  unfold memStore
+  rw [hl]
+  simp [hlt]
+
+/-- Reading back the list just stored into (the multi-word write
+    leg; mirrors `memFind_cell_store`). -/
+theorem memFind_cellsAt_store (m : Mem) (a t i : Nat)
+    (l : List (BitVec 32)) (x : BitVec 32) (m' : Mem)
+    (hl : cellsAt m a t l) (hlt : i < l.length)
+    (hstore : memStore m a t i x = .ok m') :
+    cellsAt m' a t (l.set i x) := by
+  have h := memStore_cellsAt m a t i l x hl hlt
+  rw [hstore] at h
+  cases h
+  unfold cellsAt
+  simp [memFind]
+
+/-- Loading from a known live multi-word cell at a present index
+    (the array-loop read leg, via `getElem?`). -/
+theorem memLoad_cellsAt (m : Mem) (a t i : Nat)
+    (l : List (BitVec 32)) (x : BitVec 32)
+    (hl : cellsAt m a t l) (hget : l[i]? = some x) :
+    memLoad m a t i = .ok x := by
+  unfold cellsAt at hl
+  unfold memLoad
+  rw [hl]
+  simp [hget]
+
 /-- Disjoint case (`b ≠ a`, e.g. distinct caller addresses): each arm
     writes its own cell (read back above) and frames the other
     (`memFind_memStore_other`). This is the disjunctive post: both
