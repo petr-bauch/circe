@@ -340,3 +340,24 @@ into `at` on this toolchain, and the obtain-only fallback
 substitutes the wrong side (it drops the inner binders where
 the two-step keeps them) — negative result kept on record.
 Net rewrite savings ≈ 50 lines at unchanged coverage.
+
+### Array loops (A)
+
+`cellsAt m a t l` (`Circe/CondFrame.lean`) generalizes the
+singleton `cellAt` to whole-list contents, with
+`memStore_cellsAt` / `memFind_cellsAt_store` /
+`memLoad_cellsAt` frame and load lemmas. The first array
+gallery is a read-only sum loop (`hoare_sumLoop`): `while (i
+< len) { acc = acc + arr[i]; i = i + 1 }` over a `Mem` block
+with the total in a framed singleton cell. Overflow-freedom
+is per-prefix caller debt (`hdebt`: every `take`-prefix sum
+plus the next word adds cleanly); lengths fit `u64` (`hn`).
+Design finding: memory floats existentially in the invariant
+and post (`mc`, `πc = π`) — the accumulator store evolves
+memory each iteration, so entry memory cannot be pinned, and
+the exit lemma carries its own layout pin. Tactic notes: a
+`subst` drops eliminated binders from scope, so later code
+must use post-substitution names (traced, not assumed); a
+`rw` that closes its goal leaves no goals for continuations;
+accumulator witnesses go in explicitly rather than by
+unification assignment.

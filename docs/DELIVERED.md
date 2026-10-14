@@ -1038,3 +1038,18 @@ assertions stay deferred until the first array loop (owns its
 own plan).
 - Acceptance: Hoare files warning-free, galleries sorry-free,
 658 jobs TEST-OK (`HOAREGALLERY-OK passed=6`).
+
+### A. Whole-list assertions + read-only sum loop — DONE (2026-10-14)
+
+A1: `cellsAt m a t l := memFind m a = some ⟨t, true, l⟩` in
+`Circe/CondFrame.lean` generalizes singleton `cellAt`, with
+`cellAt_cellsAt`, `memStore_cellsAt`,
+`memFind_cellsAt_store`, `memLoad_cellsAt`. A2:
+`hoare_sumLoop` in `tests/lean/HoareGallery.lean` (read-only
+`while (i < len)` accumulation, total in a framed singleton
+cell; per-prefix `checkedAddI32` debt `hdebt`, `u64` lengths
+`hn`; memory floats existentially — see VERIFYING). Driver
+`hoare-gallery` grows to 7 closed-instance jobs (`[1,2,3,4]`
+totals 10).
+- Acceptance: Hoare files warning-free, galleries sorry-free,
+658 jobs TEST-OK (`HOAREGALLERY-OK passed=7`).
