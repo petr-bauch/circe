@@ -45,6 +45,7 @@ import DiffSort
 import DiffView
 import DiffWidth
 import DiffCondPair
+import DiffAliasCond
 import DiffWrPair
 import DiffXorN
 import DiffQr
@@ -214,7 +215,8 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
    ("cc", ["tests/c/sum_two.c", "tests/diff/driver_sum_two.c"], bin "circe_sum_two_native"),
    ("cc", ["tests/c/wr_pair.c", "tests/diff/driver_wr_pair.c"], bin "circe_wr_pair_native"),
-   ("cc", ["tests/c/cond_pair.c", "tests/diff/driver_cond_pair.c"], bin "circe_cond_pair_native")]
+   ("cc", ["tests/c/cond_pair.c", "tests/diff/driver_cond_pair.c"], bin "circe_cond_pair_native"),
+   ("c++", ["tests/cpp/alias_cond.cpp", "tests/diff/driver_alias_cond.cpp"], bin "circe_alias_cond_native")]
 
 /-- Golden pairs `(tests/golden/X, out/X)`: every `diff -u` in `check.sh`. -/
 def goldenPairs : List (String × String) :=
@@ -1238,7 +1240,9 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/CondFrame.lean", "theorem condExec_invert_aliased"),
      ("out/AliasCond.lean", "_Z10alias_condRiS_b_spec"),
      ("tests/golden/AliasCond.lean", "_Z10alias_condRiS_b_spec"),
-     ("tests/golden/AliasCond_Spec.lean", "_Z10alias_condRiS_b_spec_check")]),
+     ("tests/golden/AliasCond_Spec.lean", "_Z10alias_condRiS_b_spec_check"),
+     ("tests/lean/DiffAliasCond.lean", "DiffAliasCond.main"),
+     ("tests/diff/driver_alias_cond.cpp", "alias_cond(p, p, c)")]),
    ("n4d-vecgrow",
     [("Circe/Validator/GrowLeaves.lean", "def isVecGrowComposerText"),
      ("Circe/Validator/Gate.lean", "N4d-iv-b2 growth composer"),
@@ -1493,6 +1497,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-reborrow", DiffReborrow.main [bin "circe_reborrow_native", trials]),
    ("diff-wrpair", DiffWrPair.main [bin "circe_wr_pair_native", trials]),
    ("diff-condpair", DiffCondPair.main [bin "circe_cond_pair_native", trials]),
+   ("diff-aliascond", DiffAliasCond.main [bin "circe_alias_cond_native", trials]),
    ("diff-reserve", DiffReserve.main [bin "circe_vec_reserve_native", trials]),
    ("diff-insert", DiffInsert.main [bin "circe_vec_insert_native", trials]),
    ("diff-erase", DiffErase.main [bin "circe_vec_erase_native", trials]),
@@ -1565,7 +1570,7 @@ def suiteModules : List String :=
    "ReborrowGate", "GoldenReborrow", "DiffReborrow",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",
    "CondPairGate", "GoldenCondPair", "DiffCondPair",
-   "AliasCondGate", "GoldenAliasCond"]
+   "AliasCondGate", "GoldenAliasCond", "DiffAliasCond"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

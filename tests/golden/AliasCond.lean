@@ -19,6 +19,7 @@ def _Z10alias_condRiS_b_spec (p q : BitVec 32) (c aliased : Bool) : Result (BitV
       | .error e => .error e
       | .ok b => .ok (if aliased then (b, b) else (a, b))
   | false =>
-    match checkedAddI32 q 2 with
+    let q' := if aliased then p else q
+    match checkedAddI32 q' 2 with
     | .error e => .error e
-    | .ok b => .ok (p, b)
+    | .ok b => .ok (if aliased then (b, b) else (p, b))

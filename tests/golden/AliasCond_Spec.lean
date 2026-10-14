@@ -19,13 +19,14 @@ def _Z10alias_condRiS_b_spec_fwd (p q : BitVec 32) (c aliased : Bool) : Result (
       | .error e => .error e
       | .ok b => .ok (if aliased then (b, b) else (a, b))
   | false =>
-    match checkedAddI32 q 2 with
+    let q' := if aliased then p else q
+    match checkedAddI32 q' 2 with
     | .error e => .error e
-    | .ok b => .ok (p, b)
+    | .ok b => .ok (if aliased then (b, b) else (p, b))
 
 /-- Edge cases: both verdicts under both branches, masking, `nsw` overflow on either add. -/
 def _Z10alias_condRiS_b_spec_edges : List (BitVec 32 × BitVec 32 × Bool × Bool × Result (BitVec 32 × BitVec 32)) :=
-  [(10, 20, true, false, .ok (11, 22)), (10, 20, false, false, .ok (10, 22)), (10, 10, true, true, .ok (13, 13)), (10, 10, false, true, .ok (10, 12)), (0, 0, true, true, .ok (3, 3)), (0x7FFFFFFF, 0, true, false, .error .Overflow), (0x7FFFFFFF, 0, false, false, .ok (0x7FFFFFFF, 2)), (0, 0x7FFFFFFF, true, false, .error .Overflow), (0x7FFFFFFF, 0x7FFFFFFF, true, true, .error .Overflow)]
+  [(10, 20, true, false, .ok (11, 22)), (10, 20, false, false, .ok (10, 22)), (10, 10, true, true, .ok (13, 13)), (10, 10, false, true, .ok (12, 12)), (0, 0, true, true, .ok (3, 3)), (0x7FFFFFFF, 0, true, false, .error .Overflow), (0x7FFFFFFF, 0, false, false, .ok (0x7FFFFFFF, 2)), (0, 0x7FFFFFFF, true, false, .error .Overflow), (0x7FFFFFFF, 0x7FFFFFFF, true, true, .error .Overflow)]
 
 /-- Prop-test entry: the mirror agrees with ground truth on every edge. -/
 def _Z10alias_condRiS_b_spec_check : Bool :=

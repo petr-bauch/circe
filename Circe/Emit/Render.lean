@@ -105,8 +105,9 @@ def emitCondPairText (name : String) : String :=
     observes `p`'s write), so the caller supplies `aliased` (`true`
     when both params address one cell). Taken-branch under
     aliasing runs the second addition on the stored value and the
-    second store wins, so both words read back the `q` result;
-    every other leg matches the `cond_pair` forward exactly. -/
+    second store wins, so both words read back the `q` result; the
+    masked leg reads the shared cell (`p`) under aliasing, so both
+    words read back that result too. -/
 def emitAliasCondText (name : String) : String :=
   emitHeader
   ++ "\nimport Circe.Base\n\n"
@@ -123,9 +124,10 @@ def emitAliasCondText (name : String) : String :=
   ++ "      | .error e => .error e\n"
   ++ "      | .ok b => .ok (if aliased then (b, b) else (a, b))\n"
   ++ "  | false =>\n"
-  ++ "    match checkedAddI32 q 2 with\n"
+  ++ "    let q' := if aliased then p else q\n"
+  ++ "    match checkedAddI32 q' 2 with\n"
   ++ "    | .error e => .error e\n"
-  ++ "    | .ok b => .ok (p, b)\n"
+  ++ "    | .ok b => .ok (if aliased then (b, b) else (p, b))\n"
 
 /-- Render the `add64` forward definition (`add64_fwd`, S3b). -/
 def emitAdd64Text (name : String) : String :=

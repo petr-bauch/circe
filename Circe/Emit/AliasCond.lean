@@ -52,3 +52,26 @@ def isAliasCondBody : String → CStmt → CStmt → Bool
     c == "c" && z1 == 0 && z2 == 0 && z3 == 0 && z4 == 0 &&
     one == 1 && two == 2 && z == 0
   | _, _, _ => false
+
+/-- Open-contract mirror (G3/S4b): the executable contract the
+    `DiffAliasCond` suite runs. `tests/golden/AliasCond.lean` is the
+    tag-erased rendering of this def (pretty-printing trusted,
+    semantics verified — the `_fwd` convention). -/
+def aliasCondSpec (p q : BitVec 32) (c aliased : Bool) :
+    Result (BitVec 32 × BitVec 32) :=
+  match c with
+  | true =>
+    match checkedAddI32 p 1 with
+    | .error e => .error e
+    | .ok a =>
+      let q' := if aliased then a else q
+      match checkedAddI32 q' 2 with
+      | .error e => .error e
+      | .ok b => .ok (if aliased then (b, b) else (a, b))
+  | false =>
+    -- Under aliasing the shared cell holds `p`, so the `q` addend is
+    -- `p` and both words read back the stored result.
+    let q' := if aliased then p else q
+    match checkedAddI32 q' 2 with
+    | .error e => .error e
+    | .ok b => .ok (if aliased then (b, b) else (p, b))
