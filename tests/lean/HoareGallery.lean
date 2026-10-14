@@ -844,33 +844,6 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
       checkedAddI32 ((l.take j).sum) x = .ok ((l.take (j + 1)).sum)) :
     ∀ F, HTripleAt F (sumLoopInv π aa ta ac tc l F) sumLoopBody
       (sumLoopPost π aa ta ac tc l) := by
-  have hlenv : (BitVec.ofNat 64 l.length).toNat = l.length := by
-    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt hn
-  have hguardv : ∀ (ρ : Env) (m' : Mem) (π' : Layout) (iv : BitVec 64),
-      envLookup ρ "i" = some (.u64 iv) →
-      envLookup ρ "len" = some (.u64 (BitVec.ofNat 64 l.length)) →
-      memEvalExpr (.ult (.var "i") (.var "len")) ρ m' π'
-        = .ok (.b (iv.ult (BitVec.ofNat 64 l.length))) := by
-    intro ρ m' π' iv hi hl
-    rw [memEvalExpr_ult_agree _ _ ρ m' π'
-      (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _),
-      evalExpr_ult_u64 _ _ ρ iv _ (evalExpr_var_hit _ _ _ hi)
-        (evalExpr_var_hit _ _ _ hl)]
-  have hultT : ∀ (iv : BitVec 64), iv.toNat < l.length →
-      iv.ult (BitVec.ofNat 64 l.length) = true := by
-    intro iv hlt
-    rw [BitVec.ult_eq_decide, hlenv]
-    exact decide_eq_true hlt
-  have hultF : ∀ (iv : BitVec 64), l.length ≤ iv.toNat →
-      iv.ult (BitVec.ofNat 64 l.length) = false := by
-    intro iv hle
-    rw [BitVec.ult_eq_decide, hlenv]
-    exact decide_eq_false (Nat.not_lt.mpr hle)
-  have hincr : ∀ (iv : BitVec 64), iv.toNat < l.length →
-      (iv + 1).toNat = iv.toNat + 1 := by
-    intro iv hlt
-    have h1 : (1 : BitVec 64).toNat = 1 := rfl
-    rw [BitVec.toNat_add, h1, Nat.mod_eq_of_lt (by omega)]
   have hexitQ : ∀ (πq : Layout) (ρs : Env) (ms : Mem) (πs : Layout)
       (iv : BitVec 64) (accv : BitVec 32) (rest : Env),
       πs = πq →
@@ -882,7 +855,7 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
     intro πq ρs ms πs iv accv rest hπ hρ heqn htotal harr haccC
     subst htotal
     have hiv : iv = BitVec.ofNat 64 l.length :=
-      BitVec.toNat_inj.mp (by rw [hlenv]; exact heqn)
+      BitVec.toNat_inj.mp (by rw [ofNat64_toNat _ hn]; exact heqn)
     subst hiv
     exact ⟨rfl, ρs, ms, πs, rfl, hπ, by rw [hρ]; simp [envLookup], haccC, harr⟩
   have hzero : ∀ (ρ' : Env) (m' : Mem) (π' : Layout),
@@ -895,13 +868,9 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
       haccC⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     have hle' : l.length ≤ iv.toNat := by omega
-    rw [hguardv _ _ _ _ hi hlen, hultF _ hle']
+    rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_false _ hn _ hle']
   have hexit : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
       sumLoopInv π aa ta ac tc l k (ρ', m', π') →
       memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
@@ -913,14 +882,10 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
       haccC⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     have hnb : ¬ iv.toNat < l.length := by
       intro hlt
-      rw [hguardv _ _ _ _ hi hlen, hultT _ hlt] at hgf
+      rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_true _ hn _ hlt] at hgf
       simp at hgf
     have heqn : iv.toNat = l.length := by omega
     have htotal : accv = l.sum := by
@@ -938,14 +903,10 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
       haccC⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     by_cases hlt : iv.toNat < l.length
-    · right; rw [hguardv _ _ _ _ hi hlen, hultT _ hlt]
-    · left; rw [hguardv _ _ _ _ hi hlen, hultF _ (Nat.le_of_not_lt hlt)]
+    · right; rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_true _ hn _ hlt]
+    · left; rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_false _ hn _ (Nat.le_of_not_lt hlt)]
   have hstep : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
       sumLoopInv π aa ta ac tc l (k + 1) (ρ', m', π') →
       memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
@@ -965,11 +926,7 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
       haccC⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     have hlaArr' : layoutLookup π' "arr" = some (aa, ta) := by
       rw [hπc]; exact hlaArr
     have hlaAcc' : layoutLookup π' "acc" = some (ac, tc) := by
@@ -1035,23 +992,7 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
         intro F ρ₀ m₀ π₀ hP
         obtain ⟨m₁, heq1, hA, hB⟩ := hP
         obtain ⟨rfl, rfl, rfl⟩ := heq1
-        have hi' : envLookup ρ' "i" = some (.u64 iv) := by
-          rw [hρ]; simp [envLookup]
-        have hagree :
-            memEvalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' m₀ π'
-              = evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' :=
-          memEvalExpr_uadd_agree _ _ _ _ _
-            (by rw [memEvalExpr_var])
-            (by rw [memEvalExpr_lit])
-        have hval :
-            evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ'
-              = .ok (.u64 (iv + 1)) :=
-          evalExpr_uadd_u64 _ _ _ _ _
-            (evalExpr_var_hit _ _ _ hi') rfl
-        have hu : envUpdate ρ' "i" (.u64 (iv + 1))
-            = some ((("i", .u64 (iv + 1)) ::
-              ("len", .u64 (BitVec.ofNat 64 l.length)) :: rest)) := by
-          rw [hρ]; exact envUpdate_hit _ _ _ _
+        obtain ⟨hagree, hval, hu⟩ := hoare_uadd_incr_facts _ _ _ _ _ _ hρ
         have hfr := htriple_assign "i"
           (.uadd (.var "i") (.lit (.u64 1)))
           ρ' m₀ π' (.u64 (iv + 1))
@@ -1063,14 +1004,14 @@ theorem hoare_sumLoop (π : Layout) (aa : Addr) (ta : Nat)
         refine ⟨_, _, _, _, hev₂, Or.inl rfl, _, _, (iv + 1),
           ((l.take (iv.toNat + 1)).sum), _, _, rfl, hπc, rfl,
           ?_, ?_, ?_, ?_, ?_⟩
-        · rw [hincr _ hlt]; omega
-        · rw [hincr _ hlt]
-        · rw [hincr _ hlt]; omega
+        · rw [u64_succ_toNat _ _ hn hlt]; omega
+        · rw [u64_succ_toNat _ _ hn hlt]
+        · rw [u64_succ_toNat _ _ hn hlt]; omega
         · exact hA
         · simpa using hB
       exact ⟨_, _, htriple_seq _ _ _ _ _ hstore hassign, rfl,
         fun ρ₁ m₁ π₁ o h => h⟩
-    · rw [hguardv _ _ _ _ hi hlen, hultF _ (Nat.le_of_not_lt hlt)] at hgt
+    · rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_false _ hn _ (Nat.le_of_not_lt hlt)] at hgt
       simp at hgt
   exact htriple_while_at _ _ _ _ hzero hexit hdec hstep
 
@@ -1104,33 +1045,6 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
       checkedAddI32 x 1 = .ok (x + 1)) :
     ∀ F, HTripleAt F (incrLoopInv π aa ta l F) incrLoopBody
       (incrLoopPost π aa ta l) := by
-  have ihlenv : (BitVec.ofNat 64 l.length).toNat = l.length := by
-    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt hn
-  have ihguardv : ∀ (ρ : Env) (m' : Mem) (π' : Layout) (iv : BitVec 64),
-      envLookup ρ "i" = some (.u64 iv) →
-      envLookup ρ "len" = some (.u64 (BitVec.ofNat 64 l.length)) →
-      memEvalExpr (.ult (.var "i") (.var "len")) ρ m' π'
-        = .ok (.b (iv.ult (BitVec.ofNat 64 l.length))) := by
-    intro ρ m' π' iv hi hl
-    rw [memEvalExpr_ult_agree _ _ ρ m' π'
-      (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _),
-      evalExpr_ult_u64 _ _ ρ iv _ (evalExpr_var_hit _ _ _ hi)
-        (evalExpr_var_hit _ _ _ hl)]
-  have ihultT : ∀ (iv : BitVec 64), iv.toNat < l.length →
-      iv.ult (BitVec.ofNat 64 l.length) = true := by
-    intro iv hlt
-    rw [BitVec.ult_eq_decide, ihlenv]
-    exact decide_eq_true hlt
-  have ihultF : ∀ (iv : BitVec 64), l.length ≤ iv.toNat →
-      iv.ult (BitVec.ofNat 64 l.length) = false := by
-    intro iv hle
-    rw [BitVec.ult_eq_decide, ihlenv]
-    exact decide_eq_false (Nat.not_lt.mpr hle)
-  have ihincr : ∀ (iv : BitVec 64), iv.toNat < l.length →
-      (iv + 1).toNat = iv.toNat + 1 := by
-    intro iv hlt
-    have h1 : (1 : BitVec 64).toNat = 1 := rfl
-    rw [BitVec.toNat_add, h1, Nat.mod_eq_of_lt (by omega)]
   have ihexitQ : ∀ (πq : Layout) (ρs : Env) (ms : Mem) (πs : Layout)
       (iv : BitVec 64) (rest : Env),
       πs = πq →
@@ -1141,9 +1055,9 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
       incrLoopPost πq aa ta l (ρs, ms, πs) .fellThrough := by
     intro πq ρs ms πs iv rest hπ hρ heqn harr
     have hiv : iv = BitVec.ofNat 64 l.length :=
-      BitVec.toNat_inj.mp (by rw [ihlenv]; exact heqn)
+      BitVec.toNat_inj.mp (by rw [ofNat64_toNat _ hn]; exact heqn)
     subst hiv
-    rw [ihlenv, List.take_length, List.drop_length] at harr
+    rw [ofNat64_toNat _ hn, List.take_length, List.drop_length] at harr
     exact ⟨rfl, ρs, ms, πs, rfl, hπ, by rw [hρ]; simp [envLookup],
       by simpa using harr⟩
   have ihzero : ∀ (ρ' : Env) (m' : Mem) (π' : Layout),
@@ -1155,13 +1069,9 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
     obtain ⟨ρ'', rest, iv, mc, πc, heq, _hπc, hρ, hle, hk, harr⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     have hle' : l.length ≤ iv.toNat := by omega
-    rw [ihguardv _ _ _ _ hi hlen, ihultF _ hle']
+    rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_false _ hn _ hle']
   have ihexit : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
       incrLoopInv π aa ta l k (ρ', m', π') →
       memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
@@ -1172,14 +1082,10 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
     obtain ⟨ρ'', rest, iv, mc, πc, heq, hπc, hρ, hle, hk, harr⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     have hnb : ¬ iv.toNat < l.length := by
       intro hlt
-      rw [ihguardv _ _ _ _ hi hlen, ihultT _ hlt] at hgf
+      rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_true _ hn _ hlt] at hgf
       simp at hgf
     have heqn : iv.toNat = l.length := by omega
     exact ihexitQ π ρ' m' π' iv rest hπc hρ heqn harr
@@ -1194,14 +1100,10 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
     obtain ⟨ρ'', rest, iv, mc, πc, heq, _hπc, hρ, hle, hk, harr⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     by_cases hlt : iv.toNat < l.length
-    · right; rw [ihguardv _ _ _ _ hi hlen, ihultT _ hlt]
-    · left; rw [ihguardv _ _ _ _ hi hlen, ihultF _ (Nat.le_of_not_lt hlt)]
+    · right; rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_true _ hn _ hlt]
+    · left; rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_false _ hn _ (Nat.le_of_not_lt hlt)]
   have ihstep : ∀ (k : Nat) (ρ' : Env) (m' : Mem) (π' : Layout),
       incrLoopInv π aa ta l (k + 1) (ρ', m', π') →
       memEvalExpr (.ult (.var "i") (.var "len")) ρ' m' π'
@@ -1219,23 +1121,15 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
     obtain ⟨ρ'', rest, iv, mc, πc, heq, hπc, hρ, hle, hk, harr⟩ := hI
     simp only [Prod.mk.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    have hi : envLookup ρ' "i" = some (.u64 iv) := by
-      rw [hρ]; simp [envLookup]
-    have hlen : envLookup ρ' "len" =
-        some (.u64 (BitVec.ofNat 64 l.length)) := by
-      rw [hρ]; simp [envLookup]
+    obtain ⟨hi, hlen⟩ := envLookup_ilen _ _ _ _ hρ
     have hlaArr' : layoutLookup π' "arr" = some (aa, ta) := by
       rw [hπc]; exact hlaArr
     by_cases hlt : iv.toNat < l.length
     · have hget : l[iv.toNat]? = some l[iv.toNat] :=
         List.getElem?_eq_getElem hlt
       have hgetC : (((l.take iv.toNat).map (· + 1) ++
-          l.drop iv.toNat)[iv.toNat]? = some l[iv.toNat]) := by
-        have hlenA : ((l.take iv.toNat).map (· + 1)).length = iv.toNat := by
-          simp only [List.length_map, List.length_take]; omega
-        rw [List.getElem?_append_right (by omega), hlenA, Nat.sub_self,
-          List.getElem?_drop, Nat.add_zero]
-        exact List.getElem?_eq_getElem hlt
+          l.drop iv.toNat)[iv.toNat]? = some l[iv.toNat]) :=
+        take_map_drop_getElem l iv.toNat hlt
       have hmemArr : memLoad m' aa ta iv.toNat = .ok l[iv.toNat] :=
         memLoad_cellsAt _ _ _ _ _ _ harr hgetC
       have hi_eval : memEvalExpr (.var "i") ρ' m' π' = .ok (.u64 iv) := by
@@ -1288,23 +1182,7 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
         intro F ρ₀ m₀ π₀ hP
         obtain ⟨m₁, heq1, hA⟩ := hP
         obtain ⟨rfl, rfl, rfl⟩ := heq1
-        have hi' : envLookup ρ' "i" = some (.u64 iv) := by
-          rw [hρ]; simp [envLookup]
-        have hagree :
-            memEvalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' m₀ π'
-              = evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' :=
-          memEvalExpr_uadd_agree _ _ _ _ _
-            (by rw [memEvalExpr_var])
-            (by rw [memEvalExpr_lit])
-        have hval :
-            evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ'
-              = .ok (.u64 (iv + 1)) :=
-          evalExpr_uadd_u64 _ _ _ _ _
-            (evalExpr_var_hit _ _ _ hi') rfl
-        have hu : envUpdate ρ' "i" (.u64 (iv + 1))
-            = some ((("i", .u64 (iv + 1)) ::
-              ("len", .u64 (BitVec.ofNat 64 l.length)) :: rest)) := by
-          rw [hρ]; exact envUpdate_hit _ _ _ _
+        obtain ⟨hagree, hval, hu⟩ := hoare_uadd_incr_facts _ _ _ _ _ _ hρ
         have hfr := htriple_assign "i"
           (.uadd (.var "i") (.lit (.u64 1)))
           ρ' m₀ π' (.u64 (iv + 1))
@@ -1315,37 +1193,14 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
         obtain ⟨⟨rfl, rfl, rfl⟩, rfl⟩ := hQ₂
         refine ⟨_, _, _, _, hev₂, Or.inl rfl, _, _, (iv + 1), _, _,
           rfl, hπc, rfl, ?_, ?_, ?_⟩
-        · rw [ihincr _ hlt]; omega
-        · rw [ihincr _ hlt]; omega
-        · have hlenA : ((l.take iv.toNat).map (· + 1)).length = iv.toNat := by
-            simp only [List.length_map, List.length_take]; omega
-          have hdz : ((l.drop iv.toNat).set 0 (l[iv.toNat] + 1)
-              = (l[iv.toNat] + 1) :: l.drop (iv.toNat + 1)) := by
-            apply List.ext_getElem?
-            intro i
-            cases i with
-            | zero =>
-              have hne : l.length - iv.toNat ≠ 0 := by omega
-              simp [List.getElem?_set, hne]
-            | succ i =>
-              simp only [List.getElem?_set, show ¬(0 = i + 1) from by omega,
-                ite_false, List.getElem?_cons_succ, List.getElem?_drop]
-              congr 1
-              omega
-          have hbridge : ((((l.take iv.toNat).map (· + 1) ++
-              l.drop iv.toNat).set iv.toNat (l[iv.toNat] + 1)) =
-              (((l.take (iv.toNat + 1)).map (· + 1) ++
-                l.drop (iv.toNat + 1)))) := by
-            rw [List.set_append_right _ _ (by omega), hlenA, Nat.sub_self,
-              hdz, List.take_add_one, List.map_append, hget,
-              Option.toList_some, List.map_cons, List.map_nil,
-              List.append_assoc]
-            rfl
-          rw [ihincr _ hlt, ←hbridge]
+        · rw [u64_succ_toNat _ _ hn hlt]; omega
+        · rw [u64_succ_toNat _ _ hn hlt]; omega
+        · rw [u64_succ_toNat _ _ hn hlt,
+            ←take_map_drop_set_succ l iv.toNat hlt]
           exact hA
       exact ⟨_, _, htriple_seq _ _ _ _ _ hstore hassign, rfl,
         fun ρ₁ m₁ π₁ o h => h⟩
-    · rw [ihguardv _ _ _ _ hi hlen, ihultF _ (Nat.le_of_not_lt hlt)] at hgt
+    · rw [memEvalExpr_ult_ilen _ _ _ _ _ hi hlen, ult_ofNat64_false _ hn _ (Nat.le_of_not_lt hlt)] at hgt
       simp at hgt
   exact htriple_while_at _ _ _ _ ihzero ihexit ihdec ihstep
 

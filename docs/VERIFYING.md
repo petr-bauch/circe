@@ -368,3 +368,12 @@ bridges the operational `set`-form to the next prefix form
 (`set_append_right` + take/drop algebra, drop-head by
 extensionality) — a measured reminder that take/map/drop is
 the spec shape while `set` is the operational residue.
+Maintenance factor (M2): the duplicated guard stack is now
+shared helpers in `Circe/Hoare/Rules.lean` — `ofNat64_toNat`,
+`ult_ofNat64_true/false`, `memEvalExpr_ult_ilen`,
+`envLookup_ilen`, `hoare_uadd_incr_facts`, `u64_succ_toNat`
+— and the prefix algebra lives beside `cellsAt` in
+`Circe/CondFrame.lean` (`take_map_drop_getElem`,
+`drop_set_zero_cons`, `take_map_drop_set_succ`). Helpers stay
+first-order with explicit premises (the H3 inference lesson);
+the whole-while-protocol abstraction stays rejected.

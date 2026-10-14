@@ -249,3 +249,70 @@ theorem htriple_while_at (I : Nat → Env × Mem × Layout → Prop)
       obtain rfl | rfl := ho
       · exact hev₂
       · exact hev₂
+
+/-- `u64` length round-trip for loop bounds: the bound literal
+    evaluates back to the list length (needs `hn`). -/
+theorem ofNat64_toNat (n : Nat) (hn : n < 2 ^ 64) :
+    (BitVec.ofNat 64 n).toNat = n := by
+  rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt hn
+
+/-- `ult` against a `u64` length literal, true case. -/
+theorem ult_ofNat64_true (n : Nat) (hn : n < 2 ^ 64) (iv : BitVec 64)
+    (hlt : iv.toNat < n) : iv.ult (BitVec.ofNat 64 n) = true := by
+  rw [BitVec.ult_eq_decide, ofNat64_toNat n hn]
+  exact decide_eq_true hlt
+
+/-- `ult` against a `u64` length literal, false case. -/
+theorem ult_ofNat64_false (n : Nat) (hn : n < 2 ^ 64) (iv : BitVec 64)
+    (hle : n ≤ iv.toNat) : iv.ult (BitVec.ofNat 64 n) = false := by
+  rw [BitVec.ult_eq_decide, ofNat64_toNat n hn]
+  exact decide_eq_false (Nat.not_lt.mpr hle)
+
+/-- `u64` successor stays in bounds over a short length. -/
+theorem u64_succ_toNat (iv : BitVec 64) (n : Nat) (hn : n < 2 ^ 64)
+    (hlt : iv.toNat < n) : (iv + 1).toNat = iv.toNat + 1 := by
+  have h1 : (1 : BitVec 64).toNat = 1 := rfl
+  rw [BitVec.toNat_add, h1, Nat.mod_eq_of_lt (by omega)]
+
+/-- `ult` guard evaluation under the shared `i`/`len` loop
+    environment (both array loops use this exact guard). -/
+theorem memEvalExpr_ult_ilen (ρ : Env) (m' : Mem) (π' : Layout)
+    (iv : BitVec 64) (n : Nat)
+    (hi : envLookup ρ "i" = some (.u64 iv))
+    (hlen : envLookup ρ "len" = some (.u64 (BitVec.ofNat 64 n))) :
+    memEvalExpr (.ult (.var "i") (.var "len")) ρ m' π'
+      = .ok (.b (iv.ult (BitVec.ofNat 64 n))) := by
+  rw [memEvalExpr_ult_agree _ _ ρ m' π'
+    (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _),
+    evalExpr_ult_u64 _ _ ρ iv _ (evalExpr_var_hit _ _ _ hi)
+      (evalExpr_var_hit _ _ _ hlen)]
+
+/-- Loop-index environment lookups, closed in one step from the
+    environment shape (both array loops share it). -/
+theorem envLookup_ilen (ρ : Env) (iv : BitVec 64) (n : Nat) (rest : Env)
+    (hρ : ρ = ("i", .u64 iv) ::
+      ("len", .u64 (BitVec.ofNat 64 n)) :: rest) :
+    envLookup ρ "i" = some (.u64 iv) ∧
+      envLookup ρ "len" = some (.u64 (BitVec.ofNat 64 n)) := by
+  rw [hρ]
+  exact ⟨by simp [envLookup], by simp [envLookup]⟩
+
+/-- Increment-step facts for `i = i + 1` under the shared loop
+    environment: agreement, value, and update, from the shape. -/
+theorem hoare_uadd_incr_facts (ρ' : Env) (m₀ : Mem) (π' : Layout)
+    (iv : BitVec 64) (rest : Env) (n : Nat)
+    (hρ : ρ' = ("i", .u64 iv) ::
+      ("len", .u64 (BitVec.ofNat 64 n)) :: rest) :
+    memEvalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' m₀ π'
+      = evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' ∧
+    evalExpr (.uadd (.var "i") (.lit (.u64 1))) ρ' = .ok (.u64 (iv + 1)) ∧
+    envUpdate ρ' "i" (.u64 (iv + 1))
+      = some ((("i", .u64 (iv + 1)) ::
+        ("len", .u64 (BitVec.ofNat 64 n)) :: rest)) := by
+  have hi' : envLookup ρ' "i" = some (.u64 iv) := by
+    rw [hρ]; simp [envLookup]
+  refine ⟨?_, ?_, ?_⟩
+  · exact memEvalExpr_uadd_agree _ _ _ _ _
+      (by rw [memEvalExpr_var]) (by rw [memEvalExpr_lit])
+  · exact evalExpr_uadd_u64 _ _ _ _ _ (evalExpr_var_hit _ _ _ hi') rfl
+  · rw [hρ]; exact envUpdate_hit _ _ _ _

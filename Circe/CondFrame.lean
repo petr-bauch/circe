@@ -109,6 +109,49 @@ theorem memLoad_cellsAt (m : Mem) (a t i : Nat)
   rw [hl]
   simp [hget]
 
+/-- Visited-prefix lookup: the frontier word of the evolving
+    prefix shape is the unvisited list word (array-loop read). -/
+theorem take_map_drop_getElem (l : List (BitVec 32)) (n : Nat)
+    (h : n < l.length) :
+    (((l.take n).map (· + 1) ++ l.drop n)[n]? = some l[n]) := by
+  have hlenA : ((l.take n).map (· + 1)).length = n := by
+    simp only [List.length_map, List.length_take]; omega
+  rw [List.getElem?_append_right (by omega), hlenA, Nat.sub_self,
+    List.getElem?_drop, Nat.add_zero]
+  exact List.getElem?_eq_getElem h
+
+/-- Drop-head under `set 0`: replacing the head of a dropped
+    suffix is consing over the deeper drop (prefix-bridge step). -/
+theorem drop_set_zero_cons (l : List (BitVec 32)) (n : Nat)
+    (h : n < l.length) (x : BitVec 32) :
+    ((l.drop n).set 0 x = x :: l.drop (n + 1)) := by
+  apply List.ext_getElem?
+  intro i
+  cases i with
+  | zero =>
+    have hne : l.length - n ≠ 0 := by omega
+    simp [List.getElem?_set, hne]
+  | succ i =>
+    simp only [List.getElem?_set, show ¬(0 = i + 1) from by omega, ite_false,
+      List.getElem?_cons_succ, List.getElem?_drop]
+    congr 1
+    omega
+
+/-- Visited-prefix bridge: storing the incremented word at the
+    frontier turns the current prefix shape into the next one
+    (take/map/drop is the spec shape, `set` the residue). -/
+theorem take_map_drop_set_succ (l : List (BitVec 32)) (n : Nat)
+    (h : n < l.length) :
+    (((l.take n).map (· + 1) ++ l.drop n).set n (l[n] + 1) =
+     ((l.take (n + 1)).map (· + 1) ++ l.drop (n + 1))) := by
+  have hlenA : ((l.take n).map (· + 1)).length = n := by
+    simp only [List.length_map, List.length_take]; omega
+  have hget : l[n]? = some l[n] := List.getElem?_eq_getElem h
+  rw [List.set_append_right n _ (by omega), hlenA, Nat.sub_self,
+    drop_set_zero_cons l n h, List.take_add_one, List.map_append, hget,
+    Option.toList_some, List.map_cons, List.map_nil, List.append_assoc]
+  rfl
+
 /-- Disjoint case (`b ≠ a`, e.g. distinct caller addresses): each arm
     writes its own cell (read back above) and frames the other
     (`memFind_memStore_other`). This is the disjunctive post: both
