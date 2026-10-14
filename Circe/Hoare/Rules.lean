@@ -1,6 +1,26 @@
 import Circe.Hoare.Def
 import Circe.CondFrame
 
+/-- Literal evaluation, quantified once: every gallery `hlit`
+    block is an instance of this
+    (use-site: `hoare_lit_eval _ ρ m π`). -/
+theorem hoare_lit_eval (l : CLit) (ρ : Env) (m : Mem) (π : Layout) :
+    memEvalExpr (.lit l) ρ m π = .ok (litVal l) := by
+  rw [memEvalExpr_lit]
+  rfl
+
+/-- Guard-hypothesis closure: from a proved guard evaluation,
+    discharge the per-state guard premise of the `if` rules
+    (use-site collapses to one line). -/
+theorem hoare_guard_of (ρ : Env) (m : Mem) (π : Layout) (c : CExpr)
+    (bv : Bool) (h : memEvalExpr c ρ m π = .ok (.b bv))
+    (ρ' : Env) (m' : Mem) (π' : Layout)
+    (hP : (ρ', m', π') = (ρ, m, π)) :
+    memEvalExpr c ρ' m' π' = .ok (.b bv) := by
+  simp only [Prod.mk.injEq] at hP
+  obtain ⟨rfl, rfl, rfl⟩ := hP
+  exact h
+
 /-- `skip` leaves everything. -/
 theorem htriple_skip (P : Env × Mem × Layout → Prop) :
     HTriple P .skip (fun st o => P st ∧ o = .fellThrough) := by
@@ -147,6 +167,25 @@ theorem htriple_return (e : CExpr)
   obtain ⟨rfl, rfl, rfl⟩ := hP
   exact ⟨ρ₀, m₀, π₀, .returned v,
     memEvalStmtFuel_return F e ρ₀ m₀ π₀ v h hv, rfl, rfl⟩
+
+/-- `let_` binds a pure value, extending the environment. The
+    allocating arms (`vnew` / `boxNew` / `vgrowNew`) are excluded
+    by hypotheses — the caller discharges them per concrete RHS
+    (each is a constructor discrimination). -/
+theorem htriple_let (x : String) (ty : CType) (e : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (v : Value)
+    (hnot : ∀ se, e ≠ .vnew se)
+    (hnotBox : ∀ se, e ≠ .boxNew se)
+    (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
+    (h : memEvalExpr e ρ m π = evalExpr e ρ)
+    (hv : evalExpr e ρ = .ok v) :
+    HTriple (fun st => st = (ρ, m, π)) (.let_ x ty e)
+      (fun st o => st = (((x, v) :: ρ, m, π)) ∧ o = .fellThrough) := by
+  intro F ρ₀ m₀ π₀ hP
+  simp only [Prod.mk.injEq] at hP
+  obtain ⟨rfl, rfl, rfl⟩ := hP
+  exact ⟨_, _, _, _, memEvalStmtFuel_let_pure F x ty e ρ₀ m₀ π₀ v
+    hnot hnotBox hnotGrow h hv, rfl, rfl⟩
 
 /-- `assign` updates the environment binding, memory untouched. -/
 theorem htriple_assign (x : String) (e : CExpr)

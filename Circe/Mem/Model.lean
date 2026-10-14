@@ -1134,6 +1134,27 @@ theorem memEvalExpr_usub_agree (a b : CExpr) (ρ : Env) (m : Mem)
   simp only [memEvalExpr, evalExpr, ha, hb]
   rfl
 
+/-- `add` agreement: both sides evaluate the operands the same way,
+    so the checked addition agrees (H3: the `cond_pair` let bodies;
+    mirrors `memEvalExpr_usub_agree`). -/
+theorem memEvalExpr_add_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.add a b) ρ m π = evalExpr (.add a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `pair` agreement: both sides build the same `IPair` struct
+    (H3: the `cond_pair` return; mirrors `memEvalExpr_usub_agree`). -/
+theorem memEvalExpr_pair_agree (x y : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (hx : memEvalExpr x ρ m π = evalExpr x ρ)
+    (hy : memEvalExpr y ρ m π = evalExpr y ρ) :
+    memEvalExpr (.pair x y) ρ m π = evalExpr (.pair x y) ρ := by
+  simp only [memEvalExpr, evalExpr, hx, hy]
+  rfl
+
 /-- `s64diff` agreement: both sides evaluate the offsets the same way,
     so the bit-exact difference agrees (N4d-iv-b1). -/
 theorem memEvalExpr_s64diff_agree (a b : CExpr) (ρ : Env) (m : Mem)
