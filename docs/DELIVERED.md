@@ -1014,7 +1014,7 @@ the planned `cond_pair` gallery became `alias_cond` — the
 real `cond_pair` body is `tif`+lets with no `if_` statement,
 so it cannot exercise the if-rules; it needs a new
 `htriple_let` rule and moves to H3. Multi-word indexed
-assertions stay deferred until the first array loop.
+assertions shipped in §A below (`cellsAt`).
 - Acceptance: Hoare files warning-free, galleries sorry-free,
 658 jobs TEST-OK (`HOAREGALLERY-OK passed=4`).
 
@@ -1034,8 +1034,7 @@ haves, two guard closures); grand `cir_hoare` rejected (frame
 arguments not inferable), `hoare_eq` macro tried and
 abandoned with reason (no `at`-splicing on this toolchain;
 obtain-only flips the elimination side). Multi-word indexed
-assertions stay deferred until the first array loop (owns its
-own plan).
+assertions shipped in §A below (`cellsAt`).
 - Acceptance: Hoare files warning-free, galleries sorry-free,
 658 jobs TEST-OK (`HOAREGALLERY-OK passed=6`).
 

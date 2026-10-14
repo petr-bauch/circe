@@ -56,7 +56,8 @@ Layout: `Circe/Base.lean` (value model + checked ops + evaluator vocabulary),
 `Circe/Emit*.lean` (emitter + per-shape proofs), `Circe/Derived.lean`
 (per-shape noalias footprints), `Circe/Transfer.lean` (memory transfer),
 `Circe/Tactics.lean` (`cir_simp`), `Circe/Specs.lean` (user specs),
-`Circe/ReadOnly.lean` (read-only sharing discipline),
+`Circe/Hoare/` (Hoare triple rules), `Circe/CondFrame.lean`
+(framing assertions), `Circe/ReadOnly.lean` (read-only sharing discipline),
 `Circe/Scope.lean` (scope/alloca lifetime evidence),
 `Circe/Parser/` + `Circe/Oracle/` (trusted front ends).
 Docs: `docs/OVERVIEW.md`, `docs/SUBSET.md`, `docs/PIPELINE.md`,

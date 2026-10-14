@@ -1,4 +1,4 @@
-# Circe — Overview (current state, 2026-10-09)
+# Circe — Overview (current state, 2026-10-14)
 
 CIR → Lean 4 verification pipeline for non-aliasing C and STL-free
 C++-lite, Aeneas-style: source → ClangIR (raw CIRGen) → pure,
@@ -102,4 +102,9 @@ arithmetic + switch gaps, `string_view` range-for and the full
 kernel: `cir_eval_closed` + adoption), N9 (`std::array<uint32_t,4>`
 insertion-sort case study: forward-as-fold, Sorted/Permutation
 spec, `DiffSort` fuzz), plus L1 lifetime evidence (extract-only).
+Orthogonal proof-ergonomics track: H1–H3 (Hoare triple library
+over the `Mem` equations + `alias_cond`/`countdown`/`cond_pair`
+galleries), A (`cellsAt` whole-list assertions + read-only sum
+loop), B (in-place increment loop) — 8 closed-instance
+`hoare-gallery` jobs, all in `DELIVERED.md`.
 Details in `DELIVERED.md`; active work in `ROADMAP.md`.
