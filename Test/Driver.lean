@@ -95,6 +95,7 @@ import ReborrowGate
 import WrPairGate
 import CondPairGate
 import AliasCondGate
+import HoareGallery
 import Circe.CondFrame
 import Circe.Parser
 
@@ -1552,7 +1553,8 @@ def checkSuites : List Job :=
    ("reborrow-gate", ReborrowGate.main),
    ("wrpair-gate", WrPairGate.main),
    ("condpair-gate", CondPairGate.main),
-   ("aliascond-gate", AliasCondGate.main)]
+   ("aliascond-gate", AliasCondGate.main),
+   ("hoare-gallery", HoareGallery.main)]
 
 /-- Registered suite module names (mirrors the `Suites` roots: a new
     `tests/lean` runner without registration fails loudly here). -/
@@ -1570,7 +1572,8 @@ def suiteModules : List String :=
    "ReborrowGate", "GoldenReborrow", "DiffReborrow",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",
    "CondPairGate", "GoldenCondPair", "DiffCondPair",
-   "AliasCondGate", "GoldenAliasCond", "DiffAliasCond"]
+   "AliasCondGate", "GoldenAliasCond", "DiffAliasCond",
+   "HoareGallery"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))

@@ -977,3 +977,24 @@ edge; the transfer leg already stated the single-cell post).
 Suites ride the roster with a `g3-aliascond` content suite
 (19 pins); spec stubs grow 116 → 117.
 - Acceptance: 657 jobs TEST-OK, CHECK-OK.
+
+### H1. Hoare rule library + gallery — DONE (2026-10-14)
+
+H0 spike (report-only, `/tmp/hoare/h0.lean`, 167 lines,
+sorry-free): `HTriple` def + skip / seq / consequence /
+mstore-with-frame rules + two-cell `pa[0] += 1; pb[0] += 1`
+gallery with framing — GO verdict (triples are thin sugar over
+the equation lemmas, no new semantics). H1a:
+`Circe/Hoare/Def.lean` + `Circe/Hoare/Rules.lean` (adds
+`htriple_if_true/false` over plain `.b` guards — no narrowing
+was needed; `htriple_return` with `.returned` post;
+`hexpr_mload` expression helper — `mload` has no value mirror
+by design, so loads live inside `mstore` value expressions;
+index-0 pin documented complete — `cellAt` is singleton).
+Guards take no fuel argument (`memEvalExpr` is fuel-free).
+H1b: `tests/lean/HoareGallery.lean` compile-gated lakefile
+root (dogfoods `hexpr_mload`) + this VERIFYING section.
+Deferred with reasons named: seq-return propagation (no
+Mem-side lemma), multi-word indexed assertions (H2 loops).
+- Acceptance: Hoare files warning-free, gallery sorry-free,
+658 jobs TEST-OK (657 + `hoare-gallery`).

@@ -269,3 +269,28 @@ sides render before comparing.) Acceptance met: 25/25 stubs
 typecheck, 25/25 `_check` entries evaluate to `true` (asserted in
 `tools/check.sh`); `vec_correct`
 refactored shorter onto the grown set (see Tactics above).
+
+## Hoare triples (H1)
+
+`Circe.Hoare` wraps the `Mem` equation lemmas as Hoare triples —
+total correctness over `.ok` outcomes, fuel-generic, no new
+semantics. `HTriple P s Q`: from any pre-state satisfying `P`,
+statement `s` evaluates (at any fuel) to an ok outcome
+satisfying `Q`; errors stay caller-side hypotheses, matching
+transfer style. Rules (`Circe/Hoare/Rules.lean`):
+`htriple_skip`, `htriple_seq` (mid-outcome pinned to
+`fellThrough` — early-return propagation deferred, no Mem-side
+seq-return lemma exists), `htriple_consequence`,
+`htriple_mstore_frame` (stored-cell fact plus one framed cell;
+index pinned to `0`, complete rather than limiting because
+`cellAt` is a singleton assertion, so any successful store into
+a `cellAt` cell is at index 0), `hexpr_mload`
+(expression-level only — `mload` has no value mirror, so loads
+cannot form statement triples), `htriple_if_true/false` (plain
+`.b` guards), `htriple_return` (first non-`fellThrough` post).
+Gallery (`tests/lean/HoareGallery.lean`, compile-gated) proves
+`pa[0] += 1; pb[0] += 1` end-to-end with framing;
+overflow-freedom (`checkedAddI32 v 1 = .ok (v + 1)`) is explicit
+hypothesis debt. Tactic trap recorded: `obtain` with `rfl`
+patterns substitutes witnesses out of scope — the final `exact`
+must use post-substitution values.
