@@ -14,6 +14,7 @@ import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecBinarySearch
+import Circe.Emit.VecTwoSum
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -773,6 +774,38 @@ def matchFrag : Func → Option FragKind
         one == BitVec.ofNat 64 1 then
       some .vecBinSearch
     else none
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"target", .i 32, .owned⟩],
+      .struct "IPair" [.i 32, .i 32],
+      (.seq
+        (.let_ "n" (.u 64) (.stdVecLen "s"))
+        (.seq
+          (.let_ "i" (.u 64) (.lit (.u64 z0)))
+          (.seq
+            (.let_ "j" (.u 64) (.lit (.u64 z0')))
+            (.seq
+              (.while_ (.ult (.var "i") (.var "n"))
+                (.seq
+                  (.assign "j" (.uadd (.var "i") (.lit (.u64 one))))
+                  (.seq
+                    (.while_ (.ult (.var "j") (.var "n"))
+                      (.if_ (.ueq (.add (.stdVecAt "s" (.var "i"))
+                                        (.stdVecAt "s" (.var "j")))
+                               (.var "target"))
+                        (.return_ (.pair (.i32ofU64 (.var "i"))
+                                         (.i32ofU64 (.var "j"))))
+                        (.assign "j" (.uadd (.var "j")
+                                             (.lit (.u64 one'))))))
+                    (.assign "i" (.uadd (.var "i")
+                                         (.lit (.u64 one'')))))))
+              (.return_ (.pair (.i32ofU64 (.var "n"))
+                               (.i32ofU64 (.var "n"))))))))⟩ =>
+    if z0 == BitVec.ofNat 64 0 && z0' == BitVec.ofNat 64 0 &&
+        one == BitVec.ofNat 64 1 && one' == BitVec.ofNat 64 1 &&
+        one'' == BitVec.ofNat 64 1 then
+      some .vecTwoSum
+    else none
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
@@ -1341,6 +1374,8 @@ theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
 theorem matchFrag_vecAtSum : matchFrag vecAtSumFunc = some .vecAtSum := rfl
 theorem matchFrag_vecBinarySearch :
     matchFrag vecBinSearchFunc = some .vecBinSearch := rfl
+theorem matchFrag_vecTwoSum :
+    matchFrag vecTwoSumFunc = some .vecTwoSum := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

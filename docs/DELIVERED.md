@@ -562,6 +562,29 @@ is not value-faithful):
   fuzz trials incl. `int32`-boundary and unsorted vectors)
   green; containment result — binary search over readonly
   vectors is IN, sortedness caller debt).
+  V2 `vec_two_sum` (STD `std::vector` brute-force two-sum) —
+  DONE (2026-10-15: new corpus `vec_two_sum` (outer `while (i < n)`,
+  inner `j = i + 1`, `while (j < n)`, both elements through `at()`,
+  checked `i32` add, hit returns early `IPair`, miss returns
+  `(n, n)`, real CIRGen): V2a extends the trusted evaluators with
+  the `.i32ofU64` narrowing ctor (the corpus casts `(int)i` /
+  `(int)j` / `(int)n` explicitly — `structVal` holds 32-bit words
+  only, so a u64 pair is inexpressible; wrapping mod 2^32, the V1a
+  `slt` precedent) with closed-eval spot checks; V2b
+  functionalizes the entry to nested call-free fused `while_` loops
+  with a `let_`-prelude. Six body steps (inner hit / next /
+  overflow, outer exit / assign-j-reset / assign-i-incr) + inner
+  and outer fuel-generalized inductions (hit + miss + overflow
+  soundness) + fuel agreements give `emit_correct`
+  (`evalFuncFuel_vecTwoSum`). Value proofs green, tag-erased
+  rendering + spec stub byte-identical, `GoldenVecTwoSum` (10:
+  5-pipeline + direct-index + at-sum/binsearch-not-twosum +
+  recursive + bare-ptr) + `DiffVecTwoSum` (eval-vs-forward every
+  trial, native on non-overflowing inputs — the `nsw` loud leg is
+  Lean-Lean only, 15 edges + 1000 fuzz trials incl.
+  `int32`-boundary words, tamper-checked) green; containment
+  result — brute-force two-sum over readonly vectors is IN,
+  sortedness irrelevant).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 

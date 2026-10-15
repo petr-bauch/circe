@@ -1372,6 +1372,54 @@ def emitVecBinarySearchSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_two_sum` entry. The mirror is an
+    independent brute-force pair search over the reified words; edges
+    carry ground truth (early hit, miss past the end as `(len, len)`,
+    empty miss, `nsw` overflow). -/
+def emitVecTwoSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, target)` searches `v.at(i) + v.at(j)` over `i < j`.\n"
+  ++ s!"    Base body reference: the same pair search on the reified words (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecTwoSumFwd`). Miss forwards to `(l.length, l.length)`; overflowing sums are loud. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (t : BitVec 32) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  outer l t (l.length + 1) 0\n"
+  ++ "where\n"
+  ++ "  outer (l : List (BitVec 32)) (t : BitVec 32) : Nat → Nat → Result (BitVec 32 × BitVec 32)\n"
+  ++ "  | 0, _ => .ok (BitVec.ofNat 32 l.length, BitVec.ofNat 32 l.length)\n"
+  ++ "  | fuel + 1, i =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match inner l t fuel i (i + 1) with\n"
+  ++ "      | .ok (some p) => .ok p\n"
+  ++ "      | .ok none => outer l t fuel (i + 1)\n"
+  ++ "      | .error e => .error e\n"
+  ++ "    else .ok (BitVec.ofNat 32 l.length, BitVec.ofNat 32 l.length)\n"
+  ++ "  inner (l : List (BitVec 32)) (t : BitVec 32) : Nat → Nat → Nat → Result (Option (BitVec 32 × BitVec 32))\n"
+  ++ "  | 0, _, _ => .ok none\n"
+  ++ "  | fuel + 1, i, j =>\n"
+  ++ "    if j < l.length then\n"
+  ++ "      match l[i]?, l[j]? with\n"
+  ++ "      | some x, some y =>\n"
+  ++ "        match checkedAddI32 x y with\n"
+  ++ "        | .ok s =>\n"
+  ++ "          if s == t then .ok (some (BitVec.ofNat 32 i, BitVec.ofNat 32 j))\n"
+  ++ "          else inner l t fuel i (j + 1)\n"
+  ++ "        | .error e => .error e\n"
+  ++ "      | _, _ => .ok none\n"
+  ++ "    else .ok none\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: early hit, miss past the end, empty miss, `nsw` overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 32) × Result (BitVec 32 × BitVec 32)) :=\n"
+  ++ "  [(([1, 2, 3], 3), .ok (BitVec.ofNat 32 0, BitVec.ofNat 32 1)),\n"
+  ++ "   (([1, 2, 3], 9), .ok (BitVec.ofNat 32 3, BitVec.ofNat 32 3)),\n"
+  ++ "   (([], 0), .ok (BitVec.ofNat 32 0, BitVec.ofNat 32 0)),\n"
+  ++ "   (([0x7FFFFFFF, 1], 0), .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/

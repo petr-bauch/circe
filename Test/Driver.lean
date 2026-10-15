@@ -35,6 +35,7 @@ import DiffVec64
 import DiffVecAt
 import DiffVecAtSum
 import DiffVecBinarySearch
+import DiffVecTwoSum
 import DiffReborrow
 import DiffVecLeak
 import DiffVecRead
@@ -80,6 +81,7 @@ import GoldenVec64
 import GoldenVecAt
 import GoldenVecAtSum
 import GoldenVecBinarySearch
+import GoldenVecTwoSum
 import GoldenReborrow
 import GoldenVecRead
 import GoldenVecRealloc
@@ -215,6 +217,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/vec_at_one.cpp", "tests/diff/driver_vec_at.cpp"], bin "circe_vec_at_native"),
    ("c++", ["tests/cpp/vec_at_sum.cpp", "tests/diff/driver_vec_at_sum.cpp"], bin "circe_vec_at_sum_native"),
    ("c++", ["tests/cpp/vec_binary_search.cpp", "tests/diff/driver_vec_binary_search.cpp"], bin "circe_vec_binary_search_native"),
+   ("c++", ["tests/cpp/vec_two_sum.cpp", "tests/diff/driver_vec_two_sum.cpp"], bin "circe_vec_two_sum_native"),
    ("c++", ["tests/cpp/alias_reborrow.cpp", "tests/diff/driver_reborrow.cpp"], bin "circe_reborrow_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
    ("cc", ["tests/c/sum_two.c", "tests/diff/driver_sum_two.c"], bin "circe_sum_two_native"),
@@ -290,6 +293,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecAtSum_Spec.lean", "out/VecAtSum_Spec.lean"),
    ("tests/golden/VecBinarySearch.lean", "out/VecBinarySearch.lean"),
    ("tests/golden/VecBinarySearch_Spec.lean", "out/VecBinarySearch_Spec.lean"),
+   ("tests/golden/VecTwoSum.lean", "out/VecTwoSum.lean"),
+   ("tests/golden/VecTwoSum_Spec.lean", "out/VecTwoSum_Spec.lean"),
    ("tests/golden/Reborrow.lean", "out/Reborrow.lean"),
    ("tests/golden/Reborrow_Spec.lean", "out/Reborrow_Spec.lean"),
    ("tests/golden/WrPair.lean", "out/WrPair.lean"),
@@ -438,6 +443,7 @@ def emittedTypechecks : List String :=
    "out/VecAtOne.lean", "out/VecAtOne_Spec.lean",
    "out/VecAtSum.lean", "out/VecAtSum_Spec.lean",
    "out/VecBinarySearch.lean", "out/VecBinarySearch_Spec.lean",
+   "out/VecTwoSum.lean", "out/VecTwoSum_Spec.lean",
    "out/OverloadAdd.lean", "out/OverloadAdd_Spec.lean",
    "out/Add3.lean", "out/Add3_Spec.lean",
    "out/UseAdd.lean", "out/UseAdd_Spec.lean",
@@ -1185,6 +1191,21 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Validator/Shapes.lean", "def isVecBinarySearchShape"),
      ("out/VecBinarySearch.lean", "_Z17vec_binary_searchRKSt6vectorIiSaIiEEi_fwd"),
      ("tests/golden/VecBinarySearch.lean", "_Z17vec_binary_searchRKSt6vectorIiSaIiEEi_fwd")]),
+   ("vec-two-sum",
+    [("Circe/Emit/VecTwoSum.lean", "theorem evalFuncFuel_vecTwoSum"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem vecTwoSumInner_hit"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem vecTwoSumInner_miss"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem vecTwoSumInner_overflow"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem vecTwoSumOuter_hit"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem vecTwoSumOuter_miss"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem twoSumInner_fuel_ge"),
+     ("Circe/Emit/VecTwoSum.lean", "theorem twoSumOuter_fuel_ge"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecTwoSum"),
+     ("Circe/Emit/Render.lean", "def emitVecTwoSumText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecTwoSumSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isVecTwoSumShape"),
+     ("out/VecTwoSum.lean", "_Z11vec_two_sumRKSt6vectorIiSaIiEEi_fwd"),
+     ("tests/golden/VecTwoSum.lean", "_Z11vec_two_sumRKSt6vectorIiSaIiEEi_fwd")]),
    ("f1-reborrow",
     [("Circe/Emit/Reborrow.lean", "theorem evalFuncFuel_reborrow"),
      ("Circe/Emit/Reborrow.lean", "theorem reborrowFwd_ok"),
@@ -1471,8 +1492,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 118 then
-    throw (IO.userError s!"expected 117 spec stubs, found {stubs.length}")
+  if stubs.length != 119 then
+    throw (IO.userError s!"expected 119 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1516,6 +1537,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecat", DiffVecAt.main [bin "circe_vec_at_native", trials]),
    ("diff-vecatsum", DiffVecAtSum.main [bin "circe_vec_at_sum_native", trials]),
    ("diff-vecbinarysearch", DiffVecBinarySearch.main [bin "circe_vec_binary_search_native", trials]),
+   ("diff-vectwosum", DiffVecTwoSum.main [bin "circe_vec_two_sum_native", trials]),
    ("diff-reborrow", DiffReborrow.main [bin "circe_reborrow_native", trials]),
    ("diff-wrpair", DiffWrPair.main [bin "circe_wr_pair_native", trials]),
    ("diff-condpair", DiffCondPair.main [bin "circe_cond_pair_native", trials]),
@@ -1562,6 +1584,7 @@ def checkSuites : List Job :=
    ("golden-vecat", GoldenVecAt.main),
    ("golden-vecatsum", GoldenVecAtSum.main),
    ("golden-vecbinarysearch", GoldenVecBinarySearch.main),
+   ("golden-vectwosum", GoldenVecTwoSum.main),
    ("golden-reborrow", GoldenReborrow.main),
    ("golden-wrpair", GoldenWrPair.main),
    ("golden-condpair", GoldenCondPair.main),
@@ -1584,12 +1607,12 @@ def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
-   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecBinarySearch",
+   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecBinarySearch", "DiffVecTwoSum",
    "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecBinarySearch", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

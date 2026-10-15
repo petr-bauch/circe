@@ -714,6 +714,40 @@ def emitVecBinarySearchText (name : String) : String :=
   ++ "      | none => .ok (BitVec.ofNat 64 l.length)\n"
   ++ "    else .ok (BitVec.ofNat 64 l.length)\n"
 
+/-- Render the `vec_two_sum` entry forward definition: brute-force
+    pair search over the reified words (outer `i`, inner `j = i + 1`;
+    checked `i32` add, loud `Overflow` leg; hit returns the narrowed
+    pair, miss returns the narrowed `(len, len)`). -/
+def emitVecTwoSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (brute-force two-sum over the reified words; miss is `(len, len)`). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (t : BitVec 32) : Result (BitVec 32 × BitVec 32) :=\n"
+  ++ "  outer l t (l.length + 1) 0\n"
+  ++ "where\n"
+  ++ "  outer (l : List (BitVec 32)) (t : BitVec 32) : Nat → Nat → Result (BitVec 32 × BitVec 32)\n"
+  ++ "  | 0, _ => .ok (BitVec.ofNat 32 l.length, BitVec.ofNat 32 l.length)\n"
+  ++ "  | fuel + 1, i =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match inner l t fuel i (i + 1) with\n"
+  ++ "      | .ok (some p) => .ok p\n"
+  ++ "      | .ok none => outer l t fuel (i + 1)\n"
+  ++ "      | .error e => .error e\n"
+  ++ "    else .ok (BitVec.ofNat 32 l.length, BitVec.ofNat 32 l.length)\n"
+  ++ "  inner (l : List (BitVec 32)) (t : BitVec 32) : Nat → Nat → Nat → Result (Option (BitVec 32 × BitVec 32))\n"
+  ++ "  | 0, _, _ => .ok none\n"
+  ++ "  | fuel + 1, i, j =>\n"
+  ++ "    if j < l.length then\n"
+  ++ "      match l[i]?, l[j]? with\n"
+  ++ "      | some x, some y =>\n"
+  ++ "        match checkedAddI32 x y with\n"
+  ++ "        | .ok s =>\n"
+  ++ "          if s == t then .ok (some (BitVec.ofNat 32 i, BitVec.ofNat 32 j))\n"
+  ++ "          else inner l t fuel i (j + 1)\n"
+  ++ "        | .error e => .error e\n"
+  ++ "      | _, _ => .ok none\n"
+  ++ "    else .ok none\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

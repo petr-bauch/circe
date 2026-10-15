@@ -1411,3 +1411,60 @@ def isVecBinarySearchShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- The V2 `IPair` return type: CIRGen's `!rec_IPair` alias (long-form
+    `!cir.struct<"IPair" …>` also matches via the `"IPair"` substring;
+    applied to short type tokens only, never whole text — the
+    `isPointType` precedent). -/
+def isIPairType (t : String) : Bool :=
+  t == "!rec_IPair" || containsSubstr t "IPair"
+
+/-- `vec_two_sum` entry shape (V2): single-ref vector + `i32` target,
+    returns `IPair`, two `cir.while` loops (outer `i`, inner `j`) over
+    exactly one `size` + two `at()` calls with two `lt` guards (outer +
+    inner) and one `eq` guard (hit), one `if` (hit branch), three plain
+    `u64` index `add`s + one `nsw` `i32` element `add` (the checked sum),
+    four integral `cast`s (the explicit `(int)i` / `(int)j` / `(int)n`
+    narrowings), four `get_member`s (pair construction), two returns
+    (hit pair + miss `(n, n)` pair), eight consts (`0` × 2 + `1` × 6).
+    Encapsulation pins: no direct `operator[]` / `_M_range_check` /
+    throw calls — both element reads go through `at()` only. -/
+def isVecTwoSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, t] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 t.ctype && isIPairType raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 3 &&
+    opCount raw.text "cir.while" == 2 &&
+    !containsSubstr raw.text "cir.for" &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.cmp lt" == 2 &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    opCount raw.text "cir.if" == 1 &&
+    !containsSubstr raw.text "cir.shift(right" &&
+    !containsSubstr raw.text "cir.sub " &&
+    opCount raw.text "cir.add " == 4 &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.cast integral" == 4 &&
+    opCount raw.text "cir.const" == 8 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    opCount raw.text "cir.return" == 2 &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 21 &&
+    opCount raw.text "cir.store" == 11 &&
+    opCount raw.text "cir.get_member" == 4 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+

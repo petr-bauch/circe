@@ -844,6 +844,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Sortedness is caller debt; the miss convention is `len`
     (`find_eq` house style). Verdict honestly `unknown`
     (single-ref).
+28o. Brute-force two-sum over `const vector<int>&` (V2, over the
+    N4d-iv-c read): `vec_two_sum` (`const vector<int>&` + `int` in,
+    `IPair` out). Admission is one fused entry Func: single-ref
+    vector + `i32` target params, `IPair` return, two nested
+    `cir.while` loops (outer `i`, inner `j`) over exactly one
+    `size` + two `at()` calls (two `lt` guards — outer + inner —
+    one `eq` guard for hit, one `if`, three plain `u64` index
+    `add`s + one `nsw` `i32` element `add`, four integral `cast`s
+    for the explicit `(int)` narrowings, four `get_member`s for
+    pair construction, two returns — hit pair + miss `(n, n)` pair,
+    6 allocas / 21 loads / 11 stores). The explicit narrowings need
+    the `.i32ofU64` evaluator ctor (V2a). Encapsulation pins: no
+    direct `operator[]` / `_M_range_check` / throw calls — both
+    element reads go through `at()` only. `for`-loop sums,
+    single-`while` searches, `operator[]`-direct entries,
+    self-recursive entries, and bare vector pointers keep dedicated
+    rejections. Sortedness is irrelevant (brute force); the miss
+    convention is the narrowed `(n, n)` (`find_eq` house style
+    generalized to pairs). Overflowing element sums are loud
+    (`Overflow`, Lean-Lean only in fuzz). Verdict honestly
+    `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +
