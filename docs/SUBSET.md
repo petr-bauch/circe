@@ -826,6 +826,24 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     adds, triple-less shapes; triple-param near-misses fall to
     the generic fragment tail (`oracleParams` excludes the
     triple, so the verdict gate never sees them).
+28n. Binary search over `const vector<int>&` (V1, over the N4d-iv-c
+    read): `vec_binary_search` (`const vector<int>&` + `int` in,
+    `u64` out). Admission is one fused entry Func: single-ref
+    vector + `i32` target params, `u64` return, the `cir.while`
+    half-open `[lo, hi)` loop over exactly two `size` + one
+    `at()` call (two `lt` guards — loop + go-left — one `eq`
+    guard for hit, safe-midpoint `sub` + `shift(right` + `add`,
+    second `add` for `mid + 1`, two returns — hit `mid` + miss
+    `size()`, 7 allocas / 19 loads / 10 stores). The safe
+    midpoint needs the u64 `bshr` evaluator arm plus the `slt`
+    ctor for the `i32` element comparison (V1a). Encapsulation
+    pins: no direct `operator[]` / `_M_range_check` / throw
+    calls — the element read goes through `at()` only.
+    `for`-loop sums, `operator[]`-direct entries, self-recursive
+    entries, and bare vector pointers keep dedicated rejections.
+    Sortedness is caller debt; the miss convention is `len`
+    (`find_eq` house style). Verdict honestly `unknown`
+    (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

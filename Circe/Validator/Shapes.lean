@@ -1366,3 +1366,48 @@ def isVecAtSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
+    target, returns `u64`, one `cir.while` loop over exactly two `size`
+    + one `at()` call with two `lt` guards (loop + go-left) and one
+    `eq` guard (hit), safe-midpoint `sub` + `shift(right` + `add`,
+    `mid + 1` second `add`, two returns (hit + miss-`size`).
+    Encapsulation pins: no direct `operator[]` / `_M_range_check` /
+    throw calls — the element read goes through `at()` only. -/
+def isVecBinarySearchShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, t] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 t.ctype && isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 3 &&
+    opCount raw.text "cir.while" == 1 &&
+    !containsSubstr raw.text "cir.for" &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.cmp lt" == 2 &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.shift(right" == 1 &&
+    opCount raw.text "cir.sub " == 1 &&
+    opCount raw.text "cir.add " == 2 &&
+    opCount raw.text "cir.const" == 5 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    opCount raw.text "cir.return" == 2 &&
+    opCount raw.text "cir.alloca" == 7 &&
+    opCount raw.text "cir.load" == 19 &&
+    opCount raw.text "cir.store" == 10 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+

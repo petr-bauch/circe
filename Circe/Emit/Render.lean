@@ -691,6 +691,29 @@ def emitVecAtSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the `vec_binary_search` entry forward definition: binary
+    search over the reified words with the safe midpoint
+    `lo + ((hi - lo) >> 1)` (no div op in the model, fuel `len + 1`;
+    miss forwards to `len`, `find_eq` house style). -/
+def emitVecBinarySearchText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (binary search over the reified words; miss is `len`). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (t : BitVec 32) : Result (BitVec 64) :=\n"
+  ++ "  go l t (l.length + 1) 0 l.length\n"
+  ++ "where go (l : List (BitVec 32)) (t : BitVec 32) : Nat → Nat → Nat → Result (BitVec 64)\n"
+  ++ "  | 0, _, _ => .ok (BitVec.ofNat 64 l.length)\n"
+  ++ "  | fuel + 1, lo, hi =>\n"
+  ++ "    if lo < hi then\n"
+  ++ "      let mid := lo + (hi - lo) / 2\n"
+  ++ "      match l[mid]? with\n"
+  ++ "      | some x =>\n"
+  ++ "        if x == t then .ok (BitVec.ofNat 64 mid)\n"
+  ++ "        else if x.slt t then go l t fuel (mid + 1) hi\n"
+  ++ "        else go l t fuel lo mid\n"
+  ++ "      | none => .ok (BitVec.ofNat 64 l.length)\n"
+  ++ "    else .ok (BitVec.ofNat 64 l.length)\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

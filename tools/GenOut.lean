@@ -10,6 +10,7 @@
 import Circe.Emit
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecBinarySearch
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
@@ -119,6 +120,7 @@ def main : IO Unit := do
   let vecAt ← emitOrDie stdVecAtFunc
   let vecAtOne ← emitOrDie vecAtOneFunc
   let vecAtSum ← emitOrDie vecAtSumFunc
+  let vecBinarySearch ← emitOrDie vecBinSearchFunc
   let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
   let vecUnit ← emitOrDie stdVecUnitFunc
   let vecDtor ← emitOrDie stdVecDtorFunc
@@ -236,6 +238,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAt.lean" (emitFileText (.ok vecAt))
   IO.FS.writeFile "out/VecAtOne.lean" (emitFileText (.ok vecAtOne))
   IO.FS.writeFile "out/VecAtSum.lean" (emitFileText (.ok vecAtSum))
+  IO.FS.writeFile "out/VecBinarySearch.lean" (emitFileText (.ok vecBinarySearch))
   IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
   IO.FS.writeFile "out/VecGrowUnit.lean" (emitFileText (.ok vecUnit))
   IO.FS.writeFile "out/VecGrowDtor.lean" (emitFileText (.ok vecDtor))
@@ -353,6 +356,7 @@ def main : IO Unit := do
   let vecAtSpec ← specOrDie stdVecAtFunc
   let vecAtOneSpec ← specOrDie vecAtOneFunc
   let vecAtSumSpec ← specOrDie vecAtSumFunc
+  let vecBinarySearchSpec ← specOrDie vecBinSearchFunc
   let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
   let vecUnitSpec ← specOrDie stdVecUnitFunc
   let vecDtorSpec ← specOrDie stdVecDtorFunc
@@ -470,6 +474,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAt_Spec.lean" vecAtSpec
   IO.FS.writeFile "out/VecAtOne_Spec.lean" vecAtOneSpec
   IO.FS.writeFile "out/VecAtSum_Spec.lean" vecAtSumSpec
+  IO.FS.writeFile "out/VecBinarySearch_Spec.lean" vecBinarySearchSpec
   IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec
   IO.FS.writeFile "out/VecGrowUnit_Spec.lean" vecUnitSpec
   IO.FS.writeFile "out/VecGrowDtor_Spec.lean" vecDtorSpec

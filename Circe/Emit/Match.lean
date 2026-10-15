@@ -13,6 +13,7 @@ import Circe.Emit.Sum
 import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecBinarySearch
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -741,6 +742,37 @@ def matchFrag : Func → Option FragKind
         (.return_ (.stdVecAt "s" (.var "n")))
         .fail⟩ =>
     some .vecAt
+  | ⟨_, [⟨"s", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"target", .i 32, .owned⟩], _,
+      (.seq
+        (.let_ "lo" (.u 64) (.lit (.u64 lo0)))
+        (.seq
+          (.let_ "hi" (.u 64) (.stdVecLen "s"))
+          (.seq
+            (.let_ "mid" (.u 64) (.lit (.u64 m0)))
+            (.seq
+              (.let_ "x" (.i 32) (.lit (.i32 x0)))
+              (.seq
+                (.while_ (.ult (.var "lo") (.var "hi"))
+                  (.seq
+                    (.assign "mid" (.uadd (.var "lo") (.bshr (.usub (.var "hi") (.var "lo")) (.lit (.u64 sh1)))))
+                    (.if_ (.ult (.uadd (.var "lo") (.bshr (.usub (.var "hi") (.var "lo")) (.lit (.u64 sh1')))) (.stdVecLen "s"))
+                      (.seq
+                        (.assign "x" (.stdVecAt "s" (.uadd (.var "lo") (.bshr (.usub (.var "hi") (.var "lo")) (.lit (.u64 sh1''))))))
+                        (.if_ (.ueq (.var "x") (.var "target"))
+                          (.return_ (.var "mid"))
+                          (.if_ (.slt (.var "x") (.var "target"))
+                            (.assign "lo" (.uadd (.var "mid") (.lit (.u64 one))))
+                            (.assign "hi" (.var "mid")))))
+                      .fail)))
+                (.return_ (.stdVecLen "s")))))))⟩ =>
+    if lo0 == BitVec.ofNat 64 0 && m0 == BitVec.ofNat 64 0 &&
+        x0 == BitVec.ofNat 32 0 && sh1 == BitVec.ofNat 64 1 &&
+        sh1' == BitVec.ofNat 64 1 && sh1'' == BitVec.ofNat 64 1 &&
+        one == BitVec.ofNat 64 1 then
+      some .vecBinSearch
+    else none
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
@@ -1307,6 +1339,8 @@ theorem matchFrag_stdVecRangeCheck : matchFrag stdVecRangeCheckFunc = some .vecR
 theorem matchFrag_stdVecAt : matchFrag stdVecAtFunc = some .vecAt := rfl
 theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
 theorem matchFrag_vecAtSum : matchFrag vecAtSumFunc = some .vecAtSum := rfl
+theorem matchFrag_vecBinarySearch :
+    matchFrag vecBinSearchFunc = some .vecBinSearch := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

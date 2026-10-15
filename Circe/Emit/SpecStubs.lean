@@ -1338,6 +1338,40 @@ def emitVecAtSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_binary_search` entry. The mirror is an
+    independent binary search over the reified words; edges carry
+    ground truth (sorted hit, miss past the end, empty miss). -/
+def emitVecBinarySearchSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, target)` searches `v.at(mid)` over `[lo, hi)`.\n"
+  ++ s!"    Base body reference: the same search on the reified words (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecBinarySearchFwd`). Miss forwards to `l.length`. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (t : BitVec 32) : Result (BitVec 64) :=\n"
+  ++ "  go l t (l.length + 1) 0 l.length\n"
+  ++ "where go (l : List (BitVec 32)) (t : BitVec 32) : Nat → Nat → Nat → Result (BitVec 64)\n"
+  ++ "  | 0, _, _ => .ok (BitVec.ofNat 64 l.length)\n"
+  ++ "  | fuel + 1, lo, hi =>\n"
+  ++ "    if lo < hi then\n"
+  ++ "      let mid := lo + (hi - lo) / 2\n"
+  ++ "      match l[mid]? with\n"
+  ++ "      | some x =>\n"
+  ++ "        if x == t then .ok (BitVec.ofNat 64 mid)\n"
+  ++ "        else if x.slt t then go l t fuel (mid + 1) hi\n"
+  ++ "        else go l t fuel lo mid\n"
+  ++ "      | none => .ok (BitVec.ofNat 64 l.length)\n"
+  ++ "    else .ok (BitVec.ofNat 64 l.length)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: sorted hit, miss past the end, empty miss. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 32) × Result (BitVec 64)) :=\n"
+  ++ "  [(([1, 2, 3], 2), .ok 1), (([1, 2, 3], 5), .ok (BitVec.ofNat 64 3)),\n"
+  ++ "   (([], 0), .ok (BitVec.ofNat 64 0))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/

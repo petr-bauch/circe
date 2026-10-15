@@ -538,6 +538,30 @@ is not value-faithful):
   overflow, 8 edges + 1000 fuzz trials; no OOB leg — the bound
   makes it unreachable) green; containment result — checked
   `at()` sums are IN).
+  V1 `vec_binary_search` (STD `std::vector` binary search) —
+  DONE (2026-10-15: new corpus `vec_binary_search`
+  (`while (lo < hi)` over `v.size()` with the safe midpoint
+  `lo + ((hi - lo) >> 1)`, every element through `at()`, miss
+  returns `v.size()`, real CIRGen): V1a extends the trusted
+  evaluators with the u64 `bshr` arm + the `slt` ctor for `i32`
+  element comparison (both with closed-eval spot checks); V1b
+  functionalizes the entry to a call-free fused `while_` loop
+  with a `let_`-prelude (`assign` needs bound targets).
+  Midpoint Nat-correctness (`vecBinSearchMid_toNat`) + three
+  body steps (hit / go-left / go-right) + fuel-generalized
+  while induction (hit + miss soundness, `hi - lo` measure) +
+  fuel agreement give `emit_correct`
+  (`evalFuncFuel_vecBinarySearch`). The corpus initially
+  returned `hi` on miss (collapse point, contradicting the plan
+  and its own header comment) — fixed to `v.size()` and
+  re-captured. Value proofs green, tag-erased rendering + spec
+  stub byte-identical, `GoldenVecBinarySearch` (10: 5-pipeline
+  + direct-index + at-sum/read-sum-not-binsearch + recursive +
+  bare-ptr) + `DiffVecBinarySearch` (eval-vs-forward every
+  trial, native on every input — no UB leg, 16 edges + 1000
+  fuzz trials incl. `int32`-boundary and unsorted vectors)
+  green; containment result — binary search over readonly
+  vectors is IN, sortedness caller debt).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 
