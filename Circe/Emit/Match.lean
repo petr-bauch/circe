@@ -16,6 +16,7 @@ import Circe.Emit.VecAtSum
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
+import Circe.Emit.VecMergeInto
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -819,6 +820,50 @@ def matchFrag : Func → Option FragKind
           (.return_ (.var "v")))
         .fail)⟩ =>
     some .vecAtSet
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"out", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
+              (.seq (.let_ "j" (.u 64) (.lit (.u64 z1)))
+                (.seq (.let_ "k" (.u 64) (.lit (.u64 z2)))
+                  (.seq
+                    (.while_
+                                (.tif (.ult (.var "i") (.stdVecLen "a"))
+                                          (.ult (.var "j") (.stdVecLen "b"))
+                                          (.lit (.b false)))
+                                (.if_ (.slt (.stdVecAt "a" (.var "i")) (.stdVecAt "b" (.var "j")))
+                                    (.seq (.if_ (.ult (.var "k") (.stdVecLen "out"))
+                                              (.vecSet "out" (.var "k") (.stdVecAt "a" (.var "i")))
+                                              .fail)
+                                      (.seq (.assign "i" (.uadd (.var "i") (.lit (.u64 v1))))
+                                        (.assign "k" (.uadd (.var "k") (.lit (.u64 v2))))))
+                                    (.seq (.if_ (.ult (.var "k") (.stdVecLen "out"))
+                                              (.vecSet "out" (.var "k") (.stdVecAt "b" (.var "j")))
+                                              .fail)
+                                      (.seq (.assign "j" (.uadd (.var "j") (.lit (.u64 v3))))
+                                        (.assign "k" (.uadd (.var "k") (.lit (.u64 v4))))))))
+                    (.seq
+                      (.while_
+                                  (.ult (.var "i") (.stdVecLen "a"))
+                                  (.seq (.if_ (.ult (.var "k") (.stdVecLen "out"))
+                                              (.vecSet "out" (.var "k") (.stdVecAt "a" (.var "i")))
+                                              .fail)
+                                      (.seq (.assign "i" (.uadd (.var "i") (.lit (.u64 v5))))
+                                        (.assign "k" (.uadd (.var "k") (.lit (.u64 v6)))))))
+                      (.seq
+                        (.while_
+                                    (.ult (.var "j") (.stdVecLen "b"))
+                                    (.seq (.if_ (.ult (.var "k") (.stdVecLen "out"))
+                                                (.vecSet "out" (.var "k") (.stdVecAt "b" (.var "j")))
+                                                .fail)
+                                        (.seq (.assign "j" (.uadd (.var "j") (.lit (.u64 v7))))
+                                          (.assign "k" (.uadd (.var "k") (.lit (.u64 v8)))))))
+                        (.return_ (.var "out"))))))))⟩ =>
+    some .vecMergeInto
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
@@ -1391,6 +1436,8 @@ theorem matchFrag_vecTwoSum :
     matchFrag vecTwoSumFunc = some .vecTwoSum := rfl
 theorem matchFrag_vecAtSet :
     matchFrag vecAtSetFunc = some .vecAtSet := rfl
+theorem matchFrag_vecMergeInto :
+    matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

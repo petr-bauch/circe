@@ -609,6 +609,27 @@ is not value-faithful):
   trials, tamper-checked) green; containment result — one checked
   `at()` store through a mutable borrow is IN, the write
   capability captured at the entry, never by the leaf).
+  M `vec_merge_into` (first STD three-loop entry, merge-sort
+  kernel) — DONE (2026-10-15: new corpus `vec_merge_into` (two
+  `const&` vectors + pre-sized mutable `out`, `void` out; main
+  two-pointer loop with short-circuit `&&` + two drains; reads via
+  const `at()`, writes via non-const `at()`; strict `<`, real
+  CIRGen). Mb functionalizes the entry to guarded reads
+  (`stdVecAt`) + guarded borrowed stores (`vecSet` + per-write
+  `k < len`), the `&&` onto the pure ternary (`tif`), with
+  `emit_correct` (`evalFuncFuel_vecMergeInto`) chaining three
+  sequential loops at one model fuel (same-fuel `seq` threading,
+  measure-exact fuels, fwd-bound side lemmas — no monotonicity).
+  Value proofs green (6 while inductions + 3 bound lemmas + entry
+  bridge), tag-erased rendering + spec stub byte-identical,
+  `GoldenVecMergeInto` (12: 7-pipeline — entry + size + both `at()`
+  composers + shared range_check + both index leaves — plus
+  twosum/binsearch/atset-not-merge + recursive + bare-ptr) +
+  `DiffVecMergeInto` (eval-vs-forward every trial, native
+  vector-compare on hit, exit-4 pin on miss, 6 edges + 1000 fuzz
+  trials incl. unsorted-input agreement and short-`out` misses,
+  tamper-checked) green; containment result — the out-of-place
+  two-pointer merge is IN, sortedness caller debt).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 

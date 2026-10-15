@@ -9,6 +9,7 @@ import Circe.Emit
 import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSet
+import Circe.Emit.VecMergeInto
 import Circe.Emit.VecCompose
 import Circe.Validator.Features
 
@@ -1535,6 +1536,52 @@ def isStdVecAtMutShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.call @malloc" &&
     !containsSubstr raw.text "cir.call @free(" &&
     !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- `vec_merge_into` entry shape (M): two `sharedBorrow` vectors + one
+    single-reference vector in, `void` out, 14 calls (6 const `at()` +
+    4 `size` + 4 non-const `at()`), three `cir.while` loops (main
+    two-pointer loop + two drains), one `cir.ternary` (the
+    short-circuit `&&`), five `lt` compares (four bound checks + one
+    signed head compare), one `cir.if`. Encapsulation pins: no direct
+    `operator[]` / `_M_range_check` / throw calls — all element
+    traffic goes through `at()`; no recursion, no allocation, no
+    `unreachable`. First shape requiring `cir.ternary` (all other
+    shapes exclude it). -/
+def isVecMergeIntoShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b, out] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType b.ctype && b.singleRef && isStdVectorType b.ctype &&
+    isPtrType out.ctype && out.singleRef && isStdVectorType out.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 14 &&
+    opCount raw.text "cir.while" == 3 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 5 &&
+    opCount raw.text "cir.cmp lt" == 5 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.const" == 21 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 41 &&
+    opCount raw.text "cir.store" == 17 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 

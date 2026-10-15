@@ -883,6 +883,23 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Encapsulation pins: no direct `operator[]` / `_M_range_check`
     / throw calls. Miss aborts loudly (`AssertFail`, native
     exit 4). Verdict honestly `unknown` (single-ref).
+28q. Out-of-place two-pointer merge over `vector<int>` (M,
+    merge-sort kernel): `vec_merge_into` (two `sharedBorrow` vectors
+    + one single-reference vector in, `void` out, updated words
+    returned by `var` — the `xor_n` out-param idiom). Admission is
+    one fused entry Func: three `cir.while` loops (main two-pointer
+    loop with a short-circuit `&&` guard + two drains), 14 calls (6
+    const `at()` + 4 `size` + 4 non-const `at()`), one
+    `cir.ternary` (first shape requiring it — all other shapes
+    exclude it), five `lt` compares, one `cir.if` (6 allocas / 41
+    loads / 17 stores / 1 void return). Every read goes through
+    the const `at()` guarded read, every write through a
+    write-guarded borrowed store (`vecSet` + per-write `k < len`
+    check, the W store). The `&&` maps onto the existing pure
+    ternary (`tif` — no new connective). Short `out` aborts loudly
+    (`AssertFail`, native exit 4). Sortedness is caller debt
+    (agreement holds regardless, the V1 precedent). Verdict
+    honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +
