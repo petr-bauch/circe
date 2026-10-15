@@ -1420,6 +1420,31 @@ def emitVecTwoSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_at_set` entry. The mirror is an
+    independent checked store over the reified words; edges carry
+    ground truth (hit stores, miss aborts, empty aborts). -/
+def emitVecAtSetSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, i, x)` stores `x` at `v.at(i)`.\n"
+  ++ s!"    Base body reference: the same checked store on the reified words (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `vecAtSetFwd`). Miss aborts loudly. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (n : BitVec 64) (x : BitVec 32) : Result (List (BitVec 32)) :=\n"
+  ++ "  match l[n.toNat]? with\n"
+  ++ "  | some _ => .ok (l.set n.toNat x)\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hit stores, miss aborts, empty aborts. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64 × BitVec 32) × Result (List (BitVec 32))) :=\n"
+  ++ "  [(([1, 2, 3], 1, 9), .ok [1, 9, 3]),\n"
+  ++ "   (([1, 2, 3], 3, 9), .error .AssertFail),\n"
+  ++ "   (([], 0, 9), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/

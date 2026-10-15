@@ -585,6 +585,30 @@ is not value-faithful):
   `int32`-boundary words, tamper-checked) green; containment
   result — brute-force two-sum over readonly vectors is IN,
   sortedness irrelevant).
+  W `vec_at_set` (first STD `std::vector` mutable write) —
+  DONE (2026-10-15: new corpus `vec_at_set` (mutable-borrow vector
+  + `u64` index + `i32` value in, `void` out; straight-line: one
+  non-const `at()` call, store through its result — the range check
+  lives inside the leaf, real CIRGen): Wa probes the non-const
+  leaves (structurally identical fusion under `_ZN` names; the
+  mutable `operator[]` passes the existing index shape, the
+  mutable `at()` needs its own gate over the mutable index name)
+  and the borrow-store gap (`vgrowSet` is owned-triple-only, so Wb
+  adds the new `CStmt.vecSet`: borrowed `stdVecVal` in-env
+  `List.set`, loud `OOB`, mirroring `arrSet`, with eval + mem arms
+  and a `beqStmt` arm). Wb functionalizes the entry to the fused
+  guard + store (`if i < len then vecSet else fail`, updated words
+  returned by `var` — the `xor_n` out-param idiom) with
+  `emit_correct` (`evalFuncFuel_vecAtSet`). Value proofs green,
+  tag-erased rendering + spec stub byte-identical,
+  `GoldenVecAtSet` (10: 5-pipeline — entry + mutable composer +
+  shared range_check + mutable index + shared size — plus
+  direct-store + at-one/binsearch-not-atset + recursive +
+  bare-ptr) + `DiffVecAtSet` (eval-vs-forward every trial, native
+  vector-compare on hit, exit-4 pin on miss, 8 edges + 1000 fuzz
+  trials, tamper-checked) green; containment result — one checked
+  `at()` store through a mutable borrow is IN, the write
+  capability captured at the entry, never by the leaf).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 

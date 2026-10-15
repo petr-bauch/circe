@@ -204,6 +204,22 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .vecSet x ie ve, ρ =>
+    match evalExpr ie ρ, evalExpr ve ρ with
+    | .ok (.u64 i), .ok (.i32 xv) =>
+      match envLookup ρ x with
+      | none => .error .Uninit
+      | some (.stdVecVal l) =>
+        match l[i.toNat]? with
+        | none => .error .OOB
+        | some _ =>
+          match envUpdate ρ x (.stdVecVal (l.set i.toNat xv)) with
+          | none => .error .Uninit
+          | some ρ' => .ok (ρ', .fellThrough)
+      | some _ => .error .AssertFail
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .mstore _ ie ve, ρ =>
     match evalExpr ie ρ, evalExpr ve ρ with
     | .ok _, .ok _ => .error .AssertFail
@@ -432,6 +448,32 @@ theorem evalStmtFuel_arrSet_oob (f : Nat) (x : String) (ie ve : CExpr)
     evalStmtFuel f (.arrSet x ie ve) ρ = .error .OOB := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, harr, hget]
+
+/-- `vecSet` stores through borrowed reified words and updates the
+    environment (any fuel). -/
+theorem evalStmtFuel_vecSet (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (l : List (BitVec 32)) (w : BitVec 32) (ρ' : Env)
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.i32 xv))
+    (hvec : envLookup ρ x = some (.stdVecVal l))
+    (hget : l[i.toNat]? = some w)
+    (hu : envUpdate ρ x (.stdVecVal (l.set i.toNat xv)) = some ρ') :
+    evalStmtFuel f (.vecSet x ie ve) ρ = .ok (ρ', .fellThrough) := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, hvec, hget, hu]
+
+/-- `vecSet` out-of-bounds reports `OOB` (any fuel). -/
+theorem evalStmtFuel_vecSet_oob (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (i : BitVec 64) (xv : BitVec 32)
+    (l : List (BitVec 32))
+    (hi : evalExpr ie ρ = .ok (.u64 i))
+    (hv : evalExpr ve ρ = .ok (.i32 xv))
+    (hvec : envLookup ρ x = some (.stdVecVal l))
+    (hget : l[i.toNat]? = none) :
+    evalStmtFuel f (.vecSet x ie ve) ρ = .error .OOB := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv, hvec, hget]
 
 /-- `mstore` has no value mirror (G3/S1 B2 scalar store): the pure
     evaluator reports `AssertFail` on well-typed operands (any

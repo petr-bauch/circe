@@ -865,6 +865,24 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     generalized to pairs). Overflowing element sums are loud
     (`Overflow`, Lean-Lean only in fuzz). Verdict honestly
     `unknown` (single-ref).
+28p. Checked `at()` store through `vector<int>&` (W, over the
+    N4d-iv-c read): `vec_at_set` (mutable-borrow vector + `u64`
+    index + `i32` value in, `void` out). Admission is one fused
+    entry Func: single-ref vector + `u64` index + `i32` value
+    params, vector-words return, exactly one call (non-const
+    `at()`), the store through its result, no guards/loops of its
+    own (3 allocas / 3 loads / 4 stores / 1 void return). The store
+    is the new `CStmt.vecSet`: borrowed `stdVecVal` in-env
+    `List.set` (loud `OOB`, mirroring `arrSet`; `vgrowSet` stays
+    owned-triple-only). The non-const leaves (`_ZN…2atEm` /
+    `_ZN…ixEm`) share the const fusion verbatim: the mutable
+    `operator[]` passes the existing index shape, the mutable
+    `at()` has its own gate over the mutable index name and emits
+    the shared guarded read (the dereferenced value is the same
+    checked read; the write capability lives at the entry only).
+    Encapsulation pins: no direct `operator[]` / `_M_range_check`
+    / throw calls. Miss aborts loudly (`AssertFail`, native
+    exit 4). Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

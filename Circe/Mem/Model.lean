@@ -1597,6 +1597,23 @@ def memEvalStmtWith
     | .ok _, .ok _, _, _ => .error .AssertFail
     | .error e, _, _, _ => .error e
     | _, .error e, _, _ => .error e
+  | .vecSet x ie ve, ρ, m, π =>
+    match memEvalExpr ie ρ m π, memEvalExpr ve ρ m π,
+        envLookup ρ x, layoutLookup π x with
+    | .ok (.u64 i), .ok (.i32 xv), some (.stdVecVal l),
+        some (a, t) =>
+      match l[i.toNat]? with
+      | none => .error .OOB
+      | some _ =>
+        match memStore m a t (i.toNat + 1) xv with
+        | .error e => .error e
+        | .ok m' =>
+          match envUpdate ρ x (.stdVecVal (l.set i.toNat xv)) with
+          | none => .error .Uninit
+          | some ρ' => .ok ((ρ', m', π), .fellThrough)
+    | .ok _, .ok _, _, _ => .error .AssertFail
+    | .error e, _, _, _ => .error e
+    | _, .error e, _, _ => .error e
   | .mstore s ie ve, ρ, m, π =>
     match memEvalExpr ie ρ m π, memEvalExpr ve ρ m π,
         layoutLookup π s with
@@ -1793,7 +1810,8 @@ def bindMemArgs : List Param → List Value → Mem → Option (Env × Mem × La
       | _, .stdVecVal l =>
         -- The reified elements plus the 32-bit length word up front
         -- (the heap-triple snapshot model: word 0 is the length,
-        -- words `1+i` are the elements; N4d-iv-a, reads only).
+        -- words `1+i` are the elements; N4d-iv-a reads, W borrowed
+        -- stores at snapshot offset `1+i`).
         let (m'', a) := memAllocData m' ((BitVec.ofNat 32 l.length) :: l)
         some (((p.name, .stdVecVal l) :: ρ), m'', (p.name, a, a) :: π)
       | _, .stdVecOwned b len cap =>

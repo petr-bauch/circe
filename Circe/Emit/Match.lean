@@ -15,6 +15,7 @@ import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
+import Circe.Emit.VecAtSet
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -91,6 +92,8 @@ def beqStmt : CStmt → CStmt → Bool
   | .vgrowFree t, .vgrowFree t' => t == t'
   | .arrSet a i v, .arrSet a' i' v' =>
     a == a' && decide (i = i') && decide (v = v')
+  | .vecSet s i v, .vecSet s' i' v' =>
+    s == s' && decide (i = i') && decide (v = v')
   | .fail, .fail => true
   | .if_ c t e, .if_ c' t' e' =>
     decide (c = c') && beqStmt t t' && beqStmt e e'
@@ -807,6 +810,16 @@ def matchFrag : Func → Option FragKind
       some .vecTwoSum
     else none
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"i", .u 64, .owned⟩,
+        ⟨"x", .i 32, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.if_ (.ult (.var "i") (.stdVecLen "v"))
+        (.seq (.vecSet "v" (.var "i") (.var "x"))
+          (.return_ (.var "v")))
+        .fail)⟩ =>
+    some .vecAtSet
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
         (.return_ (.stdVecAt "v" (.lit (.u64 zero'))))
@@ -1376,6 +1389,8 @@ theorem matchFrag_vecBinarySearch :
     matchFrag vecBinSearchFunc = some .vecBinSearch := rfl
 theorem matchFrag_vecTwoSum :
     matchFrag vecTwoSumFunc = some .vecTwoSum := rfl
+theorem matchFrag_vecAtSet :
+    matchFrag vecAtSetFunc = some .vecAtSet := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

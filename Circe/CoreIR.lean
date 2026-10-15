@@ -216,6 +216,13 @@ inductive CExpr : Type
     region (a trivial-dtor call, a no-op at validation, so `cleanup`
     evaluates exactly its body; the trailing `cir.trap` marks the
     unreachable exceptional path and has no model).
+    Borrowed-vector store (W): `vecSet s ie ve` stores the `i32`
+    word `ve` at `u64` offset `ie` of the `stdVecVal` reified words
+    `s` (non-const `at()` fused: the entry guard makes OOB
+    unreachable; a stray OOB is loud `OOB`, mirroring `arrSet` —
+    deliberately distinct from the entry-level `AssertFail`).
+    Unlike `vgrowSet` (owned triple + `Mem` buffer), the borrow has
+    no heap identity: the update is in-env only.
     Owned-triple statements (N4d-iv-b1): `vgrowSet t ie ve` stores
     the `i32` word `ve` at `u64` offset `ie` of the `stdVecOwned`
     triple `t` (`construct` fused: use-after-free is `AssertFail`,
@@ -248,6 +255,7 @@ inductive CStmt : Type
   | vgrowSet (t : String) (idx val : CExpr)
   | vgrowFree (t : String)
   | arrSet (arr : String) (idx val : CExpr)
+  | vecSet (s : String) (idx val : CExpr)
   | mstore (slot : String) (idx val : CExpr)
   | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)

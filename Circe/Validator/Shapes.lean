@@ -8,6 +8,7 @@ import Circe.Oracle
 import Circe.Emit
 import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
+import Circe.Emit.VecAtSet
 import Circe.Emit.VecCompose
 import Circe.Validator.Features
 
@@ -1465,6 +1466,75 @@ def isVecTwoSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_diff" &&
     !containsSubstr raw.text "cir.call @malloc" &&
     !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- `vec_at_set` entry shape (W): mutable-borrow vector + `u64` index +
+    `i32` value in, `void` out, exactly one call (non-const `at()`),
+    the store through its result, no guards/loops/branches of its own
+    (the range check lives inside the leaf — the entry is
+    straight-line). Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls — the address comes from `at()`
+    only. The mutable borrow is evidence-backed, not role-checked:
+    raw text carries no roles, but only well-typed mutable code can
+    call the non-const leaf (a `const&` entry calling it would not
+    compile). -/
+def isVecAtSetShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, i, x] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    !isPtrType i.ctype && isU64 i.ctype &&
+    isI32 x.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.alloca" == 3 &&
+    opCount raw.text "cir.load" == 3 &&
+    opCount raw.text "cir.store" == 4 &&
+    opCount raw.text "cir.return" == 1 &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- Non-const `at()` leaf shape (W): same fusion as the const
+    `isStdVecAtShape` (one `_M_range_check` + one `operator[]` call,
+    no local control flow), but over the mutable index leaf. The
+    emitted model is the shared guarded read (`stdVecAtFunc` under
+    the mutable name — the dereferenced value is the same checked
+    read; the write capability is captured at the entry, never by
+    the leaf). -/
+def isStdVecAtMutShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    isPtrType raw.ret &&
+    callsFunc raw.text stdVecRangeCheckName &&
+    callsFunc raw.text stdVecIndexMutName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 

@@ -9,6 +9,7 @@ import Circe.Oracle
 import Circe.Emit
 import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
+import Circe.Emit.VecAtSet
 import Circe.Emit.VecCompose
 import Circe.Validator.Shapes
 
@@ -129,7 +130,7 @@ def isVecRangeCheckExemptText (text : String) : Bool :=
     for the wrong-shape rejection. -/
 def stdVecLeafCallees : List String :=
   [stdVecSizeName, stdVecCapacityName, stdVecIndexName,
-   stdVecRangeCheckName, stdVecAtName,
+   stdVecIndexMutName, stdVecRangeCheckName, stdVecAtName, stdVecAtMutName,
    stdVecCtorName, stdVecBaseCtorName, stdVecImplCtorName,
    stdVecImplDataCtorName, stdVecNewAllocCtorName, stdVecAllocCtorName,
    stdVecDtorName, stdVecBaseDtorName, stdVecImplDtorName,

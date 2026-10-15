@@ -748,6 +748,17 @@ def emitVecTwoSumText (name : String) : String :=
   ++ "      | _, _ => .ok none\n"
   ++ "    else .ok none\n"
 
+/-- Render the `vec_at_set` entry forward definition: the checked
+    `at()` store over the reified words (miss aborts loudly). -/
+def emitVecAtSetText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (checked `at()` store over the reified words; miss aborts). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (n : BitVec 64) (x : BitVec 32) : Result (List (BitVec 32)) :=\n"
+  ++ "  match l[n.toNat]? with\n"
+  ++ "  | some _ => .ok (l.set n.toNat x)\n"
+  ++ "  | none => .error .AssertFail\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

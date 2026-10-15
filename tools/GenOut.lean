@@ -12,6 +12,7 @@ import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
+import Circe.Emit.VecAtSet
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
@@ -123,6 +124,9 @@ def main : IO Unit := do
   let vecAtSum ← emitOrDie vecAtSumFunc
   let vecBinarySearch ← emitOrDie vecBinSearchFunc
   let vecTwoSum ← emitOrDie vecTwoSumFunc
+  let vecAtSet ← emitOrDie vecAtSetFunc
+  let vecIndexMut ← emitOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
+  let vecAtMut ← emitOrDie { stdVecAtFunc with name := stdVecAtMutName }
   let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
   let vecUnit ← emitOrDie stdVecUnitFunc
   let vecDtor ← emitOrDie stdVecDtorFunc
@@ -242,6 +246,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAtSum.lean" (emitFileText (.ok vecAtSum))
   IO.FS.writeFile "out/VecBinarySearch.lean" (emitFileText (.ok vecBinarySearch))
   IO.FS.writeFile "out/VecTwoSum.lean" (emitFileText (.ok vecTwoSum))
+  IO.FS.writeFile "out/VecAtSet.lean" (emitFileText (.ok vecAtSet))
+  IO.FS.writeFile "out/VecIndexMut.lean" (emitFileText (.ok vecIndexMut))
+  IO.FS.writeFile "out/VecAtMut.lean" (emitFileText (.ok vecAtMut))
   IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
   IO.FS.writeFile "out/VecGrowUnit.lean" (emitFileText (.ok vecUnit))
   IO.FS.writeFile "out/VecGrowDtor.lean" (emitFileText (.ok vecDtor))
@@ -361,6 +368,9 @@ def main : IO Unit := do
   let vecAtSumSpec ← specOrDie vecAtSumFunc
   let vecBinarySearchSpec ← specOrDie vecBinSearchFunc
   let vecTwoSumSpec ← specOrDie vecTwoSumFunc
+  let vecAtSetSpec ← specOrDie vecAtSetFunc
+  let vecIndexMutSpec ← specOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
+  let vecAtMutSpec ← specOrDie { stdVecAtFunc with name := stdVecAtMutName }
   let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
   let vecUnitSpec ← specOrDie stdVecUnitFunc
   let vecDtorSpec ← specOrDie stdVecDtorFunc
@@ -480,6 +490,9 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAtSum_Spec.lean" vecAtSumSpec
   IO.FS.writeFile "out/VecBinarySearch_Spec.lean" vecBinarySearchSpec
   IO.FS.writeFile "out/VecTwoSum_Spec.lean" vecTwoSumSpec
+  IO.FS.writeFile "out/VecAtSet_Spec.lean" vecAtSetSpec
+  IO.FS.writeFile "out/VecIndexMut_Spec.lean" vecIndexMutSpec
+  IO.FS.writeFile "out/VecAtMut_Spec.lean" vecAtMutSpec
   IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec
   IO.FS.writeFile "out/VecGrowUnit_Spec.lean" vecUnitSpec
   IO.FS.writeFile "out/VecGrowDtor_Spec.lean" vecDtorSpec

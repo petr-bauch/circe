@@ -131,6 +131,7 @@ inductive FragKind : Type
   | vecAtSum
   | vecBinSearch
   | vecTwoSum
+  | vecAtSet
   | vecEmptyCtor
   | vecUnit
   | vecDtor
