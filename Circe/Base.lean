@@ -157,6 +157,23 @@ theorem checkedShiftU32_err (a b : BitVec 32)
     checkedShiftU32 a b op = .error .OOB := by
   simp [checkedShiftU32, h]
 
+/-- Checked unsigned-64 shift: `OOB` when the amount is out of range
+    (same N6 shift-UB discipline at 64 bits); otherwise the
+    `BitVec` shift. Midpoint halving for binary search runs here. -/
+def checkedShiftU64 (a b : BitVec 64) (op : BitVec 64 → Nat → BitVec 64) :
+    Result (BitVec 64) :=
+  if b.toNat < 64 then .ok (op a b.toNat) else .error .OOB
+
+theorem checkedShiftU64_ok (a b : BitVec 64)
+    (op : BitVec 64 → Nat → BitVec 64) (h : b.toNat < 64) :
+    checkedShiftU64 a b op = .ok (op a b.toNat) := by
+  simp [checkedShiftU64, h]
+
+theorem checkedShiftU64_err (a b : BitVec 64)
+    (op : BitVec 64 → Nat → BitVec 64) (h : ¬ b.toNat < 64) :
+    checkedShiftU64 a b op = .error .OOB := by
+  simp [checkedShiftU64, h]
+
 /-! ## Checked signed-64 ops (S3b: 64-bit loop-free widths) -/
 
 /-- Minimum `Int` value of C `int64_t`. -/

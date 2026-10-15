@@ -430,6 +430,8 @@ def evalExpr : CExpr → Env → Result Value
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) =>
       (checkedShiftU32 x y (· >>> ·)).map .u32
+    | .ok (.u64 x), .ok (.u64 y) =>
+      (checkedShiftU64 x y (· >>> ·)).map .u64
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -437,6 +439,12 @@ def evalExpr : CExpr → Env → Result Value
     match evalExpr a ρ, evalExpr b ρ with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x.ult y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .slt a b, ρ =>
+    match evalExpr a ρ, evalExpr b ρ with
+    | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x.slt y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -797,6 +805,32 @@ theorem evalExpr_s64diff_lit (x y : BitVec 64) (ρ : Env) :
     evalExpr (.s64diff (.lit (.u64 x)) (.lit (.u64 y))) ρ =
       .ok (.i64 (x - y)) := by
   simp [evalExpr, litVal]
+
+/-- `bshr` on two `u64`-valued expressions (V1: midpoint halving
+    for binary search). -/
+theorem evalExpr_bshr_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.bshr e₁ e₂) ρ = (checkedShiftU64 x y (· >>> ·)).map .u64 := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `slt` on two `i32`-valued expressions (V1: signed element
+    comparison for binary search over `vector<int>`). -/
+theorem evalExpr_slt_i32 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 32)
+    (h₁ : evalExpr e₁ ρ = .ok (.i32 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.i32 y)) :
+    evalExpr (.slt e₁ e₂) ρ = .ok (.b (x.slt y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- Closed-eval spot check for the `slt` arm. -/
+example : evalExpr (.slt (.lit (.i32 2)) (.lit (.i32 3))) [] =
+    .ok (.b true) := by
+  decide
+
+/-- Closed-eval spot check for the u64 `bshr` arm. -/
+example : evalExpr (.bshr (.lit (.u64 7)) (.lit (.u64 1))) [] =
+    .ok (.u64 3) := by
+  decide
 
 /-- `s64diff` on two `u64`-valued expressions (N4d-iv-b1: `mi` fused
     double-`base` + `ptr_diff` over erased element indices). -/

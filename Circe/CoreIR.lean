@@ -154,6 +154,7 @@ inductive CExpr : Type
   | bshl : CExpr → CExpr → CExpr
   | bshr : CExpr → CExpr → CExpr
   | ult : CExpr → CExpr → CExpr
+  | slt : CExpr → CExpr → CExpr
   | ueq : CExpr → CExpr → CExpr
   | une : CExpr → CExpr → CExpr
   | idx : String → CExpr → CExpr

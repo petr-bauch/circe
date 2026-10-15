@@ -492,6 +492,8 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
     | .ok (.u32 x), .ok (.u32 y) =>
       (checkedShiftU32 x y (· >>> ·)).map .u32
+    | .ok (.u64 x), .ok (.u64 y) =>
+      (checkedShiftU64 x y (· >>> ·)).map .u64
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -499,6 +501,12 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
     | .ok (.u32 x), .ok (.u32 y) => .ok (.b (x.ult y))
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x.ult y))
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .slt a b, ρ, m, π =>
+    match memEvalExpr a ρ m π, memEvalExpr b ρ m π with
+    | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x.slt y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -1142,6 +1150,25 @@ theorem memEvalExpr_add_agree (a b : CExpr) (ρ : Env) (m : Mem)
     (ha : memEvalExpr a ρ m π = evalExpr a ρ)
     (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
     memEvalExpr (.add a b) ρ m π = evalExpr (.add a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `bshr` agreement: both sides evaluate the operands first
+    (V1: midpoint halving runs through `memEvalExpr` too). -/
+theorem memEvalExpr_bshr_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.bshr a b) ρ m π = evalExpr (.bshr a b) ρ := by
+  simp only [memEvalExpr, evalExpr, ha, hb]
+  rfl
+
+/-- `slt` agreement: both sides evaluate the operands first. -/
+theorem memEvalExpr_slt_agree (a b : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (ha : memEvalExpr a ρ m π = evalExpr a ρ)
+    (hb : memEvalExpr b ρ m π = evalExpr b ρ) :
+    memEvalExpr (.slt a b) ρ m π = evalExpr (.slt a b) ρ := by
   simp only [memEvalExpr, evalExpr, ha, hb]
   rfl
 
