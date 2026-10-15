@@ -119,7 +119,10 @@ inductive CLit : Type
     update functionalized: `q.x = …; q.y = …; return q`); `pair x y`
     builds the G1 two-output `IPair` value from two `i32` exprs
     (multi-writer functionalization: `*p = …; *q = …` returns both
-    updated words; model-only until a G2 consumer admits it).
+    updated words; model-only until a G2 consumer admits it);
+    `i32ofU64 e` narrows a `u64` index word to `i32` (wrapping mod
+    2^32, C `(int)` cast on indices; V2 two-sum early `IPair`
+    return over `u64` loop indices).
     `mload s ie` (G3/S3) is the `B2` load twin of `mstore`: reads
     the `i32` word at `u64` offset `ie` of the cell pinned to slot
     `s` (address + tag from the `Layout` pin; unpinned slot, tag
@@ -181,6 +184,7 @@ inductive CExpr : Type
   | fget : String → String → CExpr
   | pmk : CExpr → CExpr → CExpr
   | pair : CExpr → CExpr → CExpr
+  | i32ofU64 : CExpr → CExpr
   | mload : String → CExpr → CExpr
   deriving DecidableEq, Repr
 

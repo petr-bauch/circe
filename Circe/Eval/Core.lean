@@ -685,6 +685,11 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .i32ofU64 e, ρ =>
+    match evalExpr e ρ with
+    | .ok (.u64 x) => .ok (.i32 (BitVec.ofNat 32 x.toNat))
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
 
 theorem evalExpr_lit (l : CLit) (ρ : Env) :
     evalExpr (.lit l) ρ = .ok (litVal l) := rfl
@@ -830,6 +835,25 @@ example : evalExpr (.slt (.lit (.i32 2)) (.lit (.i32 3))) [] =
 /-- Closed-eval spot check for the u64 `bshr` arm. -/
 example : evalExpr (.bshr (.lit (.u64 7)) (.lit (.u64 1))) [] =
     .ok (.u64 3) := by
+  decide
+
+/-- `i32ofU64` on a `u64`-valued expression narrows mod 2^32
+    (V2: C `(int)` cast on `u64` loop indices for the `IPair`
+    return). -/
+theorem evalExpr_i32ofU64_ok (e : CExpr) (ρ : Env) (x : BitVec 64)
+    (h : evalExpr e ρ = .ok (.u64 x)) :
+    evalExpr (.i32ofU64 e) ρ = .ok (.i32 (BitVec.ofNat 32 x.toNat)) := by
+  simp [evalExpr, h]
+
+/-- `i32ofU64` on a non-`u64` word is rejected. -/
+theorem evalExpr_i32ofU64_mismatch (e : CExpr) (ρ : Env) (v : BitVec 32)
+    (h : evalExpr e ρ = .ok (.i32 v)) :
+    evalExpr (.i32ofU64 e) ρ = .error .AssertFail := by
+  simp [evalExpr, h]
+
+/-- Closed-eval spot check for the `i32ofU64` arm. -/
+example : evalExpr (.i32ofU64 (.lit (.u64 7))) [] =
+    .ok (.i32 7) := by
   decide
 
 /-- `s64diff` on two `u64`-valued expressions (N4d-iv-b1: `mi` fused

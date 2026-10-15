@@ -800,6 +800,11 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .i32ofU64 e, ρ, m, π =>
+    match memEvalExpr e ρ m π with
+    | .ok (.u64 x) => .ok (.i32 (BitVec.ofNat 32 x.toNat))
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
 
 /-- Pure-expression agreement for closed shapes: `lit`/`var` hold by
     definition; binary operators agree once their discriminants are
@@ -1180,6 +1185,16 @@ theorem memEvalExpr_pair_agree (x y : CExpr) (ρ : Env) (m : Mem)
     (hy : memEvalExpr y ρ m π = evalExpr y ρ) :
     memEvalExpr (.pair x y) ρ m π = evalExpr (.pair x y) ρ := by
   simp only [memEvalExpr, evalExpr, hx, hy]
+  rfl
+
+/-- `i32ofU64` agreement: both sides narrow the same way
+    (V2: the two-sum `(int)` index casts; mirrors
+    `memEvalExpr_u64ofI64_agree`). -/
+theorem memEvalExpr_i32ofU64_agree (e : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (h : memEvalExpr e ρ m π = evalExpr e ρ) :
+    memEvalExpr (.i32ofU64 e) ρ m π = evalExpr (.i32ofU64 e) ρ := by
+  simp only [memEvalExpr, evalExpr, h]
   rfl
 
 /-- `s64diff` agreement: both sides evaluate the offsets the same way,
