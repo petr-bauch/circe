@@ -47,6 +47,13 @@ coverage, one admission-shaped slice at a time — speculative STD
 stays out (see non-goals). Multi-output support (G2/G2b/G3:
 `wr_pair`, `cond_pair`, `alias_cond`) unblocks accumulate-style
 and multi-writer algorithms.
+- Next Pillar 2 target (proposed 2026-10-16): range-bounded
+  in-place algorithms — segment reverse over `(lo, hi)`, then
+  rotate-by-three-reversals. Reuses the R countdown/store-in-loop
+  machinery (window invariant, `vecSet` lockstep) with one new
+  admission pin per slice (range bounds, then triple
+  entry-over-entry composition); each one admission-shaped slice
+  at a time.
 
 ## Pillar 3 — Human-readable/writable proofs
 
@@ -62,6 +69,21 @@ Next: a gallery per new admitted shape; tactic harvesting by the
 rule of three (prose note on first use, Lean tactic on third —
 `fuel_step_down` earned it); Hoare-loop/frame rules as new
 constructs arrive (calls-in-loops is the current frontier).
+- R loop-proof tactics (first use, prose-note stage): one-sided
+  reference unfolding (`conv => lhs; unfold <ref>`, then `show`
+  past the `let`-bound scrutinee so `rw` sees the `get?`
+  patterns); plain-`if` reduction
+  (`simp only [.., h, ite_true/ite_false]`); length-dite
+  discharge (`dite_eq_left`); closed bool-guard discharge
+  (`ite_eq_right (by decide ...)`); prefer the non-deprecated
+  `ite_eq_left/right` over `if_pos/if_neg` in new code.
+- R memory-threading pattern (first use, prose-note stage):
+  `vecSet` lockstep via closed-form `memStore` on the reified
+  snapshot (`revMemStore_ok`), shadowing blocks tracked by-find
+  (`memFind_cons_hit`), length-word skip via
+  `List.set_cons_succ`; calls communicate by value, so the caller
+  `(m, π)` threads through `callRet` unchanged and only `vecSet`
+  steps extend the block list.
 
 ## Pillar 3 — Iris separation logic for low-level aspects and concurrency
 
