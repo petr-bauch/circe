@@ -1943,7 +1943,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { reborrowFunc with name := raw.name }
       else if isSequentialReborrowShape raw then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' reborrows one root through two sequential writers (the L2 live ranges are disjoint in order): writer admission is deferred — mutable writers need Iris framing over `Mem` (see docs/ROADMAP.md L-track)"
+          s!"out-of-subset: function '{raw.name}' reborrows one root through two sequential writers (the L2 live ranges are disjoint in order): writer admission is deferred — mutable writers need Iris framing over `Mem` (see docs/DELIVERED.md L.)"
       else
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' is not in the admitted Phase-4 fragment (see `matchFrag` contract in `Circe.Emit`)"
