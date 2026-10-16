@@ -900,6 +900,33 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     (`AssertFail`, native exit 4). Sortedness is caller debt
     (agreement holds regardless, the V1 precedent). Verdict
     honestly `unknown` (single-ref).
+28r. Ranged segment merge + bottom-up merge sort over
+    `vector<int>` (C, first calls-in-loops customer): `merge_runs`
+    (one `sharedBorrow` vector + one pre-sized `mutBorrow` temp +
+    three owned `u64` bounds `lo/mid/hi` in, `void` out) and
+    `vec_merge_sort` (two `mutBorrow` vectors in, `void` out, the
+    sorted `a` returned by `var` — the `xor_n` out-param idiom).
+    Admission is two fused Funcs: the callee runs three `cir.while`
+    loops (main two-pointer loop with a short-circuit `&&` guard +
+    two drains), 10 calls (6 const `at()` + 4 non-const `at()`),
+    one `cir.ternary`, five `lt` compares, one `cir.if` (8 allocas /
+    44 loads / 19 stores / 15 consts / 1 void return); the entry
+    runs three `cir.while` loops (width-doubling pass loop +
+    segment loop + copy-back loop), 4 calls (one `size`, one
+    `merge_runs`, two non-const `at()` for the copy-back), five `lt`
+    compares, two `cir.if` width clamps, no ternary (8 allocas / 35
+    loads / 14 stores / 6 consts / 1 void return). Every read goes
+    through the const `at()` guarded read, every write through a
+    write-guarded borrowed store (`vecSet` + per-write `k < len`
+    check, the W store); the entry never grows `tmp` (caller
+    pre-sizes it — indexed writes only). First shapes whose loop
+    bodies contain calls (`.callProg` into the admitted callee —
+    the C1 prog-threading evaluator). Encapsulation pins: no direct
+    `operator[]` / `_M_range_check` / throw calls; no recursion
+    (bottom-up passes), no allocation, no `unreachable`. Short
+    `tmp` aborts loudly (`AssertFail`, native exit 4). Sortedness
+    is caller debt (agreement holds regardless, the V1 precedent).
+    Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

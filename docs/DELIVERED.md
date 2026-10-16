@@ -630,6 +630,35 @@ is not value-faithful):
   trials incl. unsorted-input agreement and short-`out` misses,
   tamper-checked) green; containment result — the out-of-place
   two-pointer merge is IN, sortedness caller debt).
+  C `vec_merge_sort` (first calls-in-loops customer: bottom-up
+  sort through the ranged `merge_runs` callee) — DONE (2026-10-16:
+  new corpus `vec_merge_sort` (ranged callee: `const&` vector +
+  pre-sized mutable `tmp` + three `u64` bounds, `void` out, 10
+  `at()` calls, three `cir.while` loops, one `cir.ternary`
+  short-circuit `&&`; entry: two mutable borrows, `void` out, 4
+  calls — one `size`, one `merge_runs`, two mut `at()` copy-back —
+  three `cir.while` loops, two `cir.if` clamps; real CIRGen). C2
+  proves the callee as the kernel proof twin (bounds are `u64`
+  variables, not lengths) and the entry over it: lookup-based
+  `SortInv` (shadow-tolerant — `callProg` conses a `tmp` binding
+  per segment), segment length-preservation lemmas threading
+  `n = length` through the pass loop, fuel-budgeted outer fuel
+  with the N5a `fuel_step_down` idiom (no manual splits). Value
+  proofs green (12 loop inductions — 6 callee + copy/segment/outer
+  pairs — + bound/length side lemmas + two `evalProgFunc` entry
+  bridges), two `matchFrag` arms (machine-generated literal
+  patterns, `rfl`-verified) + shape predicates + tag-erased
+  rendering + spec stubs byte-identical, `GoldenVecMergeSort` (22:
+  8-pipeline — callee + entry + both `at()` composers + shared
+  size/range_check/both index leaves — plus runs/sort cross-accepts
+  and cross-rejects + mergeinto/twosum/binsearch/atset-not-shaped
+  + recursive + bare-ptr) + `DiffVecMergeSort` (eval-vs-forward
+  every trial — also validating model-fuel sufficiency — native
+  word-compare on hit, exit-4 pin on miss, 18 edges + 1000 fuzz
+  trials over both the ranged callee and the entry incl.
+  partial-range merges and short-`tmp` misses, tamper-checked)
+  green; containment result — calls inside loop bodies are IN
+  (via the admitted callee), sortedness caller debt).
 
 ### N5. Proof ergonomics — DONE (2026-10-05)
 
