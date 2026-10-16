@@ -1198,6 +1198,27 @@ slice admitting `alias_cond`-class framing (needs lifetime
 evidence too — framing without live-range facts has nothing to
 attach to).
 
+Trigger status 2026-10-16: FIRED on both legs (N14/G3 admitted
+`alias_cond`-class framing with verdicts PROVEN; L1/L3 supply
+first/last-use facts and caller-dependent footprints — see L5).
+Decision: DEFER revisit, continue pillar work. Native framing
+keeps winning on burden (F2: two helpers + two theorems), and
+the L2/L3 spikes confirm no lifetime-side consumer is waiting on
+logic-level framing.
+Known limitations of the native path (what Iris would buy when
+deferral ends): per-shape posts — each new conditional shape
+re-pays a bespoke `condPost` proof, with no general frame rule
+carrying untouched locations through for free; `Mem`-boundary
+store equations stay hypotheses under the S0 open contract
+instead of discharged writes; no BI/separation-logic tactics,
+so each shape re-derives its frame manually. What we hope Iris
+(MoSeL interface) achieves then: a reusable frame rule + tactic
+support once shapes multiply past the bespoke-post budget.
+Deferral ends on F2's line — a second conditional shape, or a
+`Mem`-level write need — at which point re-check the vendoring
+blockers (pin mismatch `v4.21.0` vs `v4.34.0`, moving `Qq`) in a
+fresh time-boxed spike.
+
 ### L. Lifetime-relevant evidence (extract-only) — DONE (2026-10-04..12)
 
 Raw CIRGen carries no lifetime markers, so this track extracts
@@ -1264,3 +1285,30 @@ rejects + cross-exactness both ways + admission row),
 `DiffReborrow34` (7 edges + 1000 fuzz trials vs the corpus-linked
 native driver), tamper-checked.
 - Acceptance: 720 jobs TEST-OK, CHECK-OK.
+
+### L5. Region/framing consumer spikes — DONE (2026-10-16, verdict-only, no wiring)
+
+L2 (regions): proven vestigial-by-design, deliberately left
+unwired. CIR carries no region-distinguishing marks
+(`choose_ptr.cir`: both pointer params `llvm.noalias`, nothing
+else); the documented model is single-region (`SUBSET.md`:
+`mutBorrow(region)` unique-for-region, nested/multiple regions
+rejected); the only reader (the `choose` `r1 == r2` arm in
+`Match.lean`) is vacuous-by-construction (`mutBorrow 0` at both
+construction sites, arm holds by `rfl`). Deriving distinct
+regions would contradict admission (any two-borrow entry becomes
+multi-region, hence rejected), so no slice is owed: distinct
+regions buy no new admission and change no verdict.
+L3 (framing): no consumer exists — `semSliceCond`/B2 were never
+built — and the framing L3 was meant to enable is already
+delivered natively (F2 `condPost_disjoint`/`condPost_aliased`
+proved over `Mem`; S3 three-leg open-contract transfer; N14/G3
+full-framing admission, verdicts PROVEN). L3 roots stay
+extract-only evidence.
+Iris revisit trigger FIRED: the 2026-10-12 trigger (framing
+admission + lifetime evidence) now holds on both legs — N14
+admitted `alias_cond`-class framing, L1/L3 supply first/last-use
+facts and caller-dependent footprints. The revisit-or-defer
+decision on MoSeL vendoring is now due (F2's second-shape line
+also stands).
+- Acceptance: report-only spike, no `validate`/Emit/transfer churn.

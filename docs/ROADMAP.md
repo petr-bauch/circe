@@ -12,14 +12,16 @@ still follows the standing convention below.
 
 Delivered: the C pipeline with proved memory transfer (M3a–M3c),
 C control-flow hardening (S3a), 64-bit widths (S3b), arithmetic +
-switch gaps (N6), and the lifetime-evidence extractions (L1–L3,
+switch gaps (N6), and the lifetime-evidence work (L1–L3
 extract-only — scope/alloca tree, live ranges, content roots;
-`validate`/`Emit`/transfer untouched). The C core is complete
-within the standing non-goals.
+L4 second sequential-writer admission; L5 verdicts — regions
+vestigial-by-design, L3 roots extract-only). The C core is
+complete within the standing non-goals.
 
 Next:
-- L-track consumers: N4b real region numbers, and writer admission
-  (needs a writer `Func` + Iris framing — the F1 follow-up residue).
+- L-track is closed (L4/L5); the Iris revisit trigger fired on
+  both legs 2026-10-16 and the revisit is DEFERRED with a
+  limitations note — see `DELIVERED.md` "Iris spike report".
 - Deferred probe still open: `optional::value` lowers to `cir.trap`
   (throw path); deferral pins live in the `Golden*` suites.
 
@@ -80,8 +82,9 @@ changes stay out.
 ## Delivered reports (moved to `DELIVERED.md`)
 
 - Iris spike (MoSeL evaluation, no migration) — `DELIVERED.md`
-  "Iris spike report".
-- L-track L1/L2/L3 extractions — `DELIVERED.md` "L.".
+  "Iris spike report" (trigger fired 2026-10-16, revisit
+  deferred with limitations note).
+- L-track extractions + consumers (L–L5) — `DELIVERED.md` "L." / "L4." / "L5.".
 - F2 native conditional framing + S0–S4/G1 dispositions —
   `DELIVERED.md` "F2." / "S0–S4 + G1 dispositions".
 - K1–K5 crypto programs — `DELIVERED.md` "K." (summary; details
