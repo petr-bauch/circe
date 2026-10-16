@@ -90,6 +90,13 @@ theorem bindMemArgs_reborrow (x : BitVec 32) :
       some ([("x", .i32 x)], emptyMem, []) := by
   rfl
 
+/-- `reborrow34` binding pins nothing (same shape, `3`/`4` consts). -/
+theorem bindMemArgs_reborrow34 (x : BitVec 32) :
+    bindMemArgs [{ name := "x", ty := .i 32, role := .mutBorrow 0 }]
+      [.i32 x] emptyMem =
+      some ([("x", .i32 x)], emptyMem, []) := by
+  rfl
+
 /-- `wr_pair` binding pins nothing (two disjoint writers
     functionalized to values; the disjointness license — the
     in-order dataflow pin over different param cells plus the

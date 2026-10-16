@@ -2103,6 +2103,41 @@ def isReborrowShape (raw : RawFunc) : Bool :=
   hasSequentialWriterRanges raw.text &&
   reborrowSameAddress raw.text
 
+/-- The two `nsw` adds consume the `3`/`4` consts in order (first add
+    reads the `3`-const, never the `4`-const, and vice versa) — the
+    computation pin that makes the fused `x + 3 + 4` exact. Same
+    `!s32i` type-suffix discipline as `reborrowConstUse`. -/
+def reborrow34ConstUse (text : String) : Bool :=
+  let ls := text.splitOn "\n"
+  let threes := ls.filterMap fun ln =>
+    if containsSubstr ln "cir.const #cir.int<3> : !s32i" then ssaDefOn ln
+    else none
+  let fours := ls.filterMap fun ln =>
+    if containsSubstr ln "cir.const #cir.int<4> : !s32i" then ssaDefOn ln
+    else none
+  let adds := ls.filter (fun ln => containsSubstr ln "cir.add nsw")
+  match threes, fours, adds with
+  | [c1], [c2], [a1, a2] =>
+    mentionsSSA (defRest a1) c1 && !mentionsSSA (defRest a1) c2 &&
+    mentionsSSA (defRest a2) c2 && !mentionsSSA (defRest a2) c1
+  | _, _, _ => false
+
+/-- Exact `alias_reborrow34` admission shape (L1b): the same
+    sequential-writer skeleton with the `3`/`4` consts consumed in
+    order. Mutually exclusive with `isReborrowShape` (the const-use
+    pins disagree), so branch order between them is irrelevant. -/
+def isReborrow34Shape (raw : RawFunc) : Bool :=
+  structuralSequentialReborrow raw &&
+  opCount raw.text "cir.store" == 5 &&
+  opCount raw.text "cir.load" == 6 &&
+  opCount raw.text "cir.const" == 2 &&
+  opCount raw.text "cir.add nsw" == 2 &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.scope" &&
+  reborrow34ConstUse raw.text &&
+  hasSequentialWriterRanges raw.text &&
+  reborrowSameAddress raw.text
+
 /-! ## G2-admission: disjoint writer-pair recognition (`wr_pair`) -/
 
 /-- SSA operands in order: every `%N` token with a digit run and a

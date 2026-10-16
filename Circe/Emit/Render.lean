@@ -62,6 +62,18 @@ def emitReborrowText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok t => checkedAddI32 t 2\n"
 
+/-- Render the `reborrow34` forward definition (`reborrow34_fwd`),
+    same shape as `reborrow` with the `3`/`4` consts. -/
+def emitReborrow34Text (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (`*x += 3`, then `*x += 4` through sequential reborrows, functionalized).\n"
+  ++ s!"    Caller rewrite: `reborrow34(&y)` becomes `y ← {name}_fwd y`. -/\n"
+  ++ s!"def {name}_fwd (x : BitVec 32) : Result (BitVec 32) :=\n"
+  ++ "  match checkedAddI32 x 3 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok t => checkedAddI32 t 4\n"
+
 /-- Render the `wr_pair` forward definition (`wr_pair_fwd`), with the
     caller-side rewrite in the doc comment: two disjoint checked adds
     (`*p += 1`, `*q += 2`), fail-fast first-add-first. The pair is

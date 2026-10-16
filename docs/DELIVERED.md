@@ -1245,3 +1245,22 @@ golden + tamper-checked diff suites + docs). The functionalized
 pipeline (scalar mutation as value-in/value-out + gate-side
 L2/F0 licenses, F1-style) sidesteps Iris-style framing for
 scalars entirely.
+
+### L4. Second sequential-writer admission (L1b) — DONE (2026-10-16)
+
+First L-track consumer: `alias_reborrow34` (`r += 3` then `s += 4`
+through two loans to one address) is admitted through the
+previously deferred sequential-writer branch. The L1a spike
+verified all three licenses on the new corpus (structural
+skeleton, L2-disjoint ranges, F0 same address) while the F1
+const-use pins exclude it. Mechanical mirror of F1 with `1/2`
+replaced by `3/4`: new `Circe/Emit/Reborrow34.lean`
+(`reborrow34Func`/`reborrow34Fwd`/bridges), `reborrow34ConstUse`
++ `isReborrow34Shape` (mutually exclusive with `isReborrowShape`),
+`FragKind.reborrow34`, `emitReborrow34Text/SpecText` with
+ground-truth edges, `bindMemArgs`/`oracleNoalias`/`memTransfer`
+mirrors, `GoldenReborrow34` (pipeline + wrong-const/wrapping/bare
+rejects + cross-exactness both ways + admission row),
+`DiffReborrow34` (7 edges + 1000 fuzz trials vs the corpus-linked
+native driver), tamper-checked.
+- Acceptance: 720 jobs TEST-OK, CHECK-OK.

@@ -61,6 +61,15 @@ theorem oracleNoalias_reborrow (x : BitVec 32) :
             (.return_ (.add (.var "t") (.lit (.i32 2))))⟩ [.i32 x] := by
   exact ⟨_, _, _, bindMemArgs_reborrow x, layoutNoAlias_nil⟩
 
+/-- `reborrow34` binding pins nothing (same licenses, `3`/`4`). -/
+theorem oracleNoalias_reborrow34 (x : BitVec 32) :
+    oracleNoalias
+      ⟨"_Z16alias_reborrow34Ri", [{ name := "x", ty := .i 32, role := .mutBorrow 0 }],
+       .i 32,
+       .seq (.let_ "t" (.i 32) (.add (.var "x") (.lit (.i32 3))))
+            (.return_ (.add (.var "t") (.lit (.i32 4))))⟩ [.i32 x] := by
+  exact ⟨_, _, _, bindMemArgs_reborrow34 x, layoutNoAlias_nil⟩
+
 /-- `wr_pair` binding pins nothing (two disjoint writers
     functionalized to values; the disjointness license — the
     in-order dataflow pin over different param cells plus the

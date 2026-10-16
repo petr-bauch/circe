@@ -2957,6 +2957,94 @@ theorem memTransfer_reborrow (F : Nat) (x : BitVec 32)
       evalFuncFuel F reborrowFunc [.i32 x] := by
   rw [memEvalFuncFuel_reborrow F x, evalFuncFuel_reborrow F x]
 
+/-! ## L1b: second-writer transfer (memory threaded untouched) -/
+
+/-- Memory evaluation of `reborrow34`: the fused body has no `Mem` ops
+    (the two writes are value-level; the single cell is addressed
+    gate-side via L2 + F0), so `Mem` threads through both adds
+    untouched and the result is the forward function. -/
+theorem memEvalFuncFuel_reborrow34 (F : Nat) (x : BitVec 32) :
+    memEvalFuncFuel F reborrow34Func [.i32 x] = reborrow34Fwd x := by
+  have hbf : reborrow34Func.args =
+      [{ name := "x", ty := .i 32, role := .mutBorrow 0 }] := rfl
+  have hbody : reborrow34Func.body =
+      .seq (.let_ "t" (.i 32) (.add (.var "x") (.lit (.i32 3))))
+           (.return_ (.add (.var "t") (.lit (.i32 4)))) := rfl
+  have hb := bindMemArgs_reborrow34 x
+  have hx : envLookup [("x", .i32 x)] "x" = some (.i32 x) := by
+    simp [envLookup]
+  simp only [memEvalFuncFuel, bindArgs, hbf, hbody, hb]
+  cases h1 : checkedAddI32 x 3 with
+  | error e =>
+    have hme : memEvalExpr (.add (.var "x") (.lit (.i32 3)))
+        [("x", .i32 x)] emptyMem [] = .error e := by
+      rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hx, h1]
+      exact i32_map_error e
+    have hlet := memEvalStmtFuel_let_err F "t" (.i 32) _ _ _ _ e
+      (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) hme
+    rw [memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet]
+    exact (reborrow34Fwd_err1 x e h1).symm
+  | ok t =>
+    have hagree : memEvalExpr (.add (.var "x") (.lit (.i32 3)))
+        [("x", .i32 x)] emptyMem [] =
+        evalExpr (.add (.var "x") (.lit (.i32 3))) [("x", .i32 x)] := by
+      rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hx,
+        evalExpr_add_var_lit _ _ _ _ hx]
+    have hv : evalExpr (.add (.var "x") (.lit (.i32 3)))
+        [("x", .i32 x)] = .ok (.i32 t) := by
+      rw [evalExpr_add_var_lit _ _ _ _ hx, h1]
+      exact i32_map_ok t
+    have hlet := memEvalStmtFuel_let_pure F "t" (.i 32) _ _ _ _
+      (.i32 t) (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h)
+      hagree hv
+    have ht : envLookup [("t", .i32 t), ("x", .i32 x)] "t" =
+        some (.i32 t) :=
+      envExtend_hit _ _ _
+    cases h2 : checkedAddI32 t 4#32 with
+    | error e =>
+      have hme2 : memEvalExpr (.add (.var "t") (.lit (.i32 4#32)))
+          [("t", .i32 t), ("x", .i32 x)] emptyMem [] =
+          .error e := by
+        rw [memEvalExpr_add_var_lit _ _ _ _ _ _ ht, h2]
+        exact i32_map_error e
+      -- The `return_` evaluates the second add, which errors.
+      have hret : memEvalStmtFuel F
+          (.return_ (.add (.var "t") (.lit (.i32 4))))
+          [("t", .i32 t), ("x", .i32 x)] emptyMem [] =
+          .error e := by
+        cases F with
+        | zero =>
+          simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, hme2]
+        | succ n =>
+          simp [memEvalStmtFuel, memEvalStmtWith, hme2]
+      rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet, hret]
+      exact (reborrow34Fwd_err2 x t e h1 h2).symm
+    | ok r =>
+      have hme2 : memEvalExpr (.add (.var "t") (.lit (.i32 4#32)))
+          [("t", .i32 t), ("x", .i32 x)] emptyMem [] =
+          .ok (.i32 r) := by
+        rw [memEvalExpr_add_var_lit _ _ _ _ _ _ ht, h2]
+        exact i32_map_ok r
+      have hret : memEvalStmtFuel F
+          (.return_ (.add (.var "t") (.lit (.i32 4))))
+          [("t", .i32 t), ("x", .i32 x)] emptyMem [] =
+          .ok (([("t", .i32 t), ("x", .i32 x)], emptyMem, []),
+            .returned (.i32 r)) := by
+        cases F with
+        | zero =>
+          simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, hme2]
+        | succ n =>
+          simp [memEvalStmtFuel, memEvalStmtWith, hme2]
+      rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet, hret]
+      exact (reborrow34Fwd_ok x t r h1 h2).symm
+
+/-- Transfer for `reborrow34`: both sides equal the forward function. -/
+theorem memTransfer_reborrow34 (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias reborrow34Func [.i32 x]) :
+    memEvalFuncFuel F reborrow34Func [.i32 x] =
+      evalFuncFuel F reborrow34Func [.i32 x] := by
+  rw [memEvalFuncFuel_reborrow34 F x, evalFuncFuel_reborrow34 F x]
+
 /-! ## G2: writer-pair transfer (memory threaded untouched) -/
 
 /-- Memory evaluation of `wr_pair`: the body has no `Mem` ops (both

@@ -19,6 +19,7 @@ import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
 import Circe.Emit.Reborrow
+import Circe.Emit.Reborrow34
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
 import Circe.Emit.AliasCond
@@ -1941,6 +1942,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"out-of-subset: function '{raw.name}' uses 8/16-bit integers (CIRGen promotes them to `i32` via `cir.cast`: no native small-width arithmetic to model; S3b admits 64-bit loop-free widths only, see docs/SUBSET.md)"
       else if isReborrowShape raw then
         .ok { reborrowFunc with name := raw.name }
+      else if isReborrow34Shape raw then
+        .ok { reborrow34Func with name := raw.name }
       else if isSequentialReborrowShape raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' reborrows one root through two sequential writers (the L2 live ranges are disjoint in order): writer admission is deferred — mutable writers need Iris framing over `Mem` (see docs/DELIVERED.md L.)"

@@ -17,6 +17,7 @@ import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
 import Circe.Emit.Reborrow
+import Circe.Emit.Reborrow34
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
 import Circe.Emit.AliasCond
@@ -39,6 +40,7 @@ def main : IO Unit := do
   let add ← emitOrDie addFunc
   let incr ← emitOrDie incrFunc
   let reborrow ← emitOrDie reborrowFunc
+  let reborrow34 ← emitOrDie reborrow34Func
   let wrPair ← emitOrDie wrPairFunc
   let condPair ← emitOrDie condPairFunc
   let aliasCond ← emitOrDie aliasCondFunc
@@ -164,6 +166,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Add.lean" add.forward
   IO.FS.writeFile "out/Incr.lean" incr.forward
   IO.FS.writeFile "out/Reborrow.lean" reborrow.forward
+  IO.FS.writeFile "out/Reborrow34.lean" reborrow34.forward
   IO.FS.writeFile "out/WrPair.lean" wrPair.forward
   IO.FS.writeFile "out/CondPair.lean" condPair.forward
   IO.FS.writeFile "out/AliasCond.lean" aliasCond.forward
@@ -289,6 +292,7 @@ def main : IO Unit := do
   let addSpec ← specOrDie addFunc
   let incrSpec ← specOrDie incrFunc
   let reborrowSpec ← specOrDie reborrowFunc
+  let reborrow34Spec ← specOrDie reborrow34Func
   let wrPairSpec ← specOrDie wrPairFunc
   let condPairSpec ← specOrDie condPairFunc
   let aliasCondSpec ← specOrDie aliasCondFunc
@@ -414,6 +418,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/Add_Spec.lean" addSpec
   IO.FS.writeFile "out/Incr_Spec.lean" incrSpec
   IO.FS.writeFile "out/Reborrow_Spec.lean" reborrowSpec
+  IO.FS.writeFile "out/Reborrow34_Spec.lean" reborrow34Spec
   IO.FS.writeFile "out/WrPair_Spec.lean" wrPairSpec
   IO.FS.writeFile "out/CondPair_Spec.lean" condPairSpec
   IO.FS.writeFile "out/AliasCond_Spec.lean" aliasCondSpec
