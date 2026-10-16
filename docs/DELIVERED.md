@@ -1177,3 +1177,71 @@ block (no side cell); invariant carries the evolving prefix
 8 closed-instance jobs (`[1,2,3]` gives `[2,3,4]`).
 - Acceptance: Hoare files warning-free, galleries sorry-free,
 658 jobs TEST-OK (`HOAREGALLERY-OK passed=8`).
+
+### Iris spike report — DONE (2026-10-12, report only, no migration)
+
+Time-boxed evaluation of `iris-lean` for heap reasoning: no
+`validate`/`Emit`/transfer churn, no vendored dependency (pin
+mismatch — `iris-lean` at `lean4:v4.21.0` vs our `v4.34.0` —
+plus a moving `Qq`). Scope is the MoSeL proof interface only;
+even vendored it yields BI/separation-logic tactics, not Iris
+program logic. It replaces neither the oracle (M3b verdicts stay
+a checked cache) nor the `Mem` tags (disjoint-by-construction +
+single-`&mut` containment transfers stand). Verdict: no
+migration. Residue routing from the A-track probe (12 rows, zero
+false-accepts): conditionally-live writers (`alias_cond`) are the
+one case needing framing beyond equational specs (first concrete
+Iris-spike input); sequential reborrows want an L-track consumer;
+`noalias` reader pairs, closed two-alloca shapes, and free
+single-`&mut` writers are shape admissions. Revisit trigger: a
+slice admitting `alias_cond`-class framing (needs lifetime
+evidence too — framing without live-range facts has nothing to
+attach to).
+
+### L. Lifetime-relevant evidence (extract-only) — DONE (2026-10-04..12)
+
+Raw CIRGen carries no lifetime markers, so this track extracts
+lexical lifetime evidence with golden pins and wires no
+consumers (`validate`/`Emit`/transfer untouched throughout).
+L1 (2026-10-04): per-function scope/alloca tree (`extractScopes`:
+brace-depth fold, alloca birth depths, loud imbalance);
+`ScopeReport` pins every corpus definition's locals and live
+ranges. L2 (2026-10-12): per-local `(first-use, last-use)` facts
+(region-aware SSA matching, load-copy chains only); proved
+first-use ≤ last-use within the function extent. Its follow-up
+admission predicate (`hasSequentialWriterRanges` → deferred
+"sequential writers" recognition in `validate`, nothing
+admitted) is the F1/N11 license input. L3 (2026-10-12): slot
+content-roots (`ultimateRoot` address-identity claims, both ends
+`Ref`, fuel-stable); `alias_reborrow` shares one address (F1
+sequencing license in waiting), `alias_cond` names different
+addresses (caller-dependent footprints confirmed textually).
+Known limits (sound direction, all admit less): first-init wins,
+value inits and copy ambiguity report `Unknown`.
+
+### F2. Native conditional framing — DONE (2026-10-12, report-only)
+
+The MoSeL question answered with evidence: `Circe/CondFrame.lean`
+proves the `alias_cond` disjunctive post natively over `Mem`
+(per-arm frame via `memFind_memStore_other` on the F0 addresses;
+both disjoint and aliased splits proved). Burden is small (two
+helpers + two posts), so MoSeL vendoring stays DEFERRED —
+revisit on a second conditional shape or a `Mem`-level write
+need. Full admission was blocked on two model gaps: triple
+outputs (B1) and scalar `Mem` writes (B2); the S1–S3/G2–G3
+slices lifted both (generalized struct construction +
+`mstore`/`mload` + verdict-independent gate + open contract).
+
+### S0–S4 + G1 dispositions — DONE (2026-10-12..14)
+
+Report/model-only spikes with no admission churn: S0 (verdict GO
+on a `Mem`-space open contract for the cond body — artifact
+decision: open contract, not OpenFunc); G1 (model-only `CExpr.pair`
+carrier, fixed 2×i32); S1 (`mstore` + `mload`, pure-side
+`AssertFail` by design); S2 (opt-in `pinnedCell` pinning,
+disjoint-pair entry); S3 (verdict-independent gate arm + 4-leg
+transfer + `_spec` render); S4 (byte-identical goldens, gate +
+golden + tamper-checked diff suites + docs). The functionalized
+pipeline (scalar mutation as value-in/value-out + gate-side
+L2/F0 licenses, F1-style) sidesteps Iris-style framing for
+scalars entirely.
