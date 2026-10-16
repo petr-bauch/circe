@@ -1254,6 +1254,30 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Validator/Shapes.lean", "def isVecMergeIntoShape"),
      ("out/VecMergeInto.lean", "_Z14vec_merge_intoRKSt6vectorIiSaIiEES3_RS1__fwd"),
      ("tests/golden/VecMergeInto.lean", "_Z14vec_merge_intoRKSt6vectorIiSaIiEES3_RS1__fwd")]),
+   ("vec-merge-sort",
+    [("Circe/Emit/VecMergeRuns.lean", "theorem evalProgFunc_mergeRuns"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsMain_ok"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsMain_err"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsDrainI_ok"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsDrainI_err"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsDrainJ_ok"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsDrainJ_err"),
+     ("Circe/Emit/VecMergeRuns.lean", "theorem mergeRunsFwd_length"),
+     ("Circe/Emit/VecMergeSort.lean", "theorem evalProgFunc_vecMergeSort"),
+     ("Circe/Emit/VecMergeSort.lean", "theorem sortSeg_ok"),
+     ("Circe/Emit/VecMergeSort.lean", "theorem sortSeg_err"),
+     ("Circe/Emit/VecMergeSort.lean", "theorem sortOuter_ok"),
+     ("Circe/Emit/VecMergeSort.lean", "theorem sortOuter_err"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_mergeRuns"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecMergeSort"),
+     ("Circe/Emit/Render.lean", "def emitVecMergeRunsText"),
+     ("Circe/Emit/Render.lean", "def emitVecMergeSortText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecMergeRunsSpecText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecMergeSortSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isVecMergeRunsShape"),
+     ("Circe/Validator/Shapes.lean", "def isVecMergeSortShape"),
+     ("Circe/Validator/Gate.lean", "isVecMergeRunsShape raw"),
+     ("Circe/Validator/Gate.lean", "isVecMergeSortShape raw")]),
    ("f1-reborrow",
     [("Circe/Emit/Reborrow.lean", "theorem evalFuncFuel_reborrow"),
      ("Circe/Emit/Reborrow.lean", "theorem reborrowFwd_ok"),
@@ -1540,8 +1564,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 123 then
-    throw (IO.userError s!"expected 123 spec stubs, found {stubs.length}")
+  if stubs.length != 125 then
+    throw (IO.userError s!"expected 125 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)

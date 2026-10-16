@@ -725,9 +725,74 @@ theorem stdVecShiftDownFwd_ok (b : Vec32) (len cap : Nat)
       stdVecBlitFwdFold_live_of_live _ _ _ _ _ _ hlive hbl,
       stdVecBlitFwdFold_length _ _ _ _ _ _ hbl⟩
 
+/-- The call-free shift loop evaluates identically under the program
+    evaluator (fuel induction generalizing the environment; the
+    loop-free body agrees by unfolding, the re-entry by IH). -/
+theorem evalProgStmt_stdVecShiftDownWhile (F' : Nat) (ρ : Env) :
+    evalProgStmt vecGrowProg F' stdVecShiftDownWhile ρ =
+      evalStmtFuel F' stdVecShiftDownWhile ρ := by
+  induction F' generalizing ρ with
+  | zero =>
+    simp only [evalProgStmt, stdVecShiftDownWhile, evalStmtFuel,
+      evalStmtZero, evalStmtWith]
+  | succ n ih =>
+    have hW : stdVecShiftDownWhile =
+        .while_ (.ult (.var "k") (.var "n")) stdVecShiftDownBody := rfl
+    have hbody : ∀ (m : Nat) (ρ : Env),
+        evalProgStmt vecGrowProg m stdVecShiftDownBody ρ =
+          evalStmtFuel m stdVecShiftDownBody ρ := by
+      intro m ρ
+      have hsplit : stdVecShiftDownBody =
+          (.seq (.vgrowSet "t" (.uadd (.var "result") (.var "k"))
+              (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
+            (.assign "k" (.uadd (.var "k")
+              (.lit (.u64 (BitVec.ofNat 64 1)))))) := rfl
+      rw [hsplit]
+      cases m with
+      | zero =>
+        simp only [evalProgStmt, evalStmtFuel, evalStmtZero,
+          evalStmtWith]
+      | succ k =>
+        simp only [evalProgStmt, evalStmtFuel, evalStmtWith]
+    by_cases hT : evalExpr (.ult (.var "k") (.var "n")) ρ =
+        .ok (.b true)
+    · have hL := evalProgStmt_while_true vecGrowProg n _ stdVecShiftDownBody
+        _ hT
+      rw [hW, hL, hbody n ρ]
+      simp only [evalStmtFuel, evalStmtSuccHandler, evalStmtWith, hT]
+      cases hfb : evalStmtFuel n stdVecShiftDownBody ρ with
+      | error e => rfl
+      | ok res =>
+        cases res with
+        | mk env oc =>
+          cases oc with
+          | returned v => rfl
+          | broke => rfl
+          | continued => rw [← hW]; exact ih env
+          | fellThrough => rw [← hW]; exact ih env
+    · by_cases hF : evalExpr (.ult (.var "k") (.var "n")) ρ =
+          .ok (.b false)
+      · rw [hW, evalProgStmt_while_false vecGrowProg (n + 1) _
+          stdVecShiftDownBody _ hF]
+        simp only [evalStmtFuel, evalStmtSuccHandler, evalStmtWith, hF]
+      · match he : evalExpr (.ult (.var "k") (.var "n")) ρ with
+        | .error err =>
+          rw [hW,
+            evalProgStmt_while_guard_err vecGrowProg (n + 1) _ _ _ _ he]
+          simp only [evalStmtFuel, evalStmtSuccHandler, evalStmtWith, he]
+        | .ok v =>
+          have ht : v ≠ .b true := by
+            intro hc; apply hT; rw [he, hc]
+          have hf : v ≠ .b false := by
+            intro hc; apply hF; rw [he, hc]
+          rw [hW,
+            evalProgStmt_while_notbool vecGrowProg n _
+              stdVecShiftDownBody _ _ he ht hf,
+            evalStmtFuel_while_notbool n _ _ _ _ he ht hf]
+
 /-- The call-free shift body evaluates identically under the program
-    evaluator (every statement hits the `evalStmtFuel` fallback arm,
-    so `callProg` into the leaf agrees with `evalFuncFuel`). -/
+    evaluator (lets + return delegate identically; the loop agrees by
+    the loop-level induction above). -/
 theorem evalProgStmt_stdVecShiftDownBody (F' : Nat) (ρ : Env) :
     evalProgStmt vecGrowProg F' stdVecShiftDownFunc.body ρ =
       evalStmtFuel F' stdVecShiftDownFunc.body ρ := by
@@ -743,8 +808,8 @@ theorem evalProgStmt_stdVecShiftDownBody (F' : Nat) (ρ : Env) :
     simp only [evalProgStmt, stdVecShiftDownWhile, evalStmtFuel,
       evalStmtZero, evalStmtWith]
   | succ n =>
-    simp only [evalProgStmt, stdVecShiftDownWhile, evalStmtFuel,
-      evalStmtWith]
+    simp only [evalProgStmt, evalStmtFuel, evalStmtWith,
+      evalProgStmt_stdVecShiftDownWhile]
 
 /-- `ofNat` survives decrementing a positive small length
     (composer-local twin of `ofNat_sub_one` in `Insert.lean`, kept

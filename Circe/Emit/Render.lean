@@ -815,6 +815,75 @@ def emitVecMergeIntoText (name : String) : String :=
   ++ "        | none => .error .AssertFail\n"
   ++ "    else .ok (j, k, lo)\n"
 
+/-- Render the `merge_runs` ranged callee forward definition: the
+    in-place segment merge over the reified words (`a[lo,mid)` and
+    `a[mid,hi)` merged into `tmp[lo,hi)`; short `tmp` aborts loudly). -/
+def emitVecMergeRunsText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (ranged two-pointer merge over the reified words; short `tmp` aborts). -/\n"
+  ++ s!"def {name}_fwd (la lt : List (BitVec 32)) (lo mid hi : Nat) : Result (List (BitVec 32)) :=\n"
+  ++ "  match main la lt lt ((mid - lo) + (hi - lo)) lo mid lo with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (i, j, k, lt') =>\n"
+  ++ "    match drainI la lt' (mid - i) i k with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, k', lt'') =>\n"
+  ++ "      match drainJ la lt'' (hi - j) j k' with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok (_, _, lt''') => .ok lt'''\n"
+  ++ "where\n"
+  ++ "  main (la lt : List (BitVec 32)) : List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32))\n"
+  ++ "  | acc, 0, i, j, k => .ok (i, j, k, acc)\n"
+  ++ "  | acc, fuel + 1, i, j, k =>\n"
+  ++ "    if i < mid then\n"
+  ++ "      if j < hi then\n"
+  ++ "        match acc[k]? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some _ =>\n"
+  ++ "          match la[i]?, la[j]? with\n"
+  ++ "          | some x, some y =>\n"
+  ++ "            if x.slt y then main la lt (acc.set k x) fuel (i + 1) j (k + 1)\n"
+  ++ "            else main la lt (acc.set k y) fuel i (j + 1) (k + 1)\n"
+  ++ "          | _, _ => .error .AssertFail\n"
+  ++ "      else .ok (i, j, k, acc)\n"
+  ++ "    else .ok (i, j, k, acc)\n"
+  ++ "  drainI (la : List (BitVec 32)) : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | acc, 0, i, k => .ok (i, k, acc)\n"
+  ++ "  | acc, fuel + 1, i, k =>\n"
+  ++ "    if i < mid then\n"
+  ++ "      match acc[k]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some _ =>\n"
+  ++ "        match la[i]? with\n"
+  ++ "        | some x => drainI la (acc.set k x) fuel (i + 1) (k + 1)\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "    else .ok (i, k, acc)\n"
+  ++ "  drainJ (la : List (BitVec 32)) : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | acc, 0, j, k => .ok (j, k, acc)\n"
+  ++ "  | acc, fuel + 1, j, k =>\n"
+  ++ "    if j < hi then\n"
+  ++ "      match acc[k]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some _ =>\n"
+  ++ "        match la[j]? with\n"
+  ++ "        | some x => drainJ la (acc.set k x) fuel (j + 1) (k + 1)\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "    else .ok (j, k, acc)\n"
+
+/-- Render the `vec_merge_sort` entry forward definition: bottom-up
+    merge sort over the reified words (width-doubling passes merge
+    segments through the ranged callee, copying back each pass; the
+    segment merges run the proved ranged callee, so the rendering
+    delegates to the verified forward function like the composer
+    forwarders). -/
+def emitVecMergeSortText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecMergeRuns\nimport Circe.Emit.VecMergeSort\n\n"
+  ++ s!"/-- Pure translation of `{name}` (bottom-up merge sort; passes double `width` until it covers `n`). -/\n"
+  ++ s!"def {name}_fwd (la lt : List (BitVec 32)) (F : Nat) : Result Value :=\n"
+  ++ "  VecMergeSort.vecMergeSortFwd la lt F\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

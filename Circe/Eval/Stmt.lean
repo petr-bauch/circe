@@ -736,6 +736,27 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
     | .ok (.b true) => evalProgStmt prog fuel t ρ
     | .ok (.b false) => evalProgStmt prog fuel e ρ
     | _ => .error .AssertFail
+  | .while_ c b, ρ =>
+    -- Program-threading loop (C1): the body runs under the program
+    -- evaluator at predecessor fuel, so `.callProg` (and `.callRet`)
+    -- inside loop bodies resolves against `prog` instead of failing
+    -- loudly. Zero fuel delegates to the old call-free evaluator
+    -- (zero fuel stays loud). Fuel is the loop budget as before:
+    -- every recursive call steps it down.
+    match fuel with
+    | 0 => evalStmtFuel 0 (.while_ c b) ρ
+    | f + 1 =>
+      match evalExpr c ρ with
+      | .error err => .error err
+      | .ok (.b false) => .ok (ρ, .fellThrough)
+      | .ok (.b true) =>
+        match evalProgStmt prog f b ρ with
+        | .error e => .error e
+        | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+        | .ok (ρ', .broke) => .ok (ρ', .fellThrough)
+        | .ok (ρ', .continued) => evalProgStmt prog f (.while_ c b) ρ'
+        | .ok (ρ', .fellThrough) => evalProgStmt prog f (.while_ c b) ρ'
+      | .ok _ => .error .AssertFail
   | s, ρ => evalStmtFuel fuel s ρ
   termination_by s _ => (fuel, 0, s)
 
@@ -989,3 +1010,57 @@ theorem evalProgStmt_cleanup (prog : Prog) (fuel : Nat) (body : CStmt)
     evalProgStmt prog fuel (.cleanup body) ρ =
       evalProgStmt prog fuel body ρ := by
   simp only [evalProgStmt]
+
+/-- `while_` with a false guard exits immediately at program level
+    (any fuel; zero fuel delegates to the old evaluator). -/
+theorem evalProgStmt_while_false (prog : Prog) (fuel : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b false)) :
+    evalProgStmt prog fuel (.while_ c b) ρ =
+      .ok (ρ, .fellThrough) := by
+  cases fuel with
+  | zero =>
+    simp [evalProgStmt, evalStmtFuel, evalStmtZero, evalStmtWith,
+      evalStmtZeroHandler, h]
+  | succ f => simp [evalProgStmt, h]
+
+/-- `while_` with an erroring guard aborts at program level. -/
+theorem evalProgStmt_while_guard_err (prog : Prog) (fuel : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (err : Panic)
+    (h : evalExpr c ρ = .error err) :
+    evalProgStmt prog fuel (.while_ c b) ρ = .error err := by
+  cases fuel with
+  | zero =>
+    simp [evalProgStmt, evalStmtFuel, evalStmtZero, evalStmtWith,
+      evalStmtZeroHandler, h]
+  | succ f => simp [evalProgStmt, h]
+
+/-- `while_` with a true guard runs one body iteration at program
+    level (loop unrolling at predecessor fuel; concrete inductions
+    close each unrolled step against their forward models). -/
+theorem evalProgStmt_while_true (prog : Prog) (f : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env)
+    (h : evalExpr c ρ = .ok (.b true)) :
+    evalProgStmt prog (f + 1) (.while_ c b) ρ =
+      match evalProgStmt prog f b ρ with
+      | .error e => .error e
+      | .ok (ρ', .returned v) => .ok (ρ', .returned v)
+      | .ok (ρ', .broke) => .ok (ρ', .fellThrough)
+      | .ok (ρ', .continued) => evalProgStmt prog f (.while_ c b) ρ'
+      | .ok (ρ', .fellThrough) => evalProgStmt prog f (.while_ c b) ρ' := by
+  simp [evalProgStmt, h]
+
+/-- `while_` with a non-boolean guard value aborts at call-free
+    level (the guard-position catch-all). -/
+theorem evalStmtFuel_while_notbool (f : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (v : Value)
+    (h : evalExpr c ρ = .ok v) (ht : v ≠ .b true) (hf : v ≠ .b false) :
+    evalStmtFuel (f + 1) (.while_ c b) ρ = .error .AssertFail := by
+  simp only [evalStmtFuel, evalStmtSuccHandler, evalStmtWith, h]
+
+/-- `while_` with a non-boolean guard value aborts at program level. -/
+theorem evalProgStmt_while_notbool (prog : Prog) (f : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (v : Value)
+    (h : evalExpr c ρ = .ok v) (ht : v ≠ .b true) (hf : v ≠ .b false) :
+    evalProgStmt prog (f + 1) (.while_ c b) ρ = .error .AssertFail := by
+  simp only [evalProgStmt, h]

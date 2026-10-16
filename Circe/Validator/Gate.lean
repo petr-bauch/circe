@@ -16,6 +16,8 @@ import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecMergeInto
+import Circe.Emit.VecMergeRuns
+import Circe.Emit.VecMergeSort
 import Circe.Emit.Reborrow
 import Circe.Emit.WrPair
 import Circe.Emit.CondPair
@@ -1756,6 +1758,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecAtFunc with name := raw.name }
       else if isVecMergeIntoShape raw then
         .ok { vecMergeIntoFunc with name := raw.name }
+      else if isVecMergeRunsShape raw then
+        .ok { VecMergeRuns.mergeRunsFunc with name := raw.name }
+      else if isVecMergeSortShape raw then
+        .ok { VecMergeSort.vecMergeSortFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then

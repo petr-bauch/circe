@@ -10,6 +10,7 @@ import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecMergeInto
+import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecCompose
 import Circe.Validator.Features
 
@@ -1585,3 +1586,96 @@ def isVecMergeIntoShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+
+/-- `merge_runs` ranged-callee shape (C2): shared-borrow vector +
+    mutable-borrow temp + three `u64` bounds in, `void` out, exactly
+    ten calls (six const `at()` + four mut `at()`), three `cir.while`
+    (main + two drains), one `cir.ternary` (the short-circuit `&&`),
+    five `lt` compares (four bound checks + one signed head compare),
+    one `cir.if`. Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls — all element traffic goes through
+    `at()`; no recursion, no allocation, no `unreachable`. The callee
+    twin of the kernel shape (same counts, different guard
+    variables). -/
+def isVecMergeRunsShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, tmp, lo, mid, hi] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType tmp.ctype && tmp.singleRef &&
+      isStdVectorType tmp.ctype &&
+    !isPtrType lo.ctype && isU64 lo.ctype &&
+    !isPtrType mid.ctype && isU64 mid.ctype &&
+    !isPtrType hi.ctype && isU64 hi.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 10 &&
+    opCount raw.text "cir.while" == 3 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 5 &&
+    opCount raw.text "cir.cmp lt" == 5 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.const" == 15 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 8 &&
+    opCount raw.text "cir.load" == 44 &&
+    opCount raw.text "cir.store" == 19 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- `vec_merge_sort` entry shape (C2): two mutable-borrow vectors
+    (`a` sorted in place through pre-sized `tmp`) in, `void` out,
+    exactly four calls (one `size`, one ranged `merge_runs`, two mut
+    `at()` for the copy-back), three `cir.while` (outer pass loop +
+    segment loop + copy-back loop), five `lt` compares, two `cir.if`
+    (the width clamps). No ternary (segment dispatch is by `if`, not
+    `&&`). Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls; no recursion (bottom-up passes),
+    no allocation, no `unreachable`. First shape whose loop bodies
+    contain calls. -/
+def isVecMergeSortShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, tmp] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType tmp.ctype && tmp.singleRef &&
+      isStdVectorType tmp.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtMutName &&
+    callsFunc raw.text VecMergeRuns.mergeRunsName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.while" == 3 &&
+    opCount raw.text "cir.cmp" == 5 &&
+    opCount raw.text "cir.cmp lt" == 5 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.const" == 6 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 8 &&
+    opCount raw.text "cir.load" == 35 &&
+    opCount raw.text "cir.store" == 14 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false

@@ -17,6 +17,8 @@ import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecMergeInto
+import Circe.Emit.VecMergeRuns
+import Circe.Emit.VecMergeSort
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -864,6 +866,62 @@ def matchFrag : Func → Option FragKind
                                           (.assign "k" (.uadd (.var "k") (.lit (.u64 v8)))))))
                         (.return_ (.var "out"))))))))⟩ =>
     some .vecMergeInto
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
+        ⟨"tmp", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
+        ⟨"lo", .u 64, .owned⟩,
+        ⟨"mid", .u 64, .owned⟩,
+        ⟨"hi", .u 64, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+           (.seq (.let_ "i" (.u 64) (.var "lo")) (.seq (.let_ "j" (.u 64) (.var "mid")) (.seq (.let_
+      "k" (.u 64) (.var "lo")) (.seq (.while_ (.tif (.ult (.var "i") (.var "mid")) (.ult (.var "j")
+      (.var "hi")) (.lit (.b false))) (.if_ (.slt (.stdVecAt "a" (.var "i")) (.stdVecAt "a" (.var
+      "j"))) (.seq (.if_ (.ult (.var "k") (.stdVecLen "tmp")) (.vecSet "tmp" (.var "k") (.stdVecAt
+      "a" (.var "i"))) .fail) (.seq (.assign "i" (.uadd (.var "i") (.lit (.u64 w0)))) (.assign "k"
+      (.uadd (.var "k") (.lit (.u64 w1)))))) (.seq (.if_ (.ult (.var "k") (.stdVecLen "tmp"))
+      (.vecSet "tmp" (.var "k") (.stdVecAt "a" (.var "j"))) .fail) (.seq (.assign "j" (.uadd (.var
+      "j") (.lit (.u64 w2)))) (.assign "k" (.uadd (.var "k") (.lit (.u64 w3)))))))) (.seq (.while_
+      (.ult (.var "i") (.var "mid")) (.seq (.if_ (.ult (.var "k") (.stdVecLen "tmp")) (.vecSet "tmp"
+      (.var "k") (.stdVecAt "a" (.var "i"))) .fail) (.seq (.assign "i" (.uadd (.var "i") (.lit (.u64
+      w4)))) (.assign "k" (.uadd (.var "k") (.lit (.u64 w5))))))) (.seq (.while_ (.ult (.var "j")
+      (.var "hi")) (.seq (.if_ (.ult (.var "k") (.stdVecLen "tmp")) (.vecSet "tmp" (.var "k")
+      (.stdVecAt "a" (.var "j"))) .fail) (.seq (.assign "j" (.uadd (.var "j") (.lit (.u64 w6))))
+      (.assign "k" (.uadd (.var "k") (.lit (.u64 w7))))))) (.return_ (.var "tmp"))))))))⟩ =>
+    if w0 == BitVec.ofNat 64 1 &&
+        w1 == BitVec.ofNat 64 1 &&
+        w2 == BitVec.ofNat 64 1 &&
+        w3 == BitVec.ofNat 64 1 &&
+        w4 == BitVec.ofNat 64 1 &&
+        w5 == BitVec.ofNat 64 1 &&
+        w6 == BitVec.ofNat 64 1 &&
+        w7 == BitVec.ofNat 64 1 then
+      some .vecMergeRuns
+    else none
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
+        ⟨"tmp", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+           (.seq (.let_ "n" (.u 64) (.stdVecLen "a")) (.seq (.let_ "width" (.u 64) (.lit (.u64 w0)))
+      (.seq (.let_ "lo" (.u 64) (.lit (.u64 w1))) (.seq (.let_ "mid" (.u 64) (.lit (.u64 w2))) (.seq
+      (.let_ "hi" (.u 64) (.lit (.u64 w3))) (.seq (.let_ "t" (.u 64) (.lit (.u64 w4))) (.seq
+      (.while_ (.ult (.var "width") (.var "n")) (.seq (.assign "lo" (.lit (.u64 w5))) (.seq (.while_
+      (.ult (.var "lo") (.var "n")) (.seq (.assign "mid" (.uadd (.var "lo") (.var "width"))) (.seq
+      (.if_ (.ult (.var "n") (.var "mid")) (.assign "mid" (.var "n")) .skip) (.seq (.assign "hi"
+      (.uadd (.uadd (.var "lo") (.var "width")) (.var "width"))) (.seq (.if_ (.ult (.var "n") (.var
+      "hi")) (.assign "hi" (.var "n")) .skip) (.seq (.callProg "tmp"
+      "_Z10merge_runsRKSt6vectorIiSaIiEERS1_mmm" ["a", "tmp", "lo", "mid", "hi"]) (.seq (.assign "t"
+      (.var "lo")) (.seq (.while_ (.ult (.var "t") (.var "hi")) (.seq (.if_ (.ult (.var "t")
+      (.stdVecLen "tmp")) (.vecSet "a" (.var "t") (.stdVecAt "tmp" (.var "t"))) .fail) (.assign "t"
+      (.uadd (.var "t") (.lit (.u64 w6)))))) (.assign "lo" (.uadd (.uadd (.var "lo") (.var "width"))
+      (.var "width"))))))))))) (.assign "width" (.uadd (.var "width") (.var "width")))))) (.return_
+      (.var "a")))))))))⟩ =>
+    if w0 == BitVec.ofNat 64 1 &&
+        w1 == BitVec.ofNat 64 0 &&
+        w2 == BitVec.ofNat 64 0 &&
+        w3 == BitVec.ofNat 64 0 &&
+        w4 == BitVec.ofNat 64 0 &&
+        w5 == BitVec.ofNat 64 0 &&
+        w6 == BitVec.ofNat 64 1 then
+      some .vecMergeSort
+    else none
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
@@ -1438,6 +1496,10 @@ theorem matchFrag_vecAtSet :
     matchFrag vecAtSetFunc = some .vecAtSet := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
+theorem matchFrag_mergeRuns :
+    matchFrag VecMergeRuns.mergeRunsFunc = some .vecMergeRuns := rfl
+theorem matchFrag_vecMergeSort :
+    matchFrag VecMergeSort.vecMergeSortFunc = some .vecMergeSort := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

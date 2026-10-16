@@ -1894,6 +1894,27 @@ def memEvalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Mem → Layou
     | .ok (.b true) => memEvalProgStmt prog fuel t ρ m π
     | .ok (.b false) => memEvalProgStmt prog fuel e ρ m π
     | _ => .error .AssertFail
+  | .while_ c b, ρ, m, π =>
+    -- Program-threading loop on the memory layer too (C1 mirror of
+    -- the `evalProgStmt` arm): the body runs under
+    -- `memEvalProgStmt` at predecessor fuel; zero fuel delegates to
+    -- the old call-free evaluator.
+    match fuel with
+    | 0 => memEvalStmtFuel 0 (.while_ c b) ρ m π
+    | f + 1 =>
+      match memEvalExpr c ρ m π with
+      | .error err => .error err
+      | .ok (.b false) => .ok ((ρ, m, π), .fellThrough)
+      | .ok (.b true) =>
+        match memEvalProgStmt prog f b ρ m π with
+        | .error e => .error e
+        | .ok ((ρ', m', π'), .returned v) => .ok ((ρ', m', π'), .returned v)
+        | .ok ((ρ', m', π'), .broke) => .ok ((ρ', m', π'), .fellThrough)
+        | .ok ((ρ', m', π'), .continued) =>
+          memEvalProgStmt prog f (.while_ c b) ρ' m' π'
+        | .ok ((ρ', m', π'), .fellThrough) =>
+          memEvalProgStmt prog f (.while_ c b) ρ' m' π'
+      | .ok _ => .error .AssertFail
   | s, ρ, m, π => memEvalStmtFuel fuel s ρ m π
   termination_by s _ _ _ => (fuel, 0, s)
 
@@ -1921,6 +1942,71 @@ theorem memEvalProgStmt_cleanup (prog : Prog) (fuel : Nat) (body : CStmt)
     memEvalProgStmt prog fuel (.cleanup body) ρ m π =
       memEvalProgStmt prog fuel body ρ m π := by
   simp only [memEvalProgStmt]
+
+/-- `while_` with a false guard exits immediately at program level on
+    the memory layer (mirrors `evalProgStmt_while_false`). -/
+theorem memEvalProgStmt_while_false (prog : Prog) (fuel : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b false)) :
+    memEvalProgStmt prog fuel (.while_ c b) ρ m π =
+      .ok ((ρ, m, π), .fellThrough) := by
+  cases fuel with
+  | zero =>
+    simp [memEvalProgStmt, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtWith, memEvalStmtZeroHandler, h]
+  | succ f => simp [memEvalProgStmt, h]
+
+/-- `while_` with an erroring guard aborts at program level on the
+    memory layer. -/
+theorem memEvalProgStmt_while_guard_err (prog : Prog) (fuel : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (err : Panic)
+    (h : memEvalExpr c ρ m π = .error err) :
+    memEvalProgStmt prog fuel (.while_ c b) ρ m π = .error err := by
+  cases fuel with
+  | zero =>
+    simp [memEvalProgStmt, memEvalStmtFuel, memEvalStmtZero,
+      memEvalStmtWith, memEvalStmtZeroHandler, h]
+  | succ f => simp [memEvalProgStmt, h]
+
+/-- `while_` with a true guard runs one body iteration at program
+    level on the memory layer (mirrors
+    `evalProgStmt_while_true`). -/
+theorem memEvalProgStmt_while_true (prog : Prog) (f : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (h : memEvalExpr c ρ m π = .ok (.b true)) :
+    memEvalProgStmt prog (f + 1) (.while_ c b) ρ m π =
+      match memEvalProgStmt prog f b ρ m π with
+      | .error e => .error e
+      | .ok ((ρ', m', π'), .returned v) => .ok ((ρ', m', π'), .returned v)
+      | .ok ((ρ', m', π'), .broke) => .ok ((ρ', m', π'), .fellThrough)
+      | .ok ((ρ', m', π'), .continued) =>
+        memEvalProgStmt prog f (.while_ c b) ρ' m' π'
+      | .ok ((ρ', m', π'), .fellThrough) =>
+        memEvalProgStmt prog f (.while_ c b) ρ' m' π' := by
+  simp [memEvalProgStmt, h]
+
+/-- `while_` with a non-boolean guard value aborts at call-free
+    level on the memory layer (the guard-position catch-all). -/
+theorem memEvalStmtFuel_while_notbool (f : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (v : Value)
+    (h : memEvalExpr c ρ m π = .ok v)
+    (ht : v ≠ .b true) (hf : v ≠ .b false) :
+    memEvalStmtFuel (f + 1) (.while_ c b) ρ m π =
+      .error .AssertFail := by
+  simp only [memEvalStmtFuel, memEvalSuccHandler, memEvalStmtWith, h]
+
+/-- `while_` with a non-boolean guard value aborts at program level
+    on the memory layer. -/
+theorem memEvalProgStmt_while_notbool (prog : Prog) (f : Nat)
+    (c : CExpr) (b : CStmt) (ρ : Env) (m : Mem) (π : Layout)
+    (v : Value)
+    (h : memEvalExpr c ρ m π = .ok v)
+    (ht : v ≠ .b true) (hf : v ≠ .b false) :
+    memEvalProgStmt prog (f + 1) (.while_ c b) ρ m π =
+      .error .AssertFail := by
+  simp only [memEvalProgStmt, h]
 
 /-- Prog-level `let_` runs the call-free memory evaluator (the fallback
     arm of `memEvalProgStmt`; cf. `memEvalProgStmt_return` delegating to

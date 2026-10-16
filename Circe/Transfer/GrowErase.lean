@@ -820,10 +820,84 @@ theorem memTransfer_stdVecShiftDown (F : Nat) (b : Vec32)
 
 /-! ## N7d `_M_erase`: composer transfer -/
 
+/-- The call-free shift loop evaluates identically under the program
+    memory evaluator (fuel induction generalizing environment and
+    memory; the loop-free body agrees by unfolding, the re-entry by
+    IH). -/
+theorem memEvalProgStmt_stdVecShiftDownWhile (F' : Nat) (ρ : Env)
+    (m : Mem) (π : Layout) :
+    memEvalProgStmt vecGrowProg F' stdVecShiftDownWhile ρ m π =
+      memEvalStmtFuel F' stdVecShiftDownWhile ρ m π := by
+  induction F' generalizing ρ m π with
+  | zero =>
+    simp only [memEvalProgStmt, stdVecShiftDownWhile,
+      memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
+  | succ n ih =>
+    have hW : stdVecShiftDownWhile =
+        .while_ (.ult (.var "k") (.var "n")) stdVecShiftDownBody := rfl
+    have hbody : ∀ (k : Nat) (ρ : Env) (m : Mem) (π : Layout),
+        memEvalProgStmt vecGrowProg k stdVecShiftDownBody ρ m π =
+          memEvalStmtFuel k stdVecShiftDownBody ρ m π := by
+      intro k ρ m π
+      have hsplit : stdVecShiftDownBody =
+          (.seq (.vgrowSet "t" (.uadd (.var "result") (.var "k"))
+              (.vgrowAt "t" (.uadd (.var "first") (.var "k"))))
+            (.assign "k" (.uadd (.var "k")
+              (.lit (.u64 (BitVec.ofNat 64 1)))))) := rfl
+      rw [hsplit]
+      cases k with
+      | zero =>
+        simp only [memEvalProgStmt, memEvalStmtFuel, memEvalStmtZero,
+          memEvalStmtWith]
+      | succ j =>
+        simp only [memEvalProgStmt, memEvalStmtFuel, memEvalStmtWith]
+    by_cases hT : memEvalExpr (.ult (.var "k") (.var "n")) ρ m π =
+        .ok (.b true)
+    · have hL := memEvalProgStmt_while_true vecGrowProg n _
+        stdVecShiftDownBody _ _ _ hT
+      rw [hW, hL, hbody n ρ m π]
+      simp only [memEvalStmtFuel, memEvalSuccHandler, memEvalStmtWith,
+        hT]
+      cases hfb : memEvalStmtFuel n stdVecShiftDownBody ρ m π with
+      | error e => rfl
+      | ok res =>
+        cases res with
+        | mk st oc =>
+          cases oc with
+          | returned v => rfl
+          | broke => rfl
+          | continued =>
+            obtain ⟨ρ', m', π'⟩ := st
+            rw [← hW]; exact ih ρ' m' π'
+          | fellThrough =>
+            obtain ⟨ρ', m', π'⟩ := st
+            rw [← hW]; exact ih ρ' m' π'
+    · by_cases hF : memEvalExpr (.ult (.var "k") (.var "n")) ρ m π =
+          .ok (.b false)
+      · rw [hW, memEvalProgStmt_while_false vecGrowProg (n + 1) _
+          stdVecShiftDownBody _ _ _ hF]
+        simp only [memEvalStmtFuel, memEvalSuccHandler, memEvalStmtWith,
+          hF]
+      · match he : memEvalExpr (.ult (.var "k") (.var "n")) ρ m π with
+        | .error err =>
+          rw [hW,
+            memEvalProgStmt_while_guard_err vecGrowProg (n + 1) _ _ _ _ _
+              _ he]
+          simp only [memEvalStmtFuel, memEvalSuccHandler, memEvalStmtWith,
+            he]
+        | .ok v =>
+          have ht : v ≠ .b true := by
+            intro hc; apply hT; rw [he, hc]
+          have hf : v ≠ .b false := by
+            intro hc; apply hF; rw [he, hc]
+          rw [hW,
+            memEvalProgStmt_while_notbool vecGrowProg n _
+              stdVecShiftDownBody _ _ _ _ he ht hf,
+            memEvalStmtFuel_while_notbool n _ _ _ _ _ _ he ht hf]
+
 /-- The call-free shift body evaluates identically under the program
-    memory evaluator (mirrors `evalProgStmt_stdVecShiftDownBody`; every
-    statement hits the fallback arm, so `callProg` into the leaf
-    agrees with `memEvalFuncFuel`). -/
+    memory evaluator (lets + return delegate identically; the loop
+    agrees by the loop-level induction above). -/
 theorem memEvalProgStmt_stdVecShiftDownBody (F' : Nat) (ρ : Env)
     (m : Mem) (π : Layout) :
     memEvalProgStmt vecGrowProg F' stdVecShiftDownFunc.body ρ m π =
@@ -840,8 +914,8 @@ theorem memEvalProgStmt_stdVecShiftDownBody (F' : Nat) (ρ : Env)
     simp only [memEvalProgStmt, stdVecShiftDownWhile,
       memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
   | succ n =>
-    simp only [memEvalProgStmt, stdVecShiftDownWhile,
-      memEvalStmtFuel, memEvalStmtWith]
+    simp only [memEvalProgStmt, memEvalStmtFuel,
+      memEvalStmtWith, memEvalProgStmt_stdVecShiftDownWhile]
 
 /-- `memEval` for `_M_erase`: the program over the frozen leaves agrees
     with the core forward (mirrors `evalProgFunc_stdVecEraseCore`;
