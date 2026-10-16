@@ -168,6 +168,25 @@ theorem envUpdate_miss (k x : String) (v v' : Value) (rest : Env)
       | some rest' => some ((k, v) :: rest') := by
   simp [envUpdate, h]
 
+/-- A bound variable can be updated (lookup soundness converse;
+    single home — formerly copied per Emit file). -/
+theorem envUpdate_some_of_lookup (ρ : Env) (x : String)
+    (v v' : Value)
+    (h : envLookup ρ x = some v) :
+    ∃ ρ', envUpdate ρ x v' = some ρ' := by
+  induction ρ with
+  | nil => simp [envLookup] at h
+  | cons kv rest ih =>
+    obtain ⟨k, w⟩ := kv
+    by_cases heq : x = k
+    · subst heq
+      exact ⟨(x, v') :: rest, envUpdate_hit x w v' rest⟩
+    · have hr : envLookup rest x = some v := by
+        simp only [envLookup] at h
+        simpa [heq] using h
+      obtain ⟨rest', hup⟩ := ih hr
+      exact ⟨(k, w) :: rest', by simp [envUpdate, heq, hup]⟩
+
 /-- Lookup after a hitting update sees the new value. -/
 theorem envLookup_update_hit (ρ : Env) (x : String) (v : Value)
     (ρ' : Env) (h : envUpdate ρ x v = some ρ') :

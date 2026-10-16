@@ -365,23 +365,6 @@ theorem envLookup_envUpdate_diff (ρ : Env) (x y : String) (v : Value)
         · simp [hy]
         · simp [hy, ih _ he]
 
-/-- A bound key always updates successfully. -/
-theorem envUpdate_some_of_lookup (ρ : Env) (x : String) (v w : Value)
-    (h : envLookup ρ x = some v) :
-    ∃ ρ', envUpdate ρ x w = some ρ' := by
-  induction ρ with
-  | nil => simp [envLookup] at h
-  | cons kv tl ih =>
-    simp only [envLookup] at h
-    by_cases heq : x = kv.1
-    · simp only [heq, ite_true] at h
-      cases h
-      exact ⟨(kv.1, w) :: tl, by simp [envUpdate, heq]⟩
-    · simp only [heq, ite_false] at h
-      obtain ⟨ρ', hu⟩ := ih h
-      exact ⟨(kv.1, kv.2) :: ρ',
-        by simp [envUpdate, heq, hu]⟩
-
 /-- `take` of the full length is identity. -/
 theorem take_all {α : Type} (l : List α) : l.take l.length = l := by
   induction l with

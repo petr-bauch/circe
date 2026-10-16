@@ -1468,8 +1468,9 @@ theorem transferArrSet (F : Nat) (ρ ρ' : Env) (CUR : List (BitVec 32))
 /-- One compression round over an abstract env: evaluation is
     lookup-determined, so the exact-env certificate replays with the
     entry lookups as hypotheses and existential post-envs
-    (`envUpdate_some_of_lookup`, ArraySort precedent) for the eight
-    stores. The conclusion pins `v` absolutely and frames the rest. -/
+    (`envUpdate_some_of_lookup`, `Circe.Eval.Core` home) for the
+    eight stores. The conclusion pins `v` absolutely and frames the
+    rest. -/
 theorem compressFrag_transfer (F : Nat) (ρ : Env)
     (vv : List (BitVec 32)) (r : Nat) (w : List (BitVec 32))
     (hv8 : vv.length = 8) (hw64 : w.length = 64)
