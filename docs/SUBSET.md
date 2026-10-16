@@ -388,8 +388,17 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     into `has_value`, bare optional pointers without the triple)
     are rejected with dedicated messages
     (`callsOptWrongShape`, or `alias-reject`).
-    Still deferred: `optional::value` (throw path lowers to
-    `cir.trap`).
+    O1/O2 extends this item: the checked `.value()` leaf
+    (`_ZNKRSt8optionalIiE5valueEv` — the internal engaged check
+    kept explicit, disengaged falls through to the `noreturn`
+    `__throw_bad_optional_access` call plus `cir.trap`, no EH ops;
+    modeled `.if_` + `.fail`, i.e. `AssertFail` on disengaged),
+    the unconditional-abort throw helper (`.fail`, `void`), and
+    the 2-site `opt_val_guarded` entry (`has_value` + `.value()` +
+    one-sided `cir.if` + `-1` sentinel). The throw helper validates
+    under one explicit `unknown` fact (parameterless). Unguarded
+    `.value()` calls reject with the dedicated no-guard message.
+    Still deferred: general exception semantics (`cir.try`).
 21. `std::span<const int32_t>` index-sum (N4d-iii): the depth-2
     call chain (`span_sum` → `size` → `_M_extent` →
     the `_M_extent_value` load; `span_sum` → `operator[]` → the live

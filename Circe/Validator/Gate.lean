@@ -1545,7 +1545,7 @@ def forbiddenOp (text : String) : Option String :=
   else if containsSubstr text "stack_restore" then some "variable-length array (`stack_restore`: no VLAs in v0.1)"
   else if containsSubstr text "va_arg" then some "variadic arguments (`va_arg`: no variadics in v0.1)"
   else if containsSubstr text "cir.cleanup" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text && !isBoxThroughExemptText text && !isVecDtorExemptText text then some "cleanup region (`cir.cleanup`: destructor / EH cleanup lowering — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b / N4d-iv-b1-dtor shapes, see docs/ROADMAP.md M2)"
-  else if containsSubstr text "cir.trap" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b shapes, see docs/ROADMAP.md M2)"
+  else if containsSubstr text "cir.trap" && !isAccTwoExemptText text && !isMoveAccExemptText text && !isScopeEarlyExemptText text && !isOptValueExemptText text then some "trap (`cir.trap`: unreachable terminator — outside the v0.1 Ownable-C subset; admitted only in the exact M2b / N4b / O2 shapes, see docs/ROADMAP.md M2)"
   else if containsSubstr text "cir.switch" && !isAdmittedSwitchText text then some "`switch` (`cir.switch`: lower to an if-chain before CIR or it is rejected)"
   else if hasBareBr text then some "unstructured branch (`cir.br` from `goto`: no `goto` in v0.1; structured `cir.cond_br`/`cir.for` only)"
   else if containsSubstr text "bitfield" then some "bitfield (no bitfields in v0.1)"
@@ -1710,9 +1710,18 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { optDerefOpFunc with name := raw.name }
       else if isOptDerefShape raw then
         .ok { optDerefFunc with name := raw.name }
+      else if isOptValueOpShape raw then
+        .ok { optValueOpFunc with name := raw.name }
+      else if isOptThrowShape raw then
+        .ok { optThrowFunc with name := raw.name }
+      else if isOptValueShape raw then
+        .ok { optValueFunc with name := raw.name }
+      else if isOptValueUnguardedShape raw then
+        reject raw.name .outOfSubset
+          s!"out-of-subset: function '{raw.name}' calls the checked `std::optional::value` leaf with no `has_value` guard: the disengaged throw path (`noreturn` `__throw_bad_optional_access` + `cir.trap` in the callee) is live on a disengaged optional — guard with `has_value` and return a sentinel on disengaged (the 2-site `opt_val_guarded` shape: `has_value` + `.value()` + one-sided `cir.if` + `-1` sentinel only; see docs/SUBSET.md)"
       else if callsOptWrongShape raw then
         reject raw.name .outOfSubset
-          s!"out-of-subset: function '{raw.name}' calls a known `std::optional` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_is_engaged` engaged-bit leaf (`opt_has`), the payload `_M_get` leaf (`opt_get`), the single-site `has_value` delegation (`opt_has_value`), the impl `_M_get` delegation with the dead assert skeleton (`opt_impl_get`), the single-site `operator*` fused leaf (`opt_deref_op`), and the 2-site `opt_deref` guarded entry (`opt_deref`) only (known optional leaves `{optHasName}` / `{optGetName}` / `{optImplGetName}` / `{optHasValueName}` / `{optDerefOpName}`; see docs/SUBSET.md)"
+          s!"out-of-subset: function '{raw.name}' calls a known `std::optional` leaf but not with an admitted (name, arity, site-count) shape: admitted shapes are the `_M_is_engaged` engaged-bit leaf (`opt_has`), the payload `_M_get` leaf (`opt_get`), the single-site `has_value` delegation (`opt_has_value`), the impl `_M_get` delegation with the dead assert skeleton (`opt_impl_get`), the single-site `operator*` fused leaf (`opt_deref_op`), the 2-site `opt_deref` guarded entry (`opt_deref`), the checked `.value()` leaf with the internal engaged check + noreturn throw + trap (`opt_value_op`), the unconditional-abort throw helper (`opt_throw`), and the 2-site `opt_val_guarded` guarded entry (`opt_value`) only (known optional leaves `{optHasName}` / `{optGetName}` / `{optImplGetName}` / `{optHasValueName}` / `{optDerefOpName}` / `{optValueOpName}`; see docs/SUBSET.md)"
       else if isSpanExtentShape raw then
         .ok { spanExtentFunc with name := raw.name }
       else if isSpanSizeShape raw then

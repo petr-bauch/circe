@@ -956,6 +956,266 @@ theorem memTransferProg_optDeref (F : Nat) (v : Option (BitVec 32))
       evalProgFunc optDerefProg F optDerefFunc [.optVal v] := by
   rw [memEvalProgFunc_optDeref, evalProgFunc_optDeref]
 
+/-! ## O2 `std::optional::value` transfers: the kept check agrees -/
+
+/-- `memEval` for `value()` (engaged): the internal engaged check
+    takes the payload arm (mirrors `evalFuncFuel_optValueOp`). -/
+theorem memEvalFuncFuel_optValueOp_some (F : Nat) (x : BitVec 32) :
+    memEvalFuncFuel F optValueOpFunc [.optVal (some x)] =
+      optValueOpFwd (some x) := by
+  have hb : bindMemArgs optValueOpFunc.args [.optVal (some x)] emptyMem =
+      some ([("o", .optVal (some x))],
+        ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩, [("o", 0, 0)]) :=
+    bindMemArgs_optVal "o" (some x)
+  have hbody : optValueOpFunc.body =
+      .if_ (.optHas "o") (.return_ (.optGet "o")) .fail := rfl
+  have ho : envLookup [("o", .optVal (some x))] "o" =
+      some (.optVal (some x)) := by
+    simp [envLookup]
+  have hlay : layoutLookup [("o", 0, 0)] "o" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem0 : memLoad ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ 0 0 0 =
+      .ok x := by
+    simp [memLoad, memFind]
+  have hmem1 : memLoad ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ 0 0 1 =
+      .ok 1 := by
+    simp [memLoad, memFind]
+  have hcond : memEvalExpr (.optHas "o") [("o", .optVal (some x))]
+      ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)] =
+      .ok (.b true) := by
+    have h := memEvalExpr_optHas_hit "o" _ _ _ (some x) 0 0 1
+      hlay ho hmem1 rfl
+    rw [h]
+    exact evalExpr_optHas_some "o" _ x ho
+  have hagree := memEvalExpr_optGet_hit "o" _ _ _ x 0 0
+    hlay ho hmem0 hmem1
+  have heval : evalExpr (.optGet "o") [("o", .optVal (some x))] =
+      .ok (.i32 x) :=
+    evalExpr_optGet_some "o" _ x ho
+  have hret := memEvalStmtFuel_return F (.optGet "o") _ _ _ (.i32 x)
+    hagree heval
+  have hif := memEvalStmtFuel_if_true F (.optHas "o")
+    (.return_ (.optGet "o")) .fail _ _ _ hcond
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hif, hret]
+  simp [optValueOpFwd, optGetFwd]
+
+/-- `memEval` for `value()` (disengaged): the internal check takes the
+    loud `.fail` arm. -/
+theorem memEvalFuncFuel_optValueOp_none (F : Nat) :
+    memEvalFuncFuel F optValueOpFunc [.optVal none] =
+      .error .AssertFail := by
+  have hb : bindMemArgs optValueOpFunc.args [.optVal none] emptyMem =
+      some ([("o", .optVal none)],
+        ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩, [("o", 0, 0)]) :=
+    bindMemArgs_optVal "o" none
+  have hbody : optValueOpFunc.body =
+      .if_ (.optHas "o") (.return_ (.optGet "o")) .fail := rfl
+  have ho : envLookup [("o", .optVal none)] "o" =
+      some (.optVal none) := by
+    simp [envLookup]
+  have hlay : layoutLookup [("o", 0, 0)] "o" = some (0, 0) := by
+    simp [layoutLookup]
+  have hmem1 : memLoad ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ 0 0 1 =
+      .ok 0 := by
+    simp [memLoad, memFind]
+  have hcond : memEvalExpr (.optHas "o") [("o", .optVal none)]
+      ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)] =
+      .ok (.b false) := by
+    have h := memEvalExpr_optHas_hit "o" _ _ _ none 0 0 0
+      hlay ho hmem1 rfl
+    rw [h]
+    exact evalExpr_optHas_none "o" _ ho
+  have hif := memEvalStmtFuel_if_false F (.optHas "o")
+    (.return_ (.optGet "o")) .fail _ _ _ hcond
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [hif, memEvalStmtFuel_fail]
+
+/-- Transfer for `value()` (engaged). -/
+theorem memTransfer_optValueOp_some (F : Nat) (x : BitVec 32)
+    (_h : oracleNoalias optValueOpFunc [.optVal (some x)]) :
+    memEvalFuncFuel F optValueOpFunc [.optVal (some x)] =
+      evalFuncFuel F optValueOpFunc [.optVal (some x)] := by
+  rw [memEvalFuncFuel_optValueOp_some F x, evalFuncFuel_optValueOp]
+
+/-- Transfer for `value()` (disengaged): both sides fail loudly. -/
+theorem memTransfer_optValueOp_none (F : Nat)
+    (_h : oracleNoalias optValueOpFunc [.optVal none]) :
+    memEvalFuncFuel F optValueOpFunc [.optVal none] =
+      evalFuncFuel F optValueOpFunc [.optVal none] := by
+  rw [memEvalFuncFuel_optValueOp_none F, evalFuncFuel_optValueOp,
+    optValueOpFwd, optGetFwd]
+
+/-- `memEval` for the throw helper: unconditional abort. -/
+theorem memEvalFuncFuel_optThrow (F : Nat) :
+    memEvalFuncFuel F optThrowFunc [] = .error .AssertFail := by
+  have hb : bindMemArgs optThrowFunc.args [] emptyMem =
+      some ([], emptyMem, []) := rfl
+  have hbody : optThrowFunc.body = .fail := rfl
+  simp only [memEvalFuncFuel, hb, hbody]
+  rw [memEvalStmtFuel_fail]
+
+/-- Transfer for the throw helper. -/
+theorem memTransfer_optThrow (F : Nat)
+    (_h : oracleNoalias optThrowFunc []) :
+    memEvalFuncFuel F optThrowFunc [] =
+      evalFuncFuel F optThrowFunc [] := by
+  rw [memEvalFuncFuel_optThrow F, evalFuncFuel_optThrow, optThrowFwd]
+
+/-- `memEval` for `opt_val_guarded`: program evaluation over the
+    `has_value` read and the checked leaf agrees with the sentinel
+    forward (mirrors `evalProgFunc_optValue`; memory rides alongside,
+    untouched). -/
+theorem memEvalProgFunc_optValue (F : Nat) (v : Option (BitVec 32)) :
+    memEvalProgFunc optValueProg F optValueFunc [.optVal v] =
+      optValueFwd v := by
+  have hbind : bindMemArgs optValueFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) :=
+    bindMemArgs_optVal "o" v
+  have hbody : optValueFunc.body =
+      .seq (.callRet "h" optHasValueName ["o"])
+      (.if_ (.var "h")
+        (.seq (.callRet "v" optValueOpName ["o"])
+              (.return_ (.var "v")))
+        (.return_ (.lit (.i32 (-1 : BitVec 32))))) := rfl
+  have hfindH : findFunc optValueProg optHasValueName =
+      some optHasValueFunc := rfl
+  have hfindV : findFunc optValueProg optValueOpName =
+      some optValueOpFunc := rfl
+  have hargsH : lookupArgs [("o", .optVal v)] ["o"] =
+      some [.optVal v] := rfl
+  cases v with
+  | none =>
+    have hcallH : memEvalFuncFuel F optHasValueFunc [.optVal none] =
+        .ok (.b false) :=
+      memEvalFuncFuel_optHasValue_none F
+    have hstepH := memEvalProgStmt_callRet_ok optValueProg F "h"
+      optHasValueName ["o"] [("o", .optVal none)]
+      ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)]
+      [.optVal none] optHasValueFunc (.b false) hargsH hfindH hcallH
+    have hcondF : memEvalExpr (.var "h")
+        (envExtend [("o", .optVal none)] "h" (.b false))
+        ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (.b false) := by
+      simp [memEvalExpr, envExtend, envLookup]
+    have hifF : memEvalProgStmt optValueProg F
+        (.if_ (.var "h")
+          (.seq (.callRet "v" optValueOpName ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 (-1 : BitVec 32)))))
+        (envExtend [("o", .optVal none)] "h" (.b false))
+        ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)] =
+        memEvalProgStmt optValueProg F
+          (.return_ (.lit (.i32 (-1 : BitVec 32))))
+          (envExtend [("o", .optVal none)] "h" (.b false))
+          ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)] :=
+      memEvalProgStmt_if_false _ _ _ _ _ _ _ _ hcondF
+    have hexprE : memEvalExpr (.lit (.i32 (-1 : BitVec 32)))
+        (envExtend [("o", .optVal none)] "h" (.b false))
+        ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (.i32 (-1 : BitVec 32)) := by
+      simp [memEvalExpr, litVal]
+    have helse := memEvalProgStmt_return optValueProg F
+      (.lit (.i32 (-1 : BitVec 32)))
+      (envExtend [("o", .optVal none)] "h" (.b false))
+      ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)]
+      (.i32 (-1 : BitVec 32)) hexprE
+    have hsum : optValueFwd none = .ok (.i32 (-1 : BitVec 32)) := rfl
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstepH]
+    -- The disengaged branch never touches the leaf: close the `if_`
+    -- via the false leg and the sentinel return directly.
+    have hifF' : memEvalProgStmt optValueProg F
+        (.if_ (.var "h")
+          (.seq (.callRet "v" optValueOpName ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 (-1 : BitVec 32)))))
+        (envExtend [("o", .optVal none)] "h" (.b false))
+        ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (((envExtend [("o", .optVal none)] "h" (.b false)),
+          ⟨1, [(0, ⟨0, true, [0, 0]⟩)], []⟩, [("o", 0, 0)]),
+          .returned (.i32 (-1 : BitVec 32))) :=
+      Eq.trans hifF helse
+    rw [hifF']
+    simp [hsum]
+  | some x =>
+    have hcallH : memEvalFuncFuel F optHasValueFunc [.optVal (some x)] =
+        .ok (.b true) :=
+      memEvalFuncFuel_optHasValue_some F x
+    have hstepH := memEvalProgStmt_callRet_ok optValueProg F "h"
+      optHasValueName ["o"] [("o", .optVal (some x))]
+      ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)]
+      [.optVal (some x)] optHasValueFunc (.b true) hargsH hfindH hcallH
+    have hcondT : memEvalExpr (.var "h")
+        (envExtend [("o", .optVal (some x))] "h" (.b true))
+        ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (.b true) := by
+      simp [memEvalExpr, envExtend, envLookup]
+    have hargsV : lookupArgs
+        (envExtend [("o", .optVal (some x))] "h" (.b true)) ["o"] =
+        some [.optVal (some x)] := by
+      simp [lookupArgs, envExtend, envLookup,
+        show ("o" : String) ≠ "h" by decide]
+    have hcallV : memEvalFuncFuel F optValueOpFunc [.optVal (some x)] =
+        .ok (.i32 x) :=
+      memEvalFuncFuel_optValueOp_some F x
+    have hstepV := memEvalProgStmt_callRet_ok optValueProg F "v"
+      optValueOpName ["o"]
+      (envExtend [("o", .optVal (some x))] "h" (.b true))
+      ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)]
+      [.optVal (some x)] optValueOpFunc (.i32 x)
+      hargsV hfindV hcallV
+    have hexprV : memEvalExpr (.var "v")
+        (envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+          "v" (.i32 x))
+        ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (.i32 x) := by
+      simp [memEvalExpr, envExtend, envLookup]
+    have hretV := memEvalProgStmt_return optValueProg F (.var "v")
+      (envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+        "v" (.i32 x))
+      ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)]
+      (.i32 x) hexprV
+    have hthen : memEvalProgStmt optValueProg F
+        (.seq (.callRet "v" optValueOpName ["o"])
+              (.return_ (.var "v")))
+        (envExtend [("o", .optVal (some x))] "h" (.b true))
+        ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (((envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+          "v" (.i32 x)),
+          ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩, [("o", 0, 0)]),
+          .returned (.i32 x)) :=
+      Eq.trans
+        (memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstepV) hretV
+    have hifT : memEvalProgStmt optValueProg F
+        (.if_ (.var "h")
+          (.seq (.callRet "v" optValueOpName ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 (-1 : BitVec 32)))))
+        (envExtend [("o", .optVal (some x))] "h" (.b true))
+        ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩ [("o", 0, 0)] =
+        .ok (((envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+          "v" (.i32 x)),
+          ⟨1, [(0, ⟨0, true, [x, 1]⟩)], []⟩, [("o", 0, 0)]),
+          .returned (.i32 x)) :=
+      Eq.trans (memEvalProgStmt_if_true _ _ _ _ _ _ _ _ hcondT) hthen
+    have hsum : optValueFwd (some x) = .ok (.i32 x) := rfl
+    simp only [memEvalProgFunc, hbind, hbody]
+    rw [memEvalProgStmt_seq_fallthrough _ _ _ _ _ _ _ _ _ _ hstepH, hifT]
+    simp [hsum]
+
+/-- Transfer for `opt_val_guarded` (program level). -/
+theorem memTransferProg_optValue (F : Nat) (v : Option (BitVec 32))
+    (_h : oracleNoalias optValueFunc [.optVal v]) :
+    memEvalProgFunc optValueProg F optValueFunc [.optVal v] =
+      evalProgFunc optValueProg F optValueFunc [.optVal v] := by
+  rw [memEvalProgFunc_optValue, evalProgFunc_optValue]
+
 /-! ## N4d-iii `std::span` transfers: extent and words agree -/
 
 /-- `memEval` for `_M_extent`: the extent word in memory matches the

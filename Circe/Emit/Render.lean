@@ -564,6 +564,39 @@ def emitOptDerefText (name : String) : String :=
   ++ "  | some x => .ok x\n"
   ++ "  | none => .ok (-1)\n"
 
+/-- Render the `value()` checked-leaf forward definition: the payload
+    word, `AssertFail` when disengaged (the tag-erased
+    `optValueOpFwd` — the internal engaged check kept explicit). -/
+def emitOptValueOpText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (checked `.value()`: word on engaged, `AssertFail` otherwise). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .AssertFail\n"
+
+/-- Render the throw-helper forward definition: unconditional abort
+    (the tag-erased `optThrowFwd`). -/
+def emitOptThrowText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (unconditional `abort()`: always `AssertFail`). -/\n"
+  ++ s!"def {name}_fwd : Result (BitVec 32) :=\n"
+  ++ "  .error .AssertFail\n"
+
+/-- Render the `opt_val_guarded` entry forward definition: the payload
+    word on engaged, the `-1` sentinel on disengaged (the tag-erased
+    `optValueFwd`, via the checked leaf). -/
+def emitOptValueText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (guarded `.value()`: word on engaged, `-1` sentinel otherwise). -/\n"
+  ++ s!"def {name}_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .ok (-1)\n"
+
 /-- Render the `_M_extent` leaf forward definition: the reified
     length as a `u64` word (the tag-erased `spanExtentFwd`). -/
 def emitSpanExtentText (name : String) : String :=

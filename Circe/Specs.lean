@@ -658,6 +658,28 @@ theorem optDeref_correct_none :
     optDerefFwd none = .ok (.i32 (-1 : BitVec 32)) :=
   rfl
 
+/-- `value()` delegates: the checked leaf is the payload body (via
+    `optValueOpFwd_is_call`). -/
+theorem optValueOp_correct (v : Option (BitVec 32)) :
+    optValueOpFwd v = optGetFwd v :=
+  optValueOpFwd_is_call v
+
+/-- The throw helper always aborts. -/
+theorem optThrow_correct :
+    optThrowFwd = .error .AssertFail :=
+  rfl
+
+/-- The `opt_val_guarded` entry returns the word on engaged. -/
+theorem optValue_correct_some (x : BitVec 32) :
+    optValueFwd (some x) = .ok (.i32 x) :=
+  rfl
+
+/-- The `opt_val_guarded` entry returns the `-1` sentinel on
+    disengaged. -/
+theorem optValue_correct_none :
+    optValueFwd none = .ok (.i32 (-1 : BitVec 32)) :=
+  rfl
+
 /-! ## N4d-iii: `std::span<const int32_t>` index-sum (one property per new shape) -/
 
 /-- The `_M_extent` leaf reports the reified length. -/

@@ -1,15 +1,16 @@
--- Differential test for the N4d-ii `std::optional<int32_t>` fragment:
--- verified Lean forwards (plus `evalFunc` / `evalProgFunc` composition)
--- vs the native C++ binary.
+-- Differential test for the N4d-ii + O2 `std::optional<int32_t>`
+-- fragment: verified Lean forwards (plus `evalFunc` / `evalProgFunc`
+-- composition) vs the native C++ binaries.
 --
 -- Run from the repo root via the driver (`lake exe circe-test` runs
--- `DiffOptional.main [bin trials]`).
+-- `DiffOptional.main [derefBin valueBin trials]`).
 -- Every trial asserts evaluated forms agree with the value forwards
 -- (runtime composition check) and, on both engaged and disengaged
--- inputs, the entry agrees with native (engaged returns the word,
--- disengaged the `-1` sentinel — both defined; only a direct
--- disengaged deref would be UB, and the model reports that path as
--- `AssertFail`, asserted Lean-Lean only and never sent to native).
+-- inputs, each entry agrees with native (engaged returns the word,
+-- disengaged the `-1` sentinel — both defined; a direct disengaged
+-- deref would be UB and a direct disengaged `.value()` would throw,
+-- so the model reports those paths as `AssertFail`, asserted
+-- Lean-Lean only and never sent to native).
 -- Mismatch = P0.
 import Circe.Emit
 
@@ -76,14 +77,50 @@ def checkOptional (optBin : String)
   | none =>
     throw (IO.userError s!"opt_deref native unparsable: {native}")
 
+/-- O2: the checked `.value()` leaf, the throw helper, and the guarded
+    entry agree with their forwards Lean-Lean (both engagement
+    states), and the guarded entry agrees with native on both paths
+    (engaged exercises the real checked leaf; disengaged takes the
+    sentinel without touching it). -/
+def checkOptValue (valBin : String)
+    (x : BitVec 32) (engaged : Bool) : IO Nat := do
+  let v : Option (BitVec 32) := if engaged then some x else none
+  let fwdOp := optValueOpFwd v
+  let evOp := evalFunc optValueOpFunc [.optVal v]
+  if (repr fwdOp).pretty != (repr evOp).pretty then
+    throw (IO.userError "opt_value_op eval/fwd mismatch")
+  let evThrow := evalFunc optThrowFunc []
+  if (repr optThrowFwd).pretty != (repr evThrow).pretty then
+    throw (IO.userError "opt_throw eval/fwd mismatch")
+  let fwdVal := optValueFwd v
+  let evVal := evalProgFunc optValueProg EVAL_FUEL optValueFunc
+    [.optVal v]
+  if (repr fwdVal).pretty != (repr evVal).pretty then
+    throw (IO.userError "opt_value eval/fwd mismatch")
+  let native ← runNative valBin
+    #[toString x.toInt, if engaged then "1" else "0"]
+  match native.toInt? with
+  | some m =>
+    let want := if engaged then x.toInt else -1
+    if m != want then
+      throw (IO.userError s!"opt_value mismatch: lean={want} native={m}")
+    pure 1
+  | none =>
+    throw (IO.userError s!"opt_value native unparsable: {native}")
+
 def main (args : List String) : IO Unit := do
   let optBin := args.getD 0 "/tmp/opencode/circe_opt_deref_native"
-  let trials := (args.getD 1 "1000").toNat?.getD 1000
+  let valBin := args.getD 1 "/tmp/opencode/circe_opt_value_native"
+  let trials := (args.getD 2 "1000").toNat?.getD 1000
   let mut passed := 0
   for x in optEdges do
     let q ← checkOptional optBin x true
     passed := passed + q
     let q ← checkOptional optBin x false
+    passed := passed + q
+    let q ← checkOptValue valBin x true
+    passed := passed + q
+    let q ← checkOptValue valBin x false
     passed := passed + q
   let mut s := 0x9E3779B97F4A7C15
   for _ in List.range trials do
@@ -93,6 +130,10 @@ def main (args : List String) : IO Unit := do
     s := lcgNext s
     let engaged := s % 2 == 0
     let q ← checkOptional optBin (BitVec.ofInt 32 xi) engaged
+    passed := passed + q
+    s := lcgNext s
+    let engagedV := s % 2 == 0
+    let q ← checkOptValue valBin (BitVec.ofInt 32 xi) engagedV
     passed := passed + q
   IO.println s!"DIFFOPTIONAL-OK passed={passed} (edges + {trials} random trials)"
 

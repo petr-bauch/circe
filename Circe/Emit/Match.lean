@@ -660,6 +660,12 @@ def matchFrag : Func → Option FragKind
       .return_ (.optGet "o")⟩ =>
     some .optDerefOp
   | ⟨_, [⟨"o", .struct "std::optional<int>" [.i 32, .bool],
+         .sharedBorrow⟩], _,
+      .if_ (.optHas "o") (.return_ (.optGet "o")) .fail⟩ =>
+    some .optValueOp
+  | ⟨_, [], _, .fail⟩ =>
+    some .optThrow
+  | ⟨_, [⟨"o", .struct "std::optional<int>" [.i 32, .bool],
          .sharedBorrow⟩], _, body⟩ =>
     -- Two prog shapes share the `[o]` params: matched on the body
     -- (nested `.seq`/`.if_` patterns inside `⟨⟩` hit the parser
@@ -675,6 +681,12 @@ def matchFrag : Func → Option FragKind
                 (.return_ (.var "v")))
           (.return_ (.lit (.i32 neg1)))) =>
       if neg1 == (-1 : BitVec 32) then some .optDeref else none
+    | .seq (.callRet "h" "_ZNKSt8optionalIiE9has_valueEv" ["o"])
+        (.if_ (.var "h")
+          (.seq (.callRet "v" "_ZNKRSt8optionalIiE5valueEv" ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 neg1)))) =>
+      if neg1 == (-1 : BitVec 32) then some .optValue else none
     | _ => none
   | ⟨_, [⟨"e", .struct "std::__detail::__extent_storage" [.u 64],
          .sharedBorrow⟩], _,
@@ -1477,6 +1489,9 @@ theorem matchFrag_optGet : matchFrag optGetFunc = some .optGet := rfl
 theorem matchFrag_optDerefOp : matchFrag optDerefOpFunc = some .optDerefOp := rfl
 theorem matchFrag_optImplGet : matchFrag optImplGetFunc = some .optImplGet := rfl
 theorem matchFrag_optDeref : matchFrag optDerefFunc = some .optDeref := rfl
+theorem matchFrag_optValueOp : matchFrag optValueOpFunc = some .optValueOp := rfl
+theorem matchFrag_optThrow : matchFrag optThrowFunc = some .optThrow := rfl
+theorem matchFrag_optValue : matchFrag optValueFunc = some .optValue := rfl
 theorem matchFrag_spanExtent : matchFrag spanExtentFunc = some .spanExtent := rfl
 theorem matchFrag_spanSize : matchFrag spanSizeFunc = some .spanSize := rfl
 theorem matchFrag_spanIndex : matchFrag spanIndexFunc = some .spanIndex := rfl

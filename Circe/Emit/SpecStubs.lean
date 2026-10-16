@@ -1066,6 +1066,73 @@ def emitOptDerefSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `value()` checked-leaf shape (O2). The mirror
+    is the tag-erased `optValueOpFwd` (internal engaged check kept
+    explicit); edges carry ground truth (payload words, disengaged
+    `AssertFail`). -/
+def emitOptValueOpSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(o)` is the checked `.value()` word read.\n"
+  ++ s!"    Base body reference: the internal engaged check itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `optValueOpFwd_is_call`). -/\n"
+  ++ s!"def {name}_spec_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: payload words, zero payload, disengaged. -/\n"
+  ++ s!"def {name}_spec_edges : List (Option (BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [(some 7, .ok 7), (some 0, .ok 0), (none, .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
+/-- Spec stub for the throw-helper shape (O2). The mirror is the
+    tag-erased `optThrowFwd`: unconditional abort. -/
+def emitOptThrowSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}()` aborts (the `-fno-exceptions` terminate lowering).\n"
+  ++ s!"    Base body reference: the unconditional abort itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `optThrowFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd : Result (BitVec 32) :=\n"
+  ++ "  .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: the only edge is the abort itself. -/\n"
+  ++ s!"def {name}_spec_edges : List (Result (BitVec 32)) :=\n"
+  ++ "  [.error .AssertFail]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd)).pretty == (repr t).pretty\n"
+
+/-- Spec stub for the `opt_val_guarded` shape (O2 guarded entry). The
+    mirror is the tag-erased `optValueFwd`; edges carry ground truth
+    (payload words, the `-1` sentinel on disengaged). -/
+def emitOptValueSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(o)` calls checked `.value()` when engaged, `-1` sentinel otherwise.\n"
+  ++ s!"    Base body reference: the guarded value call itself (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `optValueFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (o : Option (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match o with\n"
+  ++ "  | some x => .ok x\n"
+  ++ "  | none => .ok (-1)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: payload words, zero payload, disengaged sentinel. -/\n"
+  ++ s!"def {name}_spec_edges : List (Option (BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [(some 7, .ok 7), (some 0, .ok 0), (none, .ok (-1))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `_M_extent` shape (N4d-iii extent leaf). The
     mirror is the tag-erased `spanExtentFwd`; edges carry ground
     truth (empty, singleton, longer views). -/

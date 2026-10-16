@@ -522,6 +522,50 @@ theorem oracleNoalias_optDeref (v : Option (BitVec 32)) :
   have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-- `value()` footprints are a singleton (the internal check reads
+    the caller's cell; the loud arm allocates nothing). -/
+theorem oracleNoalias_optValueOp (v : Option (BitVec 32)) :
+    oracleNoalias optValueOpFunc [.optVal v] := by
+  have hb : bindMemArgs optValueOpFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "o", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "o" v
+  have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- The throw helper takes no arguments and allocates nothing. -/
+theorem oracleNoalias_optThrow :
+    oracleNoalias optThrowFunc [] := by
+  have hb : bindMemArgs optThrowFunc.args [] emptyMem =
+      some ([], emptyMem, []) := rfl
+  have hn : LayoutNoAlias ([] : Layout) := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- `opt_val_guarded` footprints are a singleton (the `callRet`
+    delegations happen after entry). -/
+theorem oracleNoalias_optValue (v : Option (BitVec 32)) :
+    oracleNoalias optValueFunc [.optVal v] := by
+  have hb : bindMemArgs optValueFunc.args [.optVal v] emptyMem =
+      some ([("o", .optVal v)],
+        ⟨1, [(0, ⟨0, true,
+          match v with
+          | some x => [x, 1]
+          | none => [0, 0]⟩)], []⟩,
+        [("o", 0, 0)]) := by
+    show bindMemArgs
+      [{ name := "o", ty := optObjTy, role := .sharedBorrow }]
+      [.optVal v] emptyMem = _
+    exact bindMemArgs_optVal "o" v
+  have hn : LayoutNoAlias [("o", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
 /-! ## N4d-iii `std::span` footprints: extent word + reified view (reads only) -/
 
 /-- Span binding pins the `(1 + length)`-word

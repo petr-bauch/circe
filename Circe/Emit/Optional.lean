@@ -50,6 +50,10 @@ def optImplGetName : String :=
 def optHasValueName : String := "_ZNKSt8optionalIiE9has_valueEv"
 def optDerefOpName : String := "_ZNKRSt8optionalIiEdeEv"
 def optDerefName : String := "_Z9opt_derefRKSt8optionalIiE"
+/-- Mangled callee names in `tests/cpp/opt_value.cpp`. -/
+def optValueOpName : String := "_ZNKRSt8optionalIiE5valueEv"
+def optThrowName : String := "_ZSt27__throw_bad_optional_accessv"
+def optValueName : String := "_Z15opt_val_guardedRKSt8optionalIiE"
 
 /-- Canonical CoreIR for `_M_is_engaged`: the `_M_engaged` bit load
     (`derived [0]` + `get_member [0]` + `base [0]` + `get_member [1]`
@@ -117,6 +121,50 @@ def optDerefFunc : Func :=
     are call-free leaves). -/
 abbrev optDerefProg : Prog := [optHasValueFunc, optDerefOpFunc]
 
+/-! ## O1/O2: `std::optional::value` checked leaf, throw helper, entry.
+
+Unlike `operator*` (unchecked, UB on disengaged), the `value()`
+callee checks engagement itself: engaged takes the `_M_get` arm,
+disengaged falls through to the `noreturn`
+`__throw_bad_optional_access` call (`abort()` under
+`-fno-exceptions`) plus `cir.trap`. The model keeps the check
+explicit (`.if_` on the engaged read, `.fail` on disengaged — the
+standard loud arm, evaluating to `AssertFail`): no live check is
+erased, and the gate pins the exact CIR text (one-sided `cir.if`,
+single `cir.return`, noreturn throw call, trap, no EH), so a
+reordered or live variant rejects loudly. The throw helper is an
+unconditional abort (`.fail` body, `void` return). -/
+
+/-- Canonical CoreIR for `value()`: the internal engaged check kept
+    explicit — engaged returns the `optGet` word, disengaged fails
+    (the noreturn throw call + trap fused into the loud arm). -/
+def optValueOpFunc : Func :=
+  ⟨optValueOpName,
+   [{ name := "o", ty := optObjTy, role := .sharedBorrow }],
+   .i 32,
+   .if_ (.optHas "o") (.return_ (.optGet "o")) .fail⟩
+
+/-- Canonical CoreIR for `__throw_bad_optional_access`: unconditional
+    abort under `-fno-exceptions` (noreturn call to `abort()`). -/
+def optThrowFunc : Func :=
+  ⟨optThrowName, [], .void, .fail⟩
+
+/-- Canonical CoreIR for `opt_val_guarded`: the `has_value` call, the
+    engaged branch (checked `.value()` call + return), and the `-1`
+    sentinel on disengaged. -/
+def optValueFunc : Func :=
+  ⟨optValueName,
+   [{ name := "o", ty := optObjTy, role := .sharedBorrow }],
+   .i 32,
+   .seq (.callRet "h" optHasValueName ["o"])
+   (.if_ (.var "h")
+     (.seq (.callRet "v" optValueOpName ["o"])
+           (.return_ (.var "v")))
+     (.return_ (.lit (.i32 (-1 : BitVec 32)))))⟩
+
+/-- Program over which the `opt_val_guarded` entry evaluates. -/
+abbrev optValueProg : Prog := [optHasValueFunc, optValueOpFunc]
+
 /-- Value-level forward for `_M_is_engaged`: the engaged bit. -/
 def optHasFwd (v : Option (BitVec 32)) : Result Value :=
   .ok (.b v.isSome)
@@ -151,6 +199,27 @@ def optDerefFwd (v : Option (BitVec 32)) : Result Value :=
   match v with
   | some x => .ok (.i32 x)
   | none => .ok (.i32 (-1 : BitVec 32))
+
+/-- Value-level forward for `value()`: the payload word on engaged,
+    `AssertFail` on disengaged (the internal check made loud — the
+    same read as `optGetFwd`, by definition of the kept check). -/
+def optValueOpFwd (v : Option (BitVec 32)) : Result Value :=
+  optGetFwd v
+
+theorem optValueOpFwd_is_call (v : Option (BitVec 32)) :
+    optValueOpFwd v = optGetFwd v := rfl
+
+/-- Value-level forward for the throw helper: unconditional abort. -/
+def optThrowFwd : Result Value := .error .AssertFail
+
+/-- Value-level forward for `opt_val_guarded`: the payload word on
+    engaged, the `-1` sentinel on disengaged (same story as
+    `optDerefFwd`, via the checked leaf). -/
+def optValueFwd (v : Option (BitVec 32)) : Result Value :=
+  optDerefFwd v
+
+theorem optValueFwd_is_call (v : Option (BitVec 32)) :
+    optValueFwd v = optDerefFwd v := rfl
 
 /-- Env fact for the single-optional shapes (name-parametrized: the
     fused pairs share bodies but pin distinct param names, cf.
@@ -203,6 +272,50 @@ theorem evalFuncFuel_optDerefOp (F : Nat) (v : Option (BitVec 32)) :
   cases v <;> cases F <;>
     simp only [evalFuncFuel, hbind, hbody, evalStmtFuel, evalStmtZero,
       evalStmtWith, evalExpr, optDerefOpFwd, optGetFwd, ho]
+
+/-- `emit_correct` for `value()`: the internal engaged check agrees
+    with the checked-leaf forward (engaged word, disengaged
+    `AssertFail` via the loud `.fail` arm). -/
+theorem evalFuncFuel_optValueOp (F : Nat) (v : Option (BitVec 32)) :
+    evalFuncFuel F optValueOpFunc [.optVal v] = optValueOpFwd v := by
+  have hbind : bindArgs optValueOpFunc.args [.optVal v] =
+      some [("o", .optVal v)] := rfl
+  have hbody : optValueOpFunc.body =
+      .if_ (.optHas "o") (.return_ (.optGet "o")) .fail := rfl
+  have ho := envLookup_opt_o "o" v
+  cases v with
+  | none =>
+    have hc : evalExpr (.optHas "o") [("o", .optVal none)] =
+        .ok (.b false) := by
+      simp [evalExpr, ho]
+    have hS : evalStmtFuel F
+        (.if_ (.optHas "o") (.return_ (.optGet "o")) .fail)
+        [("o", .optVal none)] = .error .AssertFail := by
+      rw [evalStmtFuel_if_false _ _ _ _ _ hc, evalStmtFuel_fail]
+    simp only [evalFuncFuel, hbind, hbody, hS, optValueOpFwd, optGetFwd]
+  | some x =>
+    have hc : evalExpr (.optHas "o") [("o", .optVal (some x))] =
+        .ok (.b true) := by
+      simp [evalExpr, ho]
+    have hx : evalExpr (.optGet "o") [("o", .optVal (some x))] =
+        .ok (.i32 x) := by
+      simp [evalExpr, ho]
+    have hS : evalStmtFuel F
+        (.if_ (.optHas "o") (.return_ (.optGet "o")) .fail)
+        [("o", .optVal (some x))] =
+        .ok ([("o", .optVal (some x))], .returned (.i32 x)) := by
+      rw [evalStmtFuel_if_true _ _ _ _ _ hc,
+        evalStmtFuel_return _ _ _ _ hx]
+    simp only [evalFuncFuel, hbind, hbody, hS, optValueOpFwd, optGetFwd]
+
+/-- `emit_correct` for the throw helper: unconditional abort. -/
+theorem evalFuncFuel_optThrow (F : Nat) :
+    evalFuncFuel F optThrowFunc [] = optThrowFwd := by
+  have hbind : bindArgs optThrowFunc.args [] = some [] := rfl
+  have hbody : optThrowFunc.body = .fail := rfl
+  cases F <;>
+    simp only [evalFuncFuel, hbind, hbody, evalStmtFuel, evalStmtZero,
+      evalStmtWith, optThrowFwd]
 
 /-- `emit_correct` for impl `_M_get`: program evaluation over the
     payload leaf agrees with the delegating forward (both the engaged
@@ -357,6 +470,125 @@ theorem evalProgFunc_optDeref (F : Nat) (v : Option (BitVec 32)) :
           "v" (.i32 x)), .returned (.i32 x)) :=
       Eq.trans (evalProgStmt_if_true _ _ _ _ _ _ hcondT) hthen
     have hsum : optDerefFwd (some x) = .ok (.i32 x) := rfl
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepH, hifT]
+    simp [hsum]
+
+/-- `emit_correct` for `opt_val_guarded`: program evaluation over the
+    `has_value` read and the checked `.value()` leaf agrees with the
+    sentinel forward (the engaged branch goes through `value()`; the
+    disengaged branch returns `-1` without touching the leaf). -/
+theorem evalProgFunc_optValue (F : Nat) (v : Option (BitVec 32)) :
+    evalProgFunc optValueProg F optValueFunc [.optVal v] =
+      optValueFwd v := by
+  have hbind : bindArgs optValueFunc.args [.optVal v] =
+      some [("o", .optVal v)] := rfl
+  have hbody : optValueFunc.body =
+      .seq (.callRet "h" optHasValueName ["o"])
+      (.if_ (.var "h")
+        (.seq (.callRet "v" optValueOpName ["o"])
+              (.return_ (.var "v")))
+        (.return_ (.lit (.i32 (-1 : BitVec 32))))) := rfl
+  have hfindH : findFunc optValueProg optHasValueName =
+      some optHasValueFunc := rfl
+  have hfindV : findFunc optValueProg optValueOpName =
+      some optValueOpFunc := rfl
+  have hargsH : lookupArgs [("o", .optVal v)] ["o"] =
+      some [.optVal v] := rfl
+  cases v with
+  | none =>
+    have hcallH : evalFuncFuel F optHasValueFunc [.optVal none] =
+        .ok (.b false) := by
+      rw [evalFuncFuel_optHasValue]
+      rfl
+    have hstepH := evalProgStmt_callRet_ok optValueProg F "h"
+      optHasValueName ["o"] [("o", .optVal none)] [.optVal none]
+      optHasValueFunc (.b false) hargsH hfindH hcallH
+    have hcondF : evalExpr (.var "h")
+        (envExtend [("o", .optVal none)] "h" (.b false)) =
+        .ok (.b false) := by
+      simp [evalExpr, envExtend, envLookup]
+    have hifF : evalProgStmt optValueProg F
+        (.if_ (.var "h")
+          (.seq (.callRet "v" optValueOpName ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 (-1 : BitVec 32)))))
+        (envExtend [("o", .optVal none)] "h" (.b false)) =
+        evalProgStmt optValueProg F
+          (.return_ (.lit (.i32 (-1 : BitVec 32))))
+          (envExtend [("o", .optVal none)] "h" (.b false)) :=
+      evalProgStmt_if_false _ _ _ _ _ _ hcondF
+    have hexprE : evalExpr (.lit (.i32 (-1 : BitVec 32)))
+        (envExtend [("o", .optVal none)] "h" (.b false)) =
+        .ok (.i32 (-1 : BitVec 32)) := by
+      simp [evalExpr, litVal]
+    have helse := evalProgStmt_return optValueProg F
+      (.lit (.i32 (-1 : BitVec 32)))
+      (envExtend [("o", .optVal none)] "h" (.b false))
+      (.i32 (-1 : BitVec 32)) hexprE
+    have hifF' : evalProgStmt optValueProg F
+        (.if_ (.var "h")
+          (.seq (.callRet "v" optValueOpName ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 (-1 : BitVec 32)))))
+        (envExtend [("o", .optVal none)] "h" (.b false)) =
+        .ok ((envExtend [("o", .optVal none)] "h" (.b false)),
+          .returned (.i32 (-1 : BitVec 32))) :=
+      Eq.trans hifF helse
+    have hsum : optValueFwd none = .ok (.i32 (-1 : BitVec 32)) := rfl
+    simp only [evalProgFunc, hbind, hbody]
+    rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepH, hifF']
+    simp [hsum]
+  | some x =>
+    have hcallH : evalFuncFuel F optHasValueFunc [.optVal (some x)] =
+        .ok (.b true) := by
+      rw [evalFuncFuel_optHasValue]
+      rfl
+    have hstepH := evalProgStmt_callRet_ok optValueProg F "h"
+      optHasValueName ["o"] [("o", .optVal (some x))] [.optVal (some x)]
+      optHasValueFunc (.b true) hargsH hfindH hcallH
+    have hcondT : evalExpr (.var "h")
+        (envExtend [("o", .optVal (some x))] "h" (.b true)) =
+        .ok (.b true) := by
+      simp [evalExpr, envExtend, envLookup]
+    have hargsV : lookupArgs
+        (envExtend [("o", .optVal (some x))] "h" (.b true)) ["o"] =
+        some [.optVal (some x)] := by
+      simp [lookupArgs, envExtend, envLookup,
+        show ("o" : String) ≠ "h" by decide]
+    have hcallV : evalFuncFuel F optValueOpFunc [.optVal (some x)] =
+        .ok (.i32 x) := by
+      rw [evalFuncFuel_optValueOp]
+      rfl
+    have hstepV := evalProgStmt_callRet_ok optValueProg F "v"
+      optValueOpName ["o"]
+      (envExtend [("o", .optVal (some x))] "h" (.b true))
+      [.optVal (some x)] optValueOpFunc (.i32 x)
+      hargsV hfindV hcallV
+    have hexprV : evalExpr (.var "v")
+        (envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+          "v" (.i32 x)) = .ok (.i32 x) := by
+      simp [evalExpr, envExtend, envLookup]
+    have hretV := evalProgStmt_return optValueProg F (.var "v")
+      (envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+        "v" (.i32 x)) (.i32 x) hexprV
+    have hthen : evalProgStmt optValueProg F
+        (.seq (.callRet "v" optValueOpName ["o"])
+              (.return_ (.var "v")))
+        (envExtend [("o", .optVal (some x))] "h" (.b true)) =
+        .ok ((envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+          "v" (.i32 x)), .returned (.i32 x)) :=
+      Eq.trans (evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepV) hretV
+    have hifT : evalProgStmt optValueProg F
+        (.if_ (.var "h")
+          (.seq (.callRet "v" optValueOpName ["o"])
+                (.return_ (.var "v")))
+          (.return_ (.lit (.i32 (-1 : BitVec 32)))))
+        (envExtend [("o", .optVal (some x))] "h" (.b true)) =
+        .ok ((envExtend (envExtend [("o", .optVal (some x))] "h" (.b true))
+          "v" (.i32 x)), .returned (.i32 x)) :=
+      Eq.trans (evalProgStmt_if_true _ _ _ _ _ _ hcondT) hthen
+    have hsum : optValueFwd (some x) = .ok (.i32 x) := rfl
     simp only [evalProgFunc, hbind, hbody]
     rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstepH, hifT]
     simp [hsum]

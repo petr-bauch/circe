@@ -1312,3 +1312,32 @@ facts and caller-dependent footprints. The revisit-or-defer
 decision on MoSeL vendoring is now due (F2's second-shape line
 also stands).
 - Acceptance: report-only spike, no `validate`/Emit/transfer churn.
+
+### O1/O2. `optional::value` throw-path slice — DONE (2026-10-16)
+
+The Pillar 1 deferred probe (`optional::value` lowers to `cir.trap`)
+is closed. The O0 spike showed the "throw path" has no EH ops at all
+under `-fno-exceptions`: the `value()` callee is an engaged-check
+`cir.if` (taken arm = the admitted `operator*` path) with a
+`noreturn __throw_bad_optional_access` call (`abort()`) + `cir.trap`
+fallthrough. Gate: `isOptValueExemptText` (noreturn-throw +
+engaged-`if` + 3 calls + single return + no-EH pins) exempts the
+callee text; `isOptValueOpShape` / `isOptThrowShape` /
+`isOptValueShape` admit the leaf, the unconditional-abort helper
+(`.fail`, `void`), and the guarded entry; `isOptValueUnguardedShape`
+rejects unguarded `.value()` with a dedicated no-guard message
+(O1). Model keeps the internal check explicit (`.if_` + `.fail` =
+`AssertFail`, the standard loud arm) — no live check erased.
+Proofs: `evalFuncFuel_optValueOp` / `evalFuncFuel_optThrow` /
+`evalProgFunc_optValue` + full transfer mirrors
+(`memEval*`/`memTransfer*`/`oracleNoalias_*`/`optValue*_correct`).
+Harness: `tests/golden/OptValue{,Op,Throw}.lean` (+`_Spec`),
+`GoldenOptional` (corpus pipeline with per-function validation +
+6 new rejects: unguarded, trap-without-check, missing-`noreturn`,
+live-`unreachable`, two-call throw helper), `DiffOptional`
+(checked-leaf + helper Lean-Lean agreement, guarded entry vs native
+with exceptions enabled — engaged exercises the real `.value()`),
+tamper-checked (sentinel `-1`→`-2` caught as
+`opt_value mismatch: lean=-1 native=-2`), CIR byte-reproducible via
+`tools/emit-cir.sh`.
+- Acceptance: 735 jobs TEST-OK, CHECK-OK.

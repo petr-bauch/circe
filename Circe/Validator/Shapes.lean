@@ -775,15 +775,149 @@ def isOptDerefShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.ptr_stride"
   | _ => false
 
+/-- Text-level exemption for the `value()` checked leaf (O1/O2): the
+    disengaged fallthrough is a `noreturn`
+    `__throw_bad_optional_access` call (`abort()` under
+    `-fno-exceptions`) followed by `cir.trap`, after the one-sided
+    engaged-check `cir.if` whose only `cir.return` sits in the taken
+    arm. Both orders model to the same loud arm (trap and
+    noreturn-abort both fail), so the pin is presence, not order:
+    the engaged `_M_is_engaged` + `_M_get` calls, exactly three call
+    sites, the single return, no EH (`cir.try` / `personality` /
+    `cleanup eh` / `landingpad` / `cir.cleanup`), no heap, and no
+    `cir.unreachable` (a live-assert variant models differently and
+    rejects loudly). This is the `forbiddenOp` exemption gate (cf.
+    `isAccTwoExemptText`); full admission additionally pins the
+    signature (`isOptValueOpShape`). -/
+def isOptValueExemptText (text : String) : Bool :=
+  containsSubstr text "cir.trap" &&
+  containsSubstr text "cir.call @_ZSt27__throw_bad_optional_accessv() {noreturn}" &&
+  callsFunc text optHasName &&
+  callsFunc text optImplGetName &&
+  opCount text "cir.call @" == 3 &&
+  opCount text "cir.if" == 1 &&
+  opCount text "cir.base_class_addr" == 2 &&
+  opCount text "cir.return" == 1 &&
+  !containsSubstr text "cir.try" &&
+  !containsSubstr text "personality" &&
+  !containsSubstr text "cleanup eh" &&
+  !containsSubstr text "landingpad" &&
+  !containsSubstr text "cir.cleanup" &&
+  !containsSubstr text "cir.unreachable" &&
+  !containsSubstr text "cir.call @malloc" &&
+  !containsSubstr text "cir.call @free("
+
+/-- The `value()` checked leaf: single `const&` to the
+    `std::optional<int>` object with the single-reference triple,
+    pointer-to-`i32` return, the engaged `_M_is_engaged` check plus
+    the `_M_get` call plus the noreturn throw call (exactly the
+    `isOptValueExemptText` text), modeled with the check kept
+    explicit (cf. `optValueOpFunc`). -/
+def isOptValueOpShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType o.ctype && o.singleRef && isStdOptionalIntType o.ctype &&
+    (match ptrInner raw.ret with | some inner => isI32 inner | none => false) &&
+    isOptValueExemptText raw.text &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- The `__throw_bad_optional_access` helper: no params, void return,
+    a single `noreturn` `abort()` call plus the bare return (the
+    `-fno-exceptions` terminate lowering — no EH ops to model). -/
+def isOptThrowShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [] =>
+    noBreakContinueSwitch raw.text &&
+    raw.ret == "" &&
+    callsFunc raw.text "abort" &&
+    opCount raw.text "cir.call @" == 1 &&
+    containsSubstr raw.text "noreturn" &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.trap" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.cleanup" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free("
+  | _ :: _ => false
+
+/-- The `opt_val_guarded` entry: single `const&` to the
+    `std::optional<int>` object with the single-reference triple,
+    `i32` return, exactly two call sites (`has_value` for the guard,
+    checked `.value()` for the engaged word), the one-sided `cir.if`
+    with the value call inside, two `cir.const` (the live `-1`
+    sentinel plus the stray dead `1`, dropped downstream), no
+    projections of its own. -/
+def isOptValueShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType o.ctype && o.singleRef && isStdOptionalIntType o.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text optHasValueName &&
+    callsFunc raw.text optValueOpName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.const" == 2 &&
+    containsSubstr raw.text "#cir.int<-1>" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr" &&
+    !containsSubstr raw.text "cir.base_class_addr" &&
+    !containsSubstr raw.text "cir.ptr_stride"
+  | _ => false
+
+/-- Calls the checked `.value()` leaf with no `has_value` guard: the
+    disengaged throw path (`noreturn` abort + `cir.trap` in the
+    callee) is live, so the entry rejects with the dedicated message
+    (O1) rather than the generic wrong-shape text. -/
+def isOptValueUnguardedShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [o] =>
+    isPtrType o.ctype && o.singleRef && isStdOptionalIntType o.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text optValueOpName &&
+    !callsFunc raw.text optHasValueName
+  | _ => false
+
 /-- Known `std::optional<int32_t>` leaf callees (mangled): the
     `_M_is_engaged` engaged-bit leaf, the payload `_M_get` leaf, the
     impl `_M_get` delegation entry, the `has_value` delegation entry,
-    and the fused `operator*` leaf. Entry gates admit calls into the
-    (name, arity, site-count) pairs named in `validate` below; this
-    registry names every known optional leaf for the wrong-shape
-    rejection. -/
+    the fused `operator*` leaf, and the checked `.value()` leaf.
+    Entry gates admit calls into the (name, arity, site-count) pairs
+    named in `validate` below; this registry names every known
+    optional leaf for the wrong-shape rejection. -/
 def optLeafCallees : List String :=
-  [optHasName, optGetName, optImplGetName, optHasValueName, optDerefOpName]
+  [optHasName, optGetName, optImplGetName, optHasValueName, optDerefOpName,
+    optValueOpName]
 
 /-- Calls a known `std::optional` leaf but not with an admitted
     (name, arity, site-count) shape: dedicated rejection naming the

@@ -116,6 +116,9 @@ inductive FragKind : Type
   | optImplGet
   | optDerefOp
   | optDeref
+  | optValueOp
+  | optThrow
+  | optValue
   | spanExtent
   | spanSize
   | spanIndex
