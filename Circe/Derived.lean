@@ -27,6 +27,7 @@ import Circe.Emit.Choose
 import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecReverse
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -786,6 +787,26 @@ theorem oracleNoalias_stdVecIndex (l : List (BitVec 32)) (n : BitVec 64) :
       [.stdVecVal l, .u64 n] emptyMem = _
     exact bindMemArgs_stdVecIndex l n
   have hn : LayoutNoAlias [("s", 0, 0)] := by simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Reverse binding pins the `(1 + length)`-word snapshot
+    (`bindMemArgs` dispatches on the value alone, so the entry's
+    `mutBorrow` role binds exactly like the `sharedBorrow` reads). -/
+theorem bindMemArgs_vecReverse (l : List (BitVec 32)) :
+    bindMemArgs vecReverseFunc.args [.stdVecVal l] emptyMem =
+      some ([("v", .stdVecVal l)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)]) :=
+  bindMemArgs_stdVecVal "v" stdVecObjTy l
+
+/-- `vec_reverse` footprints are a singleton (the `callRet`
+    delegations happen after entry; stores hit the pinned block). -/
+theorem oracleNoalias_vecReverse (l : List (BitVec 32)) :
+    oracleNoalias vecReverseFunc [.stdVecVal l] := by
+  have hb := bindMemArgs_vecReverse l
+  have hn : LayoutNoAlias [("v", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
 /-- `_M_range_check` footprints are a singleton (the guard reads

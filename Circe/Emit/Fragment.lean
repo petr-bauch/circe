@@ -136,6 +136,7 @@ inductive FragKind : Type
   | vecBinSearch
   | vecTwoSum
   | vecAtSet
+  | vecReverse
   | vecMergeInto
   | vecMergeRuns
   | vecMergeSort

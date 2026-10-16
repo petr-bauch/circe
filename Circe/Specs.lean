@@ -797,6 +797,11 @@ theorem stdVecReadSum_correct_cons_err (x : BitVec 32) (xs : List (BitVec 32))
     stdVecReadSumFwd (x :: xs) = .error e := by
   simp [stdVecReadSumFwd, stdVecFold, h, i32_map_error]
 
+/-- The `vec_reverse` entry returns the reversal. -/
+theorem vecReverse_correct (l : List (BitVec 32)) :
+    vecReverseFwd l = .ok (.stdVecVal l.reverse) :=
+  rfl
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

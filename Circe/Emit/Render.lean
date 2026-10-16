@@ -804,6 +804,15 @@ def emitVecAtSetText (name : String) : String :=
   ++ "  | some _ => .ok (l.set n.toNat x)\n"
   ++ "  | none => .error .AssertFail\n"
 
+/-- Render the `vec_reverse` entry forward definition: list reversal
+    over the reified words (the tag-erased `vecReverseFwd`). -/
+def emitVecReverseText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (in-place countdown reverse over the reified words). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  .ok l.reverse\n"
+
 /-- Render the `vec_merge_into` entry forward definition: the
     out-of-place two-pointer merge over the reified words (short
     `out` aborts loudly). -/

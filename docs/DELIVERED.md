@@ -1341,3 +1341,34 @@ tamper-checked (sentinel `-1`→`-2` caught as
 `opt_value mismatch: lean=-1 native=-2`), CIR byte-reproducible via
 `tools/emit-cir.sh`.
 - Acceptance: 735 jobs TEST-OK, CHECK-OK.
+
+### R. In-place `vector::reverse` slice — DONE (2026-10-16)
+
+Pillar 2's first store-inside-loop shape: the countdown
+two-pointer `vec_reverse` (single `mutBorrow` vector, `void` out).
+The naive `n / 2` loop needs unsigned `div` (out per N6a — the R0
+rejected corpus), so the loop counts `j` down from `size` while
+`i` counts up under one `ult` guard. Gate: `isVecReverseShape`
+(structural counts — 1 `size` + 4 mut-`at()` calls, 1 `while`,
+1 `lt`, 1 `condition`, 2 consts, 1 `inc`/`dec`, 4 allocas / 16
+loads / 8 stores — plus the SSA-dataflow swap/index pins
+`vecReverseSwapPin`/`vecReverseIndexPin`, first `callArgOps`
+consumer) admits the entry over the frozen `size`/checked-`at()`
+leaves (composer precedent, V2 checked-only discipline).
+Proofs: `RevInv` (`i + j = n` + mirrored outers + untouched
+middle), `RevInv_step` (the `i = j - 1` touching-window case),
+`RevInv_exit`, `evalProgFunc_vecReverse` (fuel induction against
+`revIters`, `F = n + 1` suffices) + full transfer mirrors
+(`memEvalStmtFuel_vecSet` — the first `vecSet`-iteration memory
+threading, shadowing snapshot blocks by-find —
+`memEval*`/`memTransfer*`/`oracleNoalias_vecReverse`/
+`vecReverse_correct`).
+Harness: `tests/golden/VecReverse.lean` (+`_Spec`),
+`GoldenVecReverse` (corpus pipeline with per-function validation:
+entry + 4 shared leaves byte-identical, 6 shape cross-checks, 2
+rejects — self-recursive out-of-subset, bare-ptr alias-reject),
+`DiffVecReverse` (eval/fwd composition + native agreement),
+tamper-checked (swap-neutralized `v.at(i) = v.at(i)` caught as
+`vec_reverse mismatch: lean=[2, 1] native=[1, 1]`; golden edit
+caught), CIR byte-reproducible via `tools/emit-cir.sh`.
+- Acceptance: 743 jobs TEST-OK, CHECK-OK.

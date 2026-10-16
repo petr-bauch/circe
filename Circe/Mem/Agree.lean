@@ -868,6 +868,27 @@ theorem memEvalStmtFuel_vgrowSet (f : Nat) (x : String) (ie ve : CExpr)
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
       hi, hv, harr, hlay, hset, hmstore, hup]
 
+/-- `vecSet` statement on memory (any fuel): the index/value
+    expressions run on memory, the value side stores via `List.set`,
+    the memory side via the snapshot-shifted `memStore` in lockstep
+    (mirrors `evalStmtFuel_vecSet`; the `+ 1` skips the length word). -/
+theorem memEvalStmtFuel_vecSet (f : Nat) (x : String) (ie ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (i : BitVec 64) (xv : BitVec 32)
+    (a t : Nat) (l : List (BitVec 32)) (w : BitVec 32)
+    (m' : Mem) (ρ' : Env)
+    (hi : memEvalExpr ie ρ m π = .ok (.u64 i))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 xv))
+    (hvec : envLookup ρ x = some (.stdVecVal l))
+    (hlay : layoutLookup π x = some (a, t))
+    (hget : l[i.toNat]? = some w)
+    (hmstore : memStore m a t (i.toNat + 1) xv = .ok m')
+    (hup : envUpdate ρ x (.stdVecVal (l.set i.toNat xv)) = some ρ') :
+    memEvalStmtFuel f (.vecSet x ie ve) ρ m π =
+      .ok ((ρ', m', π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hi, hv, hvec, hlay, hget, hmstore, hup]
+
 /-- `vgrowSet` errors propagate (any fuel; mirrors
     `evalStmtFuel_vgrowSet_err`). -/
 theorem memEvalStmtFuel_vgrowSet_err (f : Nat) (x : String) (ie ve : CExpr)

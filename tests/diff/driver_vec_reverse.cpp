@@ -1,0 +1,35 @@
+// Differential-test driver for in-place `std::vector<int>` reverse:
+// args are `n w0 ... w(n-1)` (values as signed 64-bit,
+// range-checked to `int32_t`; length capped small). Applies the real
+// `vec_reverse(v)` entry (so tampering the C++ under test is caught)
+// and prints the resulting `v` as `m w0 ... w(m-1)` on one line
+// (`m == n` always — reversal preserves length). Bad usage exits 2,
+// out-of-`int32` words exit 3. Mismatch = P0.
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <climits>
+#include <vector>
+
+void vec_reverse(std::vector<int32_t> &v);
+
+int main(int argc, char **argv) {
+  if (argc < 2)
+    return 2;
+  long n = strtol(argv[1], 0, 10);
+  if (n < 0 || n > 10 || argc != 2 + n)
+    return 2;
+  std::vector<int32_t> v;
+  for (long k = 0; k < n; k++) {
+    long long w = strtoll(argv[2 + k], 0, 10);
+    if (w < INT32_MIN || w > INT32_MAX)
+      return 3;
+    v.push_back((int32_t)w);
+  }
+  vec_reverse(v);
+  printf("%lu", (unsigned long)v.size());
+  for (size_t k = 0; k < v.size(); k++)
+    printf(" %d", v[k]);
+  printf("\n");
+  return 0;
+}

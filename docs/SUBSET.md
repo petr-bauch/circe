@@ -936,6 +936,26 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `tmp` aborts loudly (`AssertFail`, native exit 4). Sortedness
     is caller debt (agreement holds regardless, the V1 precedent).
     Verdict honestly `unknown` (single-ref).
+28s. In-place countdown reverse over `vector<int>` (R, first
+    store-inside-loop shape): `vec_reverse` (single `mutBorrow`
+    vector in, `void` out, reversed words returned by `var` — the
+    `xor_n` out-param idiom). Admission is one entry Func over the
+    frozen `size` / checked non-const `at()` leaves: one `size`
+    call + four mut-`at()` calls (two checked reads + two
+    write-guarded borrowed stores per iteration), one `cir.while`
+    countdown loop (`i` up / `j` down with a single `ult` guard
+    and `cir.condition` — the naive `n / 2` needs unsigned `div`,
+    which stays out per N6a), one `cir.inc` + one `cir.dec` (4
+    allocas / 16 loads / 8 stores / 2 consts / 1 void return).
+    Every read goes through the checked non-const `at()` guarded
+    read, every write through a borrowed store (`vecSet`, the W
+    store — the first loop whose body both calls leaves and
+    stores). Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls, no self-call, no `try`.
+    Indices stay in bounds by the countdown (`--j` cannot
+    underflow since the guard gives `j >= 1`; `i` never reaches
+    past `j - 1`), so the `AssertFail` legs are unreachable.
+    Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

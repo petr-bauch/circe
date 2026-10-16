@@ -2458,6 +2458,225 @@ def structuralAliasCond (raw : RawFunc) : Bool :=
 def isAliasCondShape (raw : RawFunc) : Bool :=
   structuralAliasCond raw && condPairDataflow raw.text
 
+/-! ## R1-admission: countdown reverse recognition (`vec_reverse`) -/
+
+/-- Line indices matching a predicate (file order). -/
+def linesIdxOf (ls : List String) (pred : String → Bool) : List Nat :=
+  (List.range ls.length).filter (fun k => match ls[k]? with
+    | some ln => pred ln | none => false)
+
+/-- The unique line matching a predicate (`none` unless exactly one). -/
+def theLineIdx (ls : List String) (pred : String → Bool) : Option Nat :=
+  match linesIdxOf ls pred with
+  | [k] => some k
+  | _ => none
+
+/-- Nearest preceding definition of an SSA value before a use line.
+    Scope-structured CIR reuses numbers across `cir.scope` regions
+    (the reverse body redefines the condition's `%7/%8/%9`), so the
+    whole-text first match (`List.find?`) is unsound here: the
+    correct definition is the nearest one strictly above the use. -/
+def prevDefIdx (ls : List String) (useIdx v : Nat) : Option Nat :=
+  (List.range useIdx).reverse.find? (fun k => match ls[k]? with
+    | some ln => ssaDefOn ln == some v | none => false)
+
+/-- Chase a use to its alloca line through single-operand definitions,
+    resolving every step by nearest-preceding-definition (shadow
+    sound). Multi-operand definitions resolve to nothing. -/
+def chaseIdxToAlloca : List String → Nat → Nat → Nat → Option Nat
+  | _, _, _, 0 => none
+  | ls, useIdx, v, fuel + 1 =>
+    match prevDefIdx ls useIdx v with
+    | none => none
+    | some d =>
+      match ls[d]? with
+      | none => none
+      | some dln =>
+        if containsSubstr dln "cir.alloca" then some d
+        else match ssaOperands dln with
+          | [w] => chaseIdxToAlloca ls d w fuel
+          | _ => none
+
+/-- Operands of a line by index (`[]` off the end). -/
+def lineOps (ls : List String) (k : Nat) : List Nat :=
+  match ls[k]? with
+  | some ln => ssaOperands ln
+  | none => []
+
+/-- Call-site argument operands: the callee name glues to the first
+    argument (`...2atEm(%10,`), defeating whitespace tokenization, so
+    the parenthesized argument list is cut out first and split on
+    commas (the `:` return annotation follows the first `)`, and CIR
+    types carry no parens). -/
+def callArgOps (ln : String) : List Nat :=
+  let args := String.ofList
+    (((ln.toList.dropWhile (· != '(')).drop 1).takeWhile (· != ')'))
+  (args.splitOn ",").filterMap (fun t =>
+    tokSSA (String.ofList ((t.toList.dropWhile (· == ' ')))))
+
+/-- Call-site argument operands by line index (`[]` off the end). -/
+def lineCallOps (ls : List String) (k : Nat) : List Nat :=
+  match ls[k]? with
+  | some ln => callArgOps ln
+  | none => []
+
+/-- The swap dataflow pin (what op counts alone cannot say): the four
+    checked-`at()` sites read `(i, j, i, j)` off the vector alloca in
+    file order; the first two results load into the `t` spill and the
+    second read; the last two sites are stored through with the
+    crossed words (`b` at `i`, reloaded `t` at `j`). Every step is
+    resolved by nearest-preceding-definition, so scope renumbering
+    cannot reroute a use. This rejects the near-miss shapes with
+    identical op counts: same-index double writes, swapped
+    read/write roles, and spill bypasses. -/
+def vecReverseSwapPin (ls : List String) : Bool :=
+  match theLineIdx ls (containsSubstr · "cir.alloca \"v\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"i\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"j\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"t\"") with
+  | some vA, some iA, some jA, some tA =>
+    match linesIdxOf ls (containsSubstr · "cir.call @_ZNSt6vectorIiSaIiEE2atEm(%"),
+        linesIdxOf ls (containsSubstr · "cir.load align(4)"),
+        linesIdxOf ls (containsSubstr · "cir.store align(4)") with
+    | [a1, a2, a3, a4], [l1, l2, l3], [s1, s2, s3] =>
+      a1 < l1 && l1 < s1 && s1 < a2 && a2 < l2 && l2 < a3 && a3 < s2 &&
+        s2 < l3 && l3 < a4 && a4 < s3 &&
+      match lineCallOps ls a1, lineCallOps ls a2, lineCallOps ls a3,
+          lineCallOps ls a4 with
+      | [v1, i1], [v2, i2], [v3, i3], [v4, i4] =>
+        chaseIdxToAlloca ls a1 v1 8 == some vA &&
+        chaseIdxToAlloca ls a2 v2 8 == some vA &&
+        chaseIdxToAlloca ls a3 v3 8 == some vA &&
+        chaseIdxToAlloca ls a4 v4 8 == some vA &&
+        chaseIdxToAlloca ls a1 i1 8 == some iA &&
+        chaseIdxToAlloca ls a2 i2 8 == some jA &&
+        chaseIdxToAlloca ls a3 i3 8 == some iA &&
+        chaseIdxToAlloca ls a4 i4 8 == some jA &&
+        match lineOps ls l1, lineOps ls l2, lineOps ls l3 with
+        | [w1], [w2], [w3] =>
+          prevDefIdx ls l1 w1 == some a1 &&
+          prevDefIdx ls l2 w2 == some a2 &&
+          prevDefIdx ls l3 w3 == some tA &&
+          match lineOps ls s1, lineOps ls s2, lineOps ls s3 with
+          | [u1, p1], [u2, p2], [u3, p3] =>
+            prevDefIdx ls s1 u1 == some l1 &&
+            prevDefIdx ls s1 p1 == some tA &&
+            prevDefIdx ls s2 u2 == some l2 &&
+            prevDefIdx ls s2 p2 == some a3 &&
+            prevDefIdx ls s3 u3 == some l3 &&
+            prevDefIdx ls s3 p3 == some a4
+          | _, _, _ => false
+        | _, _, _ => false
+      | _, _, _, _ => false
+    | _, _, _ => false
+  | _, _, _, _ => false
+
+/-- Index-skeleton pin: the `lt` guard compares the `i` cell against
+    the `j` cell (in order); `inc` feeds `i`, `dec` feeds `j`; the
+    `i` cell is zero-initialized and `inc`-updated, the `j` cell is
+    size-initialized and `dec`-updated (file order: init before
+    writeback). -/
+def vecReverseIndexPin (ls : List String) : Bool :=
+  match theLineIdx ls (containsSubstr · "cir.cmp lt"),
+      theLineIdx ls (containsSubstr · "cir.inc "),
+      theLineIdx ls (containsSubstr · "cir.dec "),
+      theLineIdx ls (containsSubstr · "cir.alloca \"i\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"j\""),
+      theLineIdx ls (containsSubstr · "cir.const #cir.int<0> : !u64i"),
+      theLineIdx ls (containsSubstr · "cir.call @_ZNKSt6vectorIiSaIiEE4sizeEv(%") with
+  | some ci, some ni, some di, some iA, some jA, some zA, some sA =>
+    match lineOps ls ci, lineOps ls ni, lineOps ls di with
+    | [a, b], [x], [y] =>
+      chaseIdxToAlloca ls ci a 8 == some iA &&
+      chaseIdxToAlloca ls ci b 8 == some jA &&
+      chaseIdxToAlloca ls ni x 8 == some iA &&
+      chaseIdxToAlloca ls di y 8 == some jA &&
+      match (linesIdxOf ls (containsSubstr · "cir.store align(8)")).filter
+          (fun k => match lineOps ls k with | [_, d] => d == 1 | _ => false),
+        (linesIdxOf ls (containsSubstr · "cir.store align(8)")).filter
+          (fun k => match lineOps ls k with | [_, d] => d == 2 | _ => false) with
+      | [si0, si1], [sj0, sj1] =>
+        match lineOps ls si0, lineOps ls si1,
+            lineOps ls sj0, lineOps ls sj1 with
+        | [vi0, _], [vi1, _], [vj0, _], [vj1, _] =>
+          prevDefIdx ls si0 vi0 == some zA &&
+          prevDefIdx ls si1 vi1 == some ni &&
+          prevDefIdx ls sj0 vj0 == some sA &&
+          prevDefIdx ls sj1 vj1 == some di
+        | _, _, _, _ => false
+      | _, _ => false
+    | _, _, _ => false
+  | _, _, _, _, _, _, _ => false
+
+/-- Structural half of reverse recognition: `void`, single
+    single-reference vector param, one `size` + four checked-`at()`
+    calls, one `while` (`lt` guard, `inc`/`dec` updates, `t` spill),
+    no branches/switches/EH/division/traps/globals. -/
+def structuralVecReverse (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.call @" == 5 &&
+  callsFunc raw.text stdVecSizeName &&
+  opCount raw.text "cir.call @_ZNSt6vectorIiSaIiEE2atEm(" == 4 &&
+  opCount raw.text "cir.while" == 1 &&
+  opCount raw.text "cir.cmp" == 1 &&
+  opCount raw.text "cir.cmp lt" == 1 &&
+  opCount raw.text "cir.condition" == 1 &&
+  opCount raw.text "cir.const" == 2 &&
+  containsSubstr raw.text "#cir.int<0>" &&
+  opCount raw.text "cir.alloca" == 4 &&
+  opCount raw.text "cir.load" == 16 &&
+  opCount raw.text "cir.store" == 8 &&
+  opCount raw.text "cir.load align(4)" == 3 &&
+  opCount raw.text "cir.store align(4)" == 3 &&
+  opCount raw.text "cir.store align(8)" == 4 &&
+  opCount raw.text "cir.return" == 1 &&
+  opCount raw.text "cir.inc" == 1 &&
+  opCount raw.text "cir.dec" == 1 &&
+  opCount raw.text "cir.scope" == 2 &&
+  opCount raw.text "cir.yield" == 1 &&
+  !callsFunc raw.text raw.name &&
+  !callsFunc raw.text stdVecIndexName &&
+  !callsFunc raw.text stdVecRangeCheckName &&
+  !callsFunc raw.text stdVecRangeCheckThrowName &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.switch" &&
+  !containsSubstr raw.text "cir.try" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "cir.div" &&
+  !containsSubstr raw.text "cir.unreachable" &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  !containsSubstr raw.text "cir.get_element" &&
+  !containsSubstr raw.text "cir.cast" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.do" &&
+  !containsSubstr raw.text "cir.cond_br" &&
+  !containsSubstr raw.text "cir.sub " &&
+  !containsSubstr raw.text "cir.add " &&
+  !containsSubstr raw.text "cir.shift" &&
+  !containsSubstr raw.text "cir.cmp eq" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.ptr_diff" &&
+  noBreakContinueSwitch raw.text &&
+  (match raw.params with
+   | [v] =>
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype
+   | _ => false)
+
+/-- Exact `vec_reverse` admission shape (R1): the structural skeleton
+    plus the swap dataflow pin (in-order checked sites with crossed
+    words) plus the index-skeleton pin (`i` up from zero, `j` down
+    from size). The single `mutBorrow`ed vector is the only pointer
+    param, so no verdict beyond the triple is demanded (the
+    `vec_at_set` precedent: oracle governance vacuous, verdict
+    honestly `unknown`). -/
+def isVecReverseShape (raw : RawFunc) : Bool :=
+  structuralVecReverse raw &&
+  vecReverseSwapPin (raw.text.splitOn "\n") &&
+  vecReverseIndexPin (raw.text.splitOn "\n")
+
 /-- Soundness of the L2 admission predicate: `true` yields the three
     recorded locals with the first writer's range ending strictly
     before the second writer's begins. Admission will consume exactly

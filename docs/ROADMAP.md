@@ -35,7 +35,8 @@ composers (N7); insertion sort over `std::array` (N9, with
 Sorted/Permutation spec); the `std::vector<int>` algorithm run —
 binary search (V1), two-sum (V2), checked `at()` store (W),
 out-of-place merge kernel (M), bottom-up merge sort with
-calls-in-loop-bodies (C); crypto programs over `std::array`
+calls-in-loop-bodies (C), in-place countdown reverse with
+stores-in-loop (R); crypto programs over `std::array`
 (K1–K5: u32 bitwise leaves, buffer-xor, quarter-round, ChaCha20,
 SHA-256 vs KATs). Discipline throughout: pre-sized caller-owned
 buffers, loud misses (native exit 4), caller-debt side conditions

@@ -1534,6 +1534,26 @@ def emitVecAtSetSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_reverse` entry. The mirror is list
+    reversal over the reified words; edges carry ground truth
+    (empty, singleton, even/odd lengths). -/
+def emitVecReverseSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v)` reverses `v` in place. Base body reference: list reversal on the reified words (cf. emitted `{name}_fwd`, `vecReverseFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  .ok l.reverse\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, singleton, even and odd lengths. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (List (BitVec 32))) :=\n"
+  ++ "  [([], .ok []), ([7], .ok [7]), ([1, 2], .ok [2, 1]),\n"
+  ++ "   ([1, 2, 3], .ok [3, 2, 1]), ([1, 2, 3, 4], .ok [4, 3, 2, 1])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_merge_into` entry. The mirror is an
     independent out-of-place two-pointer merge over the reified
     words; edges carry ground truth (interleave, empty-`a` drain,
