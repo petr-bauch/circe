@@ -59,16 +59,17 @@ and multi-writer algorithms.
 
 Delivered: proof ergonomics (N5: `cir_fuel`, fuel-bound lemmas,
 per-step cascades), proof scale-down (N8: `cir_eval_closed`),
-Hoare rule library + galleries (H1–H3, A, B — 8 closed-instance
-`hoare-gallery` jobs), micro-tactics with adoption gates (N5a/N5b),
-strategy capture (`notes/proof-patterns.md`, `VERIFYING.md`
-galleries), and generator tooling (`tools/GenOut.lean`,
-`tools/GenMatch.lean`).
+Hoare rule library + galleries (H1–H3, A, B, R swap-step — 9
+closed-instance `hoare-gallery` jobs), micro-tactics with adoption
+gates (N5a/N5b), strategy capture (`notes/proof-patterns.md`,
+`VERIFYING.md` galleries), and generator tooling
+(`tools/GenOut.lean`, `tools/GenMatch.lean`).
 
 Next: a gallery per new admitted shape; tactic harvesting by the
 rule of three (prose note on first use, Lean tactic on third —
 `fuel_step_down` earned it); Hoare-loop/frame rules as new
-constructs arrive (calls-in-loops is the current frontier).
+constructs arrive (countdown loops with calls + stores are now
+admitted by C/R — the while/frame rules are the frontier).
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`
@@ -84,8 +85,16 @@ constructs arrive (calls-in-loops is the current frontier).
   `List.set_cons_succ`; calls communicate by value, so the caller
   `(m, π)` threads through `callRet` unchanged and only `vecSet`
   steps extend the block list.
+- Program-level while-rule (scoped 2026-10-16, implementation
+  pending): `htripleProg_while_at` mirrors `htriple_while_at`
+  over `memEvalProgStmt` (same four premises — guard-false at
+  zero, exit, guard-decidable, triple-step). Every premise maps
+  to a named R lemma; the R invariant needs a fuel-indexed
+  wrapper (`revIters i j = k ∧ RevInv …`) since the rule counts
+  fuel down. Needs `HTripleProg(At)` promoted to `Circe/Hoare`
+  from the gallery before implementation.
 
-## Pillar 3 — Iris separation logic for low-level aspects and concurrency
+## Pillar 4 — Iris separation logic for low-level aspects and concurrency
 
 To be scoped.
 
