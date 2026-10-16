@@ -5,7 +5,7 @@ the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
 State (2026-10-16): all delivered milestones live in `DELIVERED.md`.
-Work going forward is organized under three pillars; each slice
+Work going forward is organized under four pillars; each slice
 still follows the standing convention below.
 
 ## Pillar 1 — Completeness of C support
@@ -22,8 +22,10 @@ Next:
 - L-track is closed (L4/L5); the Iris revisit trigger fired on
   both legs 2026-10-16 and the revisit is DEFERRED with a
   limitations note — see `DELIVERED.md` "Iris spike report".
-- Deferred probe still open: `optional::value` lowers to `cir.trap`
-  (throw path); deferral pins live in the `Golden*` suites.
+- `optional::value` throw path closed (O1/O2, 2026-10-16):
+  guarded `.value()` admitted (checked leaf + throw helper +
+  guarded entry), unguarded rejects loudly; general `cir.try`
+  semantics stay out per standing non-goals.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
@@ -59,6 +61,11 @@ Next: a gallery per new admitted shape; tactic harvesting by the
 rule of three (prose note on first use, Lean tactic on third —
 `fuel_step_down` earned it); Hoare-loop/frame rules as new
 constructs arrive (calls-in-loops is the current frontier).
+
+## Pillar 3 — Iris separation logic for low-level aspects and concurrency
+
+To be scoped.
+
 
 ## Guiding principle (locked)
 
