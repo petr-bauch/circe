@@ -17,6 +17,7 @@ import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecReverse
+import Circe.Emit.VecSegReverse
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -854,6 +855,23 @@ def matchFrag : Func → Option FragKind
                             (.uadd (.var "i") (.lit (.u64 1))))))))))
                 (.return_ (.var "v")))))))⟩ =>
     some .vecReverse
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"lo", .u 64, .owned⟩,
+        ⟨"hi", .u 64, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.seq (.let_ "i" (.u 64) (.var "lo"))
+        (.seq (.let_ "j" (.u 64) (.var "hi"))
+          (.seq (.while_ (.ult (.var "i") (.var "j"))
+            (.seq (.assign "j" (.usub (.var "j") (.lit (.u64 1))))
+              (.seq (.callRet "a" "_ZNSt6vectorIiSaIiEE2atEm" ["v", "i"])
+                (.seq (.callRet "b" "_ZNSt6vectorIiSaIiEE2atEm" ["v", "j"])
+                  (.seq (.vecSet "v" (.var "i") (.var "b"))
+                    (.seq (.vecSet "v" (.var "j") (.var "a"))
+                      (.assign "i"
+                        (.uadd (.var "i") (.lit (.u64 1))))))))))
+            (.return_ (.var "v")))))⟩ =>
+    some .vecSegReverse
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -1532,6 +1550,8 @@ theorem matchFrag_vecAtSet :
     matchFrag vecAtSetFunc = some .vecAtSet := rfl
 theorem matchFrag_vecReverse :
     matchFrag vecReverseFunc = some .vecReverse := rfl
+theorem matchFrag_vecSegReverse :
+    matchFrag vecSegReverseFunc = some .vecSegReverse := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_mergeRuns :

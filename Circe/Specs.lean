@@ -802,6 +802,16 @@ theorem vecReverse_correct (l : List (BitVec 32)) :
     vecReverseFwd l = .ok (.stdVecVal l.reverse) :=
   rfl
 
+/-- The `vec_seg_reverse` entry returns the window reversal (under
+    caller debt; the forward is loud otherwise). -/
+theorem vecSegReverse_correct (l : List (BitVec 32))
+    (lo hi : BitVec 64)
+    (hlo : lo.toNat ≤ hi.toNat) (hhi : hi.toNat ≤ l.length) :
+    vecSegReverseFwd l lo hi =
+      .ok (.stdVecVal (segReverseWindow l lo.toNat hi.toNat)) := by
+  simp only [vecSegReverseFwd]
+  rw [if_pos ⟨hlo, hhi⟩]
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

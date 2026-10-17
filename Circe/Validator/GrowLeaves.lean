@@ -2665,6 +2665,122 @@ def structuralVecReverse (raw : RawFunc) : Bool :=
     isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype
    | _ => false)
 
+/-- Index-skeleton pin, segment variant: the `lt` guard compares
+    the `i` cell against the `j` cell (in order); `inc` feeds `i`,
+    `dec` feeds `j`; the `i` cell is `lo`-initialized (copy chain
+    through the `lo` alloca) and `inc`-updated, the `j` cell is
+    `hi`-initialized (copy chain through the `hi` alloca) and
+    `dec`-updated. Store lines are classified by chasing the
+    destination to its alloca (no SSA literals — scope renumbering
+    cannot reroute a use). -/
+def vecSegReverseIndexPin (ls : List String) : Bool :=
+  match theLineIdx ls (containsSubstr · "cir.cmp lt"),
+      theLineIdx ls (containsSubstr · "cir.inc "),
+      theLineIdx ls (containsSubstr · "cir.dec "),
+      theLineIdx ls (containsSubstr · "cir.alloca \"i\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"j\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"lo\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"hi\"") with
+  | some ci, some ni, some di, some iA, some jA, some loA, some hiA =>
+    match lineOps ls ci, lineOps ls ni, lineOps ls di with
+    | [a, b], [x], [y] =>
+      chaseIdxToAlloca ls ci a 8 == some iA &&
+      chaseIdxToAlloca ls ci b 8 == some jA &&
+      chaseIdxToAlloca ls ni x 8 == some iA &&
+      chaseIdxToAlloca ls di y 8 == some jA &&
+      match ((linesIdxOf ls (containsSubstr · "cir.store align(8)")).filter
+          (fun k => match lineOps ls k with
+            | [_, d] => chaseIdxToAlloca ls k d 8 == some iA
+            | _ => false)),
+          ((linesIdxOf ls (containsSubstr · "cir.store align(8)")).filter
+          (fun k => match lineOps ls k with
+            | [_, d] => chaseIdxToAlloca ls k d 8 == some jA
+            | _ => false)) with
+      | [si0, si1], [sj0, sj1] =>
+        match lineOps ls si0, lineOps ls si1,
+            lineOps ls sj0, lineOps ls sj1 with
+        | [vi0, _], [vi1, _], [vj0, _], [vj1, _] =>
+          chaseIdxToAlloca ls si0 vi0 8 == some loA &&
+          prevDefIdx ls si1 vi1 == some ni &&
+          chaseIdxToAlloca ls sj0 vj0 8 == some hiA &&
+          prevDefIdx ls sj1 vj1 == some di
+        | _, _, _, _ => false
+      | _, _ => false
+    | _, _, _ => false
+  | _, _, _, _, _, _, _ => false
+
+/-- Structural half of segment-reverse recognition: `void`, one
+    single-reference vector + two owned `u64` params, four
+    checked-`at()` calls and no `size` call, one `while` (`lt`
+    guard, `inc`/`dec` updates, `t` spill), no materialized
+    constants (the prelude copies `lo`/`hi`), no
+    branches/switches/EH/division/traps/globals. -/
+def structuralVecSegReverse (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.call @" == 4 &&
+  callsFunc raw.text stdVecAtMutName &&
+  opCount raw.text "cir.call @_ZNSt6vectorIiSaIiEE2atEm(" == 4 &&
+  !callsFunc raw.text stdVecSizeName &&
+  opCount raw.text "cir.while" == 1 &&
+  opCount raw.text "cir.cmp" == 1 &&
+  opCount raw.text "cir.cmp lt" == 1 &&
+  opCount raw.text "cir.condition" == 1 &&
+  !containsSubstr raw.text "cir.const" &&
+  opCount raw.text "cir.alloca" == 6 &&
+  opCount raw.text "cir.load" == 17 &&
+  opCount raw.text "cir.store" == 10 &&
+  opCount raw.text "cir.load align(4)" == 3 &&
+  opCount raw.text "cir.store align(4)" == 3 &&
+  opCount raw.text "cir.store align(8)" == 4 &&
+  opCount raw.text "cir.return" == 1 &&
+  opCount raw.text "cir.inc" == 1 &&
+  opCount raw.text "cir.dec" == 1 &&
+  opCount raw.text "cir.scope" == 2 &&
+  opCount raw.text "cir.yield" == 1 &&
+  !callsFunc raw.text raw.name &&
+  !callsFunc raw.text stdVecIndexName &&
+  !callsFunc raw.text stdVecRangeCheckName &&
+  !callsFunc raw.text stdVecRangeCheckThrowName &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.switch" &&
+  !containsSubstr raw.text "cir.try" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "cir.div" &&
+  !containsSubstr raw.text "cir.unreachable" &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  !containsSubstr raw.text "cir.get_element" &&
+  !containsSubstr raw.text "cir.cast" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.do" &&
+  !containsSubstr raw.text "cir.cond_br" &&
+  !containsSubstr raw.text "cir.sub " &&
+  !containsSubstr raw.text "cir.add " &&
+  !containsSubstr raw.text "cir.shift" &&
+  !containsSubstr raw.text "cir.cmp eq" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.ptr_diff" &&
+  noBreakContinueSwitch raw.text &&
+  (match raw.params with
+   | [v, lo, hi] =>
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isU64 lo.ctype && isU64 hi.ctype
+   | _ => false)
+
+/-- Exact `vec_seg_reverse` admission shape (S1): the structural
+    skeleton (window opened by owned `lo`/`hi` params — no `size`
+    call, no materialized constants) plus the shared swap dataflow
+    pin (the loop body is line-identical to the whole-range
+    reverse) plus the segment index-skeleton pin (`i` up from
+    `lo`, `j` down from `hi`). Verdict honestly `unknown`
+    (single-ref). -/
+def isVecSegReverseShape (raw : RawFunc) : Bool :=
+  structuralVecSegReverse raw &&
+  vecReverseSwapPin (raw.text.splitOn "\n") &&
+  vecSegReverseIndexPin (raw.text.splitOn "\n")
+
 /-- Exact `vec_reverse` admission shape (R1): the structural skeleton
     plus the swap dataflow pin (in-order checked sites with crossed
     words) plus the index-skeleton pin (`i` up from zero, `j` down

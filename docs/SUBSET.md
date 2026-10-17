@@ -956,6 +956,19 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     underflow since the guard gives `j >= 1`; `i` never reaches
     past `j - 1`), so the `AssertFail` legs are unreachable.
     Verdict honestly `unknown` (single-ref).
+28t. In-place countdown segment reverse over `vector<int>` (S,
+    window sibling of R): `vec_seg_reverse` (single `mutBorrow`
+    vector + two owned `u64` bounds in, `void` out,
+    window-reversed words returned by `var`). Admission is one
+    entry Func over the frozen checked non-const `at()` leaves
+    (no `size` call — the prelude binds `i ← lo`, `j ← hi` as
+    pure `let`s): four mut-`at()` calls, one `cir.while`
+    countdown loop (the R loop body reused verbatim — same
+    `--j`, same two checked reads, same crossed `vecSet`
+    writes, `++i`), 6 allocas / 17 loads / 10 stores / no
+    consts / 1 void return. Caller debt `lo ≤ hi ≤ length`
+    (out-of-range is a loud `AssertFail` leg, unreachable under
+    the contract). Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

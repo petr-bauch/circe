@@ -1553,6 +1553,26 @@ def emitVecReverseSpecText (name : String) : String :=
   ++ s!"def {name}_spec_check : Bool :=\n"
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+/-- Spec stub for the `vec_seg_reverse` entry. The mirror reverses
+    the `[lo, hi)` window over the reified words; edges cover empty,
+    full, prefix, suffix, and interior windows. -/
+def emitVecSegReverseSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, lo, hi)` reverses `v[lo, hi)` in place. Base body reference: window reversal on the reified words (cf. emitted `{name}_fwd`, `vecSegReverseFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (lo hi : BitVec 64) : Result (List (BitVec 32)) :=\n"
+  ++ "  .ok (l.take lo.toNat ++ ((l.drop lo.toNat).take (hi.toNat - lo.toNat)).reverse ++ l.drop hi.toNat)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty/full windows, prefix, suffix, interior, singleton. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64 × BitVec 64) × Result (List (BitVec 32))) :=\n"
+  ++ "  [(([], 0, 0), .ok []), (([1, 2, 3], 0, 3), .ok [3, 2, 1]),\n"
+  ++ "   (([1, 2, 3], 0, 2), .ok [2, 1, 3]), (([1, 2, 3], 1, 3), .ok [1, 3, 2]),\n"
+  ++ "   (([1, 2, 3, 4], 1, 3), .ok [1, 3, 2, 4]), (([1, 2, 3], 1, 2), .ok [1, 2, 3])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
 
 /-- Spec stub for the `vec_merge_into` entry. The mirror is an
     independent out-of-place two-pointer merge over the reified

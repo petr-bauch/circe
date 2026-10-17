@@ -28,6 +28,7 @@ import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecReverse
+import Circe.Emit.VecSegReverse
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -805,6 +806,31 @@ theorem bindMemArgs_vecReverse (l : List (BitVec 32)) :
 theorem oracleNoalias_vecReverse (l : List (BitVec 32)) :
     oracleNoalias vecReverseFunc [.stdVecVal l] := by
   have hb := bindMemArgs_vecReverse l
+  have hn : LayoutNoAlias [("v", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Segment-reverse binding pins the `(1 + length)`-word snapshot
+    (the owned `u64` bounds bind by value: env entries only, no
+    blocks, no layout — the `stdVecIndex` precedent). -/
+theorem bindMemArgs_vecSegReverse (l : List (BitVec 32))
+    (lo hi : BitVec 64) :
+    bindMemArgs vecSegReverseFunc.args
+      [.stdVecVal l, .u64 lo, .u64 hi] emptyMem =
+      some ([("v", .stdVecVal l), ("lo", .u64 lo), ("hi", .u64 hi)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)]) := by
+  rfl
+
+/-- `vec_seg_reverse` footprints are a singleton (the `callRet`
+    delegations happen after entry; stores hit the pinned block;
+    the owned bounds never touch memory). -/
+theorem oracleNoalias_vecSegReverse (l : List (BitVec 32))
+    (lo hi : BitVec 64) :
+    oracleNoalias vecSegReverseFunc
+      [.stdVecVal l, .u64 lo, .u64 hi] := by
+  have hb := bindMemArgs_vecSegReverse l lo hi
   have hn : LayoutNoAlias [("v", 0, 0)] := by
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩

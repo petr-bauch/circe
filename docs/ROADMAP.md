@@ -47,13 +47,12 @@ coverage, one admission-shaped slice at a time — speculative STD
 stays out (see non-goals). Multi-output support (G2/G2b/G3:
 `wr_pair`, `cond_pair`, `alias_cond`) unblocks accumulate-style
 and multi-writer algorithms.
-- Next Pillar 2 target (proposed 2026-10-16): range-bounded
-  in-place algorithms — segment reverse over `(lo, hi)`, then
-  rotate-by-three-reversals. Reuses the R countdown/store-in-loop
-  machinery (window invariant, `vecSet` lockstep) with one new
-  admission pin per slice (range bounds, then triple
-  entry-over-entry composition); each one admission-shaped slice
-  at a time.
+- Next Pillar 2 target: range-bounded in-place algorithms —
+  segment reverse over `(lo, hi)` DONE (2026-10-17, S slice:
+  window invariant `SegInv`, reused R loop body, `vecSet`
+  lockstep), then rotate-by-three-reversals (triple
+  entry-over-entry composition — one new admission pin, one
+  admission-shaped slice at a time).
 
 ## Pillar 3 — Human-readable/writable proofs
 

@@ -813,6 +813,16 @@ def emitVecReverseText (name : String) : String :=
   ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
   ++ "  .ok l.reverse\n"
 
+/-- Render the `vec_seg_reverse` entry forward definition: window
+    reversal over the reified words (`take`/`drop` saturate, so the
+    mirror agrees with native on every in-bounds `[lo, hi)`). -/
+def emitVecSegReverseText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (in-place segment reverse over the reified words). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (lo hi : BitVec 64) : Result (List (BitVec 32)) :=\n"
+  ++ "  .ok (l.take lo.toNat ++ ((l.drop lo.toNat).take (hi.toNat - lo.toNat)).reverse ++ l.drop hi.toNat)\n"
+
 /-- Render the `vec_merge_into` entry forward definition: the
     out-of-place two-pointer merge over the reified words (short
     `out` aborts loudly). -/

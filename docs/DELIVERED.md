@@ -1372,3 +1372,38 @@ tamper-checked (swap-neutralized `v.at(i) = v.at(i)` caught as
 `vec_reverse mismatch: lean=[2, 1] native=[1, 1]`; golden edit
 caught), CIR byte-reproducible via `tools/emit-cir.sh`.
 - Acceptance: 743 jobs TEST-OK, CHECK-OK.
+
+### S. In-place `vector` segment-reverse slice — DONE (2026-10-17)
+
+Pillar 2's window sibling of R: the countdown two-pointer
+`vec_seg_reverse` (single `mutBorrow` vector + two owned `u64`
+bounds, `void` out). No `size` call — the prelude binds `i ← lo`,
+`j ← hi` as pure `let`s — and the R loop body is reused verbatim
+(same `--j`, same two checked reads, same crossed `vecSet`
+writes, `++i`). Gate: `isVecSegReverseShape` (structural counts —
+4 mut-`at()` calls, no `size` call, 6 allocas / 17 loads / 10
+stores, no consts — plus the SSA-dataflow swap/index pins, swap
+pin shared with R via `vecReverseBody` line-identity) admits the
+entry over the frozen checked-`at()` leaves.
+Proofs: `SegInv` (`i + j = lo + hi` + mirrored outer window +
+untouched middle and outsides), `SegInv_step` (the `i = j - 1`
+touching-window case carries over; writes land inside `[lo, hi)`
+so the outside legs thread through), `segGetElem` (window
+indexing through `take`/`drop`/`reverse`), `SegInv_exit`,
+`evalProgFunc_vecSegReverse` (fuel induction against `revIters`,
+`F = n + 1` suffices; caller debt `lo ≤ hi ≤ length` selects the
+forward's loud-guard leg) + full transfer mirrors
+(`segMemBody_hit`/`segMemWhile_ok` with the `(1 + n)`-word
+snapshot by-find, `segMemEvalProgFunc`/`segMemTransferProg`/
+`oracleNoalias_vecSegReverse`/`vecSegReverse_correct`).
+Harness: `tests/golden/VecSegReverse.lean` (+`_Spec`),
+`GoldenVecSegReverse` (corpus pipeline with per-function
+validation: entry + 4 shared leaves byte-identical, 6 shape
+cross-checks, 2 rejects — self-recursive out-of-subset, bare-ptr
+alias-reject), `DiffVecSegReverse` (eval/fwd composition +
+native agreement over directed windows + fuzzed `(lo, hi)`),
+tamper-checked (swap-neutralized `v.at(i) = v.at(i)` caught as
+`vec_seg_reverse mismatch: lean=[3, 2, 1] native=[1, 2, 1]`;
+golden edit caught), CIR byte-reproducible via
+`tools/emit-cir.sh`.
+- Acceptance: 751 jobs TEST-OK, CHECK-OK.
