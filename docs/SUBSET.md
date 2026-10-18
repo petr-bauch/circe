@@ -969,6 +969,25 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     consts / 1 void return. Caller debt `lo ≤ hi ≤ length`
     (out-of-range is a loud `AssertFail` leg, unreachable under
     the contract). Verdict honestly `unknown` (single-ref).
+28u. In-place left rotation over `vector<int>` (rotate,
+    three-reversal composition over S): `vec_rotate` (single
+    `mutBorrow` vector + one owned `u64` shift in, `void` out,
+    rotated words returned by `var`). Admission is one entry
+    Func with no loop: one `size` call (the bound `n`) + three
+    admitted-`vec_seg_reverse` calls with `(v, 0, k)`,
+    `(v, k, n)`, `(v, 0, n)` wiring (left rotation — the
+    initial right-rotation order `4 1 2 3` was caught by the
+    native driver and fixed to `2 3 4 1`), 3 allocas / 8
+    loads / 3 stores / 4 consts (two `u64` zeros) / 1 void
+    return. Call arguments are variables, so a `0` `let`
+    (`z ← 0`) feeds both `(v, 0, …)` sites. Caller debt
+    `k ≤ n` (out-of-range is a loud `AssertFail` leg,
+    unreachable under the contract). The pin resolves the
+    three call windows off the `v`/`k`/`n` allocas plus the
+    `u64`-zero consts with a unique `align(8)` store. No
+    arithmetic is needed — rotation correctness is the pure
+    window lemma `segWindow_rotate3` over the reused S
+    forwards. Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

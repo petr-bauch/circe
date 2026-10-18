@@ -41,6 +41,7 @@ import DiffVecMergeInto
 import DiffVecMergeSort
 import DiffVecReverse
 import DiffVecSegReverse
+import DiffVecRotate
 import DiffReborrow
 import DiffReborrow34
 import DiffVecLeak
@@ -93,6 +94,7 @@ import GoldenVecMergeInto
 import GoldenVecMergeSort
 import GoldenVecReverse
 import GoldenVecSegReverse
+import GoldenVecRotate
 import GoldenReborrow
 import GoldenReborrow34
 import GoldenVecRead
@@ -236,6 +238,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/vec_merge_sort.cpp", "tests/diff/driver_vec_merge_sort.cpp"], bin "circe_vec_merge_sort_native"),
    ("c++", ["tests/cpp/vec_reverse.cpp", "tests/diff/driver_vec_reverse.cpp"], bin "circe_vec_reverse_native"),
    ("c++", ["tests/cpp/vec_seg_reverse.cpp", "tests/diff/driver_vec_seg_reverse.cpp"], bin "circe_vec_seg_reverse_native"),
+   ("c++", ["tests/cpp/vec_seg_reverse.cpp", "tests/cpp/vec_rotate.cpp", "tests/diff/driver_vec_rotate.cpp"], bin "circe_vec_rotate_native"),
    ("c++", ["tests/cpp/alias_reborrow.cpp", "tests/diff/driver_reborrow.cpp"], bin "circe_reborrow_native"),
    ("c++", ["tests/cpp/alias_reborrow34.cpp", "tests/diff/driver_reborrow34.cpp"], bin "circe_reborrow34_native"),
    ("cc", ["tests/c/sum_norestrict.c", "tests/diff/driver_sum_norestrict.c"], bin "circe_sum_norestrict_native"),
@@ -326,6 +329,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecReverse_Spec.lean", "out/VecReverse_Spec.lean"),
    ("tests/golden/VecSegReverse.lean", "out/VecSegReverse.lean"),
    ("tests/golden/VecSegReverse_Spec.lean", "out/VecSegReverse_Spec.lean"),
+   ("tests/golden/VecRotate.lean", "out/VecRotate.lean"),
+   ("tests/golden/VecRotate_Spec.lean", "out/VecRotate_Spec.lean"),
    ("tests/golden/VecAtMut.lean", "out/VecAtMut.lean"),
    ("tests/golden/VecAtMut_Spec.lean", "out/VecAtMut_Spec.lean"),
    ("tests/golden/VecIndexMut.lean", "out/VecIndexMut.lean"),
@@ -493,6 +498,7 @@ def emittedTypechecks : List String :=
    "out/VecMergeSort.lean", "out/VecMergeSort_Spec.lean",
    "out/VecReverse.lean", "out/VecReverse_Spec.lean",
    "out/VecSegReverse.lean", "out/VecSegReverse_Spec.lean",
+   "out/VecRotate.lean", "out/VecRotate_Spec.lean",
    "out/VecAtMut.lean", "out/VecAtMut_Spec.lean",
    "out/VecIndexMut.lean", "out/VecIndexMut_Spec.lean",
    "out/OverloadAdd.lean", "out/OverloadAdd_Spec.lean",
@@ -1386,6 +1392,22 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Specs.lean", "theorem vecSegReverse_correct"),
      ("out/VecSegReverse.lean", "_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm_fwd"),
      ("tests/golden/VecSegReverse.lean", "_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm_fwd")]),
+  ("vec-rotate",
+   [("Circe/Emit/VecRotate.lean", "theorem segReverseWindow_length"),
+    ("Circe/Emit/VecRotate.lean", "theorem segWindow_rotate3"),
+    ("Circe/Emit/VecRotate.lean", "theorem evalProgFunc_vecRotate"),
+    ("Circe/Emit/Match.lean", "theorem matchFrag_vecRotate"),
+    ("Circe/Emit/Render.lean", "def emitVecRotateText"),
+    ("Circe/Emit/SpecStubs.lean", "def emitVecRotateSpecText"),
+    ("Circe/Validator/GrowLeaves.lean", "def isVecRotateShape"),
+    ("Circe/Validator/Gate.lean", "isVecRotateShape raw"),
+    ("Circe/Mem/Agree.lean", "theorem memEvalStmtFuel_vecSet"),
+    ("Circe/Transfer/VecRotate.lean", "theorem rotMemEvalProgFunc"),
+    ("Circe/Transfer/VecRotate.lean", "theorem rotMemTransferProg"),
+    ("Circe/Derived.lean", "theorem oracleNoalias_vecRotate"),
+    ("Circe/Specs.lean", "theorem vecRotate_correct"),
+    ("out/VecRotate.lean", "_Z10vec_rotateRSt6vectorIiSaIiEEm_fwd"),
+    ("tests/golden/VecRotate.lean", "_Z10vec_rotateRSt6vectorIiSaIiEEm_fwd")]),
    ("f1-reborrow",
     [("Circe/Emit/Reborrow.lean", "theorem evalFuncFuel_reborrow"),
      ("Circe/Emit/Reborrow.lean", "theorem reborrowFwd_ok"),
@@ -1688,8 +1710,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 131 then
-    throw (IO.userError s!"expected 131 spec stubs, found {stubs.length}")
+  if stubs.length != 132 then
+    throw (IO.userError s!"expected 132 spec stubs, found {stubs.length}")
   pure (stubs.map fun s => (s!"spec {s}", do
     typecheck ("out/" ++ s)
     let text ← IO.FS.readFile ("out/" ++ s)
@@ -1739,6 +1761,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecmergesort", DiffVecMergeSort.main [bin "circe_vec_merge_sort_native", trials]),
    ("diff-vecreverse", DiffVecReverse.main [bin "circe_vec_reverse_native", trials]),
    ("diff-vecsegreverse", DiffVecSegReverse.main [bin "circe_vec_seg_reverse_native", trials]),
+   ("diff-vecrotate", DiffVecRotate.main [bin "circe_vec_rotate_native", trials]),
    ("diff-reborrow", DiffReborrow.main [bin "circe_reborrow_native", trials]),
    ("diff-reborrow34", DiffReborrow34.main [bin "circe_reborrow34_native", trials]),
    ("diff-wrpair", DiffWrPair.main [bin "circe_wr_pair_native", trials]),
@@ -1792,6 +1815,7 @@ def checkSuites : List Job :=
    ("golden-vecmergesort", GoldenVecMergeSort.main),
    ("golden-vecreverse", GoldenVecReverse.main),
    ("golden-vecsegreverse", GoldenVecSegReverse.main),
+   ("golden-vecrotate", GoldenVecRotate.main),
    ("golden-reborrow", GoldenReborrow.main),
    ("golden-reborrow34", GoldenReborrow34.main),
    ("golden-wrpair", GoldenWrPair.main),
@@ -1815,12 +1839,12 @@ def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
-   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecMergeSort", "DiffVecReverse", "DiffVecSegReverse",
+   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecMergeSort", "DiffVecReverse", "DiffVecSegReverse", "DiffVecRotate",
    "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecMergeSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecMergeSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

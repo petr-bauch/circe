@@ -50,8 +50,9 @@ and multi-writer algorithms.
 - Next Pillar 2 target: range-bounded in-place algorithms —
   segment reverse over `(lo, hi)` DONE (2026-10-17, S slice:
   window invariant `SegInv`, reused R loop body, `vecSet`
-  lockstep), then rotate-by-three-reversals (triple
-  entry-over-entry composition — one new admission pin, one
+  lockstep), then rotate-by-three-reversals DONE (2026-10-18,
+  T slice: loopless triple entry-over-entry composition over
+  the admitted seg entry — one new admission pin, one
   admission-shaped slice at a time).
 
 ## Pillar 3 — Human-readable/writable proofs

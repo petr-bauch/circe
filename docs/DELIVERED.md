@@ -1407,3 +1407,38 @@ tamper-checked (swap-neutralized `v.at(i) = v.at(i)` caught as
 golden edit caught), CIR byte-reproducible via
 `tools/emit-cir.sh`.
 - Acceptance: 751 jobs TEST-OK, CHECK-OK.
+
+### T. In-place `vector` rotate-by-three-reversals slice — DONE (2026-10-18)
+
+Pillar 2's loopless composer over S: `vec_rotate` (single
+`mutBorrow` vector + one owned `u64` shift `k`, `void` out,
+left rotation). The entry has no loop — one `size` call plus
+three `vec_seg_reverse` calls with `(v, 0, k)`, `(v, k, n)`,
+`(v, 0, n)` wiring (the C++ initially composed rotate-right;
+the native driver caught `4 1 2 3` vs `2 3 4 1` and the
+corpus, pin, composer, and match arms were recaptured to
+left rotation). Gate: `isVecRotateShape` (structural counts —
+1 `size` call + 3 seg calls, 3 allocas / 8 loads / 3 stores /
+4 consts — plus the SSA-dataflow three-window pin off the
+`v`/`k`/`n` allocas, the `u64`-zero consts, and a unique
+`align(8)` store) admits the entry over the frozen `size` /
+admitted-seg leaves.
+Proofs: `segReverseWindow_length` (window lengths through
+`take`/`drop`/`reverse`), `segWindow_rotate3` (the pure
+rotation identity over the reused S forwards — no arithmetic
+needed), `evalProgFunc_vecRotate` (three `callProg` steps via
+the prog-parametric `evalProgFunc_vecSegReverse`, summed fuel
+`(revIters 0 k + 1) + (revIters k n + 1) +
+(revIters 0 n + 1) + 1`; caller debt `k ≤ n` selects the
+forward's loud-guard leg) + full transfer mirrors
+(`rotMemEvalProgFunc`/`rotMemTransferProg`/
+`oracleNoalias_vecRotate`/`vecRotate_correct`).
+Harness: `tests/golden/VecRotate.lean` (+`_Spec`),
+`GoldenVecRotate` (corpus pipeline with per-function
+validation: entry + size leaf byte-identical, 6 shape
+cross-checks, 3 rejects — permuted three-call order
+out-of-subset, bare-ptr alias-reject), `DiffVecRotate`
+(eval/fwd composition + native agreement over directed `k` +
+fuzzed `k ≤ n`), tamper-checked (native tamper and golden
+edit caught), CIR byte-reproducible via `tools/emit-cir.sh`.
+- Acceptance: 759 jobs TEST-OK, CHECK-OK.

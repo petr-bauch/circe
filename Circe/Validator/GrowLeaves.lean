@@ -11,6 +11,7 @@ import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecCompose
+import Circe.Emit.VecSegReverse
 import Circe.Validator.Shapes
 
 /-! ## N4d-iv-b1: `std::vector<int>` growth leaves (no composition) -/
@@ -2780,6 +2781,147 @@ def isVecSegReverseShape (raw : RawFunc) : Bool :=
   structuralVecSegReverse raw &&
   vecReverseSwapPin (raw.text.splitOn "\n") &&
   vecSegReverseIndexPin (raw.text.splitOn "\n")
+
+/-- The SSA value is defined by a `u64` zero constant (nearest-
+    preceding-definition resolves to the materialized `cir.const`
+    `#cir.int<0> : !u64i` line). -/
+def isU64ZeroDef (ls : List String) (useIdx v : Nat) : Bool :=
+  match prevDefIdx ls useIdx v with
+  | some d => match ls[d]? with
+    | some dln => containsSubstr dln "cir.const" &&
+      containsSubstr dln "!u64i" && containsSubstr dln "<0>"
+    | none => false
+  | none => false
+
+/-- The SSA value is defined by a load whose single operand chases
+    to the expected alloca (nearest-preceding-definition + the
+    scope-safe alloca chase). -/
+def isAllocaLoadDef (ls : List String) (useIdx v alloca : Nat) : Bool :=
+  match prevDefIdx ls useIdx v with
+  | some d => match ls[d]? with
+    | some dln => containsSubstr dln "cir.load" &&
+      match ssaOperands dln with
+      | [w] => chaseIdxToAlloca ls d w 8 == some alloca
+      | _ => false
+    | none => false
+  | none => false
+
+/-- The call-wiring pin (what op counts alone cannot say): one
+    `size` call off the vector alloca whose result is stored to the
+    `n` alloca (the unique `align(8)` store), then three
+    `vec_seg_reverse` calls in file order with `(v, 0, k)`,
+    `(v, k, n)`, `(v, 0, n)` wiring — zero args resolve to the
+    materialized `u64` constants, every other arg to an alloca
+    load. Every step is resolved by nearest-preceding-definition,
+    so scope renumbering cannot reroute a use. This rejects the
+    near-miss shapes with identical op counts: permuted call
+    order, swapped bounds, and size-bypassed windows. -/
+def vecRotateCallPin (ls : List String) : Bool :=
+  match theLineIdx ls (containsSubstr · "cir.alloca \"v\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"k\""),
+      theLineIdx ls (containsSubstr · "cir.alloca \"n\""),
+      theLineIdx ls
+        (containsSubstr · "cir.call @_ZNKSt6vectorIiSaIiEE4sizeEv(%") with
+  | some vA, some kA, some nA, some sZ =>
+    match linesIdxOf ls
+        (containsSubstr · "cir.call @_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm(%") with
+    | [c1, c2, c3] =>
+      sZ < c1 && c1 < c2 && c2 < c3 &&
+      match lineCallOps ls sZ with
+      | [sv] =>
+        chaseIdxToAlloca ls sZ sv 8 == some vA &&
+        match theLineIdx ls (containsSubstr · "cir.store align(8)") with
+        | some st =>
+          match lineOps ls st with
+          | [r, d] =>
+            prevDefIdx ls st r == some sZ &&
+            chaseIdxToAlloca ls st d 8 == some nA &&
+            match lineCallOps ls c1, lineCallOps ls c2,
+                lineCallOps ls c3 with
+            | [v1, a1, b1], [v2, k1, n1], [v3, a2, b2] =>
+              chaseIdxToAlloca ls c1 v1 8 == some vA &&
+              chaseIdxToAlloca ls c2 v2 8 == some vA &&
+              chaseIdxToAlloca ls c3 v3 8 == some vA &&
+              isU64ZeroDef ls c1 a1 &&
+              isU64ZeroDef ls c3 a2 &&
+              isAllocaLoadDef ls c1 b1 kA &&
+              isAllocaLoadDef ls c2 k1 kA &&
+              isAllocaLoadDef ls c2 n1 nA &&
+              isAllocaLoadDef ls c3 b2 nA
+            | _, _, _ => false
+          | _ => false
+        | none => false
+      | _ => false
+    | _ => false
+  | _, _, _, _ => false
+
+/-- Structural half of rotate recognition: `void`, one
+    single-reference vector + one owned `u64` param, one `size`
+    call + three `vec_seg_reverse` calls (no direct `at()` calls —
+    all words flow through the admitted callee), the two
+    materialized zero constants, no loop, no branches/EH/
+    arithmetic/traps/globals. -/
+def structuralVecRotate (raw : RawFunc) : Bool :=
+  raw.ret == "" &&
+  opCount raw.text "cir.call @" == 4 &&
+  callsFunc raw.text stdVecSizeName &&
+  opCount raw.text "cir.call @_ZNKSt6vectorIiSaIiEE4sizeEv(" == 1 &&
+  callsFunc raw.text vecSegReverseName &&
+  opCount raw.text "cir.call @_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm(" == 3 &&
+  !callsFunc raw.text stdVecAtMutName &&
+  !callsFunc raw.text raw.name &&
+  !callsFunc raw.text stdVecIndexName &&
+  !callsFunc raw.text stdVecRangeCheckName &&
+  !callsFunc raw.text stdVecRangeCheckThrowName &&
+  opCount raw.text "cir.while" == 0 &&
+  opCount raw.text "cir.const" == 4 &&
+  opCount raw.text "cir.alloca" == 3 &&
+  opCount raw.text "cir.load" == 8 &&
+  opCount raw.text "cir.store" == 3 &&
+  opCount raw.text "cir.load align(8)" == 4 &&
+  opCount raw.text "cir.store align(8)" == 1 &&
+  opCount raw.text "cir.return" == 1 &&
+  !containsSubstr raw.text "cir.if" &&
+  !containsSubstr raw.text "cir.for" &&
+  !containsSubstr raw.text "cir.switch" &&
+  !containsSubstr raw.text "cir.try" &&
+  !containsSubstr raw.text "cir.trap" &&
+  !containsSubstr raw.text "cir.div" &&
+  !containsSubstr raw.text "cir.unreachable" &&
+  !containsSubstr raw.text "cir.cleanup" &&
+  !containsSubstr raw.text "cir.get_member" &&
+  !containsSubstr raw.text "cir.get_global" &&
+  !containsSubstr raw.text "cir.get_element" &&
+  !containsSubstr raw.text "cir.cast" &&
+  !containsSubstr raw.text "cir.ternary" &&
+  !containsSubstr raw.text "cir.do" &&
+  !containsSubstr raw.text "cir.cond_br" &&
+  !containsSubstr raw.text "cir.sub " &&
+  !containsSubstr raw.text "cir.add " &&
+  !containsSubstr raw.text "cir.shift" &&
+  !containsSubstr raw.text "cir.cmp" &&
+  !containsSubstr raw.text "cir.condition" &&
+  !containsSubstr raw.text "cir.inc" &&
+  !containsSubstr raw.text "cir.dec" &&
+  !containsSubstr raw.text "cir.scope" &&
+  !containsSubstr raw.text "cir.yield" &&
+  !containsSubstr raw.text "cir.ptr_stride" &&
+  !containsSubstr raw.text "cir.ptr_diff" &&
+  noBreakContinueSwitch raw.text &&
+  (match raw.params with
+   | [v, k] =>
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isU64 k.ctype
+   | _ => false)
+
+/-- Exact `vec_rotate` admission shape (R1): the structural skeleton
+    (one `size` call, three `vec_seg_reverse` calls, two
+    materialized zeros, no loop) plus the call-wiring dataflow pin
+    (`(v, 0, k)`, `(v, k, n)`, `(v, 0, n)` in order off the right
+    allocas). Verdict honestly `unknown` (single-ref). -/
+def isVecRotateShape (raw : RawFunc) : Bool :=
+  structuralVecRotate raw &&
+  vecRotateCallPin (raw.text.splitOn "\n")
 
 /-- Exact `vec_reverse` admission shape (R1): the structural skeleton
     plus the swap dataflow pin (in-order checked sites with crossed

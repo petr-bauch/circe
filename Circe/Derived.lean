@@ -29,6 +29,7 @@ import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
+import Circe.Emit.VecRotate
 import Circe.Emit.Calls
 import Circe.Emit.Struct
 import Circe.Emit.Flow
@@ -831,6 +832,27 @@ theorem oracleNoalias_vecSegReverse (l : List (BitVec 32))
     oracleNoalias vecSegReverseFunc
       [.stdVecVal l, .u64 lo, .u64 hi] := by
   have hb := bindMemArgs_vecSegReverse l lo hi
+  have hn : LayoutNoAlias [("v", 0, 0)] := by
+    simp [LayoutNoAlias, layoutAddrs]
+  exact ⟨_, _, _, hb, hn⟩
+
+/-- Rotate binding pins the `(1 + length)`-word snapshot (the owned
+    `u64` rotation count binds by value: env entry only, no blocks,
+    no layout — the `stdVecIndex` precedent). -/
+theorem bindMemArgs_vecRotate (l : List (BitVec 32)) (k : BitVec 64) :
+    bindMemArgs vecRotateFunc.args [.stdVecVal l, .u64 k] emptyMem =
+      some ([("v", .stdVecVal l), ("k", .u64 k)],
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)]) := by
+  rfl
+
+/-- `vec_rotate` footprints are a singleton (the `callProg`
+    delegations happen after entry; the body itself never stores;
+    the owned count never touches memory). -/
+theorem oracleNoalias_vecRotate (l : List (BitVec 32)) (k : BitVec 64) :
+    oracleNoalias vecRotateFunc [.stdVecVal l, .u64 k] := by
+  have hb := bindMemArgs_vecRotate l k
   have hn : LayoutNoAlias [("v", 0, 0)] := by
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩

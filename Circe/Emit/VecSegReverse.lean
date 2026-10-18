@@ -269,7 +269,7 @@ theorem SegInv_exit (orig l : List (BitVec 32)) (lo hi i j : Nat)
     (checked reads hit in-invariant; stores thread through `vecSet`;
     the evaluation is the R one, rerouted through the segment
     program's leaf table). -/
-theorem segBody_hit (F : Nat) (ρ : Env)
+theorem segBody_hit (prog : Prog) (F : Nat) (ρ : Env)
     (orig l : List (BitVec 32)) (lo hiW i j : Nat)
     (iB jB : BitVec 64) (a b : BitVec 32)
     (hinv : SegInv orig l lo hiW i j)
@@ -279,8 +279,10 @@ theorem segBody_hit (F : Nat) (ρ : Env)
     (hlen64 : l.length < 2 ^ 64)
     (hv : envLookup ρ "v" = some (.stdVecVal l))
     (hi : envLookup ρ "i" = some (.u64 iB))
-    (hj : envLookup ρ "j" = some (.u64 jB)) :
-    ∃ ρ', evalProgStmt vecSegReverseProg F vecReverseBody ρ =
+    (hj : envLookup ρ "j" = some (.u64 jB))
+    (hfind : findFunc prog stdVecAtMutName =
+      some { stdVecAtFunc with name := stdVecAtMutName }) :
+    ∃ ρ', evalProgStmt prog F vecReverseBody ρ =
         .ok (ρ', .fellThrough) ∧
       envLookup ρ' "v" =
         some (.stdVecVal ((l.set i b).set (j - 1) a)) ∧
@@ -297,7 +299,7 @@ theorem segBody_hit (F : Nat) (ρ : Env)
       (evalExpr_var_hit _ _ _ hj)
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup ρ "j" (.u64 jB)
     (.u64 (jB - 1)) hj
-  have hstep_j := revAssign vecSegReverseProg F "j"
+  have hstep_j := revAssign prog F "j"
     (.usub (.var "j") (.lit (.u64 1))) ρ (.u64 (jB - 1)) ρ₁
     hexpr_j hu₁
   have hj₁ : envLookup ρ₁ "j" = some (.u64 (jB - 1)) :=
@@ -322,10 +324,10 @@ theorem segBody_hit (F : Nat) (ρ : Env)
       [.stdVecVal l, .u64 iB] = .ok (.i32 a) := by
     rw [revAtEval F l iB hlen64]
     exact stdVecAtFwd_ok l iB a hlt_i hai
-  have hstep_a := evalProgStmt_callRet_ok vecSegReverseProg F "a"
+  have hstep_a := evalProgStmt_callRet_ok prog F "a"
     stdVecAtMutName ["v", "i"] ρ₁ [.stdVecVal l, .u64 iB]
     { stdVecAtFunc with name := stdVecAtMutName } (.i32 a)
-    hargs_a segFindAt hcall_a
+    hargs_a hfind hcall_a
   have ha₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "a" =
       some (.i32 a) :=
     envExtend_hit _ _ _
@@ -359,11 +361,11 @@ theorem segBody_hit (F : Nat) (ρ : Env)
       [.stdVecVal l, .u64 (jB - 1)] = .ok (.i32 b) := by
     rw [revAtEval F l (jB - 1) hlen64]
     exact stdVecAtFwd_ok l (jB - 1) b hlt_j hbj
-  have hstep_b := evalProgStmt_callRet_ok vecSegReverseProg F "b"
+  have hstep_b := evalProgStmt_callRet_ok prog F "b"
     stdVecAtMutName ["v", "j"] (envExtend ρ₁ "a" (.i32 a))
     [.stdVecVal l, .u64 (jB - 1)]
     { stdVecAtFunc with name := stdVecAtMutName } (.i32 b)
-    hargs_b segFindAt hcall_b
+    hargs_b hfind hcall_b
   have hb₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
       "b" = some (.i32 b) :=
     envExtend_hit _ _ _
@@ -391,7 +393,7 @@ theorem segBody_hit (F : Nat) (ρ : Env)
   obtain ⟨ρ₄, hu₄⟩ := envUpdate_some_of_lookup
     (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b)) "v"
     (.stdVecVal l) (.stdVecVal (l.set iB.toNat b)) hv₃
-  have hstep_s1 := revVecSet vecSegReverseProg F "v" (.var "i") (.var "b")
+  have hstep_s1 := revVecSet prog F "v" (.var "i") (.var "b")
     (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
     iB b l a ρ₄
     (evalExpr_var_hit _ _ _ hi₃) (evalExpr_var_hit _ _ _ hb₃)
@@ -421,7 +423,7 @@ theorem segBody_hit (F : Nat) (ρ : Env)
   obtain ⟨ρ₅, hu₅⟩ := envUpdate_some_of_lookup ρ₄ "v"
     (.stdVecVal (l.set iB.toNat b))
     (.stdVecVal ((l.set iB.toNat b).set (jB - 1).toNat a)) hv₄
-  have hstep_s2 := revVecSet vecSegReverseProg F "v" (.var "j") (.var "a")
+  have hstep_s2 := revVecSet prog F "v" (.var "j") (.var "a")
     ρ₄ (jB - 1) a (l.set iB.toNat b)
     ((l.set iB.toNat b)[(jB - 1).toNat]) ρ₅
     (evalExpr_var_hit _ _ _ hj₄) (evalExpr_var_hit _ _ _ ha₄)
@@ -444,7 +446,7 @@ theorem segBody_hit (F : Nat) (ρ : Env)
       (evalExpr_var_hit _ _ _ hi₅) (by simp [evalExpr, litVal])
   obtain ⟨ρ₆, hu₆⟩ := envUpdate_some_of_lookup ρ₅ "i" (.u64 iB)
     (.u64 (iB + 1)) hi₅
-  have hstep_i := revAssign vecSegReverseProg F "i"
+  have hstep_i := revAssign prog F "i"
     (.uadd (.var "i") (.lit (.u64 1))) ρ₅ (.u64 (iB + 1)) ρ₆
     hexpr_i hu₆
   have hi₆ : envLookup ρ₆ "i" = some (.u64 (iB + 1)) :=
@@ -467,7 +469,7 @@ theorem segBody_hit (F : Nat) (ρ : Env)
               (.seq (.vecSet "v" (.var "j") (.var "a"))
                 (.assign "i"
                   (.uadd (.var "i") (.lit (.u64 1))))))))) := rfl
-  have heval : evalProgStmt vecSegReverseProg F vecReverseBody ρ =
+  have heval : evalProgStmt prog F vecReverseBody ρ =
       .ok (ρ₆, .fellThrough) := by
     rw [hbody,
       evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep_j,
@@ -494,7 +496,7 @@ theorem segBody_hit (F : Nat) (ρ : Env)
     induction against `revIters`: each live iteration steps the
     invariant through `segBody_hit`, the exit state closes through
     `SegInv_exit`). -/
-theorem segWhile_ok (F : Nat) (ρ : Env)
+theorem segWhile_ok (prog : Prog) (F : Nat) (ρ : Env)
     (orig l : List (BitVec 32)) (lo hiW i j : Nat)
     (iB jB : BitVec 64)
     (hv : envLookup ρ "v" = some (.stdVecVal l))
@@ -502,8 +504,10 @@ theorem segWhile_ok (F : Nat) (ρ : Env)
     (hj : envLookup ρ "j" = some (.u64 jB)) (hjN : jB.toNat = j)
     (hinv : SegInv orig l lo hiW i j)
     (hlen64 : l.length < 2 ^ 64)
-    (hF : revIters i j + 1 ≤ F) :
-    ∃ ρ' l', evalProgStmt vecSegReverseProg F vecReverseWhile ρ =
+    (hF : revIters i j + 1 ≤ F)
+    (hfind : findFunc prog stdVecAtMutName =
+      some { stdVecAtFunc with name := stdVecAtMutName }) :
+    ∃ ρ' l', evalProgStmt prog F vecReverseWhile ρ =
         .ok (ρ', .fellThrough) ∧
       l' = segReverseWindow orig lo hiW ∧
       envLookup ρ' "v" = some (.stdVecVal l') := by
@@ -529,13 +533,13 @@ theorem segWhile_ok (F : Nat) (ρ : Env)
       have hiL : i < l.length := by omega
       have hjL : j - 1 < l.length := by omega
       obtain ⟨ρ₆, heval, hv₆, hi₆, hj₆, hinv₆⟩ :=
-        segBody_hit F ρ orig l lo hiW i j iB jB l[i] l[j - 1]
+        segBody_hit prog F ρ orig l lo hiW i j iB jB l[i] l[j - 1]
           ⟨hlen, hlo, hhi, hloi, hjhi, hij, hleft, hright, hmid, houtL,
             houtR⟩
           hiN hjN h
           (List.getElem?_eq_getElem hiL)
           (List.getElem?_eq_getElem hjL)
-          hlen64 hv hi hj
+          hlen64 hv hi hj hfind
       have hR : revIters i j = revIters (i + 1) (j - 1) + 1 :=
         (revIters_step i j h).symm
       have hF' : revIters (i + 1) (j - 1) + 1 ≤ F := by omega
@@ -552,10 +556,10 @@ theorem segWhile_ok (F : Nat) (ρ : Env)
           (iB + 1) (jB - 1) hv₆ hi₆ hiN₆ hj₆ hjN₆ hinv₆ hlen64' hF'
       refine ⟨ρ', l', ?_, hwin, hv'⟩
       have hwhile :
-          evalProgStmt vecSegReverseProg (F + 1) vecReverseWhile ρ =
-          evalProgStmt vecSegReverseProg F vecReverseWhile ρ₆ := by
+          evalProgStmt prog (F + 1) vecReverseWhile ρ =
+          evalProgStmt prog F vecReverseWhile ρ₆ := by
         simp only [vecReverseWhile,
-          evalProgStmt_while_true vecSegReverseProg F _ _ _ hguard,
+          evalProgStmt_while_true prog F _ _ _ hguard,
           heval]
       rw [hwhile]
       exact hloop
@@ -569,10 +573,10 @@ theorem segWhile_ok (F : Nat) (ρ : Env)
           exact decide_eq_false (by omega)
         rwa [hfb] at hult
       have hexit :
-          evalProgStmt vecSegReverseProg (F + 1) vecReverseWhile ρ =
+          evalProgStmt prog (F + 1) vecReverseWhile ρ =
           .ok (ρ, .fellThrough) := by
         simp only [vecReverseWhile,
-          evalProgStmt_while_false vecSegReverseProg _ _ _ _ hguard]
+          evalProgStmt_while_false prog _ _ _ _ hguard]
       have hwin : l = segReverseWindow orig lo hiW :=
         SegInv_exit orig l lo hiW i j hinv (by omega)
       exact ⟨ρ, l, hexit, hwin, hv⟩
@@ -581,13 +585,16 @@ theorem segWhile_ok (F : Nat) (ρ : Env)
     the frozen checked-`at()` leaves agrees with window reversal
     (fuel must cover the countdown: `revIters lo hi + 1`; caller
     debt `lo ≤ hi ≤ length` selects the forward's loud-guard leg). -/
-theorem evalProgFunc_vecSegReverse (F : Nat) (l : List (BitVec 32))
+theorem evalProgFunc_vecSegReverse (prog : Prog) (F : Nat)
+    (l : List (BitVec 32))
     (lo hi : Nat) (loB hiB : BitVec 64)
     (hloB : loB.toNat = lo) (hhiB : hiB.toNat = hi)
     (hlo : lo ≤ hi) (hhi : hi ≤ l.length)
     (hlen64 : l.length < 2 ^ 64)
-    (hF : revIters lo hi + 1 ≤ F) :
-    evalProgFunc vecSegReverseProg F vecSegReverseFunc
+    (hF : revIters lo hi + 1 ≤ F)
+    (hfind : findFunc prog stdVecAtMutName =
+      some { stdVecAtFunc with name := stdVecAtMutName }) :
+    evalProgFunc prog F vecSegReverseFunc
       [.stdVecVal l, .u64 loB, .u64 hiB] =
       vecSegReverseFwd l loB hiB := by
   have hbind : bindArgs vecSegReverseFunc.args
@@ -603,7 +610,7 @@ theorem evalProgFunc_vecSegReverse (F : Nat) (l : List (BitVec 32))
   have hlo₀ : envLookup [("v", .stdVecVal l), ("lo", .u64 loB),
       ("hi", .u64 hiB)] "lo" = some (.u64 loB) := by
     simp [envLookup]
-  have hstep_i := revLet vecSegReverseProg F "i" (.u 64) (.var "lo")
+  have hstep_i := revLet prog F "i" (.u 64) (.var "lo")
     [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)]
     (.u64 loB) (evalExpr_var_hit _ _ _ hlo₀)
   have hi₁ : envLookup (envExtend [("v", .stdVecVal l), ("lo", .u64 loB),
@@ -616,7 +623,7 @@ theorem evalProgFunc_vecSegReverse (F : Nat) (l : List (BitVec 32))
     rw [envExtend_miss _ _ _ _
       (show ("hi" : String) ≠ "i" by decide)]
     simp [envLookup]
-  have hstep_j := revLet vecSegReverseProg F "j" (.u 64) (.var "hi")
+  have hstep_j := revLet prog F "j" (.u 64) (.var "hi")
     (envExtend [("v", .stdVecVal l), ("lo", .u64 loB),
       ("hi", .u64 hiB)] "i" (.u64 loB))
     (.u64 hiB) (evalExpr_var_hit _ _ _ hhi₀)
@@ -647,13 +654,13 @@ theorem evalProgFunc_vecSegReverse (F : Nat) (l : List (BitVec 32))
       fun p _ => rfl,
       fun p _ _ => rfl⟩
   obtain ⟨ρ', l', hloop, hwin, hv'⟩ :=
-    segWhile_ok F (envExtend (envExtend [("v", .stdVecVal l),
+    segWhile_ok prog F (envExtend (envExtend [("v", .stdVecVal l),
       ("lo", .u64 loB), ("hi", .u64 hiB)] "i" (.u64 loB)) "j"
       (.u64 hiB))
       l l lo hi lo hi loB hiB
-      hv₂ hi₂ hloB hj₂ hhiB hinv₀ hlen64 hF
+      hv₂ hi₂ hloB hj₂ hhiB hinv₀ hlen64 hF hfind
   -- `return v`.
-  have hret := evalProgStmt_return vecSegReverseProg F (.var "v") ρ'
+  have hret := evalProgStmt_return prog F (.var "v") ρ'
     (.stdVecVal l') (evalExpr_var_hit _ _ _ hv')
   simp only [evalProgFunc, hbind, hbody]
   rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep_i,

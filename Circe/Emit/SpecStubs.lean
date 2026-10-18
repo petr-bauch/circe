@@ -1574,6 +1574,29 @@ def emitVecSegReverseSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_rotate` entry. The mirror is left
+    rotation over the reified words; edges cover empty/full/zero
+    rotations, single steps, and boundaries. -/
+def emitVecRotateSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, k)` rotates `v` left by `k` in place. Base body reference: rotation on the reified words (cf. emitted `{name}_fwd`, `vecRotateFwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (k : BitVec 64) : Result (List (BitVec 32)) :=\n"
+  ++ "  if k.toNat ≤ l.length then\n"
+  ++ "    .ok ((l.drop k.toNat) ++ l.take k.toNat)\n"
+  ++ "  else .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty, zero/full rotation, single steps, boundaries. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64) × Result (List (BitVec 32))) :=\n"
+  ++ "  [(([], 0), .ok []), (([1, 2, 3], 0), .ok [1, 2, 3]),\n"
+  ++ "   (([1, 2, 3], 1), .ok [2, 3, 1]), (([1, 2, 3], 2), .ok [3, 1, 2]),\n"
+  ++ "   (([1, 2, 3], 3), .ok [1, 2, 3]), (([1, 2, 3, 4], 2), .ok [3, 4, 1, 2])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_merge_into` entry. The mirror is an
     independent out-of-place two-pointer merge over the reified
     words; edges carry ground truth (interleave, empty-`a` drain,

@@ -28,3 +28,4 @@ import Circe.Transfer.GrowReserve
 import Circe.Transfer.SortSlice
 import Circe.Transfer.VecReverse
 import Circe.Transfer.VecSegReverse
+import Circe.Transfer.VecRotate

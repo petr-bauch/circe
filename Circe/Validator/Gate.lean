@@ -17,6 +17,7 @@ import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
+import Circe.Emit.VecRotate
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -1778,6 +1779,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecReverseFunc with name := raw.name }
       else if isVecSegReverseShape raw then
         .ok { vecSegReverseFunc with name := raw.name }
+      else if isVecRotateShape raw then
+        .ok { vecRotateFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then

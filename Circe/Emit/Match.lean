@@ -18,6 +18,7 @@ import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
+import Circe.Emit.VecRotate
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -872,6 +873,20 @@ def matchFrag : Func → Option FragKind
                         (.uadd (.var "i") (.lit (.u64 1))))))))))
             (.return_ (.var "v")))))⟩ =>
     some .vecSegReverse
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"k", .u 64, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.seq (.callRet "m" "_ZNKSt6vectorIiSaIiEE4sizeEv" ["v"])
+        (.seq (.let_ "z" (.u 64) (.lit (.u64 0)))
+          (.seq (.callProg "v" "_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm"
+              ["v", "z", "k"])
+            (.seq (.callProg "v" "_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm"
+                ["v", "k", "m"])
+              (.seq (.callProg "v" "_Z15vec_seg_reverseRSt6vectorIiSaIiEEmm"
+                  ["v", "z", "m"])
+                (.return_ (.var "v")))))))⟩ =>
+    some .vecRotate
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -1552,6 +1567,8 @@ theorem matchFrag_vecReverse :
     matchFrag vecReverseFunc = some .vecReverse := rfl
 theorem matchFrag_vecSegReverse :
     matchFrag vecSegReverseFunc = some .vecSegReverse := rfl
+theorem matchFrag_vecRotate :
+    matchFrag vecRotateFunc = some .vecRotate := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_mergeRuns :

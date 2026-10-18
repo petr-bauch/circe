@@ -812,6 +812,15 @@ theorem vecSegReverse_correct (l : List (BitVec 32))
   simp only [vecSegReverseFwd]
   rw [if_pos ⟨hlo, hhi⟩]
 
+/-- The `vec_rotate` entry returns the left rotation (under caller
+    debt; the forward is loud otherwise). -/
+theorem vecRotate_correct (l : List (BitVec 32)) (k : BitVec 64)
+    (hk : k.toNat ≤ l.length) :
+    vecRotateFwd l k =
+      .ok (.stdVecVal ((l.drop k.toNat) ++ l.take k.toNat)) := by
+  simp only [vecRotateFwd]
+  rw [if_pos hk]
+
 /-- Move ctor: the destination takes the source word (the `o.s = 0`
     store is entry-level, threaded by `moveAccFunc`'s `assign`). -/
 theorem accMoveCtor_correct (d s : BitVec 32) :

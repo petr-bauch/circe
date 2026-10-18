@@ -813,6 +813,17 @@ def emitVecReverseText (name : String) : String :=
   ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
   ++ "  .ok l.reverse\n"
 
+/-- Render the `vec_rotate` entry forward definition: left rotation
+    over the reified words (caller debt gates the loud leg). -/
+def emitVecRotateText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (in-place left rotation over the reified words). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (k : BitVec 64) : Result (List (BitVec 32)) :=\n"
+  ++ "  if k.toNat ≤ l.length then\n"
+  ++ "    .ok ((l.drop k.toNat) ++ l.take k.toNat)\n"
+  ++ "  else .error .AssertFail\n"
+
 /-- Render the `vec_seg_reverse` entry forward definition: window
     reversal over the reified words (`take`/`drop` saturate, so the
     mirror agrees with native on every in-bounds `[lo, hi)`). -/
