@@ -157,15 +157,128 @@ def endsWith (s suffix : String) : Bool :=
 /-- A named job; the roster in `main` is the whole gate. -/
 abbrev Job := String × IO Unit
 
-/-- Run jobs as parallel tasks, collecting per-job outcomes. -/
-def runJobs (jobs : List Job) : IO (List (String × Except IO.Error Unit)) := do
-  let tasks ← jobs.mapM (fun (n, a) => do
-    let t ← IO.asTask a
-    pure (n, t))
-  tasks.mapM (fun (n, t) => pure (n, t.get))
+/-- Worker count: `CIRCE_JOBS` wins, else `nproc`, capped at 32
+    (one `lake env lean` child peaks near 1GB resident; 32 fit the
+    62GB box with headroom). Lean's default task pool runs ~4
+    threads (measured: 32x2s busy tasks take 16s wall), so one
+    task per job leaves 28 cores idle — hence the worker pool. -/
+def numWorkers : IO Nat := do
+  match (← IO.getEnv "CIRCE_JOBS") >>= (·.toNat?) with
+  | some k => pure (max 1 k)
+  | none => do
+    let n ← try pure ((← shOut "nproc" #[]).toNat?.getD 8)
+      catch _ => pure 8
+    pure (max 1 (min n 32))
 
-/-- Typecheck one file with the project toolchain (`lake env lean`). -/
-def typecheck (f : String) : IO Unit := sh "lake" #["env", "lean", f]
+/-- Stride split: job `i` goes to worker `i % k`, spreading
+    contiguous heavy runs (diff suites, spec stubs) evenly over
+    workers instead of piling them onto one lane. -/
+def strideChunks (k : Nat) (jobs : List Job) : List (List Job) :=
+  if k == 0 then [jobs]
+  else (List.range k).map fun w =>
+    ((List.range jobs.length).zip jobs).filterMap fun (i, j) =>
+      if i % k == w then some j else none
+
+/-- Run jobs over a bounded pool of dedicated worker threads (one
+    thread per chunk, sequential within a chunk), collecting
+    per-job outcomes. Per-job errors are caught inside the chunk
+    so one failure never starves the rest of its lane. -/
+def runJobs (jobs : List Job) : IO (List (String × Except IO.Error Unit)) := do
+  let k ← numWorkers
+  let chunks := strideChunks k jobs
+  IO.println s!"-- {jobs.length} jobs over {chunks.length} workers"
+  -- Slow-job watchdog: anything over 10s gets a timestamped line so
+  -- the next long pole is visible without re-instrumenting.
+  let tasks ← chunks.mapM (fun ch =>
+    IO.asTask (ch.mapM fun (n, a) => do
+      let t0 ← IO.monoMsNow
+      let r : Except IO.Error Unit ←
+        try a *> pure (Except.ok ()) catch e => pure (Except.error e)
+      let dt := (← IO.monoMsNow) - t0
+      if dt > 10000 then IO.println s!"-- slow {n} {dt}ms"
+      pure (n, r)) .dedicated)
+  let nested ← tasks.mapM fun t =>
+    match t.get with
+    | .ok l => pure l
+    | .error e => throw e
+  pure nested.flatten
+
+/-- Col-0 commands that would leak scope across concatenated bodies
+    (`variable` auto-inclusion, global `instance`s, `open` resolution,
+    `set_option`). None occur in the batch scope (checked 2026-10);
+    fail loudly if one ever appears instead of silently changing
+    what a later body means. -/
+def batchLeaks : List String :=
+  ["variable ", "instance ", "open ", "set_option "]
+
+/-- Occurrences of `needle` in `hay` (empty needle → 0). -/
+def countSub (hay needle : String) : Nat :=
+  if needle.isEmpty then 0 else (hay.splitOn needle).length - 1
+
+/-- Elaborate many files in ONE `lean` process: deduped `import` lines
+    hoisted once to the top, bodies concatenated below. The Circe
+    import chain (this Lean accepts exactly one file per invocation,
+    so process-per-file is the alternative) loads once per batch
+    instead of once per file — each child faults ~1GB of oleans, so
+    this is where the gate's sys time went. Elaboration errors name
+    their declaration (plus `-- batch:` markers name each file), so
+    a failure still points at its file; the batch file is kept at
+    `{workdir}/tc_batch_{tag}.lean` for post-mortem. Scope rule: a
+    batch must never contain file F together with a file importing
+    F's module (the import would declare F's names from the olean,
+    then F's body re-declares them — "already declared"). `out/`
+    files and generated tmps are never imported by anyone (out/ is
+    not a library), so they batch freely; library modules
+    (`Circe/*`, imported across the repo) go one per batch, which
+    is plain single-file elaboration plus a marker comment.
+    Preconditions (all true in scope, guarded below): every
+    `import` precedes every command in each file (else the file
+    would not elaborate standalone either), no file-relative reads
+    (`include_str` resolves against the file's own dir), no
+    `batchLeaks` commands. -/
+def batchTypecheck (tag : String) (fs : List String) : IO String := do
+  if fs.isEmpty then pure "" else do
+    let parts ← fs.mapM fun (f : String) => do
+      let lines := (← IO.FS.readFile (f : System.FilePath)).splitOn "\n"
+      let (imps, body) :=
+        lines.partition (fun l => l.toList.take 7 == "import ".toList)
+      -- Leak guard over code lines only: skip `--` line comments and
+      -- track `/-…-/` block depth (best-effort: markers inside string
+      -- literals would confuse the depth, but elaboration itself is
+      -- the real check — the guard only fails loudly, never silently).
+      let mut depth := 0
+      for l in body do
+        let t := l.trimAscii.toString
+        if !(t.toList.take 2 == "--".toList) then
+          if depth == 0 then
+            for k in batchLeaks do
+              if t.toList.take k.length == k.toList then
+                throw (IO.userError
+                  s!"batchTypecheck {tag}: scope-leaking command in {f}: {l}")
+          depth := depth + countSub l "/-" - countSub l "-/"
+      pure (f, imps, body)
+    let mut seen : List String := []
+    for (_, imps, _) in parts do
+      for i in imps do
+        if !seen.contains i then seen := seen ++ [i]
+    -- `-- batch:` markers name each file's body for post-mortem
+    -- (Lean errors name declarations, not files).
+    let marked := parts.flatMap fun (f, _, b) =>
+      [s!"-- batch: {f}"] ++ b
+    let body := marked
+    let tmp := s!"{workdir}/tc_batch_{tag}.lean"
+    IO.FS.writeFile tmp
+      ((seen ++ body).foldl (fun acc l => acc ++ l ++ "\n") "")
+    shOut "lake" #["env", "lean", tmp]
+
+/-- Contiguous chunks of at most `n` (for batching per-file jobs).
+    Non-recursive (ceiling-division stride over `drop`/`take`;
+    over-long drops are `[]` and filtered), so no termination
+    proof is needed. -/
+def chunkList (n : Nat) (l : List α) : List (List α) :=
+  if n == 0 then [l]
+  else (((List.range ((l.length + n - 1) / n)).map fun i =>
+    (l.drop (i * n)).take n).filter (fun c => !c.isEmpty))
 
 /-- Build one native driver binary. -/
 def ccBuild (cc : String) (srcs : List String) (out : String) : IO Unit :=
@@ -458,10 +571,11 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecGrowUnit.lean", "out/VecGrowUnit.lean"),
    ("tests/golden/VecGrowUnit_Spec.lean", "out/VecGrowUnit_Spec.lean"),]
 
-/-- Emitted files `check.sh` typechecks individually (beyond the spec
-    loop, which covers every `out/*_Spec.lean`). -/
+/-- Emitted files `check.sh` typechecks (beyond the spec loop, which
+    covers every `out/*_Spec.lean`); run as 8-file groups, one `lean`
+    process per group. -/
 def emittedTypechecks : List String :=
-  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/Reborrow34.lean", "out/WrPair.lean", "out/WrPair_Spec.lean", "out/CondPair.lean", "out/CondPair_Spec.lean", "out/AliasCond.lean", "out/AliasCond_Spec.lean", "out/Choose.lean", "out/SumArray.lean",
+  ["out/Add.lean", "out/Incr.lean", "out/Reborrow.lean", "out/Reborrow34.lean", "out/WrPair.lean", "out/CondPair.lean", "out/AliasCond.lean", "out/Choose.lean", "out/SumArray.lean",
    "out/AddCaller.lean", "out/SumCaller.lean", "out/StructByValue.lean",
    "out/NestedSum.lean", "out/SkipSum.lean", "out/FindEq.lean", "out/Cls.lean",
    "out/ClsFall.lean", "out/ClsDense.lean", "out/ClsBreak.lean",
@@ -474,104 +588,104 @@ def emittedTypechecks : List String :=
    "out/ChachaBlock.lean",
    "out/Sha256Compress.lean",
    "out/VecAlloc.lean",
-   "out/VecCopySum.lean", "out/VecCopySum_Spec.lean",
-   "out/VecAllocU64.lean", "out/VecAllocU64_Spec.lean",
-   "out/VecRealloc.lean", "out/VecRealloc_Spec.lean",
+   "out/VecCopySum.lean",
+   "out/VecAllocU64.lean",
+   "out/VecRealloc.lean",
    "out/MethodSum.lean", "out/PointSumRef.lean",
-   "out/MethodSum_Spec.lean", "out/PointSumRef_Spec.lean",
+  
    "out/AccCtor.lean", "out/AccAdd.lean", "out/AccGet.lean",
    "out/AccDtor.lean", "out/AccTwo.lean",
-   "out/AccCtor_Spec.lean", "out/AccAdd_Spec.lean", "out/AccGet_Spec.lean",
-   "out/AccDtor_Spec.lean", "out/AccTwo_Spec.lean",
-   "out/BoxThrough.lean", "out/BoxThrough_Spec.lean",
-   "out/SumNorestrict.lean", "out/SumNorestrict_Spec.lean",
-   "out/SumTwo.lean", "out/SumTwo_Spec.lean",
-   "out/VecRangeCheck.lean", "out/VecRangeCheck_Spec.lean",
-   "out/VecAt.lean", "out/VecAt_Spec.lean",
-   "out/VecAtOne.lean", "out/VecAtOne_Spec.lean",
-   "out/VecAtSum.lean", "out/VecAtSum_Spec.lean",
-   "out/VecBinarySearch.lean", "out/VecBinarySearch_Spec.lean",
-   "out/VecTwoSum.lean", "out/VecTwoSum_Spec.lean",
-   "out/VecAtSet.lean", "out/VecAtSet_Spec.lean",
-   "out/VecMergeInto.lean", "out/VecMergeInto_Spec.lean",
-   "out/VecMergeRuns.lean", "out/VecMergeRuns_Spec.lean",
-   "out/VecMergeSort.lean", "out/VecMergeSort_Spec.lean",
-   "out/VecReverse.lean", "out/VecReverse_Spec.lean",
-   "out/VecSegReverse.lean", "out/VecSegReverse_Spec.lean",
-   "out/VecRotate.lean", "out/VecRotate_Spec.lean",
-   "out/VecAtMut.lean", "out/VecAtMut_Spec.lean",
-   "out/VecIndexMut.lean", "out/VecIndexMut_Spec.lean",
-   "out/OverloadAdd.lean", "out/OverloadAdd_Spec.lean",
-   "out/Add3.lean", "out/Add3_Spec.lean",
-   "out/UseAdd.lean", "out/UseAdd_Spec.lean",
-   "out/NsAdd.lean", "out/NsAdd_Spec.lean",
-   "out/UseNsAdd.lean", "out/UseNsAdd_Spec.lean",
-   "out/MoveInt.lean", "out/MoveInt_Spec.lean",
-   "out/MoveCtor.lean", "out/MoveCtor_Spec.lean",
-   "out/MoveAcc.lean", "out/MoveAcc_Spec.lean",
-   "out/ScopeEarly.lean", "out/ScopeEarly_Spec.lean",
-   "out/Tadd32.lean", "out/Tadd32_Spec.lean",
-   "out/Tadd64.lean", "out/Tadd64_Spec.lean",
-   "out/UseTadd32.lean", "out/UseTadd32_Spec.lean",
-   "out/UseTadd64.lean", "out/UseTadd64_Spec.lean",
-   "out/ArrayRef.lean", "out/ArrayRef_Spec.lean",
-   "out/ArrayAt.lean", "out/ArrayAt_Spec.lean",
-   "out/ArraySum.lean", "out/ArraySum_Spec.lean",
-   "out/ArrayRefU32.lean", "out/ArrayRefU32_Spec.lean",
-   "out/ArrayAtU32.lean", "out/ArrayAtU32_Spec.lean",
-   "out/InsertionSort.lean", "out/InsertionSort_Spec.lean",
-   "out/ArraySortSum.lean", "out/ArraySortSum_Spec.lean",
-   "out/ArrayRefU328.lean", "out/ArrayRefU328_Spec.lean",
-   "out/ArrayAtU328.lean", "out/ArrayAtU328_Spec.lean",
-   "out/InsertionSort8.lean", "out/InsertionSort8_Spec.lean",
-   "out/ArraySortSum8.lean", "out/ArraySortSum8_Spec.lean",
-   "out/OptHas.lean", "out/OptHas_Spec.lean",
-   "out/OptHasValue.lean", "out/OptHasValue_Spec.lean",
-   "out/OptGet.lean", "out/OptGet_Spec.lean",
-   "out/OptImplGet.lean", "out/OptImplGet_Spec.lean",
-   "out/OptDerefOp.lean", "out/OptDerefOp_Spec.lean",
-   "out/OptDeref.lean", "out/OptDeref_Spec.lean",
-   "out/OptValueOp.lean", "out/OptValueOp_Spec.lean",
-   "out/OptThrow.lean", "out/OptThrow_Spec.lean",
-   "out/OptValue.lean", "out/OptValue_Spec.lean",
-   "out/SpanExtent.lean", "out/SpanExtent_Spec.lean",
-   "out/SpanSize.lean", "out/SpanSize_Spec.lean",
-   "out/SpanIndex.lean", "out/SpanIndex_Spec.lean",
-   "out/SpanSum.lean", "out/SpanSum_Spec.lean",
-   "out/ViewBegin.lean", "out/ViewBegin_Spec.lean",
-   "out/ViewEnd.lean", "out/ViewEnd_Spec.lean",
-   "out/ViewSum.lean", "out/ViewSum_Spec.lean",
-   "out/VecSize.lean", "out/VecSize_Spec.lean",
-   "out/VecIndex.lean", "out/VecIndex_Spec.lean",
-   "out/VecReadSum.lean", "out/VecReadSum_Spec.lean",
-   "out/VecGrowAlloc.lean", "out/VecGrowAlloc_Spec.lean",
-   "out/VecGrowBack.lean", "out/VecGrowBack_Spec.lean",
-   "out/VecGrowBegin.lean", "out/VecGrowBegin_Spec.lean",
-   "out/VecGrowCheckLen.lean", "out/VecGrowCheckLen_Spec.lean",
-   "out/VecGrowConstruct.lean", "out/VecGrowConstruct_Spec.lean",
-   "out/VecGrowDealloc.lean", "out/VecGrowDealloc_Spec.lean",
-   "out/VecGrowDeallocGuard.lean", "out/VecGrowDeallocGuard_Spec.lean",
-   "out/VecGrowDestroyNoop.lean", "out/VecGrowDestroyNoop_Spec.lean",
-   "out/VecGrowDestroyPtr.lean", "out/VecGrowDestroyPtr_Spec.lean",
-   "out/VecGrowDiffMax.lean", "out/VecGrowDiffMax_Spec.lean",
-   "out/VecGrowDtor.lean", "out/VecGrowDtor_Spec.lean",
-   "out/VecGrowEmptyCtor.lean", "out/VecGrowEmptyCtor_Spec.lean",
-   "out/VecGrowEnd.lean", "out/VecGrowEnd_Spec.lean",
-   "out/VecGrowGetTp.lean", "out/VecGrowGetTp_Spec.lean",
-   "out/VecGrowIterId.lean", "out/VecGrowIterId_Spec.lean",
-   "out/VecGrowMax.lean", "out/VecGrowMax_Spec.lean",
-   "out/VecGrowMin.lean", "out/VecGrowMin_Spec.lean",
-   "out/VecGrowMinus.lean", "out/VecGrowMinus_Spec.lean",
-   "out/VecGrowMinusEl.lean", "out/VecGrowMinusEl_Spec.lean",
-   "out/VecGrowReloc.lean", "out/VecGrowReloc_Spec.lean",
-   "out/VecGrowComposerRealloc.lean", "out/VecGrowComposerRealloc_Spec.lean",
-   "out/VecGrowComposerEmplace.lean", "out/VecGrowComposerEmplace_Spec.lean",
-   "out/VecGrowComposerPushBack.lean", "out/VecGrowComposerPushBack_Spec.lean",
-   "out/VecGrowComposerEntry.lean", "out/VecGrowComposerEntry_Spec.lean",
-   "out/VecGrowCapacity.lean", "out/VecGrowCapacity_Spec.lean",
-   "out/VecGrowComposerReserve.lean", "out/VecGrowComposerReserve_Spec.lean",
-   "out/VecGrowComposerReserveEntry.lean", "out/VecGrowComposerReserveEntry_Spec.lean",
-   "out/VecGrowUnit.lean", "out/VecGrowUnit_Spec.lean",]
+  
+  
+   "out/BoxThrough.lean",
+   "out/SumNorestrict.lean",
+   "out/SumTwo.lean",
+   "out/VecRangeCheck.lean",
+   "out/VecAt.lean",
+   "out/VecAtOne.lean",
+   "out/VecAtSum.lean",
+   "out/VecBinarySearch.lean",
+   "out/VecTwoSum.lean",
+   "out/VecAtSet.lean",
+   "out/VecMergeInto.lean",
+   "out/VecMergeRuns.lean",
+   "out/VecMergeSort.lean",
+   "out/VecReverse.lean",
+   "out/VecSegReverse.lean",
+   "out/VecRotate.lean",
+   "out/VecAtMut.lean",
+   "out/VecIndexMut.lean",
+   "out/OverloadAdd.lean",
+   "out/Add3.lean",
+   "out/UseAdd.lean",
+   "out/NsAdd.lean",
+   "out/UseNsAdd.lean",
+   "out/MoveInt.lean",
+   "out/MoveCtor.lean",
+   "out/MoveAcc.lean",
+   "out/ScopeEarly.lean",
+   "out/Tadd32.lean",
+   "out/Tadd64.lean",
+   "out/UseTadd32.lean",
+   "out/UseTadd64.lean",
+   "out/ArrayRef.lean",
+   "out/ArrayAt.lean",
+   "out/ArraySum.lean",
+   "out/ArrayRefU32.lean",
+   "out/ArrayAtU32.lean",
+   "out/InsertionSort.lean",
+   "out/ArraySortSum.lean",
+   "out/ArrayRefU328.lean",
+   "out/ArrayAtU328.lean",
+   "out/InsertionSort8.lean",
+   "out/ArraySortSum8.lean",
+   "out/OptHas.lean",
+   "out/OptHasValue.lean",
+   "out/OptGet.lean",
+   "out/OptImplGet.lean",
+   "out/OptDerefOp.lean",
+   "out/OptDeref.lean",
+   "out/OptValueOp.lean",
+   "out/OptThrow.lean",
+   "out/OptValue.lean",
+   "out/SpanExtent.lean",
+   "out/SpanSize.lean",
+   "out/SpanIndex.lean",
+   "out/SpanSum.lean",
+   "out/ViewBegin.lean",
+   "out/ViewEnd.lean",
+   "out/ViewSum.lean",
+   "out/VecSize.lean",
+   "out/VecIndex.lean",
+   "out/VecReadSum.lean",
+   "out/VecGrowAlloc.lean",
+   "out/VecGrowBack.lean",
+   "out/VecGrowBegin.lean",
+   "out/VecGrowCheckLen.lean",
+   "out/VecGrowConstruct.lean",
+   "out/VecGrowDealloc.lean",
+   "out/VecGrowDeallocGuard.lean",
+   "out/VecGrowDestroyNoop.lean",
+   "out/VecGrowDestroyPtr.lean",
+   "out/VecGrowDiffMax.lean",
+   "out/VecGrowDtor.lean",
+   "out/VecGrowEmptyCtor.lean",
+   "out/VecGrowEnd.lean",
+   "out/VecGrowGetTp.lean",
+   "out/VecGrowIterId.lean",
+   "out/VecGrowMax.lean",
+   "out/VecGrowMin.lean",
+   "out/VecGrowMinus.lean",
+   "out/VecGrowMinusEl.lean",
+   "out/VecGrowReloc.lean",
+   "out/VecGrowComposerRealloc.lean",
+   "out/VecGrowComposerEmplace.lean",
+   "out/VecGrowComposerPushBack.lean",
+   "out/VecGrowComposerEntry.lean",
+   "out/VecGrowCapacity.lean",
+   "out/VecGrowComposerReserve.lean",
+   "out/VecGrowComposerReserveEntry.lean",
+   "out/VecGrowUnit.lean",]
 
 /-- Library modules `check.sh` typechecks (`lake build` covers
     elaboration; these pin the files individually like the harness). -/
@@ -1703,26 +1817,35 @@ def specCheckOf (text : String) : Option String := do
     (fun c => c.isAlphanum || c == '_')
   if pre.isEmpty then none else some (String.ofList pre.reverse)
 
-/-- S4 spec loop: every `out/*_Spec.lean` typechecks and its `_check`
-    entry evaluates to `true`, one parallel job per stub (typecheck +
-    eval together for load balance). Per-stub temporaries: the single
-    shared name `check.sh` used would race under parallel tasks. -/
+/-- S4 spec loop: every `out/*_Spec.lean`'s `_check` entry evaluates
+    to `true`, batched 8 stubs per `lean` invocation (one process,
+    imports loaded once). No standalone `typecheck`: the tmp eval
+    elaborates the same text, so a separate pass is pure redundant
+    import loading. Each tmp's `#eval` is tagged with its stub name
+    so a `false`/missing line still blames exactly one stub.
+    Per-stub temporaries: the single shared name `check.sh` used
+    would race under parallel tasks. -/
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
   if stubs.length != 132 then
     throw (IO.userError s!"expected 132 spec stubs, found {stubs.length}")
-  pure (stubs.map fun s => (s!"spec {s}", do
-    typecheck ("out/" ++ s)
-    let text ← IO.FS.readFile ("out/" ++ s)
+  let pairs ← stubs.mapM fun s => do
+    let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
       | none => throw (IO.userError s!"no _spec_check entry in {s}")
       | some c => pure c
     let tmp := s!"{workdir}/spec_eval_{s}"
-    IO.FS.writeFile tmp (text ++ s!"\n#eval {chk}_spec_check\n")
-    let out ← shOut "lake" #["env", "lean", tmp]
-    if !(out.splitOn "\n").contains "true" then
-      throw (IO.userError s!"spec check false: {s}: {out}")))
+    IO.FS.writeFile tmp (text ++ s!"\n#eval (\"{s}\", {chk}_spec_check)\n")
+    pure (s, tmp)
+  pure ((chunkList 8 pairs).mapIdx fun i g => (s!"spec-group {i}", do
+    -- One process for the whole group: concatenate the per-stub tmps
+    -- (each elaborates its spec text plus its tagged `#eval`).
+    let out ← batchTypecheck s!"spec{i}" (g.map (·.2))
+    let lines := out.splitOn "\n"
+    for (s, _) in g do
+      if !(lines.contains s!"(\"{s}\", true)") then
+        throw (IO.userError s!"spec check missing/false: {s}: {out}")))
 
 /-! ## Suite roster (every `tests/lean` runner, run as parallel tasks) -/
 
@@ -1892,8 +2015,13 @@ def main (args : List String) : IO Unit := do
   let specJobs ← specStubJobs
   let jobs : List Job :=
     goldenPairs.map (fun (w, g) => (s!"diff {g}", needSameBytes w g))
-    ++ (emittedTypechecks ++ moduleTypechecks).map
-        (fun f => (s!"typecheck {f}", typecheck f))
+    ++ (chunkList 8 emittedTypechecks).mapIdx
+        (fun i fs => (s!"typecheck-group {i}",
+          batchTypecheck s!"tc{i}" fs *> pure ()))
+    -- Library modules one per batch (see `batchTypecheck` scope rule).
+    ++ moduleTypechecks.mapIdx
+        (fun i f => (s!"typecheck {f}",
+          batchTypecheck s!"mod{i}" [f] *> pure ()))
     ++ diffSuites trials ++ checkSuites
     ++ contentAsserts.map (fun (n, ps) => (s!"assert {n}", do
         for (f, needle) in ps do needHas f needle))
