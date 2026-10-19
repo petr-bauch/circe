@@ -23,3 +23,28 @@ def HTriple (P : Env × Mem × Layout → Prop) (s : CStmt)
 theorem htriple_at_of (P : Env × Mem × Layout → Prop) (s : CStmt)
     (Q : Env × Mem × Layout → Outcome → Prop)
     (h : HTriple P s Q) (F : Nat) : HTripleAt F P s Q := h F
+
+/-- Program-level triple (thin sugar over `memEvalProgStmt`,
+    mirroring `HTriple`: total correctness over `.ok` outcomes,
+    fuel-generic, program fixed. Covers loop bodies with `callRet`
+    leaves, which the call-free `HTriple` cannot see. -/
+def HTripleProgAt (prog : Prog) (F : Nat)
+    (P : Env × Mem × Layout → Prop) (s : CStmt)
+    (Q : Env × Mem × Layout → Outcome → Prop) : Prop :=
+  ∀ ρ m π, P (ρ, m, π) →
+    ∃ ρ' m' π' o, memEvalProgStmt prog F s ρ m π =
+      .ok ((ρ', m', π'), o) ∧ Q (ρ', m', π') o
+
+/-- A fuel-generic program triple (loop bodies are proved once,
+    then instantiated per iteration). -/
+def HTripleProg (prog : Prog) (P : Env × Mem × Layout → Prop)
+    (s : CStmt)
+    (Q : Env × Mem × Layout → Outcome → Prop) : Prop :=
+  ∀ F, HTripleProgAt prog F P s Q
+
+/-- A fuel-generic program triple holds at every fixed fuel. -/
+theorem htripleProg_at_of (prog : Prog)
+    (P : Env × Mem × Layout → Prop) (s : CStmt)
+    (Q : Env × Mem × Layout → Outcome → Prop)
+    (h : HTripleProg prog P s Q) (F : Nat) :
+    HTripleProgAt prog F P s Q := h F

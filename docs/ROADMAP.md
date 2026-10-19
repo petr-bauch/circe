@@ -65,11 +65,16 @@ gates (N5a/N5b), strategy capture (`notes/proof-patterns.md`,
 `VERIFYING.md` galleries), and generator tooling
 (`tools/GenOut.lean`, `tools/GenMatch.lean`).
 
-Next: a gallery per new admitted shape; tactic harvesting by the
+Next: a gallery per new admitted shape (R/S/T covered: 12
+closed-instance `hoare-gallery` jobs); tactic harvesting by the
 rule of three (prose note on first use, Lean tactic on third —
-`fuel_step_down` earned it); Hoare-loop/frame rules as new
-constructs arrive (countdown loops with calls + stores are now
-admitted by C/R — the while/frame rules are the frontier).
+`fuel_step_down` earned it; R loop tactics at second use after
+S); the program-level while rule is DONE (P3a — `HTripleProg`
+promoted to `Circe/Hoare`, `htripleProg_while_at` implemented,
+R countdown re-proved as a rule application). The frame rule is
+the remaining frontier (program-level `seq`/`callRet`
+composition rules are the named prerequisite — the T rotate
+entry is the motivating customer).
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`
@@ -85,14 +90,29 @@ admitted by C/R — the while/frame rules are the frontier).
   `List.set_cons_succ`; calls communicate by value, so the caller
   `(m, π)` threads through `callRet` unchanged and only `vecSet`
   steps extend the block list.
-- Program-level while-rule (scoped 2026-10-16, implementation
-  pending): `htripleProg_while_at` mirrors `htriple_while_at`
-  over `memEvalProgStmt` (same four premises — guard-false at
-  zero, exit, guard-decidable, triple-step). Every premise maps
-  to a named R lemma; the R invariant needs a fuel-indexed
-  wrapper (`revIters i j = k ∧ RevInv …`) since the rule counts
-  fuel down. Needs `HTripleProg(At)` promoted to `Circe/Hoare`
-  from the gallery before implementation.
+- S loop-proof deltas (second use of the R tactics, prose stage —
+  still no Lean tactic per the rule of three): `++` walks
+  outer-append first (left-nested appends); a `Nat` window bound
+  named `hi` is shadowed by the `hi` lookup hypothesis from
+  `obtain` — rename the bound to `hiW` at the statement; length
+  rewrites go through `List.length_reverse` before window
+  lengths; the swap-step triple ports premise-for-premise
+  (`hoare_segSwap` mirrors `hoare_reverseSwap` — only the
+  invariant, the length-word snapshot, and the `hfind` fact
+  change). Third use (next admitted loop shape) earns the Lean
+  tactics.
+- Program-level while-rule DONE (2026-10-19, P3a):
+  `htripleProg_while_at` mirrors `htriple_while_at` over
+  `memEvalProgStmt` (same four premises — guard-false at zero,
+  exit, guard-decidable, triple-step); `HTripleProg(At)`
+  promoted to `Circe/Hoare/Def.lean`; the R countdown re-proved
+  as a rule application (`hoare_reverseWhileProg` with the
+  fuel-indexed wrapper `revInvK`, i.e. `revIters i j = k ∧
+  RevInv …`). Premise bridge lemmas that were inline proof steps
+  are now named: `memEvalExpr_ult_ij` (the `i`/`j` guard
+  evaluator), with `RevInv_exit`, `revIters_step`,
+  `revU64_succ/pred_toNat`, and the `hoare_reverseSwap` step
+  triple consumed as premises.
 
 ## Pillar 4 — Iris separation logic for low-level aspects and concurrency
 

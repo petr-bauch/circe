@@ -13,6 +13,8 @@ import Circe.Hoare.Rules
 import Circe.Emit.AliasCond
 import Circe.Emit.CondPair
 import Circe.Transfer.VecReverse
+import Circe.Transfer.VecSegReverse
+import Circe.Transfer.VecRotate
 
 namespace HoareGallery
 
@@ -828,6 +830,65 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: reverse swap failed: {(repr e).pretty}")
+  -- Whole countdown over `[1,2,3]`: the while-rule loop exits with
+  -- `v=[3,2,1]` (executable instance of `hoare_reverseWhileProg`).
+  let wrevL : List (BitVec 32) := [1, 2, 3]
+  let wrevM : Mem := ⟨1, [(0, ⟨0, true,
+    (BitVec.ofNat 32 3) :: wrevL⟩)], []⟩
+  let wrevPi : Layout := [("v", 0, 0)]
+  let wrevRho : Env := [("v", .stdVecVal wrevL),
+    ("i", .u64 0), ("j", .u64 3)]
+  match memEvalProgStmt vecReverseProg 20 vecReverseWhile
+      wrevRho wrevM wrevPi with
+  | .ok ((ρ', _, _), .fellThrough) =>
+    match envLookup ρ' "v" with
+    | some (.stdVecVal got) =>
+      if got != [3, 2, 1] then
+        throw (IO.userError
+          s!"hoare-gallery: reverse loop got={got.map (·.toInt)}, want [3,2,1]")
+      else passed := passed + 1
+    | _ =>
+      throw (IO.userError "hoare-gallery: reverse loop env lost")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: reverse loop want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: reverse loop failed: {(repr e).pretty}")
+  -- Segment window `[1,4)` over `[1,2,3,4,5]` exits with
+  -- `v=[1,4,3,2,5]` (executable instance of the `hoare_segSwap`
+  -- window shape, entry-level).
+  match memEvalProgFunc vecSegReverseProg 30 vecSegReverseFunc
+      [.stdVecVal ([1, 2, 3, 4, 5] : List (BitVec 32)),
+        .u64 1, .u64 4] with
+  | .ok (.stdVecVal got) =>
+    if got != [1, 4, 3, 2, 5] then
+      throw (IO.userError
+        s!"hoare-gallery: seg window got={got.map (·.toInt)}, want [1,4,3,2,5]")
+    else passed := passed + 1
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: seg window want stdVecVal")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: seg window failed: {(repr e).pretty}")
+  -- Left rotation by 1 over `[1,2,3,4]` exits with `v=[2,3,4,1]`.
+  -- Prose note on the while-rule boundary: the rotate entry is
+  -- loopless triple entry-over-entry composition, so there is no
+  -- loop for `htripleProg_while_at` to consume — a Hoare triple
+  -- for the entry would need program-level `seq`/`callRet`
+  -- composition rules, which do not exist yet (named future work;
+  -- the executable instance below pins the behavior instead).
+  match memEvalProgFunc vecRotateProg 30 vecRotateFunc
+      [.stdVecVal ([1, 2, 3, 4] : List (BitVec 32)), .u64 1] with
+  | .ok (.stdVecVal got) =>
+    if got != [2, 3, 4, 1] then
+      throw (IO.userError
+        s!"hoare-gallery: rotate got={got.map (·.toInt)}, want [2,3,4,1]")
+    else passed := passed + 1
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: rotate want stdVecVal")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: rotate failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix
@@ -1228,33 +1289,6 @@ theorem hoare_incrLoop (π : Layout) (aa : Addr) (ta : Nat)
       simp at hgt
   exact htriple_while_at _ _ _ _ ihzero ihexit ihdec ihstep
 
-/-- Program-level triple (thin sugar over `memEvalProgStmt`,
-    mirroring `HTriple`: total correctness over `.ok` outcomes,
-    fuel-generic, program fixed. No new semantics: every instance
-    below is a direct wrapper around an existing
-    `memEvalProgStmt_*` equation — the call-free `HTriple` cannot
-    see loop bodies with `callRet` leaves. -/
-def HTripleProgAt (prog : Prog) (F : Nat)
-    (P : Env × Mem × Layout → Prop) (s : CStmt)
-    (Q : Env × Mem × Layout → Outcome → Prop) : Prop :=
-  ∀ ρ m π, P (ρ, m, π) →
-    ∃ ρ' m' π' o, memEvalProgStmt prog F s ρ m π =
-      .ok ((ρ', m', π'), o) ∧ Q (ρ', m', π') o
-
-/-- A fuel-generic program triple (loop bodies are proved once,
-    then instantiated per iteration). -/
-def HTripleProg (prog : Prog) (P : Env × Mem × Layout → Prop)
-    (s : CStmt)
-    (Q : Env × Mem × Layout → Outcome → Prop) : Prop :=
-  ∀ F, HTripleProgAt prog F P s Q
-
-/-- A fuel-generic program triple holds at every fixed fuel. -/
-theorem htripleProg_at_of (prog : Prog)
-    (P : Env × Mem × Layout → Prop) (s : CStmt)
-    (Q : Env × Mem × Layout → Outcome → Prop)
-    (h : HTripleProg prog P s Q) (F : Nat) :
-    HTripleProgAt prog F P s Q := h F
-
 /-- Reverse swap-step triple: one `vecReverseBody` iteration swaps
     the window ends and advances the indices (thin triple sugar
     over `memBody_hit`; the `hstep`-shaped premise a
@@ -1281,6 +1315,7 @@ theorem hoare_reverseSwap (F : Nat)
           some (.stdVecVal ((l.set i b).set (j - 1) a)) ∧
         envLookup ρ' "i" = some (.u64 (iB + 1)) ∧
         envLookup ρ' "j" = some (.u64 (jB - 1)) ∧
+        layoutLookup π' "v" = some (0, 0) ∧
         memFind m' 0 = some ⟨0, true, (BitVec.ofNat 32 n) ::
           ((l.set i b).set (j - 1) a)⟩ ∧
         RevInv orig ((l.set i b).set (j - 1) a) n (i + 1)
@@ -1293,6 +1328,196 @@ theorem hoare_reverseSwap (F : Nat)
     memBody_hit F ρ₀ m₀ π₀ orig l n i j iB jB a b
       hinv hiN hjN hlt ha hb hn64 hv hi hj hlay hmem
   exact ⟨ρ', m', π₀, .fellThrough, heval, rfl,
-    ρ', m', π₀, rfl, hv', hi', hj', hmem', hinv'⟩
+    ρ', m', π₀, rfl, hv', hi', hj', hlay, hmem', hinv'⟩
+
+/-- `ult` guard evaluation for the `i`/`j` countdown environment
+    (first use, prose-note stage: the same `ult_agree` + `var` +
+    `ult_u64` cascade as `memEvalExpr_ult_ilen`, generalized from
+    the `i`/`len` pair to two index variables). -/
+theorem memEvalExpr_ult_ij (ρ : Env) (m : Mem) (π : Layout)
+    (iB jB : BitVec 64)
+    (hi : envLookup ρ "i" = some (.u64 iB))
+    (hj : envLookup ρ "j" = some (.u64 jB)) :
+    memEvalExpr (.ult (.var "i") (.var "j")) ρ m π
+      = .ok (.b (iB.ult jB)) := by
+  rw [memEvalExpr_ult_agree _ _ ρ m π
+    (memEvalExpr_var _ _ _ _) (memEvalExpr_var _ _ _ _),
+    evalExpr_ult_u64 _ _ ρ iB _ (evalExpr_var_hit _ _ _ hi)
+      (evalExpr_var_hit _ _ _ hj)]
+
+/-- Fuel-indexed countdown invariant: `revIters i j = k` iterations
+    remain, with the `RevInv` words, index bindings, snapshot, and
+    layout (the shape `htripleProg_while_at` counts down). -/
+abbrev revInvK (orig : List (BitVec 32)) (n k : Nat) :
+    Env × Mem × Layout → Prop :=
+  fun st => ∃ ρ m π l i j iB jB, st = (ρ, m, π) ∧
+    revIters i j = k ∧
+    envLookup ρ "v" = some (.stdVecVal l) ∧
+    envLookup ρ "i" = some (.u64 iB) ∧ iB.toNat = i ∧
+    envLookup ρ "j" = some (.u64 jB) ∧ jB.toNat = j ∧
+    layoutLookup π "v" = some (0, 0) ∧
+    memFind m 0 = some ⟨0, true, (BitVec.ofNat 32 n) :: l⟩ ∧
+    RevInv orig l n i j
+
+/-- Whole countdown as a rule application: the R loop triple via
+    `htripleProg_while_at` (first use — the hand-rolled fuel
+    induction in `revWhile_ok` becomes the rule's induction; each
+    premise below names the R lemma that used to be an inline
+    proof step). -/
+theorem hoare_reverseWhileProg (F : Nat) (orig : List (BitVec 32))
+    (n : Nat) (hn64 : n < 2 ^ 64) :
+    HTripleProgAt vecReverseProg F (revInvK orig n F)
+      vecReverseWhile
+      (fun st o => o = .fellThrough ∧ ∃ ρ' m' π' l',
+        st = (ρ', m', π') ∧ l' = orig.reverse ∧
+        envLookup ρ' "v" = some (.stdVecVal l')) := by
+  have hzero : ∀ ρ m π, revInvK orig n 0 (ρ, m, π) →
+      memEvalExpr (.ult (.var "i") (.var "j")) ρ m π
+        = .ok (.b false) := by
+    intro ρ m π hP
+    obtain ⟨ρ₀, m₀, π₀, l, i, j, iB, jB, heq, hkit,
+      hv, hi, hiN, hj, hjN, hlay, hmem, hinv⟩ := hP
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hle : j ≤ i := by
+      by_cases hc : i < j
+      · have hs := revIters_step i j hc
+        omega
+      · omega
+    have hg := memEvalExpr_ult_ij ρ m π iB jB hi hj
+    have hfb : (iB.ult jB) = false := by
+      rw [BitVec.ult_eq_decide]
+      exact decide_eq_false (by omega)
+    rwa [hfb] at hg
+  have hexit : ∀ k ρ m π, revInvK orig n k (ρ, m, π) →
+      memEvalExpr (.ult (.var "i") (.var "j")) ρ m π
+        = .ok (.b false) →
+      (Outcome.fellThrough = Outcome.fellThrough ∧ ∃ ρ' m' π' l',
+        (ρ, m, π) = (ρ', m', π') ∧ l' = orig.reverse ∧
+        envLookup ρ' "v" = some (.stdVecVal l')) := by
+    intro k ρ m π hP hg
+    obtain ⟨ρ₀, m₀, π₀, l, i, j, iB, jB, heq, hkit,
+      hv, hi, hiN, hj, hjN, hlay, hmem, hinv⟩ := hP
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hult := memEvalExpr_ult_ij ρ m π iB jB hi hj
+    rw [hult] at hg
+    have hbj : j ≤ i := by
+      have h2 : (iB.ult jB) = false := by simpa using hg
+      rw [BitVec.ult_eq_decide] at h2
+      simp at h2
+      omega
+    exact ⟨rfl, ρ, m, π, l, rfl,
+      RevInv_exit orig l n i j hinv hbj, hv⟩
+  have hdec : ∀ k ρ m π, revInvK orig n (k + 1) (ρ, m, π) →
+      memEvalExpr (.ult (.var "i") (.var "j")) ρ m π
+        = .ok (.b false) ∨
+      memEvalExpr (.ult (.var "i") (.var "j")) ρ m π
+        = .ok (.b true) := by
+    intro k ρ m π hP
+    obtain ⟨ρ₀, m₀, π₀, l, i, j, iB, jB, heq, hkit,
+      hv, hi, hiN, hj, hjN, hlay, hmem, hinv⟩ := hP
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hg := memEvalExpr_ult_ij ρ m π iB jB hi hj
+    cases h : (iB.ult jB) with
+    | false => exact Or.inl (by rwa [h] at hg)
+    | true => exact Or.inr (by rwa [h] at hg)
+  have hstep : ∀ k ρ m π, revInvK orig n (k + 1) (ρ, m, π) →
+      memEvalExpr (.ult (.var "i") (.var "j")) ρ m π
+        = .ok (.b true) →
+      ∃ Pmid Qmid, HTripleProg vecReverseProg Pmid vecReverseBody Qmid ∧
+        Pmid (ρ, m, π) ∧
+        (∀ ρ' m' π' o, Qmid (ρ', m', π') o →
+          (o = .fellThrough ∨ o = .continued) ∧
+          revInvK orig n k (ρ', m', π')) := by
+    intro k ρ m π hP hgt
+    obtain ⟨ρ₀, m₀, π₀, l, i, j, iB, jB, heq, hkit,
+      hv, hi, hiN, hj, hjN, hlay, hmem, hinv⟩ := hP
+    simp only [Prod.mk.injEq] at heq
+    obtain ⟨rfl, rfl, rfl⟩ := heq
+    have hult := memEvalExpr_ult_ij ρ m π iB jB hi hj
+    rw [hult] at hgt
+    have htb : (iB.ult jB) = true := by simpa using hgt
+    have hlt : i < j := by
+      rw [BitVec.ult_eq_decide] at htb
+      simp at htb
+      omega
+    obtain ⟨hlen, horig, hij, hin, hjn, hleft, hright, hmid⟩ := hinv
+    have hiL : i < l.length := by omega
+    have hjL : j - 1 < l.length := by omega
+    have ha : l[i]? = some l[i] := List.getElem?_eq_getElem hiL
+    have hb : l[j - 1]? = some l[j - 1] :=
+      List.getElem?_eq_getElem hjL
+    refine ⟨_, _, (fun F' => hoare_reverseSwap F' orig l n i j
+      iB jB l[i] l[j - 1]
+      ⟨hlen, horig, hij, hin, hjn, hleft, hright, hmid⟩
+      hiN hjN hlt ha hb hn64), ?_, ?_⟩
+    · exact ⟨ρ, m, π, rfl, hv, hi, hj, hlay, hmem⟩
+    · intro ρ' m' π' o hQ
+      obtain ⟨ho, ρ₁, m₁, π₁, heq', hv', hi', hj', hlay', hmem',
+        hinv'⟩ := hQ
+      simp only [Prod.mk.injEq] at heq'
+      obtain ⟨rfl, rfl, rfl⟩ := heq'
+      have hkit' : revIters (i + 1) (j - 1) = k := by
+        have hs := revIters_step i j hlt
+        omega
+      have hsucc : (iB + 1).toNat = i + 1 := by
+        have h := revU64_succ_toNat iB n (by omega) hn64
+        omega
+      have hpred : (jB - 1).toNat = j - 1 := by
+        have h := revU64_pred_toNat jB (by omega)
+        omega
+      exact ⟨Or.inl ho, ρ', m', π', ((l.set i l[j - 1]).set (j - 1) l[i]),
+        i + 1, j - 1, iB + 1, jB - 1, rfl, hkit', hv', hi', hsucc,
+        hj', hpred, hlay', hmem', hinv'⟩
+  exact htripleProg_while_at vecReverseProg (revInvK orig n)
+    (fun st o => o = .fellThrough ∧ ∃ ρ' m' π' l',
+      st = (ρ', m', π') ∧ l' = orig.reverse ∧
+      envLookup ρ' "v" = some (.stdVecVal l'))
+    (.ult (.var "i") (.var "j")) vecReverseBody
+    hzero hexit hdec hstep F
+
+/-- Segment swap-step triple: one shared `vecReverseBody` iteration
+    over the window `[lo, hi)` (the S sibling of `hoare_reverseSwap`
+    — thin triple sugar over `segMemBody_hit`; second use of the
+    swap-step shape, still prose stage per the rule of three). -/
+theorem hoare_segSwap (F : Nat)
+    (orig l : List (BitVec 32)) (lo hiW i j : Nat)
+    (iB jB : BitVec 64) (a b : BitVec 32)
+    (hinv : SegInv orig l lo hiW i j)
+    (hiN : iB.toNat = i) (hjN : jB.toNat = j)
+    (hlt : i < j)
+    (ha : l[i]? = some a) (hb : l[j - 1]? = some b)
+    (hlen64 : l.length < 2 ^ 64) :
+    HTripleProgAt vecSegReverseProg F
+      (fun st => ∃ ρ m π, st = (ρ, m, π) ∧
+        envLookup ρ "v" = some (.stdVecVal l) ∧
+        envLookup ρ "i" = some (.u64 iB) ∧
+        envLookup ρ "j" = some (.u64 jB) ∧
+        layoutLookup π "v" = some (0, 0) ∧
+        memFind m 0 = some ⟨0, true, (BitVec.ofNat 32 l.length) :: l⟩)
+      vecReverseBody
+      (fun st o => o = .fellThrough ∧
+        ∃ ρ' m' π', st = (ρ', m', π') ∧
+        envLookup ρ' "v" =
+          some (.stdVecVal ((l.set i b).set (j - 1) a)) ∧
+        envLookup ρ' "i" = some (.u64 (iB + 1)) ∧
+        envLookup ρ' "j" = some (.u64 (jB - 1)) ∧
+        layoutLookup π' "v" = some (0, 0) ∧
+        memFind m' 0 = some ⟨0, true, (BitVec.ofNat 32 l.length) ::
+          ((l.set i b).set (j - 1) a)⟩ ∧
+        SegInv orig ((l.set i b).set (j - 1) a) lo hiW (i + 1)
+          (j - 1)) := by
+  intro ρ₀ m₀ π₀ hP
+  obtain ⟨ρ₁, m₁, π₁, heq, hv, hi, hj, hlay, hmem⟩ := hP
+  simp only [Prod.mk.injEq] at heq
+  obtain ⟨rfl, rfl, rfl⟩ := heq
+  obtain ⟨ρ', m', heval, hv', hi', hj', hmem', hinv'⟩ :=
+    segMemBody_hit vecSegReverseProg F ρ₀ m₀ π₀ orig l lo hiW i j
+      iB jB a b hinv hiN hjN hlt ha hb hlen64 hv hi hj hlay hmem
+      segFindAt
+  exact ⟨ρ', m', π₀, .fellThrough, heval, rfl,
+    ρ', m', π₀, rfl, hv', hi', hj', hlay, hmem', hinv'⟩
 
 end HoareGallery

@@ -1442,3 +1442,43 @@ out-of-subset, bare-ptr alias-reject), `DiffVecRotate`
 fuzzed `k ≤ n`), tamper-checked (native tamper and golden
 edit caught), CIR byte-reproducible via `tools/emit-cir.sh`.
 - Acceptance: 759 jobs TEST-OK, CHECK-OK.
+
+### P3a. Program-level while rule + R rule-application — DONE (2026-10-19)
+
+Pillar 3's frontier rule: `HTripleProg`/`HTripleProgAt`
+promoted from the gallery to `Circe/Hoare/Def.lean`, and
+`htripleProg_while_at` proved in `Circe/Hoare/Rules.lean` —
+the `htriple_while_at` mirror over `memEvalProgStmt` (same
+four premises; the existing `memEvalProgStmt_while_false/true`
+equations make the proof a line-for-line port). The R
+countdown is re-proved as a rule application
+(`hoare_reverseWhileProg` with the fuel-indexed wrapper
+`revInvK`, i.e. `revIters i j = k ∧ RevInv …` plus bindings,
+snapshot, and layout): `hzero`/`hexit` via the new
+`memEvalExpr_ult_ij` guard evaluator + `RevInv_exit`,
+`hdec` by boolean case, `hstep` via the `hoare_reverseSwap`
+step triple + `RevInv_step`/`revIters_step`/
+`revU64_succ/pred_toNat`. Gallery grows to 10 closed-instance
+jobs (whole-loop `[1,2,3] → [3,2,1]` executable instance).
+Proof notes: `by_contra`/`push_neg` are unavailable in this
+profile (use `by_cases`); named-`def` invariants need
+`abbrev` (reducible) for `obtain` to see through them;
+post-`subst` code must use the surviving names (subst
+eliminates one side — check the context, don't assume which).
+
+### P3b. S/T galleries + second-use prose notes — DONE (2026-10-19)
+
+Gallery-per-shape kept current: `hoare_segSwap` (S swap-step
+triple over `segMemBody_hit`, premise-for-premise port of
+`hoare_reverseSwap` — only invariant, length-word snapshot,
+and `hfind` differ; required renaming the window bound to
+`hiW` since `obtain`'s `hi` lookup hypothesis shadows it) +
+executable S window (`[1,2,3,4,5]` `[1,4)` → `[1,4,3,2,5]`)
+and T rotate (`[1,2,3,4]` by 1 → `[2,3,4,1]`) instances via
+`memEvalProgFunc`. T documents the while-rule boundary in
+prose: the loopless entry needs program-level `seq`/`callRet`
+composition rules (named future work, frame-rule
+prerequisite). `hoare_reverseSwap`'s post records the layout
+fact (was proof-internal). S-delta second-use notes in
+`docs/ROADMAP.md` (still prose stage — third admitted loop
+earns the Lean tactics). Gallery at 12 closed-instance jobs.

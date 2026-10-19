@@ -250,6 +250,52 @@ theorem htriple_while_at (I : Nat → Env × Mem × Layout → Prop)
       · exact hev₂
       · exact hev₂
 
+/-- Program-level `while_` rule: mirrors `htriple_while_at` over
+    `memEvalProgStmt`, so loop bodies with `callRet` leaves (every
+    admitted vector loop) prove as rule applications instead of
+    hand-rolled fuel inductions. Same four premises; the
+    triple-step consumes/produces `HTripleProgAt` at the
+    iteration fuel. -/
+theorem htripleProg_while_at (prog : Prog)
+    (I : Nat → Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (c : CExpr) (b : CStmt)
+    (hzero : ∀ ρ m π, I 0 (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b false))
+    (hexit : ∀ k ρ m π, I k (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b false) → Q (ρ, m, π) .fellThrough)
+    (hdec : ∀ k ρ m π, I (k + 1) (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b false) ∨
+      memEvalExpr c ρ m π = .ok (.b true))
+    (hstep : ∀ k ρ m π, I (k + 1) (ρ, m, π) →
+      memEvalExpr c ρ m π = .ok (.b true) →
+      ∃ Pmid Qmid, HTripleProg prog Pmid b Qmid ∧ Pmid (ρ, m, π) ∧
+        (∀ ρ' m' π' o, Qmid (ρ', m', π') o →
+          (o = .fellThrough ∨ o = .continued) ∧ I k (ρ', m', π'))) :
+    ∀ F, HTripleProgAt prog F (fun st => I F st) (.while_ c b) Q := by
+  intro F
+  induction F with
+  | zero =>
+    intro ρ m π hP
+    have hguard := hzero ρ m π hP
+    exact ⟨ρ, m, π, .fellThrough,
+      memEvalProgStmt_while_false prog 0 c b ρ m π hguard,
+      hexit 0 ρ m π hP hguard⟩
+  | succ k ih =>
+    intro ρ m π hP
+    obtain hgf | hgt := hdec k ρ m π hP
+    · exact ⟨ρ, m, π, .fellThrough,
+        memEvalProgStmt_while_false prog (k + 1) c b ρ m π hgf,
+        hexit (k + 1) ρ m π hP hgf⟩
+    · obtain ⟨Pmid, Qmid, hbody, hpre, hpost⟩ := hstep k ρ m π hP hgt
+      obtain ⟨ρ₁, m₁, π₁, o₁, hev, hQ⟩ := hbody k ρ m π hpre
+      obtain ⟨ho, hI⟩ := hpost ρ₁ m₁ π₁ o₁ hQ
+      obtain ⟨ρ₂, m₂, π₂, o₂, hev₂, hQ₂⟩ := ih ρ₁ m₁ π₁ hI
+      refine ⟨ρ₂, m₂, π₂, o₂, ?_, hQ₂⟩
+      rw [memEvalProgStmt_while_true prog k c b ρ m π hgt, hev]
+      obtain rfl | rfl := ho
+      · exact hev₂
+      · exact hev₂
+
 /-- `u64` length round-trip for loop bounds: the bound literal
     evaluates back to the list length (needs `hn`). -/
 theorem ofNat64_toNat (n : Nat) (hn : n < 2 ^ 64) :
