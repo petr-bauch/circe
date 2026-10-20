@@ -98,7 +98,10 @@ only new trusted-by-you artifact, checked by `lake build`.
 Proving: `import Circe.Tactics` gives the tactic pack
 (`cir_simp`, `cir_eval_closed`, `cir_fuel`, `cir_choose`,
 `cir_step`) — see `docs/VERIFYING.md` ("For users") and the live
-demos in `examples/hello/Hello/TacticsDemo.lean`.
+demos in `examples/hello/Hello/TacticsDemo.lean`. Multi-function
+programs: write one contract (ok + err legs) per function and
+compose callers from callee contracts — see `docs/VERIFYING.md`
+("Contracts and composition").
 Coming later: modular-proof harnesses and reusable lemma packs
 (ROADMAP frontend follow-ups).
 

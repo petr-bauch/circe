@@ -218,13 +218,16 @@ theorem vec64_empty : vecFillSumU64 0 = .ok 0 := by
 
 /-- `add_caller` threads two checked adds: success delivers the
     sequential sum (`cir_simp` closes the `(<$>)` residue via the set's
-    map lemmas). -/
+    map lemmas). Template instance: sequential threading (see
+    VERIFYING.md Contracts). -/
 theorem addCaller_correct_ok (x y z t r : BitVec 32)
     (h1 : checkedAddI32 x y = .ok t) (h2 : checkedAddI32 t z = .ok r) :
     addCallerFwd x y z = .ok (.i32 r) := by
   simp only [addCallerFwd, h1, h2] <;> cir_simp
 
-/-- First-add failure propagates (and determines the error). -/
+/-- First-add failure propagates (and determines the error).
+    Template instance: sequential threading, err leg (see
+    VERIFYING.md Contracts). -/
 theorem addCaller_correct_err (x y z : BitVec 32) (e : Panic)
     (h : checkedAddI32 x y = .error e) :
     addCallerFwd x y z = .error e := by
@@ -232,7 +235,8 @@ theorem addCaller_correct_err (x y z : BitVec 32) (e : Panic)
 
 /-- `sum_caller` delegates: in-range lengths deliver the taken-prefix
     sum (`cir_simp` discharges the delegation rewrite — the spec —
-    leaving exactly `sum_correct`). -/
+    leaving exactly `sum_correct`). Template instance: delegation
+    (see VERIFYING.md Contracts). -/
 theorem sumCaller_correct (l : List (BitVec 32)) (n : BitVec 32)
     (h : n.toNat ≤ l.length) :
     sumCallerFwd l n = .ok (.u32 ((l.take n.toNat).sum)) := by
@@ -245,7 +249,8 @@ theorem sumCaller_correct (l : List (BitVec 32)) (n : BitVec 32)
     ok/err bridges (`translateFwd_ok_bridge`, `translateFwd_err_x`) are
     already the complete properties, so the spec conjoins them
     (conditional bridges apply by `exact` — they provably do not fire
-    under `simp`; cf. `accAddFwd_ok` usage in `Circe.Emit.Acc`). -/
+    under `simp`; cf. `accAddFwd_ok` usage in `Circe.Emit.Acc`).
+    Template instance: conjunction (see VERIFYING.md Contracts). -/
 theorem translate_correct (px py dx dy : BitVec 32) :
     (∀ x' y', checkedAddI32 px dx = .ok x' →
       checkedAddI32 py dy = .ok y' →
@@ -527,14 +532,17 @@ theorem boxThrough_correct (x : BitVec 32) :
 
 /-- The 3-`i32` overload leaf threads both adds, mirroring
     `add64_correct_ok` (`simp only` exposes the `(<$>)` residue for
-    `cir_simp`). -/
+    `cir_simp`). Template instance: sequential threading (see
+    VERIFYING.md Contracts). -/
 theorem add3_correct_ok (x y z t r : BitVec 32)
     (h1 : checkedAddI32 x y = .ok t)
     (h2 : checkedAddI32 t z = .ok r) :
     add3Fwd x y z = .ok (.i32 r) := by
   simp only [add3Fwd, h1, h2] <;> cir_simp
 
-/-- First-add failure propagates out of the overload leaf. -/
+/-- First-add failure propagates out of the overload leaf.
+    Template instance: sequential threading, err leg (see
+    VERIFYING.md Contracts). -/
 theorem add3_correct_err (x y z : BitVec 32) (e : Panic)
     (h : checkedAddI32 x y = .error e) :
     add3Fwd x y z = .error e := by
@@ -1106,7 +1114,8 @@ theorem stdVecGrowRealloc_correct_err_checklen (b : Vec32) (len cap : Nat)
 /-- All-ok stages deliver the reallocated triple: the second relocate's
     buffer with the bumped length (`addCaller_correct_ok` shape — one
     equation per composer `callRet`, projectors discharging the
-    between-call value shapes). -/
+    between-call value shapes). Template instance: sequential
+    threading, eight callee equations (see VERIFYING.md Contracts). -/
 theorem stdVecGrowRealloc_correct_ok (b : Vec32) (len cap : Nat)
     (pos : BitVec 64) (x : BitVec 32)
     (newlen : BitVec 64) (bNew bC bR1 bR2 : Vec32) (v : Value)
@@ -1134,7 +1143,8 @@ theorem stdVecGrowRealloc_correct_ok (b : Vec32) (len cap : Nat)
 /-! ## N4d-iv-b2 `emplace_back`: composer spec (Fwd level) -/
 
 /-- Slow dispatch: at capacity the forward is the realloc forward at
-    `pos = len`. -/
+    `pos = len`. Template instance: delegation (see VERIFYING.md
+    Contracts). -/
 theorem stdVecEmplaceBack_correct_slow (b : Vec32) (len cap : Nat)
     (x : BitVec 32) (h : len = cap) :
     stdVecEmplaceBackFwd b len cap x =
@@ -1142,7 +1152,8 @@ theorem stdVecEmplaceBack_correct_slow (b : Vec32) (len cap : Nat)
   unfold stdVecEmplaceBackFwd; simp [h]
 
 /-- Fast dispatch: below capacity the forward is the construct
-    forward at `len` with length `len + 1`. -/
+    forward at `len` with length `len + 1`. Template instance:
+    delegation (see VERIFYING.md Contracts). -/
 theorem stdVecEmplaceBack_correct_fast (b : Vec32) (len cap : Nat)
     (x : BitVec 32) (h : len ≠ cap) :
     stdVecEmplaceBackFwd b len cap x =
@@ -1313,7 +1324,8 @@ theorem stdVecReserve_correct_throw (b : Vec32) (len cap : Nat)
 
 /-- The reallocation arm threads the owned triple through allocate →
     relocate → deallocate and re-pins the length (leaf-hypothesis style
-    like `stdVecGrowRealloc_correct_ok`). -/
+    like `stdVecGrowRealloc_correct_ok`). Template instance:
+    sequential threading (see VERIFYING.md Contracts). -/
 theorem stdVecReserve_correct_realloc (b : Vec32) (len cap : Nat)
     (n : BitVec 64) (bNew bR : Vec32) (v : Value)
     (hmax : stdVecMaxDiffBV.ult n = false)

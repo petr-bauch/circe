@@ -305,6 +305,56 @@ typecheck, 25/25 `_check` entries evaluate to `true` (asserted in
 `tools/check.sh`); `vec_correct`
 refactored shorter onto the grown set (see Tactics above).
 
+## Contracts and composition (U2)
+
+A per-function contract is an ok leg plus an err leg over the
+emitted forward, proved from callee contracts taken as
+hypotheses — never by re-verifying the callee. Shape:
+
+```lean
+theorem myCaller_contract_ok (args ...)
+    -- CONTRACT (assumes, callee ok legs): one equation per call site.
+    (h1 : calleeFwd ... = .ok ...) (h2 : ...) :
+    -- CONTRACT (guarantee, ok leg).
+    myCallerFwd ... = .ok ... := by
+  simp only [myCallerFwd, h1, h2, ...bridges...] <;> cir_simp
+-- CONTRACT (guarantee, err leg): same skeleton with the failing
+-- callee equation; first-failure-wins matches the forward's binds.
+theorem myCaller_contract_err ... : ... := by
+  simp only [myCallerFwd, h, ...] <;> cir_simp
+```
+
+Three operators, all already the in-repo idiom (the harness names
+the shape; it invents nothing):
+
+- Sequential threading: callee equations rewrite into the
+  unfolded composer, bridges discharge the between-call value
+  shapes. Instances: `add3_correct_ok/err`, `addCaller_correct_ok/err`,
+  `stdVecGrowRealloc_correct_ok` (eight callee equations),
+  `stdVecReserve_correct_realloc` (allocate → relocate →
+  deallocate-guard), each marked `Template instance` at its doc.
+- Delegation: the composer forward is the callee (plus a
+  projection) — rewrite with the delegation equation, apply the
+  callee's spec. Instances: `sumCaller_correct` (→ `sum_correct`),
+  `stdVecEmplaceBack_correct_slow/fast` (→ realloc/construct).
+- Conjunction: independent legs conjoined when conditional
+  bridges provably do not fire under `simp` (so `exact`, as in
+  the `incr` precedent). Instance: `translate_correct`.
+
+Fan-out boundary (read before forcing rotate into this shape):
+`vecRotateFwd` is stated directly (`drop`/`take`), so no callee
+subterm exists for assumes to rewrite — a forward-level
+contract trio over it would be vacuous. Its composition proof
+lives one level down (`evalProgFunc_vecRotate`: three
+`callProg` steps over the seg entry, R2). Program-level
+`seq`/`callRet` contract rules are the Pillar-3 prerequisite;
+until they exist, fan-out with a direct-stated composer stays
+at the eval level, and fan-out with a callee-stated composer
+uses sequential threading (one equation per call site, cf. the
+realloc eight). Missing callee specs are new verification, not
+harness work: the mergeRuns/drain forwards have no specs yet
+(U3 material).
+
 ## Hoare triples (H1)
 
 `Circe.Hoare` wraps the `Mem` equation lemmas as Hoare triples —

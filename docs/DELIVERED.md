@@ -1530,3 +1530,27 @@ fact). Process note: `/tmp` probes are not verification —
 several early "passes" were a `^error` grep that never matches
 Lean's `file:line:col: error:` format; only `lake build` of the
 consuming lib counts.
+
+### U2 modular-proof harness — DONE (2026-10-19)
+
+Contract template + three operators in VERIFYING.md
+("Contracts and composition"): per-function contracts are an ok
+leg plus an err leg over the emitted forward, proved from
+callee contracts as hypotheses; sequential threading (callee
+equations rewrite into the unfolded composer),
+delegation (rewrite + callee spec), conjunction (independent
+legs conjoined). No new proof obligations were invented — the
+harness names the in-repo idiom: ten existing specs annotated
+as template instances (`add3`/`addCaller` ok+err, `sumCaller`,
+`translate_correct`, `stdVecGrowRealloc_correct_ok`,
+`stdVecReserve_correct_realloc`,
+`stdVecEmplaceBack_correct_slow/fast`). Deliberate deviation
+from the proposal: no new multi-callee demo theorem — the
+planned rotate-forward contract trio is vacuous (the forward is
+stated directly via `drop`/`take`, so no callee subterm exists
+for assumes to rewrite; its composition proof lives one level
+down as `evalProgFunc_vecRotate`), and the only callee-stated
+3-call composer (`mergeRunsFwd`) has no callee specs (new
+verification, U3 material). The fan-out boundary is documented
+instead: direct-stated composers compose at eval level;
+callee-stated composers use one equation per call site.

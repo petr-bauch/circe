@@ -88,8 +88,12 @@ audited all five tactics on user-shaped goals, live demos in
 set additions — a comm-lemma addition was reverted after the
 rewrite trace showed `simp` rejects unorientable permutations,
 so algebraic facts stay explicit), U2 modular-proof harness
-(per-function contracts + composition), U3 reusable lemma packs
-per STD shape.
+DONE (2026-10-19 — contract template + three operators in
+VERIFYING.md, ten existing specs annotated as instances,
+fan-out boundary documented: rotate-forward's direct statement
+takes no callee rewrites, so its composition lives at eval
+level; mergeRuns callee specs are missing verification, U3
+material), U3 reusable lemma packs per STD shape.
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`
