@@ -81,8 +81,13 @@ validated emission, `--func`/`--fact` selection, loud rejects),
 `Circe.*`) with handwritten spec + proof + `_spec_check`,
 README "For users" guide (every command verified verbatim),
 driver `frontend-hello` pin (rebuild + re-emit + byte-compare +
-`_check` true). Follow-ups, in order: U1 user tactics
-(`cir_simp` productization), U2 modular-proof harness
+`_check` true). Follow-ups, in order: U1 user tactics DONE (2026-10-19 —
+audited all five tactics on user-shaped goals, live demos in
+`Hello/TacticsDemo.lean` as the regression test, VERIFYING.md
+"For users" section; deliberate negative result: no `cir_simp`
+set additions — a comm-lemma addition was reverted after the
+rewrite trace showed `simp` rejects unorientable permutations,
+so algebraic facts stay explicit), U2 modular-proof harness
 (per-function contracts + composition), U3 reusable lemma packs
 per STD shape.
 - R loop-proof tactics (first use, prose-note stage): one-sided

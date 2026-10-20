@@ -95,8 +95,12 @@ own correctness proofs (`Circe/Emit`, `emit_correct_*`), and the
 memory transfer (`Circe.Mem`/`Circe.Transfer`) backs the value
 semantics on the admitted fragment — your spec + proof is the
 only new trusted-by-you artifact, checked by `lake build`.
-Coming later: user tactics, modular-proof harnesses, and
-reusable lemma packs (ROADMAP frontend follow-ups).
+Proving: `import Circe.Tactics` gives the tactic pack
+(`cir_simp`, `cir_eval_closed`, `cir_fuel`, `cir_choose`,
+`cir_step`) — see `docs/VERIFYING.md` ("For users") and the live
+demos in `examples/hello/Hello/TacticsDemo.lean`.
+Coming later: modular-proof harnesses and reusable lemma packs
+(ROADMAP frontend follow-ups).
 
 Layout: `Circe/Base.lean` (value model + checked ops + evaluator vocabulary),
 `Circe/Emit/{Vec,Flow,M2,Sum,Grow}Fwd.lean` (per-family program translations),

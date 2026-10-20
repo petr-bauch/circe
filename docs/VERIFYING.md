@@ -165,6 +165,41 @@ spec stub names its owed gallery equations (`TODO (user)` — e.g. the
 entry stub names `vecPushSumEntry_correct`); the equations themselves
 stay hand-proved in `Circe.Specs`, pinned per-slice in the driver.
 
+### For users (U1)
+
+One door: `import Circe.Tactics`. Three tiers, by how often user
+proofs meet them — every tactic demonstrated live in
+`examples/hello/Hello/TacticsDemo.lean` (built by `lake build
+Hello`, so the demo IS the regression test):
+
+- Everyday: `cir_eval_closed` (closed checks evaluate in the
+  kernel — `hello_check_true`), `cir_simp` (discharges the
+  library layer in one call — `hello_add_ok_set`: unfold your
+  forward, `cir_simp` applies the ok-rule with your certificate
+  and splits the range test, leaving integer arithmetic for
+  `omega`/an explicit step).
+- Advanced (fuel-induction proofs): `cir_fuel` (fuel side-goals —
+  `hello_fuel_side`), `cir_step` (one symbolic evaluator step —
+  `hello_step_uadd`).
+- Specialized: `cir_choose b` (boolean-selector case split with
+  the forward/backward equations — `hello_choose_get_put`).
+
+Three standing limits (all hit during the U1 audit, all documented
+so users don't rediscover them):
+
+- Unfold your own forward first (`unfold add_fwd`): emitted
+  functions are not in the simp set, and the set never guesses
+  them.
+- Algebraic facts stay explicit: `hello_add_comm_simp` is
+  `exact checkedAddI32_comm`, not a simp call — `simp` rejects
+  permutative rewrites it cannot orient, so the set deliberately
+  carries no commutation lemmas (an audit-proposed addition was
+  reverted for exactly this reason).
+- `cir_choose` needs a variable selector (a literal leaves the
+  impossible branch behind); `cir_step` needs every lookup fact
+  the step touches (the cascade only rewrites what the
+  hypotheses cover — a single uncovered `envLookup` stalls it).
+
 ## N3c gallery: worked properties (DELIVERED.md N3 — done)
 
 Three end-to-end proofs over the existing corpus, checked into

@@ -1505,3 +1505,28 @@ verified: edited emission fails the job). README "For users"
 with every command run verbatim. Deliberate deviation from the
 proposal: workspace member instead of standalone package (keeps
 the gate hermetic); copy-out template on user request.
+
+### U1 user tactics — DONE (2026-10-19)
+
+Tactic pack productized, no new tactics (rule of three holds —
+nothing has a third use): T1 audited all five tactics on
+user-shaped goals (`cir_simp` comm-goal, closed-goal,
+`cir_fuel` side-goal, `cir_choose` get-put, `cir_step`
+evaluator step, `cir_eval_closed` executable check).
+Deliberate negative result: NO `cir_simp` set additions — the
+one evidenced candidate (`checkedAddI32_comm`) was reverted
+after the simp rewrite trace showed the set's own unfolding
+shadows it and `simp` rejects the permutation anyway; algebraic
+facts stay explicit (`exact checkedAddI32_comm`). T3 demos live
+in `examples/hello/Hello/TacticsDemo.lean` (built by `lake
+build Hello`, so the demo is the regression test — six
+theorems: `hello_add_comm_simp`, `hello_add_ok_set`,
+`hello_check_true`, `hello_fuel_side`, `hello_choose_get_put`,
+`hello_step_uadd`). Audit findings documented as standing
+limits in `docs/VERIFYING.md` ("For users": unfold your own
+forward first; no commutation lemmas by design; `cir_choose`
+needs a variable selector; `cir_step` needs every lookup
+fact). Process note: `/tmp` probes are not verification —
+several early "passes" were a `^error` grep that never matches
+Lean's `file:line:col: error:` format; only `lake build` of the
+consuming lib counts.
