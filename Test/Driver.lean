@@ -1809,6 +1809,26 @@ def checkM2SetupGate : IO Unit := do
       if containsSubstr text "cir.cleanup" || containsSubstr text "cir.trap" then
         throw (IO.userError s!"newly-gated ops present in C corpus: {f}")
 
+/-- Frontend pin (`examples/hello`, README "For users"): rebuild
+    the example lib (checks the user proofs), re-emit its CIR
+    through the `circe-emit` CLI, byte-compare against the
+    committed emission, and evaluate its `_spec_check`. The nested
+    `lake build` is a fast no-op when fresh; it runs here (not via
+    `defaultTargets`) so bare `lake build` stays scoped to `Circe`. -/
+def checkFrontendHello : IO Unit := do
+  sh "lake" #["build", "circe-emit", "Hello"]
+  sh ".lake/build/bin/circe-emit"
+    #["--in", "tests/cir/add.cir",
+      "--out", s!"{workdir}/hello_emit.lean"]
+  needSameBytes "examples/hello/Hello/Emitted.lean"
+    s!"{workdir}/hello_emit.lean"
+  let tmp := s!"{workdir}/hello_check.lean"
+  IO.FS.writeFile tmp "import Hello.Spec\n#eval hello_spec_check\n"
+  let out ← shOut "lake" #["env", "lean", tmp]
+  if !(out.splitOn "\n").contains "true" then
+    throw (IO.userError s!"frontend hello check false: {out}")
+  IO.println "PASS frontend-hello (emit + proofs + _spec_check)"
+
 /-- `_spec_check` entry name: the `grep -oE` equivalent (ident chars
     immediately preceding the first `_spec_check`). -/
 def specCheckOf (text : String) : Option String := do
@@ -2026,7 +2046,8 @@ def main (args : List String) : IO Unit := do
     ++ contentAsserts.map (fun (n, ps) => (s!"assert {n}", do
         for (f, needle) in ps do needHas f needle))
     ++ specJobs
-    ++ [("m2-setup-gate", checkM2SetupGate),
+    ++ [("frontend-hello", checkFrontendHello),
+        ("m2-setup-gate", checkM2SetupGate),
         ("cir-fuel-adoption", checkCirFuelAdoption),
         ("n5-no-manual-fuel-split", checkNoManualFuelSplit),
         ("n8-closed-eval-adoption", checkClosedEvalAdoption),

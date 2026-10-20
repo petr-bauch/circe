@@ -75,6 +75,16 @@ R countdown re-proved as a rule application). The frame rule is
 the remaining frontier (program-level `seq`/`callRet`
 composition rules are the named prerequisite — the T rotate
 entry is the motivating customer).
+- Frontend MVP DONE (2026-10-19): `circe-emit` CLI (CIR text →
+validated emission, `--func`/`--fact` selection, loud rejects),
+`examples/hello/` workspace lib (own directory, imports only
+`Circe.*`) with handwritten spec + proof + `_spec_check`,
+README "For users" guide (every command verified verbatim),
+driver `frontend-hello` pin (rebuild + re-emit + byte-compare +
+`_check` true). Follow-ups, in order: U1 user tactics
+(`cir_simp` productization), U2 modular-proof harness
+(per-function contracts + composition), U3 reusable lemma packs
+per STD shape.
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`

@@ -47,6 +47,57 @@ tools/emit-cir.sh  # writes tests/cir/*.cir
 tools/check.sh [trials]
 ```
 
+## For users (prove things about your own C++)
+
+The loop, end to end — every command below runs verbatim against
+`examples/hello/` (a workspace lib with its own directory that
+imports only `Circe.*`, i.e. the external-user shape):
+
+```sh
+# 0. Build once (same Requirements as above). This also checks the
+#    example proofs — `Hello.Spec` must compile.
+lake build circe-emit Hello
+
+# 1. Write C++. The example is pure checked addition:
+cat examples/hello/hello.cpp
+
+# 2. Emit Lean. CIR capture needs the CIR-enabled clang
+#    (docs/PINS.md); the repo ships captures, and the gate reuses
+#    the `add` capture for the example:
+lake exe circe-emit -- --in tests/cir/add.cir --out /tmp/my_add.lean
+diff /tmp/my_add.lean examples/hello/Hello/Emitted.lean && echo SAME
+# Multi-def modules: add `--func <mangled>` to pick one.
+# Functions with reference params: add `--fact <name>=noalias`
+# (pure functions default to `unknown`). Anything outside the
+# admitted subset (docs/SUBSET.md) rejects loudly — never silently
+# modeled. Try it: point `--in` at any other `tests/cir/*.cir`
+# whose shape is not admitted and read the `out-of-subset` message.
+
+# 3. Read the emission. It is a pure forward over `BitVec`/`Result`:
+cat examples/hello/Hello/Emitted.lean
+
+# 4. Write your spec + proof next to it (see
+#    examples/hello/Hello/Spec.lean: `hello_add_small` proves small
+#    inputs add exactly via `checkedAddI32_ok`; `hello_add_comm`
+#    rides the library lemma; `hello_spec_check` is the executable
+#    check). This step is ordinary Lean — `docs/VERIFYING.md`
+#    documents the spec style. Rebuild to check your proofs:
+lake build Hello
+
+# 5. Evaluate the executable check (`true` required):
+printf 'import Hello.Spec\n#eval hello_spec_check\n' > /tmp/hello_check.lean
+lake env lean /tmp/hello_check.lean
+# true
+```
+
+What you get: the emitted forward is covered by the emitter's
+own correctness proofs (`Circe/Emit`, `emit_correct_*`), and the
+memory transfer (`Circe.Mem`/`Circe.Transfer`) backs the value
+semantics on the admitted fragment — your spec + proof is the
+only new trusted-by-you artifact, checked by `lake build`.
+Coming later: user tactics, modular-proof harnesses, and
+reusable lemma packs (ROADMAP frontend follow-ups).
+
 Layout: `Circe/Base.lean` (value model + checked ops + evaluator vocabulary),
 `Circe/Emit/{Vec,Flow,M2,Sum,Grow}Fwd.lean` (per-family program translations),
 `Circe/CoreIR.lean`

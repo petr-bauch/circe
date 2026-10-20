@@ -1482,3 +1482,26 @@ prerequisite). `hoare_reverseSwap`'s post records the layout
 fact (was proof-internal). S-delta second-use notes in
 `docs/ROADMAP.md` (still prose stage — third admitted loop
 earns the Lean tactics). Gallery at 12 closed-instance jobs.
+
+### Frontend MVP (`circe-emit` + `examples/hello/`) — DONE (2026-10-19)
+
+First user loop: `tools/EmitCli.lean` (`lake exe circe-emit --
+--in F.cir --out F.lean [--func m] [--fact n=v]...`) validates
+via `validateModule` (explicit facts win; every other defined
+function defaults to `.unknown`, the N4a precedent) and writes
+`emitFunc` output — byte-identical to goldens on `vec_rotate`
+(reject paths loud: multi-def without `--func`, `out-of-subset`
+with the gate's code). `examples/hello/` is a workspace `Hello`
+lib (own directory, imports only `Circe.*` — the external-user
+shape without nested package builds): `hello.cpp` (checked
+`add`), committed `Hello/Emitted.lean`, handwritten
+`Hello/Spec.lean` (`hello_add_small` via `checkedAddI32_ok`,
+`hello_add_comm` via `checkedAddI32_comm`,
+`hello_spec_check`), `Hello.lean` root. Driver
+`frontend-hello` job: nested `lake build circe-emit Hello`
+(proof check), CLI re-emit to scratch, byte-compare with the
+committed file, `#eval hello_spec_check = true` (tamper
+verified: edited emission fails the job). README "For users"
+with every command run verbatim. Deliberate deviation from the
+proposal: workspace member instead of standalone package (keeps
+the gate hermetic); copy-out template on user request.
