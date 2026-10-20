@@ -93,7 +93,23 @@ VERIFYING.md, ten existing specs annotated as instances,
 fan-out boundary documented: rotate-forward's direct statement
 takes no callee rewrites, so its composition lives at eval
 level; mergeRuns callee specs are missing verification, U3
-material), U3 reusable lemma packs per STD shape.
+material), U3 reusable lemma packs per STD shape — P0 audit
+DONE (2026-10-19, table below; extraction order P1 → P2, P3
+conditional on the audit counts).
+
+### U3 P0 audit — repeated proof shapes (2026-10-19)
+
+| # | Shape | Uses (observed) | Varies per use | Verdict |
+|---|-------|-----------------|----------------|---------|
+| 1 | Checked-index closes: `List.getElem` bounds, `List.length_set` chains, `length_reverse` bridges before `omega` | 34 `getElem` + 16 `length_set` cites across `Transfer/`, `Emit/VecReverse`, `Emit/VecSegReverse`, `Specs` | list expression, index, bridging length equation | P1 DONE (2026-10-19): `Circe/Lemmas/CheckedIx.lean` (`doubleSet_read` + `doubleSet_length`); R and S `hset` proofs replaced by one application each, 428 jobs TEST-OK + CHECK-OK |
+| 2 | Countdown two-pointer invariant: `i + j = n` + mirrored outers + untouched middle; step + fuel-indexed induction | `RevInv`/`SegInv` in `Emit` (R, S) | mirror function (`n-1-p` vs `lo+hi-1-p`), leg shapes (R has no outers, S has `houtL`/`houtR`) | P2 NEGATIVE (2026-10-19): P1 already took the shared part (the `hset` dispatch was the verbatim copy). Remainder is mirror arithmetic that genuinely differs per invariant + per-leg case skeletons, which are proof-script (tactic vehicle, needs three user-goal uses per U1 rule), not lemma material. Only two forward-level uses — the gallery demos are Hoare-level over `CStmt`, different machinery, so they do not count as a third. No extraction; forcing R into segment form would churn R2/R3 + transfer + specs for zero statement gain |
+| 3 | Checked-arithmetic ok/err legs, one equation per call site | 16 theorems in `Specs` + `_oob`/`_none` mirrors in `Transfer/Slice` | arity (2–4 adds), error destination | PROSE ONLY: two arities worked; extract on third |
+| 4 | Transfer ok/err leg pairs: `memEvalFuncFuel_X` + `memTransfer_X` | dozens of pairs in `Transfer/Slice`, `Transfer/Flow`, `Transfer/Acc` | leaf shape, error outcome | PROSE ONLY: each pair is 2–4 lines; the vehicle would be a tactic, which needs three user-goal uses first (U1 rule) |
+| 5 | Fuel arithmetic: step + `… + 1 ≤ F` countdown, summed across composed loops | R, S (reuse), rotate (sum of three) | loop count, per-loop measure | PROSE ONLY: two distinct uses; extract on third loop shape |
+| 6 | `bindMemArgs`/`oracleNoalias` discharge | 116 cites in `Transfer/Slice` alone | argument roles, value shapes | ALREADY FACTORED: `Derived` lemmas discharge it; no pack needed |
+| 7 | Per-function eval/transfer pairs (`evalProgFunc_X` + `memTransferProg_X`) | 30+ eval, 15 transfer | function under verification | NOT A PACK: this is the U2 contract level itself — per-function by definition |
+
+Extraction rule (standing): prose note on first reuse, pack on the third use. Shape 1 extracted (P1); shapes 2–5 stay prose (P2 negative, P3 no action — conditions in the table); shapes 6–7 were never packs. P3 CLOSED (2026-10-19) with no new pack.
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`

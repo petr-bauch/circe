@@ -16,6 +16,7 @@ with the untouched middle window; `--j` cannot underflow since the
 guard gives `j >= i + 1 >= 1`, and `i + j = n` is preserved.
 -/
 import Circe.Emit.VecAtSet
+import Circe.Lemmas.CheckedIx
 
 /-! ## R1: countdown reverse entry -/
 
@@ -143,24 +144,12 @@ theorem RevInv_step (orig l : List (BitVec 32)) (n i j : Nat)
     have e2 : l[i]? = some b := by rw [h]; exact hb
     exact Option.some_inj.mp (ha.symm.trans e2)
   -- Characterize the doubly-updated words pointwise (each position
-  -- is the `i`-write, the `j - 1`-write, or untouched).
+  -- is the `i`-write, the `j - 1`-write, or untouched): the U3 P1
+  -- pack lemma; the touching case rides on `hab`.
   have hset : ∀ p, ((l.set i b).set (j - 1) a)[p]? =
       if p = i then some b
-      else if p = j - 1 then some a else l[p]? := by
-    intro p
-    by_cases h1 : p = i <;> by_cases h2 : p = j - 1
-    · have hij1 : i = j - 1 := by omega
-      rw [List.getElem?_set, if_pos h2.symm, if_pos hji, if_pos h1,
-        hab hij1]
-    · have o1 : ¬ j - 1 = p := by omega
-      rw [List.getElem?_set, if_neg o1, h1,
-        List.getElem?_set_self hiL, if_pos rfl]
-    · rw [List.getElem?_set, if_pos h2.symm, if_pos hji, if_neg h1,
-        if_pos h2]
-    · have o1 : ¬ j - 1 = p := Ne.symm h2
-      have o2 : i ≠ p := Ne.symm h1
-      rw [List.getElem?_set, if_neg o1, List.getElem?_set_ne o2,
-        if_neg h1, if_neg h2]
+      else if p = j - 1 then some a else l[p]? :=
+    fun p => doubleSet_read l i (j - 1) a b hiL hji hab p
   refine ⟨hlen2, horig, by omega, by omega, by omega, ?_, ?_, ?_⟩
   · -- Left outer (`p < i + 1`): either `p < i` (old left) or
     -- `p = i` (the fresh `b`, which is the mirror word).

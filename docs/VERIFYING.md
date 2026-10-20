@@ -355,6 +355,32 @@ realloc eight). Missing callee specs are new verification, not
 harness work: the mergeRuns/drain forwards have no specs yet
 (U3 material).
 
+## Lemma packs (U3)
+
+Rule: prose note on first reuse, pack on the third use. Each pack
+is a `Circe/Lemmas/*` file proved once over abstract hypotheses;
+consumers replace their inline copies with one application, and
+the gate (byte-identical goldens + CHECK-OK) confirms the
+refactor changed no statement.
+
+- CheckedIx (`Circe/Lemmas/CheckedIx.lean`, P1 DONE): pointwise
+  read of two sequential positional writes, `doubleSet_read`
+  (the touching case rides on an explicit `i = j → a = b`
+  hypothesis proved from the two checked reads) plus
+  `doubleSet_length` (the `length_set` chain). Consumers:
+  `RevInv_step` and `SegInv_step` `hset` proofs (were verbatim
+  copies). Bounds side-goals stay `by omega` with the invariant
+  in context — that one-liner is already the automation.
+
+- Two-pointer invariant (P2 NEGATIVE, deliberate non-result):
+  after P1 the only commonality left between `RevInv_step` and
+  `SegInv_step` is mirror arithmetic that differs per invariant
+  plus per-leg case skeletons, which are proof-script rather
+  than lemma material (a tactic would be the vehicle, and that
+  needs three user-goal uses first). With only two
+  forward-level uses the standing rule keeps this at prose
+  level; a third countdown-swap loop reopens the question.
+
 ## Hoare triples (H1)
 
 `Circe.Hoare` wraps the `Mem` equation lemmas as Hoare triples —
