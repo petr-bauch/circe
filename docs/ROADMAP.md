@@ -57,59 +57,45 @@ and multi-writer algorithms.
 
 ## Pillar 3 — Human-readable/writable proofs
 
-Delivered: proof ergonomics (N5: `cir_fuel`, fuel-bound lemmas,
-per-step cascades), proof scale-down (N8: `cir_eval_closed`),
-Hoare rule library + galleries (H1–H3, A, B, R swap-step — 9
-closed-instance `hoare-gallery` jobs), micro-tactics with adoption
-gates (N5a/N5b), strategy capture (`notes/proof-patterns.md`,
-`VERIFYING.md` galleries), and generator tooling
-(`tools/GenOut.lean`, `tools/GenMatch.lean`).
+Delivered (all re-verified against the repo 2026-10-21;
+details in `DELIVERED.md` §§ N5, H1–H3, A, P3a/b, Frontend,
+U1–U3, T1): proof ergonomics (N5: `cir_fuel`, fuel-bound
+lemmas, per-step cascades; N5a/N5b micro-tactics
+`fuel_step_down` / `cir_step` with adoption gates), proof
+scale-down (N8: `cir_eval_closed`), Hoare rule library +
+galleries (H1–H3 incl. cond-pair, A, R/S/T swap-step — 12
+closed-instance `hoare-gallery` jobs: 10 counted passes plus
+the two `alias_cond` selector iterations), program-level while
+rule (P3a: `HTripleProg` + `htripleProg_while_at`, R countdown
+as a rule application), frontend MVP (`circe-emit` CLI +
+`examples/hello/` lib + README For-users + `frontend-hello`
+pin), user tactics (U1: five-tactic audit, `TacticsDemo` demos
+as regression test, VERIFYING.md For-users; deliberate
+negative: no `cir_simp` comm lemmas), modular-proof harness
+(U2: contract template + three operators, ten annotated
+instances, fan-out boundary), lemma packs (U3: P0 audit,
+P1 `CheckedIx` extracted and consumed by R+S, P2 negative
+recorded, P3 closed with no pack), fold-end tactic (T1:
+`cir_fold_end`, six sites converted + `hello_fold_end`
+demo), and generator tooling (`tools/GenOut.lean`,
+`tools/GenMatch.lean`). Strategy capture lives in
+`docs/VERIFYING.md` (galleries, For-users, Contracts, Lemma
+packs) — correction: the `notes/proof-patterns.md` path named
+in an earlier revision never landed in the repo (no such file,
+no git history); that material is session memory, not a repo
+deliverable.
 
-Next: a gallery per new admitted shape (R/S/T covered: 12
-closed-instance `hoare-gallery` jobs); tactic harvesting by the
-rule of three (prose note on first use, Lean tactic on third —
-`fuel_step_down` earned it; R loop tactics at second use after
-S); the program-level while rule is DONE (P3a — `HTripleProg`
-promoted to `Circe/Hoare`, `htripleProg_while_at` implemented,
-R countdown re-proved as a rule application). The frame rule is
-the remaining frontier (program-level `seq`/`callRet`
-composition rules are the named prerequisite — the T rotate
-entry is the motivating customer).
-- Frontend MVP DONE (2026-10-19): `circe-emit` CLI (CIR text →
-validated emission, `--func`/`--fact` selection, loud rejects),
-`examples/hello/` workspace lib (own directory, imports only
-`Circe.*`) with handwritten spec + proof + `_spec_check`,
-README "For users" guide (every command verified verbatim),
-driver `frontend-hello` pin (rebuild + re-emit + byte-compare +
-`_check` true). Follow-ups, in order: U1 user tactics DONE (2026-10-19 —
-audited all five tactics on user-shaped goals, live demos in
-`Hello/TacticsDemo.lean` as the regression test, VERIFYING.md
-"For users" section; deliberate negative result: no `cir_simp`
-set additions — a comm-lemma addition was reverted after the
-rewrite trace showed `simp` rejects unorientable permutations,
-so algebraic facts stay explicit), U2 modular-proof harness
-DONE (2026-10-19 — contract template + three operators in
-VERIFYING.md, ten existing specs annotated as instances,
-fan-out boundary documented: rotate-forward's direct statement
-takes no callee rewrites, so its composition lives at eval
-level; mergeRuns callee specs are missing verification, U3
-material), U3 reusable lemma packs per STD shape — P0 audit
-DONE (2026-10-19, table below; extraction order P1 → P2, P3
-conditional on the audit counts).
-
-### U3 P0 audit — repeated proof shapes (2026-10-19)
-
-| # | Shape | Uses (observed) | Varies per use | Verdict |
-|---|-------|-----------------|----------------|---------|
-| 1 | Checked-index closes: `List.getElem` bounds, `List.length_set` chains, `length_reverse` bridges before `omega` | 34 `getElem` + 16 `length_set` cites across `Transfer/`, `Emit/VecReverse`, `Emit/VecSegReverse`, `Specs` | list expression, index, bridging length equation | P1 DONE (2026-10-19): `Circe/Lemmas/CheckedIx.lean` (`doubleSet_read` + `doubleSet_length`); R and S `hset` proofs replaced by one application each, 428 jobs TEST-OK + CHECK-OK |
-| 2 | Countdown two-pointer invariant: `i + j = n` + mirrored outers + untouched middle; step + fuel-indexed induction | `RevInv`/`SegInv` in `Emit` (R, S) | mirror function (`n-1-p` vs `lo+hi-1-p`), leg shapes (R has no outers, S has `houtL`/`houtR`) | P2 NEGATIVE (2026-10-19): P1 already took the shared part (the `hset` dispatch was the verbatim copy). Remainder is mirror arithmetic that genuinely differs per invariant + per-leg case skeletons, which are proof-script (tactic vehicle, needs three user-goal uses per U1 rule), not lemma material. Only two forward-level uses — the gallery demos are Hoare-level over `CStmt`, different machinery, so they do not count as a third. No extraction; forcing R into segment form would churn R2/R3 + transfer + specs for zero statement gain |
-| 3 | Checked-arithmetic ok/err legs, one equation per call site | 16 theorems in `Specs` + `_oob`/`_none` mirrors in `Transfer/Slice` | arity (2–4 adds), error destination | PROSE ONLY: two arities worked; extract on third |
-| 4 | Transfer ok/err leg pairs: `memEvalFuncFuel_X` + `memTransfer_X` | dozens of pairs in `Transfer/Slice`, `Transfer/Flow`, `Transfer/Acc` | leaf shape, error outcome | PROSE ONLY: each pair is 2–4 lines; the vehicle would be a tactic, which needs three user-goal uses first (U1 rule) |
-| 5 | Fuel arithmetic: step + `… + 1 ≤ F` countdown, summed across composed loops | R, S (reuse), rotate (sum of three) | loop count, per-loop measure | PROSE ONLY: two distinct uses; extract on third loop shape |
-| 6 | `bindMemArgs`/`oracleNoalias` discharge | 116 cites in `Transfer/Slice` alone | argument roles, value shapes | ALREADY FACTORED: `Derived` lemmas discharge it; no pack needed |
-| 7 | Per-function eval/transfer pairs (`evalProgFunc_X` + `memTransferProg_X`) | 30+ eval, 15 transfer | function under verification | NOT A PACK: this is the U2 contract level itself — per-function by definition |
-
-Extraction rule (standing): prose note on first reuse, pack on the third use. Shape 1 extracted (P1); shapes 2–5 stay prose (P2 negative, P3 no action — conditions in the table); shapes 6–7 were never packs. P3 CLOSED (2026-10-19) with no new pack.
+Next: the frame rule remains the frontier — program-level
+`seq`/`callRet` composition rules are the named prerequisite
+(the T rotate entry is the motivating customer; only the
+single-cell `htriple_mstore_frame` exists today). Harvesting
+continues by the rule of three, with open triggers: third
+checked-add arity (audit #3), third user-goal transfer-leg use
+for a `cir_transfer_leg`-shaped tactic (audit #4), third
+countdown-loop shape for fuel arithmetic (audit #5) and for
+the unfold-loop-`show` tactic (R/S are two uses);
+R memory-threading stays prose at first use. A gallery per
+new admitted shape, as always.
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`
@@ -118,17 +104,6 @@ Extraction rule (standing): prose note on first reuse, pack on the third use. Sh
   discharge (`dite_eq_left`); closed bool-guard discharge
   (`ite_eq_right (by decide ...)`); prefer the non-deprecated
   `ite_eq_left/right` over `if_pos/if_neg` in new code.
-- Fold-end tactic DONE (2026-10-19, T1): `cir_fold_end
-  (dropEq, hget)` in `Circe.LeafTactics` (re-exported via
-  `Circe.Tactics`) — the `conv => lhs; rw [<fold>_drop]` +
-  `simp [hget]` script shared verbatim by six sites (`spanFold_*`,
-  `viewFold_*`, `stdVecFold_*` step/nil), all converted, plus a
-  `hello_fold_end` Hello demo as regression test. `elab` in two
-  `evalTactic` steps re-parsing surface strings (`rw`/`simp` arg
-  kinds reject spliced idents — `cir_step` precedent). Explicit
-  non-tactics: `dite_eq_left/right` closers are already one-line
-  `simp only` calls (a tactic would be pure indirection); the
-  unfold-loop-`show` script stays prose with two uses.
 - R memory-threading pattern (first use, prose-note stage):
   `vecSet` lockstep via closed-form `memStore` on the reified
   snapshot (`revMemStore_ok`), shadowing blocks tracked by-find
@@ -147,18 +122,6 @@ Extraction rule (standing): prose note on first reuse, pack on the third use. Sh
   invariant, the length-word snapshot, and the `hfind` fact
   change). Third use (next admitted loop shape) earns the Lean
   tactics.
-- Program-level while-rule DONE (2026-10-19, P3a):
-  `htripleProg_while_at` mirrors `htriple_while_at` over
-  `memEvalProgStmt` (same four premises — guard-false at zero,
-  exit, guard-decidable, triple-step); `HTripleProg(At)`
-  promoted to `Circe/Hoare/Def.lean`; the R countdown re-proved
-  as a rule application (`hoare_reverseWhileProg` with the
-  fuel-indexed wrapper `revInvK`, i.e. `revIters i j = k ∧
-  RevInv …`). Premise bridge lemmas that were inline proof steps
-  are now named: `memEvalExpr_ult_ij` (the `i`/`j` guard
-  evaluator), with `RevInv_exit`, `revIters_step`,
-  `revU64_succ/pred_toNat`, and the `hoare_reverseSwap` step
-  triple consumed as premises.
 
 ## Pillar 4 — Iris separation logic for low-level aspects and concurrency
 

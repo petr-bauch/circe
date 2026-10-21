@@ -1554,3 +1554,43 @@ down as `evalProgFunc_vecRotate`), and the only callee-stated
 verification, U3 material). The fan-out boundary is documented
 instead: direct-stated composers compose at eval level;
 callee-stated composers use one equation per call site.
+
+### U3 reusable lemma packs — DONE (2026-10-19, P0 audit + P1 extraction; P2 negative, P3 closed)
+
+P0 audit of repeated proof shapes across the slices, with use
+counts and what varies per use (moved here from ROADMAP so the
+roadmap keeps only the open triggers):
+
+| # | Shape | Uses (observed) | Varies per use | Verdict |
+|---|-------|-----------------|----------------|---------|
+| 1 | Checked-index closes: `List.getElem` bounds, `List.length_set` chains, `length_reverse` bridges before `omega` | 34 `getElem` + 16 `length_set` cites across `Transfer/`, `Emit/VecReverse`, `Emit/VecSegReverse`, `Specs` | list expression, index, bridging length equation | P1 DONE: `Circe/Lemmas/CheckedIx.lean` (`doubleSet_read` + `doubleSet_length`); R and S `hset` proofs replaced by one application each |
+| 2 | Countdown two-pointer invariant + step + fuel-indexed induction | `RevInv`/`SegInv` in `Emit` (R, S) | mirror function, leg shapes (R has no outers) | P2 NEGATIVE: P1 took the only verbatim-shared part; remainder is per-invariant mirror arithmetic + proof-script skeletons (tactic vehicle, needs three user-goal uses), not lemma material. Only two forward-level uses (gallery demos are Hoare-level, different machinery). Forcing R into segment form would churn R2/R3 + transfer + specs for zero statement gain |
+| 3 | Checked-arithmetic ok/err legs, one equation per call site | 16 theorems in `Specs` + `_oob`/`_none` mirrors in `Transfer/Slice` | arity (2–4 adds), error destination | PROSE ONLY: two arities worked; extract on third |
+| 4 | Transfer ok/err leg pairs: `memEvalFuncFuel_X` + `memTransfer_X` | dozens of pairs in `Transfer/Slice`, `Transfer/Flow`, `Transfer/Acc` | leaf shape, error outcome | PROSE ONLY: each pair is 2–4 lines; the vehicle would be a tactic, which needs three user-goal uses first (U1 rule) |
+| 5 | Fuel arithmetic: step + `… + 1 ≤ F` countdown, summed across composed loops | R, S (reuse), rotate (sum of three) | loop count, per-loop measure | PROSE ONLY: two distinct uses; extract on third loop shape |
+| 6 | `bindMemArgs`/`oracleNoalias` discharge | 116 cites in `Transfer/Slice` alone | argument roles, value shapes | ALREADY FACTORED: `Derived` lemmas discharge it; no pack needed |
+| 7 | Per-function eval/transfer pairs (`evalProgFunc_X` + `memTransferProg_X`) | 30+ eval, 15 transfer | function under verification | NOT A PACK: this is the U2 contract level itself — per-function by definition |
+
+P1 interface documented in VERIFYING.md ("Lemma packs",
+incl. the P2 negative). 428 jobs TEST-OK + CHECK-OK at the
+P1 gate; byte-identical goldens confirm the refactor changed
+no statement.
+
+### T1 fold-end tactic — DONE (2026-10-19)
+
+`cir_fold_end (dropEq, hget)` in `Circe.LeafTactics`
+(re-exported via `Circe.Tactics`): the `conv => lhs;
+rw [<fold>_drop]` + `simp [hget]` suffix-fold end script,
+shared verbatim by six sites (`spanFold_*`, `viewFold_*`,
+`stdVecFold_*` step/nil pairs) — all converted. An `elab` in
+two `evalTactic` steps re-parsing surface strings at the use
+site (`rw`/`simp` arg kinds reject spliced idents — `cir_step`
+precedent; a one-quotation `macro` would risk `simp` binding
+inside the `conv` block). `hello_fold_end` Hello demo as the
+regression test; VERIFYING.md For-users entry + standing
+limit (the drop equation is per-fold by definition).
+Explicit non-tactics from the same audit: `dite_eq_left/right`
+closers are already one-line `simp only` calls (a tactic would
+be pure indirection); the unfold-loop-`show` script stays prose
+with two uses (third admitted loop shape earns it). 428 jobs
+TEST-OK + CHECK-OK.
