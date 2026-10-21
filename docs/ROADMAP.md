@@ -85,12 +85,14 @@ in an earlier revision never landed in the repo (no such file,
 no git history); that material is session memory, not a repo
 deliverable.
 
-Next: the frame rule remains the frontier — program-level
-`callRet`/`callProg` composition rules are the named prerequisite
-(`seq` DONE 2026-10-21, F1: `memEvalProgStmt_seq` +
-`htripleProg_seq`, `fellThrough`-pinned like `htriple_seq`;
-`hoare_rotateSpine_seq` composes the rotate prefix from five
-leaf triples, call leaves as hypotheses for F2)
+Next: the frame rule remains the frontier — the general
+program-level frame rule is the named prerequisite (`seq` DONE
+F1; `callProg` DONE 2026-10-21, F2: `htripleProg_callProg_at`
+(`At (F+1)`, zero-fuel arm errors) + `htripleProg_seq_at`;
+`hoare_rotateSpine_closed` is the closed rotate prefix — all
+five leaves discharged, U2 contract + transfer as the call
+equations, four `seq_at` compositions; trailing `return_`
+still needs the seq-return equation)
 (the T rotate entry is the motivating customer; only the
 single-cell `htriple_mstore_frame` exists today). Harvesting
 continues by the rule of three, with open triggers: third

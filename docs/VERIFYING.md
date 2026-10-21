@@ -446,11 +446,17 @@ Program level (P3a/F1): `HTripleProg` mirrors `HTriple` over
 call-free evaluator cannot see). `htripleProg_while_at` is the
 while rule one level up (same four premises; the R countdown
 re-proved as `hoare_reverseWhileProg`); `htripleProg_seq`
-composes `fellThrough`-prefix spines from leaf triples
+(+ fixed-fuel `htripleProg_seq_at`) composes
+`fellThrough`-prefix spines from leaf triples
 (`hoare_rotateSpine_seq`: size call + `z` let + three admitted
-segment calls, four nested applications — call leaves stay
-hypotheses until F2; the trailing `return_` needs the deferred
-prog-level seq-return equation).
+segment calls, four nested applications); `htripleProg_callProg_at`
+discharges a `.callProg` leaf from the callee run at one less
+fuel (the zero-fuel arm errors, so `At (F+1)`) — the U2
+contract + transfer plug in as the run equation, never
+re-verified. `hoare_rotateSpine_closed` is the closed rotate
+prefix: all five leaves discharged, four `seq_at`
+compositions at fuel `G+1`. The trailing `return_` needs the
+deferred prog-level seq-return equation.
 
 ### Lets and micro-tactics (H3)
 

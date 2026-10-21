@@ -46,24 +46,57 @@ theorem htriple_seq (P R : Env × Mem × Layout → Prop)
     memEvalStmtFuel_seq F a b ρ m π ρ₁ m₁ π₁ ρ₂ m₂ π₂ o₂ ha' hb',
     hQ⟩
 
-/-- Program-level sequencing with the mid-outcome pinned to
-    `fellThrough`: straight-line call spines return last. Same
-    scope as `htriple_seq` one level down — early-return
-    propagation needs prog-level seq-return equations that do not
-    exist yet, deferred with that lemma named rather than
-    silently assumed. -/
+/-- Program-level sequencing at fixed fuel (the `∀ F` rule is
+    this pointwise): both components run at the same `F`, memory
+    threaded. Mid-outcome pinned to `fellThrough`: straight-line
+    call spines return last. Same scope as `htriple_seq` one
+    level down — early-return propagation needs prog-level
+    seq-return equations that do not exist yet, deferred with
+    that lemma named rather than silently assumed. -/
+theorem htripleProg_seq_at (prog : Prog) (F : Nat)
+    (P R : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt)
+    (ha : HTripleProgAt prog F P a (fun st o => o = .fellThrough ∧ R st))
+    (hb : HTripleProgAt prog F R b Q) :
+    HTripleProgAt prog F P (.seq a b) Q := by
+  intro ρ m π hP
+  obtain ⟨ρ₁, m₁, π₁, o₁, ha', hmid⟩ := ha ρ m π hP
+  obtain ⟨rfl, hR⟩ := hmid
+  obtain ⟨ρ₂, m₂, π₂, o₂, hb', hQ⟩ := hb ρ₁ m₁ π₁ hR
+  exact ⟨ρ₂, m₂, π₂, o₂,
+    memEvalProgStmt_seq prog F a b ρ m π ρ₁ m₁ π₁ ρ₂ m₂ π₂ o₂ ha' hb',
+    hQ⟩
+
+/-- `∀ F` program-level sequencing, pointwise from
+    `htripleProg_seq_at`. -/
 theorem htripleProg_seq (prog : Prog)
     (P R : Env × Mem × Layout → Prop)
     (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt)
     (ha : HTripleProg prog P a (fun st o => o = .fellThrough ∧ R st))
     (hb : HTripleProg prog R b Q) :
-    HTripleProg prog P (.seq a b) Q := by
-  intro F ρ m π hP
-  obtain ⟨ρ₁, m₁, π₁, o₁, ha', hmid⟩ := ha F ρ m π hP
-  obtain ⟨rfl, hR⟩ := hmid
-  obtain ⟨ρ₂, m₂, π₂, o₂, hb', hQ⟩ := hb F ρ₁ m₁ π₁ hR
-  exact ⟨ρ₂, m₂, π₂, o₂,
-    memEvalProgStmt_seq prog F a b ρ m π ρ₁ m₁ π₁ ρ₂ m₂ π₂ o₂ ha' hb',
+    HTripleProg prog P (.seq a b) Q :=
+  fun F => htripleProg_seq_at prog F P R Q a b (ha F) (hb F)
+
+/-- Program-level call: the caller triple for `.callProg` from
+    the callee run at one less fuel. The `.callProg` arm errors
+    at zero fuel, so this is `At (F + 1)`, not `∀ F` — the U2
+    contract + transfer plug in as `hcall`, never re-verified.
+    By-value threading: only `dst` extends, `(m, π)` unchanged. -/
+theorem htripleProg_callProg_at (prog : Prog) (F : Nat)
+    (P : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop)
+    (dst f : String) (xs : List String)
+    (h : ∀ ρ m π, P (ρ, m, π) →
+      ∃ vs callee ret, lookupArgs ρ xs = some vs ∧
+        findFunc prog f = some callee ∧
+        memEvalProgFunc prog F callee vs = .ok ret ∧
+        Q (envExtend ρ dst ret, m, π) .fellThrough) :
+    HTripleProgAt prog (F + 1) P (.callProg dst f xs) Q := by
+  intro ρ m π hP
+  obtain ⟨vs, callee, ret, hargs, hfind, hcall, hQ⟩ := h ρ m π hP
+  exact ⟨envExtend ρ dst ret, m, π, .fellThrough,
+    memEvalProgStmt_callProg_ok prog F dst f xs ρ m π vs callee ret
+      hargs hfind hcall,
     hQ⟩
 
 /-- Consequence (pre-strengthen, post-weaken). -/
