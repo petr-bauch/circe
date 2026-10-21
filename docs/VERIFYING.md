@@ -458,6 +458,18 @@ prefix: all five leaves discharged, four `seq_at`
 compositions at fuel `G+1`. The trailing `return_` needs the
 deferred prog-level seq-return equation.
 
+Program-level frame (F3): `htripleProg_callProg_frame_at` /
+`htripleProg_callRet_frame_at` ride a caller-memory frame `R`
+across the call untouched. Definitional, not deep: the callee
+body runs on fresh entry blocks (`memEvalProgFunc` binds into
+`emptyMem`, so caller memory is unreachable) and both call
+equations keep `(m, π)` identical — no address-inequality side
+conditions like `cellAt` framing. `hoare_segCall1_framed`
+exercises the `callProg` rule on the first seg call. A fully
+framed spine waits for an actual multi-cell caller (third-use
+rule); the real frame work — overlapping footprints,
+multi-word assertions — lives at statement level (H-track).
+
 ### Lets and micro-tactics (H3)
 
 `htriple_let` wraps `memEvalStmtFuel_let_pure` (allocating

@@ -840,6 +840,118 @@ theorem hoare_rotateSpine_closed (G : Nat) (l : List (BitVec 32))
   exact htripleProg_seq_at vecRotateProg (G + 1)
     _ _ _ _ _ leaf_size s2345
 
+/-- F3 rule exercise: the first seg call with a caller-memory
+    frame — an arbitrary `R` over the (unchanged) caller memory
+    rides across the call. Same debts and facts as `leaf_c1`
+    above; the frame adds no proof obligations because the call
+    equation keeps `m` identical. A fully framed spine (all five
+    leaves) waits for an actual multi-cell caller — third-use
+    rule, so prose for now. -/
+theorem hoare_segCall1_framed (G : Nat) (l : List (BitVec 32))
+    (k : Nat) (kB : BitVec 64)
+    (hkB : kB.toNat = k)
+    (hk : k ≤ l.length)
+    (hlen64 : l.length < 2 ^ 64)
+    (hF₁ : revIters 0 k + 1 ≤ G)
+    (R : Mem → Prop) :
+    HTripleProgAt vecRotateProg (G + 1)
+      (fun st => st = (envExtend (envExtend
+        [("v", .stdVecVal l), ("k", .u64 kB)] "m"
+        (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0),
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)]) ∧
+        R st.2.1)
+      (.callProg "v" vecSegReverseName ["v", "z", "k"])
+      (fun st o => (o = .fellThrough ∧ st = (envExtend (envExtend (envExtend
+        [("v", .stdVecVal l), ("k", .u64 kB)] "m"
+        (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
+        (.stdVecVal (segReverseWindow l 0 k)),
+        ⟨1, [(0, ⟨0, true,
+          (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+        [("v", 0, 0)])) ∧
+        R st.2.1) := by
+  have hz0 : (0 : BitVec 64).toNat = 0 := rfl
+  have hm₁ : envLookup (envExtend [("v", .stdVecVal l), ("k", .u64 kB)]
+      "m" (.u64 (BitVec.ofNat 64 l.length))) "m" =
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envExtend_hit _ _ _
+  have hv₁ : envLookup (envExtend [("v", .stdVecVal l), ("k", .u64 kB)]
+      "m" (.u64 (BitVec.ofNat 64 l.length))) "v" =
+      some (.stdVecVal l) := by
+    rw [envExtend_miss _ _ _ _
+      (show ("v" : String) ≠ "m" by decide)]
+    simp [envLookup]
+  have hk₁ : envLookup (envExtend [("v", .stdVecVal l), ("k", .u64 kB)]
+      "m" (.u64 (BitVec.ofNat 64 l.length))) "k" =
+      some (.u64 kB) := by
+    rw [envExtend_miss _ _ _ _
+      (show ("k" : String) ≠ "m" by decide)]
+    simp [envLookup]
+  have hz₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
+      ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
+      "z" (.u64 0)) "z" = some (.u64 0) :=
+    envExtend_hit _ _ _
+  have hm₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
+      ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
+      "z" (.u64 0)) "m" =
+      some (.u64 (BitVec.ofNat 64 l.length)) := by
+    rw [envExtend_miss _ _ _ _
+      (show ("m" : String) ≠ "z" by decide)]
+    exact hm₁
+  have hv₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
+      ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
+      "z" (.u64 0)) "v" = some (.stdVecVal l) := by
+    rw [envExtend_miss _ _ _ _
+      (show ("v" : String) ≠ "z" by decide)]
+    exact hv₁
+  have hk₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
+      ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
+      "z" (.u64 0)) "k" = some (.u64 kB) := by
+    rw [envExtend_miss _ _ _ _
+      (show ("k" : String) ≠ "z" by decide)]
+    exact hk₁
+  have hcon1 : vecSegReverseFwd l 0 kB =
+      .ok (.stdVecVal (segReverseWindow l 0 k)) := by
+    have h := vecSegReverse_correct l 0 kB
+      (by rw [hz0]; exact Nat.zero_le _)
+      (by rw [hkB]; exact hk)
+    rwa [hz0, hkB] at h
+  have hcall1 : memEvalProgFunc vecRotateProg G vecSegReverseFunc
+      [.stdVecVal l, .u64 0, .u64 kB] =
+      .ok (.stdVecVal (segReverseWindow l 0 k)) := by
+    rw [segMemEvalProgFunc vecRotateProg G l 0 k 0 kB hz0 hkB
+      (by omega) (by omega) hlen64 hF₁ rotFindAt, hcon1]
+  have hargs_c1 : lookupArgs (envExtend (envExtend
+      [("v", .stdVecVal l), ("k", .u64 kB)] "m"
+      (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0))
+      ["v", "z", "k"] =
+      some [.stdVecVal l, .u64 0, .u64 kB] :=
+    lookupArgs_cons_hit _ _ _ _ _ hv₂
+      (lookupArgs_cons_hit _ _ _ _ _ hz₂
+        (lookupArgs_cons_hit _ _ _ _ _ hk₂ (lookupArgs_nil _)))
+  refine htripleProg_callProg_frame_at vecRotateProg G
+    (fun st => st = (envExtend (envExtend
+      [("v", .stdVecVal l), ("k", .u64 kB)] "m"
+      (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0),
+      ⟨1, [(0, ⟨0, true,
+        (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+      [("v", 0, 0)]))
+    (fun st o => (o = .fellThrough ∧ st = (envExtend (envExtend (envExtend
+      [("v", .stdVecVal l), ("k", .u64 kB)] "m"
+      (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
+      (.stdVecVal (segReverseWindow l 0 k)),
+      ⟨1, [(0, ⟨0, true,
+        (BitVec.ofNat 32 l.length) :: l⟩)], []⟩,
+      [("v", 0, 0)])))
+    R "v" vecSegReverseName ["v", "z", "k"] ?_
+  intro ρ m π hP hR
+  simp only [Prod.mk.injEq] at hP
+  obtain ⟨rfl, rfl, rfl⟩ := hP
+  exact ⟨[.stdVecVal l, .u64 0, .u64 kB], vecSegReverseFunc,
+    .stdVecVal (segReverseWindow l 0 k),
+    hargs_c1, rotFindSeg, hcall1, ⟨rfl, rfl⟩⟩
+
 /-- Transfer for `vec_rotate` (program level). -/
 theorem rotMemTransferProg (F : Nat) (l : List (BitVec 32))
     (k : Nat) (kB : BitVec 64)

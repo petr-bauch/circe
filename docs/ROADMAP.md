@@ -85,14 +85,16 @@ in an earlier revision never landed in the repo (no such file,
 no git history); that material is session memory, not a repo
 deliverable.
 
-Next: the frame rule remains the frontier — the general
-program-level frame rule is the named prerequisite (`seq` DONE
-F1; `callProg` DONE 2026-10-21, F2: `htripleProg_callProg_at`
-(`At (F+1)`, zero-fuel arm errors) + `htripleProg_seq_at`;
-`hoare_rotateSpine_closed` is the closed rotate prefix — all
-five leaves discharged, U2 contract + transfer as the call
-equations, four `seq_at` compositions; trailing `return_`
-still needs the seq-return equation)
+Next: the remaining frame work lives at statement level
+(H-track: overlapping footprints, multi-word assertions) —
+program-level call frame is DONE 2026-10-21, F3, and turned
+out definitional: `htripleProg_callProg_frame_at` /
+`htripleProg_callRet_frame_at` (caller memory unreachable —
+callee binds into `emptyMem`, equations keep `(m, π)`);
+`hoare_segCall1_framed` exercises the rule; a fully framed
+spine waits for an actual multi-cell caller. F1/F2 stand
+(`seq_at`, `callProg_at`, closed rotate prefix; trailing
+`return_` still needs the seq-return equation)
 (the T rotate entry is the motivating customer; only the
 single-cell `htriple_mstore_frame` exists today). Harvesting
 continues by the rule of three, with open triggers: third

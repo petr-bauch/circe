@@ -77,6 +77,63 @@ theorem htripleProg_seq (prog : Prog)
     HTripleProg prog P (.seq a b) Q :=
   fun F => htripleProg_seq_at prog F P R Q a b (ha F) (hb F)
 
+/-- Program-level frame for `.callProg`: a caller-memory frame
+    `R` rides across the call untouched. This is definitional,
+    not deep: the callee body runs on fresh entry blocks
+    (`memEvalProgFunc` binds into `emptyMem`, so caller memory
+    is unreachable) and the equation keeps `(m, π)` identical —
+    no address-inequality side conditions like `cellAt` framing.
+    The real frame work (overlapping footprints, multi-word
+    assertions) lives at statement level (H-track), not here. -/
+theorem htripleProg_callProg_frame_at (prog : Prog) (F : Nat)
+    (P : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop)
+    (R : Mem → Prop)
+    (dst f : String) (xs : List String)
+    (h : ∀ ρ m π, P (ρ, m, π) → R m →
+      ∃ vs callee ret, lookupArgs ρ xs = some vs ∧
+        findFunc prog f = some callee ∧
+        memEvalProgFunc prog F callee vs = .ok ret ∧
+        Q (envExtend ρ dst ret, m, π) .fellThrough) :
+    HTripleProgAt prog (F + 1)
+      (fun st => P st ∧ R st.2.1)
+      (.callProg dst f xs)
+      (fun st o => Q st o ∧ R st.2.1) := by
+  intro ρ m π hP
+  obtain ⟨hP', hR⟩ := hP
+  obtain ⟨vs, callee, ret, hargs, hfind, hcall, hQ⟩ :=
+    h ρ m π hP' hR
+  exact ⟨envExtend ρ dst ret, m, π, .fellThrough,
+    memEvalProgStmt_callProg_ok prog F dst f xs ρ m π vs callee ret
+      hargs hfind hcall,
+    hQ, hR⟩
+
+/-- Program-level frame for `.callRet`: same shape at the same
+    fuel (the leaf evaluator takes no fuel step — cf.
+    `memEvalProgStmt_callRet_ok`). -/
+theorem htripleProg_callRet_frame_at (prog : Prog) (F : Nat)
+    (P : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop)
+    (R : Mem → Prop)
+    (dst f : String) (xs : List String)
+    (h : ∀ ρ m π, P (ρ, m, π) → R m →
+      ∃ vs callee ret, lookupArgs ρ xs = some vs ∧
+        findFunc prog f = some callee ∧
+        memEvalFuncFuel F callee vs = .ok ret ∧
+        Q (envExtend ρ dst ret, m, π) .fellThrough) :
+    HTripleProgAt prog F
+      (fun st => P st ∧ R st.2.1)
+      (.callRet dst f xs)
+      (fun st o => Q st o ∧ R st.2.1) := by
+  intro ρ m π hP
+  obtain ⟨hP', hR⟩ := hP
+  obtain ⟨vs, callee, ret, hargs, hfind, hcall, hQ⟩ :=
+    h ρ m π hP' hR
+  exact ⟨envExtend ρ dst ret, m, π, .fellThrough,
+    memEvalProgStmt_callRet_ok prog F dst f xs ρ m π vs callee ret
+      hargs hfind hcall,
+    hQ, hR⟩
+
 /-- Program-level call: the caller triple for `.callProg` from
     the callee run at one less fuel. The `.callProg` arm errors
     at zero fuel, so this is `At (F + 1)`, not `∀ F` — the U2
