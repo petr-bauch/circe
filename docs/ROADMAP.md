@@ -103,7 +103,13 @@ for a `cir_transfer_leg`-shaped tactic (audit #4), third
 countdown-loop shape for fuel arithmetic (audit #5) and for
 the unfold-loop-`show` tactic (R/S are two uses);
 R memory-threading stays prose at first use. A gallery per
-new admitted shape, as always.
+new admitted shape, as always. H-track: cell kit promoted to
+`Circe.Mem.Agree` (H1 DONE 2026-10-21 — was defined in the
+report-only `CondFrame` spike while admitted proofs stood on
+it); remaining triggers need no code today: third lockstep
+use earns a tactic, first triple-level store customer earns a
+rule (loop bodies with stores contain calls, so they live at
+prog level).
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`

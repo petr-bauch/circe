@@ -488,6 +488,131 @@ theorem memFind64_memFree64_other (m m' : Mem) (a b : Addr) (t : Nat)
         cases hfree
         exact memFind64_cons_miss _ _ _ _ _ _ hne
 
+/-- A live 1-word `i32` cell holding `v` (promoted from the
+    F2 report-only spike: admitted gallery proofs and
+    `htriple_mstore_frame` stand on this kit, so it lives in the
+    maintained library now). -/
+def cellAt (m : Mem) (a : Addr) (t : Nat) (v : BitVec 32) : Prop :=
+  memFind m a = some ⟨t, true, [v]⟩
+
+/-- Storing to a known live 1-word cell succeeds with the updated
+    block pushed on top (proved once and reused wherever a store
+    needs its equation — this threading is what a
+    separation-logic frame rule would automate). -/
+theorem memStore_cell (m : Mem) (a t : Nat) (p x : BitVec 32)
+    (hp : cellAt m a t p) :
+    memStore m a t 0 x =
+      .ok ⟨m.next, (a, ⟨t, true, [x]⟩) :: m.blocks, m.blocks64⟩ := by
+  unfold cellAt at hp
+  unfold memStore
+  rw [hp]
+  simp
+
+/-- Reading back the cell just stored (the write leg). -/
+theorem memFind_cell_store (m : Mem) (a t : Nat) (p x : BitVec 32)
+    (hp : cellAt m a t p) (m' : Mem)
+    (hstore : memStore m a t 0 x = .ok m') :
+    cellAt m' a t x := by
+  have h := memStore_cell m a t p x hp
+  rw [hstore] at h
+  cases h
+  unfold cellAt
+  simp [memFind]
+
+/-- A live `i32`-word cell holding a whole word list (A-track):
+    `cellAt` is the singleton case. Array loops thread this
+    instead of one fact per index. -/
+def cellsAt (m : Mem) (a : Addr) (t : Nat)
+    (l : List (BitVec 32)) : Prop :=
+  memFind m a = some ⟨t, true, l⟩
+
+/-- Singleton bridge, both directions. -/
+theorem cellAt_cellsAt (m : Mem) (a : Addr) (t : Nat)
+    (v : BitVec 32) :
+    cellAt m a t v ↔ cellsAt m a t [v] := by
+  simp [cellAt, cellsAt]
+
+/-- Storing into a known live multi-word cell succeeds with the
+    `List.set` block pushed on top (generalizes `memStore_cell`,
+    which is the index-0 singleton case). -/
+theorem memStore_cellsAt (m : Mem) (a t i : Nat)
+    (l : List (BitVec 32)) (x : BitVec 32)
+    (hl : cellsAt m a t l) (hlt : i < l.length) :
+    memStore m a t i x =
+      .ok ⟨m.next, (a, ⟨t, true, l.set i x⟩) :: m.blocks,
+        m.blocks64⟩ := by
+  unfold cellsAt at hl
+  unfold memStore
+  rw [hl]
+  simp [hlt]
+
+/-- Reading back the list just stored into (the multi-word write
+    leg; mirrors `memFind_cell_store`). -/
+theorem memFind_cellsAt_store (m : Mem) (a t i : Nat)
+    (l : List (BitVec 32)) (x : BitVec 32) (m' : Mem)
+    (hl : cellsAt m a t l) (hlt : i < l.length)
+    (hstore : memStore m a t i x = .ok m') :
+    cellsAt m' a t (l.set i x) := by
+  have h := memStore_cellsAt m a t i l x hl hlt
+  rw [hstore] at h
+  cases h
+  unfold cellsAt
+  simp [memFind]
+
+/-- Loading from a known live multi-word cell at a present index
+    (the array-loop read leg, via `getElem?`). -/
+theorem memLoad_cellsAt (m : Mem) (a t i : Nat)
+    (l : List (BitVec 32)) (x : BitVec 32)
+    (hl : cellsAt m a t l) (hget : l[i]? = some x) :
+    memLoad m a t i = .ok x := by
+  unfold cellsAt at hl
+  unfold memLoad
+  rw [hl]
+  simp [hget]
+
+/-- Visited-prefix lookup: the frontier word of the evolving
+    prefix shape is the unvisited list word (array-loop read). -/
+theorem take_map_drop_getElem (l : List (BitVec 32)) (n : Nat)
+    (h : n < l.length) :
+    (((l.take n).map (· + 1) ++ l.drop n)[n]? = some l[n]) := by
+  have hlenA : ((l.take n).map (· + 1)).length = n := by
+    simp only [List.length_map, List.length_take]; omega
+  rw [List.getElem?_append_right (by omega), hlenA, Nat.sub_self,
+    List.getElem?_drop, Nat.add_zero]
+  exact List.getElem?_eq_getElem h
+
+/-- Drop-head under `set 0`: replacing the head of a dropped
+    suffix is consing over the deeper drop (prefix-bridge step). -/
+theorem drop_set_zero_cons (l : List (BitVec 32)) (n : Nat)
+    (h : n < l.length) (x : BitVec 32) :
+    ((l.drop n).set 0 x = x :: l.drop (n + 1)) := by
+  apply List.ext_getElem?
+  intro i
+  cases i with
+  | zero =>
+    have hne : l.length - n ≠ 0 := by omega
+    simp [List.getElem?_set, hne]
+  | succ i =>
+    simp only [List.getElem?_set, show ¬(0 = i + 1) from by omega, ite_false,
+      List.getElem?_cons_succ, List.getElem?_drop]
+    congr 1
+    omega
+
+/-- Visited-prefix bridge: storing the incremented word at the
+    frontier turns the current prefix shape into the next one
+    (take/map/drop is the spec shape, `set` the residue). -/
+theorem take_map_drop_set_succ (l : List (BitVec 32)) (n : Nat)
+    (h : n < l.length) :
+    (((l.take n).map (· + 1) ++ l.drop n).set n (l[n] + 1) =
+     ((l.take (n + 1)).map (· + 1) ++ l.drop (n + 1))) := by
+  have hlenA : ((l.take n).map (· + 1)).length = n := by
+    simp only [List.length_map, List.length_take]; omega
+  have hget : l[n]? = some l[n] := List.getElem?_eq_getElem h
+  rw [List.set_append_right n _ (by omega), hlenA, Nat.sub_self,
+    drop_set_zero_cons l n h, List.take_add_one, List.map_append, hget,
+    Option.toList_some, List.map_cons, List.map_nil, List.append_assoc]
+  rfl
+
 /-- A successful `vecSet` carries its bounds + liveness. -/
 theorem vecSet_ok_bound (b : Vec32) (i : Nat) (x : BitVec 32) (b' : Vec32)
     (h : vecSet b i x = .ok b') : i < b.val.length ∧ b.freed = false := by

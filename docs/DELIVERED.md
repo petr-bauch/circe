@@ -1594,3 +1594,23 @@ closers are already one-line `simp only` calls (a tactic would
 be pure indirection); the unfold-loop-`show` script stays prose
 with two uses (third admitted loop shape earns it). 428 jobs
 TEST-OK + CHECK-OK.
+
+### H1 cell-kit promotion — DONE (2026-10-21)
+
+`cellAt`/`cellsAt`, the store/read-back lemmas
+(`memStore_cell`, `memFind_cell_store`, `memStore_cellsAt`,
+`memFind_cellsAt_store`, `memLoad_cellsAt`, `cellAt_cellsAt`),
+and the array-prefix trio (`take_map_drop_getElem`,
+`drop_set_zero_cons`, `take_map_drop_set_succ`) moved from the
+report-only `Circe/CondFrame.lean` spike to
+`Circe/Mem/Agree.lean`, beside `memFind_memStore_other` — they
+were defined in a no-suite-row file while admitted proofs
+stood on them (`htriple_mstore_frame`, gallery
+`sumLoop`/`incrLoop`). No import churn: `CondFrame` already
+imports `Circe.Mem`, and `Rules`/gallery resolve the kit
+transitively (verified by build, not by reasoning).
+`CondFrame` keeps only its report-only `condExec` program.
+Audit remainder (no code): the R/S store lockstep has exactly
+two uses (prose stage); triple-level store rules have no
+customer (loop bodies with stores contain calls, so they live
+at prog level where frame is definitional per F3).
