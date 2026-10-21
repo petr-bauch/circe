@@ -113,6 +113,7 @@ macro "cir_simp" : tactic =>
 
 /-! ## R1 tactics (re-exported from `Circe.LeafTactics`).
 
-`find_leaf` / `let_pure_step` live in `Circe.LeafTactics` (imported
-above): that module sits directly over `Eval.Stmt` + `Mem.Agree`,
-low enough for `Emit.*` files that cannot import `Tactics`. -/
+`find_leaf` / `let_pure_step` / `cir_fold_end` live in
+`Circe.LeafTactics` (imported above): that module sits directly
+over `Eval.Stmt` + `Mem.Agree`, low enough for `Emit.*` files
+that cannot import `Tactics`. -/

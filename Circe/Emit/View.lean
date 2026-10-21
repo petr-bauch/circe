@@ -31,6 +31,7 @@ high-bit diff driver pins this against native; see
 `docs/VERIFYING.md`). `OOB` off the end mirrors `spanAt`.
 -/
 import Circe.Emit.Fragment
+import Circe.LeafTactics
 
 /-! ## N7a: `std::string_view` begin / end / entry -/
 
@@ -271,16 +272,14 @@ theorem viewFold_step (l : List (BitVec 8)) (k : Nat)
       match checkedAddI32 acc (b.signExtend 32) with
       | .error e => .error e
       | .ok a => viewFold (l.drop (k + 1)) a := by
-  conv => lhs; rw [viewFold_drop]
-  simp [hget]
+  cir_fold_end (viewFold_drop, hget)
 
 /-- Unfolding the suffix fold past the end. -/
 theorem viewFold_nil (l : List (BitVec 8)) (k : Nat)
     (acc : BitVec 32)
     (hget : l[k]? = none) :
     viewFold (l.drop k) acc = .ok acc := by
-  conv => lhs; rw [viewFold_drop]
-  simp [hget]
+  cir_fold_end (viewFold_drop, hget)
 
 /-- Loop correctness: folds the checked-add suffix, exits with
     `i = length` (fuel-generalized; the `+1` absorbs the final exit

@@ -182,7 +182,11 @@ Hello`, so the demo IS the regression test):
   `hello_fuel_side`), `cir_step` (one symbolic evaluator step —
   `hello_step_uadd`).
 - Specialized: `cir_choose b` (boolean-selector case split with
-  the forward/backward equations — `hello_choose_get_put`).
+  the forward/backward equations — `hello_choose_get_put`),
+  `cir_fold_end (dropEq, hget)` (suffix-fold end script: unfold
+  one step on the left via your fold's drop equation, discharge
+  the lookup — `hello_fold_end`; the six in-repo fold sites run
+  this exact script).
 
 Three standing limits (all hit during the U1 audit, all documented
 so users don't rediscover them):
@@ -198,7 +202,13 @@ so users don't rediscover them):
 - `cir_choose` needs a variable selector (a literal leaves the
   impossible branch behind); `cir_step` needs every lookup fact
   the step touches (the cascade only rewrites what the
-  hypotheses cover — a single uncovered `envLookup` stalls it).
+  hypotheses cover — a single uncovered `envLookup` stalls it);
+  `cir_fold_end` needs the drop-equation name for your fold
+  (it is per-fold by definition — `spanFold_drop`,
+  `viewFold_drop`, `stdVecFold_drop` — plus the lookup fact;
+  implementation re-parses surface strings at the use site
+  because `rw`/`simp` arg kinds reject spliced idents —
+  `cir_step` precedent).
 
 ## N3c gallery: worked properties (DELIVERED.md N3 — done)
 

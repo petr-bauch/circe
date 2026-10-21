@@ -26,6 +26,7 @@ model — same division of labor as span's extent word. The
 family + suffix fold + fuel side condition).
 -/
 import Circe.Emit.Fragment
+import Circe.LeafTactics
 
 /-! ## N4d-iv-a: `std::vector` size, index, entry -/
 
@@ -291,16 +292,14 @@ theorem stdVecFold_step (l : List (BitVec 32)) (k : Nat)
       match checkedAddI32 acc x with
       | .error e => .error e
       | .ok a => stdVecFold (l.drop (k + 1)) a := by
-  conv => lhs; rw [stdVecFold_drop]
-  simp [hget]
+  cir_fold_end (stdVecFold_drop, hget)
 
 /-- Unfolding the suffix fold past the end. -/
 theorem stdVecFold_nil (l : List (BitVec 32)) (k : Nat)
     (acc : BitVec 32)
     (hget : l[k]? = none) :
     stdVecFold (l.drop k) acc = .ok acc := by
-  conv => lhs; rw [stdVecFold_drop]
-  simp [hget]
+  cir_fold_end (stdVecFold_drop, hget)
 
 /-- Loop correctness: folds the checked-add suffix, exits with
     `i = length` (fuel-generalized; the `+1` absorbs the final exit

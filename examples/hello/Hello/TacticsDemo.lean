@@ -7,6 +7,7 @@ import Hello.Emitted
 import Hello.Spec
 import Circe.Tactics
 import Circe.Emit.Choose
+import Circe.Emit.Span
 
 /-- Algebraic facts stay explicit: commutativity is one lemma
     application (`checkedAddI32_comm`), not a simp call — `simp`
@@ -62,3 +63,15 @@ theorem hello_step_uadd (aB bB : BitVec 64) (ρ : Env)
     evalExpr (.uadd (.var "a") (.var "b")) ρ
       = .ok (.u64 (aB + bB)) := by
   cir_step evalExpr [ha, hb]
+
+/-- `cir_fold_end`: the suffix-fold end script — unfold one step on
+    the left via the drop equation, discharge the lookup. The six
+    in-repo sites (`spanFold_*`, `viewFold_*`, `stdVecFold_*`
+    step/nil pairs) run this exact script; here it is on the
+    library `spanFold` itself, the same shape a user meets at the
+    end of any suffix-fold proof. Pass the drop equation for your
+    fold plus the lookup fact. -/
+theorem hello_fold_end (l : List (BitVec 32)) (k : Nat)
+    (acc : BitVec 32) (hget : l[k]? = none) :
+    spanFold (l.drop k) acc = .ok acc := by
+  cir_fold_end (spanFold_drop, hget)

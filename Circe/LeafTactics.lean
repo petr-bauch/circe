@@ -9,7 +9,9 @@ directly above both — low enough that `Circe.Emit.*` (which cannot
 import `Circe.Tactics`: `Tactics` imports the `Emit` umbrella) and
 `Circe.Transfer.*` can all use it with no cycle. `Circe.Tactics`
 re-exports this module (via import), so `import Circe.Tactics`
-users see these tactics too.
+users see these tactics too. `cir_fold_end` names no `Emit`
+constants (both equations arrive as arguments), so it lives here
+for the same reason.
 -/
 import Circe.Eval.Stmt
 import Circe.Mem.Agree
@@ -46,3 +48,25 @@ elab "find_leaf" prog:ident : tactic => do
 macro "let_pure_step" "(" hM:term "," hE:term ")" : tactic =>
   `(tactic| exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
     (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) $hM $hE)
+
+/-- Fold-end script: unfold a suffix fold one step on the left
+    (`conv => lhs` + the drop equation), then discharge the lookup
+    with `hget`. The six in-repo sites (`spanFold_*`,
+    `viewFold_*`, `stdVecFold_*` step/nil pairs) share this script
+    verbatim. Usage: `cir_fold_end (spanFold_drop, hget)`.
+    (An `elab` in two `evalTactic` steps so the `conv => ...` /
+    `simp ...` boundary keeps its original parse — one quotation
+    would risk `simp` binding inside the `conv` block. Reparse, not
+    splice: `rw` / `simp` arg kinds reject spliced idents, so the
+    exact surface strings elaborate at the use site instead —
+    `cir_step` precedent in `Circe.Eval.Stmt`.) -/
+elab "cir_fold_end" "(" dropEq:ident "," hget:ident ")" : tactic => do
+  let env ← Lean.MonadEnv.getEnv
+  let .ok rwStx := Lean.Parser.runParserCategory env `tactic
+      ("conv => lhs; rw [" ++ dropEq.getId.toString ++ "]")
+    | throwError "cir_fold_end: could not parse conv step"
+  Lean.Elab.Tactic.evalTactic rwStx
+  let .ok simpStx := Lean.Parser.runParserCategory env `tactic
+      ("simp [" ++ hget.getId.toString ++ "]")
+    | throwError "cir_fold_end: could not parse simp step"
+  Lean.Elab.Tactic.evalTactic simpStx

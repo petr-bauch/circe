@@ -118,6 +118,17 @@ Extraction rule (standing): prose note on first reuse, pack on the third use. Sh
   discharge (`dite_eq_left`); closed bool-guard discharge
   (`ite_eq_right (by decide ...)`); prefer the non-deprecated
   `ite_eq_left/right` over `if_pos/if_neg` in new code.
+- Fold-end tactic DONE (2026-10-19, T1): `cir_fold_end
+  (dropEq, hget)` in `Circe.LeafTactics` (re-exported via
+  `Circe.Tactics`) — the `conv => lhs; rw [<fold>_drop]` +
+  `simp [hget]` script shared verbatim by six sites (`spanFold_*`,
+  `viewFold_*`, `stdVecFold_*` step/nil), all converted, plus a
+  `hello_fold_end` Hello demo as regression test. `elab` in two
+  `evalTactic` steps re-parsing surface strings (`rw`/`simp` arg
+  kinds reject spliced idents — `cir_step` precedent). Explicit
+  non-tactics: `dite_eq_left/right` closers are already one-line
+  `simp only` calls (a tactic would be pure indirection); the
+  unfold-loop-`show` script stays prose with two uses.
 - R memory-threading pattern (first use, prose-note stage):
   `vecSet` lockstep via closed-form `memStore` on the reified
   snapshot (`revMemStore_ok`), shadowing blocks tracked by-find
