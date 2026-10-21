@@ -86,7 +86,11 @@ no git history); that material is session memory, not a repo
 deliverable.
 
 Next: the frame rule remains the frontier — program-level
-`seq`/`callRet` composition rules are the named prerequisite
+`callRet`/`callProg` composition rules are the named prerequisite
+(`seq` DONE 2026-10-21, F1: `memEvalProgStmt_seq` +
+`htripleProg_seq`, `fellThrough`-pinned like `htriple_seq`;
+`hoare_rotateSpine_seq` composes the rotate prefix from five
+leaf triples, call leaves as hypotheses for F2)
 (the T rotate entry is the motivating customer; only the
 single-cell `htriple_mstore_frame` exists today). Harvesting
 continues by the rule of three, with open triggers: third

@@ -12,6 +12,7 @@ and the return assembles through the rotation identity. The owned
 import Circe.Transfer.Slice
 import Circe.Transfer.VecSegReverse
 import Circe.Emit.VecRotate
+import Circe.Hoare.Rules
 
 /-! ## Entry bridge (`memEval` + transfer) -/
 
@@ -412,6 +413,40 @@ theorem rotMemEvalProgFunc (F : Nat) (l : List (BitVec 32))
     hret]
   simp only [vecRotateFwd]
   rw [hkB, if_pos hk]
+
+/-- F1 rule application: the rotate spine's `fellThrough` prefix
+    (size call, `z` let, three admitted segment calls) composes
+    from its leaf triples by four nested `htripleProg_seq`
+    applications. The leaves stay hypotheses — F2 discharges the
+    three call leaves from callee contracts; the trailing
+    `return_` needs the deferred prog-level seq-return equation,
+    so the prefix stops at the third call. -/
+theorem hoare_rotateSpine_seq (prog : Prog)
+    (P0 P1 P2 P3 P4 P5 : Env × Mem × Layout → Prop)
+    (hsize : HTripleProg prog P0 (.callRet "m" stdVecSizeName ["v"])
+      (fun st o => o = .fellThrough ∧ P1 st))
+    (hz : HTripleProg prog P1 (.let_ "z" (.u 64) (.lit (.u64 0)))
+      (fun st o => o = .fellThrough ∧ P2 st))
+    (hc1 : HTripleProg prog P2
+      (.callProg "v" vecSegReverseName ["v", "z", "k"])
+      (fun st o => o = .fellThrough ∧ P3 st))
+    (hc2 : HTripleProg prog P3
+      (.callProg "v" vecSegReverseName ["v", "k", "m"])
+      (fun st o => o = .fellThrough ∧ P4 st))
+    (hc3 : HTripleProg prog P4
+      (.callProg "v" vecSegReverseName ["v", "z", "m"])
+      (fun st o => o = .fellThrough ∧ P5 st)) :
+    HTripleProg prog P0
+      (.seq (.callRet "m" stdVecSizeName ["v"])
+        (.seq (.let_ "z" (.u 64) (.lit (.u64 0)))
+          (.seq (.callProg "v" vecSegReverseName ["v", "z", "k"])
+            (.seq (.callProg "v" vecSegReverseName ["v", "k", "m"])
+              (.callProg "v" vecSegReverseName ["v", "z", "m"])))))
+      (fun st o => o = .fellThrough ∧ P5 st) := by
+  have s45 := htripleProg_seq prog P3 P4 _ _ _ hc2 hc3
+  have s345 := htripleProg_seq prog P2 P3 _ _ _ hc1 s45
+  have s2345 := htripleProg_seq prog P1 P2 _ _ _ hz s345
+  exact htripleProg_seq prog P0 P1 _ _ _ hsize s2345
 
 /-- Transfer for `vec_rotate` (program level). -/
 theorem rotMemTransferProg (F : Nat) (l : List (BitVec 32))

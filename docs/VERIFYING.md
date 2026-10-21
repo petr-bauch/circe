@@ -441,6 +441,17 @@ with `rfl` keeps the inner-binder side — the outer names are
 gone after substitution, so inner applications must use the
 fresh names.
 
+Program level (P3a/F1): `HTripleProg` mirrors `HTriple` over
+`memEvalProgStmt` (covers the `callRet`/`callProg` leaves the
+call-free evaluator cannot see). `htripleProg_while_at` is the
+while rule one level up (same four premises; the R countdown
+re-proved as `hoare_reverseWhileProg`); `htripleProg_seq`
+composes `fellThrough`-prefix spines from leaf triples
+(`hoare_rotateSpine_seq`: size call + `z` let + three admitted
+segment calls, four nested applications — call leaves stay
+hypotheses until F2; the trailing `return_` needs the deferred
+prog-level seq-return equation).
+
 ### Lets and micro-tactics (H3)
 
 `htriple_let` wraps `memEvalStmtFuel_let_pure` (allocating

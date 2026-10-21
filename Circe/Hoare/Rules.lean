@@ -46,6 +46,26 @@ theorem htriple_seq (P R : Env × Mem × Layout → Prop)
     memEvalStmtFuel_seq F a b ρ m π ρ₁ m₁ π₁ ρ₂ m₂ π₂ o₂ ha' hb',
     hQ⟩
 
+/-- Program-level sequencing with the mid-outcome pinned to
+    `fellThrough`: straight-line call spines return last. Same
+    scope as `htriple_seq` one level down — early-return
+    propagation needs prog-level seq-return equations that do not
+    exist yet, deferred with that lemma named rather than
+    silently assumed. -/
+theorem htripleProg_seq (prog : Prog)
+    (P R : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt)
+    (ha : HTripleProg prog P a (fun st o => o = .fellThrough ∧ R st))
+    (hb : HTripleProg prog R b Q) :
+    HTripleProg prog P (.seq a b) Q := by
+  intro F ρ m π hP
+  obtain ⟨ρ₁, m₁, π₁, o₁, ha', hmid⟩ := ha F ρ m π hP
+  obtain ⟨rfl, hR⟩ := hmid
+  obtain ⟨ρ₂, m₂, π₂, o₂, hb', hQ⟩ := hb F ρ₁ m₁ π₁ hR
+  exact ⟨ρ₂, m₂, π₂, o₂,
+    memEvalProgStmt_seq prog F a b ρ m π ρ₁ m₁ π₁ ρ₂ m₂ π₂ o₂ ha' hb',
+    hQ⟩
+
 /-- Consequence (pre-strengthen, post-weaken). -/
 theorem htriple_consequence (P P' : Env × Mem × Layout → Prop)
     (Q Q' : Env × Mem × Layout → Outcome → Prop) (s : CStmt)

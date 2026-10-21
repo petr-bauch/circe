@@ -2029,6 +2029,22 @@ theorem memEvalProgStmt_callRet_ok (prog : Prog) (fuel : Nat)
       .ok ((envExtend ρ dst ret, m, π), .fellThrough) := by
   simp [memEvalProgStmt, hargs, hfind, hcall]
 
+/-- `seq` agrees when both components do (memory threaded,
+    mid-outcome pinned to `fellThrough` — the `memEvalStmtFuel_seq`
+    mirror one level up; the `seq` arm threads state directly with
+    no fuel split, so no fuel cases are needed). -/
+theorem memEvalProgStmt_seq (prog : Prog) (fuel : Nat) (a b : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (ρ₁ : Env) (m₁ : Mem) (π₁ : Layout)
+    (ρ₂ : Env) (m₂ : Mem) (π₂ : Layout) (o₂ : Outcome)
+    (ha : memEvalProgStmt prog fuel a ρ m π =
+      .ok ((ρ₁, m₁, π₁), .fellThrough))
+    (hb : memEvalProgStmt prog fuel b ρ₁ m₁ π₁ =
+      .ok ((ρ₂, m₂, π₂), o₂)) :
+    memEvalProgStmt prog fuel (.seq a b) ρ m π =
+      .ok ((ρ₂, m₂, π₂), o₂) := by
+  simp [memEvalProgStmt, ha, hb]
+
 /-- `callRet` propagates callee errors. -/
 theorem memEvalProgStmt_callRet_err (prog : Prog) (fuel : Nat)
     (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
