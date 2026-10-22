@@ -65,7 +65,19 @@ Proposed (toward the platform goal — for approval, in order):
 - P2-M3: in-place partition (forward scan with stores) — a new
   loop shape beyond countdown/rotate, and the third data point
   for the fuel-arithmetic (audit #5) and loop-tactic triggers.
-  One admission pin. WIP (M3a admission).
+  One admission pin.
+  DONE (`5c941c7`, gate 438/438).
+- P2-M4: iterative selection sort (`min_index` leaf + outer
+  scan-and-swap entry, calls in the loop body via the M1c kit) —
+  the second vector sort (quicksort stays out: the gate rejects
+  recursion) and the fourth loop-shape data point. One admission
+  pin. WIP (M4a admission).
+- P3-T2: rule-of-three harvest — fuel-arithmetic (audit #5) and
+  loop-unfold tactics plus the transfer-leg audit (#4), converting
+  the R/S/T/M3/M4 sites. Proof-only, no admission.
+- P2-M5: vector sortedness/permutation specs (N9-tier, ported
+  from array insertion sort to the partition/merge/selection
+  kernels). Proof-only, no admission.
 
 ## Pillar 3 — Human-readable/writable proofs
 

@@ -2170,3 +2170,113 @@ theorem partitionFwd_ok (pivot : BitVec 32) (l : List (BitVec 32))
       have hneg : ¬ l.length < l.length := by omega
       refine ⟨s, l, ?_⟩
       simp only [partitionFwd, dite_eq_right hneg]
+
+/-! ## P2-M4: selection-sort forward contracts -/
+
+/-- M4 leaf contract, ok leg: the min-scan runs to `l.length`
+    with full reads (single leg — the kernel is total: every access
+    is guard-justified, so the `none` arms never fire
+    in-invariant). The running minimum stays in-bounds (needed by
+    the outer swap). Fuel induction threading `m < len`. -/
+theorem minIndexFwd_ok (l : List (BitVec 32))
+    (fuel j m : Nat)
+    (hm : m < l.length) (hle : j ≤ l.length)
+    (hF : l.length - j ≤ fuel)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x) :
+    ∃ m' j', VecSelectionSort.minIndexFwd l fuel j m =
+      .ok (m', j') ∧ m' < l.length := by
+  induction fuel generalizing l j m with
+  | zero =>
+    have him : j = l.length := by omega
+    subst him
+    exact ⟨m, l.length, by simp [VecSelectionSort.minIndexFwd], hm⟩
+  | succ n ih =>
+    by_cases hlt : j < l.length
+    · obtain ⟨x, hx⟩ := hread j hlt
+      obtain ⟨y, hy⟩ := hread m hm
+      have hF' : l.length - (j + 1) ≤ n := by omega
+      have hle' : j + 1 ≤ l.length := by omega
+      by_cases htake : x.slt y
+      · obtain ⟨m'', j'', heq, hm''⟩ := ih l (j + 1) j hlt hle' hF' hread
+        refine ⟨m'', j'', ?_, hm''⟩
+        simp only [VecSelectionSort.minIndexFwd, dite_eq_left hlt,
+          hx, hy, htake]
+        exact heq
+      · obtain ⟨m'', j'', heq, hm''⟩ := ih l (j + 1) m hm hle' hF' hread
+        refine ⟨m'', j'', ?_, hm''⟩
+        have hskip : (x.slt y) = false := by
+          cases h : x.slt y with
+          | true => exact absurd h htake
+          | false => rfl
+        simp only [VecSelectionSort.minIndexFwd, dite_eq_left hlt,
+          hx, hy, hskip]
+        exact heq
+    · have him : j = l.length := by omega
+      subst him
+      refine ⟨m, l.length, ?_, hm⟩
+      simp only [VecSelectionSort.minIndexFwd, dite_eq_right hlt]
+
+/-- M4 outer contract, ok leg: the index scan runs to `l.length`
+    with full reads (single leg — the kernel is total). The inner
+    scan re-spends the full inner budget every iteration
+    (self-contained leaf); the swap preserves length. Fuel
+    induction threading the inner sufficiency premise. -/
+theorem selectionSortFwd_ok (l : List (BitVec 32))
+    (fuel inner i : Nat)
+    (hle : i ≤ l.length)
+    (hF : l.length - i ≤ fuel)
+    (hG : l.length - (i + 1) ≤ inner)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x) :
+    ∃ i' l', VecSelectionSort.selectionSortFwd l fuel inner i =
+      .ok (i', l') := by
+  induction fuel generalizing l i with
+  | zero =>
+    have him : i = l.length := by omega
+    subst him
+    exact ⟨l.length, l, by simp [VecSelectionSort.selectionSortFwd]⟩
+  | succ n ih =>
+    by_cases hlt : i < l.length
+    · obtain ⟨x, hx⟩ := hread i hlt
+      have hF' : l.length - (i + 1) ≤ n := by omega
+      have hle' : i + 1 ≤ l.length := by omega
+      obtain ⟨m, j', hmin, hm'⟩ :=
+        minIndexFwd_ok l inner (i + 1) i hlt (by omega) hG hread
+      obtain ⟨y, hy⟩ := hread m hm'
+      have hlen : ((l.set i y).set m x).length = l.length := by
+        simp [List.length_set]
+      have hle'' : i + 1 ≤ ((l.set i y).set m x).length := by omega
+      have hF'' : ((l.set i y).set m x).length - (i + 1) ≤ n := by omega
+      have hG' : ((l.set i y).set m x).length - (i + 1 + 1) ≤ inner := by
+        omega
+      have hread' : ∀ p, p < ((l.set i y).set m x).length →
+          ∃ z, ((l.set i y).set m x)[p]? = some z := by
+        intro p hp
+        have hplen : p < l.length := by omega
+        by_cases hpi : p = i
+        · rw [hpi]
+          by_cases hmi : m = i
+          · rw [hmi]; exact ⟨x, List.getElem?_set_self (by
+            rw [List.length_set]; exact hlt)⟩
+          · exact ⟨y, by
+              rw [List.getElem?_set_ne (show m ≠ i by omega)]
+              exact List.getElem?_set_self hlt⟩
+        · by_cases hpm : p = m
+          · rw [hpm]
+            exact ⟨x, List.getElem?_set_self (by
+              rw [List.length_set]; exact hm')⟩
+          · obtain ⟨z, hz⟩ := hread p hplen
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show m ≠ p by omega),
+                List.getElem?_set_ne (show i ≠ p by omega)]
+              exact hz⟩
+      obtain ⟨i'', l'', heq⟩ := ih ((l.set i y).set m x) (i + 1)
+        hle'' hF'' hG' hread'
+      refine ⟨i'', l'', ?_⟩
+      simp only [VecSelectionSort.selectionSortFwd, dite_eq_left hlt,
+        hmin, hx, hy]
+      exact heq
+    · have him : i = l.length := by omega
+      subst him
+      refine ⟨l.length, l, ?_⟩
+      have hneg : ¬ l.length < l.length := by omega
+      simp only [VecSelectionSort.selectionSortFwd, dite_eq_right hneg]

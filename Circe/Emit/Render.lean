@@ -943,6 +943,68 @@ def emitVecPartitionText (name : String) : String :=
   ++ "        else loop pivot l fuel (i + 1) s\n"
   ++ "    else .ok (i, s, l)\n"
 
+/-- Render the `min_index` leaf forward definition: the forward
+    min-scan over the reified words (guard-justified, total). -/
+def emitVecMinIndexText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (forward min-scan over the reified words; guard-justified, total). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (lo : Nat) : Result Nat :=\n"
+  ++ "  match loop l l.length (lo + 1) lo with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (m, _) => .ok m\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat)\n"
+  ++ "  | l, 0, j, m => .ok (m, j)\n"
+  ++ "  | l, fuel + 1, j, m =>\n"
+  ++ "    if j < l.length then\n"
+  ++ "      match l[j]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some x =>\n"
+  ++ "        match l[m]? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some y =>\n"
+  ++ "          if x.slt y then loop l fuel (j + 1) j\n"
+  ++ "          else loop l fuel (j + 1) m\n"
+  ++ "    else .ok (m, j)\n"
+
+/-- Render the `vec_selection_sort` entry forward definition: the
+    iterative selection sort over the reified words (the leaf scan
+    inlined as a `where` helper; guard-justified, total). -/
+def emitVecSelectionSortText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative selection sort over the reified words; guard-justified, total). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (List (BitVec 32)) :=\n"
+  ++ "  match loop l l.length l.length 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, l') => .ok l'\n"
+  ++ "where\n"
+  ++ "  minLoop : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat)\n"
+  ++ "  | l, 0, j, m => .ok (m, j)\n"
+  ++ "  | l, fuel + 1, j, m =>\n"
+  ++ "    if j < l.length then\n"
+  ++ "      match l[j]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some x =>\n"
+  ++ "        match l[m]? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some y =>\n"
+  ++ "          if x.slt y then minLoop l fuel (j + 1) j\n"
+  ++ "          else minLoop l fuel (j + 1) m\n"
+  ++ "    else .ok (m, j)\n"
+  ++ "  loop : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, _, i => .ok (i, l)\n"
+  ++ "  | l, fuel + 1, inner, i =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match minLoop l inner (i + 1) i with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok (m, _) =>\n"
+  ++ "        match l[i]?, l[m]? with\n"
+  ++ "        | some x, some y => loop ((l.set i y).set m x) fuel inner (i + 1)\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (i, l)\n"
+
 /-- Render the `merge_runs` ranged callee forward definition: the
     in-place segment merge over the reified words (`a[lo,mid)` and
     `a[mid,hi)` merged into `tmp[lo,hi)`; short `tmp` aborts loudly). -/

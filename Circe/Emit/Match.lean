@@ -24,6 +24,7 @@ import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
+import Circe.Emit.VecSelectionSort
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -973,6 +974,37 @@ def matchFrag : Func → Option FragKind
             (.return_ (.var "v")))))⟩ =>
     some .vecPartition
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
+        ⟨"lo", .u 64, .owned⟩],
+      .u 64,
+      (.seq (.let_ "m" (.u 64) (.var "lo"))
+        (.seq (.let_ "j" (.u 64) (.uadd (.var "lo") (.lit (.u64 v0))))
+          (.seq (.while_ (.ult (.var "j") (.stdVecLen "a"))
+                  (.seq (.if_ (.slt (.stdVecAt "a" (.var "j"))
+                                    (.stdVecAt "a" (.var "m")))
+                            (.assign "m" (.var "j"))
+                            .skip)
+                    (.assign "j" (.uadd (.var "j")
+                      (.lit (.u64 v1))))))
+            (.return_ (.var "m")))))⟩ =>
+    some .vecMinIndex
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.seq (.let_ "n" (.u 64) (.stdVecLen "v"))
+        (.seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
+          (.seq (.while_ (.ult (.var "i") (.var "n"))
+                  (.seq (.callRet "m"
+                          "_Z9min_indexRKSt6vectorIiSaIiEEm" ["v", "i"])
+                    (.seq (.let_ "t" (.i 32)
+                              (.stdVecAt "v" (.var "i")))
+                      (.seq (.vecSet "v" (.var "i")
+                                (.stdVecAt "v" (.var "m")))
+                        (.seq (.vecSet "v" (.var "m") (.var "t"))
+                          (.assign "i" (.uadd (.var "i")
+                            (.lit (.u64 v0)))))))))
+            (.return_ (.var "v")))))⟩ =>
+    some .vecSelectionSort
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"tmp", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
         ⟨"lo", .u 64, .owned⟩,
         ⟨"mid", .u 64, .owned⟩,
@@ -1616,6 +1648,11 @@ theorem matchFrag_vecTransformAdd :
     matchFrag vecTransformAddFunc = some .vecTransformAdd := rfl
 theorem matchFrag_vecPartition :
     matchFrag vecPartitionFunc = some .vecPartition := rfl
+theorem matchFrag_vecMinIndex :
+    matchFrag VecSelectionSort.minIndexFunc = some .vecMinIndex := rfl
+theorem matchFrag_vecSelectionSort :
+    matchFrag VecSelectionSort.vecSelectionSortFunc =
+      some .vecSelectionSort := rfl
 theorem matchFrag_mergeRuns :
     matchFrag VecMergeRuns.mergeRunsFunc = some .vecMergeRuns := rfl
 theorem matchFrag_vecMergeSort :

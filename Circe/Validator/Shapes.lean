@@ -1789,6 +1789,68 @@ def isVecPartitionShape (raw : RawFunc) : Bool :=
   | _ => false
 
 
+/-- `min_index` leaf shape: one shared-borrow vector plus one owned
+    `u64` bound in, `u64` out, exactly three calls (one `size` + two
+    const `at()`), one `cir.while` (the forward min-scan), two
+    compares (one `u64` bound check + one signed element compare),
+    one `cir.if` (the conditional `m` update). No recursion, no
+    allocation, no `unreachable`. -/
+def isVecMinIndexShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, lo] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    !isPtrType lo.ctype && isU64 lo.ctype &&
+    raw.ret == "!u64i" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 3 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.const" == 4 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 14 &&
+    opCount raw.text "cir.store" == 7 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.add nsw"
+  | _ => false
+
+/-- `vec_selection_sort` entry shape: one `mutBorrow` vector in,
+    `void` out, exactly six calls (one `size` + one `min_index`
+    leaf call + four mut `at()`), one `cir.while` (the outer
+    index scan), one `u64` bound compare. The unconditional swap
+    needs no `cir.if`. No recursion, no allocation, no
+    `unreachable`. -/
+def isVecSelectionSortShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text VecSelectionSort.minIndexName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 6 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 0 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.const" == 4 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 17 &&
+    opCount raw.text "cir.store" == 8 &&
+    !callsFunc raw.text raw.name &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.add nsw"
+  | _ => false
+
 /-- `merge_runs` ranged-callee shape (C2): shared-borrow vector +
     mutable-borrow temp + three `u64` bounds in, `void` out, exactly
     ten calls (six const `at()` + four mut `at()`), three `cir.while`
