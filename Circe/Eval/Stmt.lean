@@ -255,6 +255,9 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     -- Composer calls need program context too (`evalProgStmt` runs them
     -- via `evalProgFunc`); at leaf level they are loud like `callRet`.
     .error .AssertFail
+  | .callShare _ _ _, _ =>
+    -- Sharing calls are program-level too (same diagram as `callProg`).
+    .error .AssertFail
   | .return_ e, ρ =>
     match evalExpr e ρ with
     | .error err => .error err
@@ -723,6 +726,19 @@ def evalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Result (Env × O
           match evalProgFunc prog fuel callee vs with
           | .error e => .error e
           | .ok ret => .ok (envExtend ρ dst ret, .fellThrough)
+  | .callShare dst f xs, ρ =>
+    match lookupArgs ρ xs with
+    | none => .error .Uninit
+    | some vs =>
+      match findFunc prog f with
+      | none => .error .AssertFail
+      | some callee =>
+        match fuel with
+        | 0 => .error .AssertFail
+        | fuel + 1 =>
+          match evalProgFunc prog fuel callee vs with
+          | .error e => .error e
+          | .ok ret => .ok (envExtend ρ dst ret, .fellThrough)
   | .seq a b, ρ =>
     match evalProgStmt prog fuel a ρ with
     | .error e => .error e
@@ -833,6 +849,28 @@ theorem evalProgStmt_callProg_err (prog : Prog) (fuel : Nat)
     (hfind : findFunc prog f = some callee)
     (hcall : evalProgFunc prog fuel callee vs = .error e) :
     evalProgStmt prog (fuel + 1) (.callProg dst f xs) ρ = .error e := by
+  simp [evalProgStmt, hargs, hfind, hcall]
+
+/-- `callShare` with resolved actuals + callee runs the callee under the
+    program evaluator (value-level twin of `callProg`: env rebind). -/
+theorem evalProgStmt_callShare_ok (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (vs : List Value) (callee : Func) (ret : Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : evalProgFunc prog fuel callee vs = .ok ret) :
+    evalProgStmt prog (fuel + 1) (.callShare dst f xs) ρ =
+      .ok (envExtend ρ dst ret, .fellThrough) := by
+  simp [evalProgStmt, hargs, hfind, hcall]
+
+/-- `callShare` propagates callee errors. -/
+theorem evalProgStmt_callShare_err (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env)
+    (vs : List Value) (callee : Func) (e : Panic)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : evalProgFunc prog fuel callee vs = .error e) :
+    evalProgStmt prog (fuel + 1) (.callShare dst f xs) ρ = .error e := by
   simp [evalProgStmt, hargs, hfind, hcall]
 
 /-- `callProg` to an unknown callee is rejected, never silently modeled. -/

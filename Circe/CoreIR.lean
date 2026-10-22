@@ -265,6 +265,7 @@ inductive CStmt : Type
   | call (func : String) (args : List String)
   | callRet (dst func : String) (args : List String)
   | callProg (dst func : String) (args : List String)
+  | callShare (dst func : String) (args : List String)
   | return_ (val : CExpr)
 
 /-- A validated function: name, params, return type, and body. -/

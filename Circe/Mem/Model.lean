@@ -1648,6 +1648,7 @@ def memEvalStmtWith
   | .call _ _, ρ, m, π => .ok ((ρ, m, π), .fellThrough)
   | .callRet _ _ _, _, _, _ => .error .AssertFail
   | .callProg _ _ _, _, _, _ => .error .AssertFail
+  | .callShare _ _ _, _, _, _ => .error .AssertFail
   | .return_ e, ρ, m, π =>
     match memEvalExpr e ρ m π with
     | .error err => .error err
@@ -1880,6 +1881,20 @@ def memEvalProgStmt (prog : Prog) (fuel : Nat) : CStmt → Env → Mem → Layou
           match memEvalProgFunc prog fuel callee vs with
           | .error e => .error e
           | .ok ret => .ok ((envExtend ρ dst ret, m, π), .fellThrough)
+  | .callShare dst f xs, ρ, m, π =>
+    match lookupArgs ρ xs with
+    | none => .error .Uninit
+    | some vs =>
+      match findFunc prog f with
+      | none => .error .AssertFail
+      | some callee =>
+        match fuel with
+        | 0 => .error .AssertFail
+        | fuel + 1 =>
+          match memEvalProgFuncOn prog fuel callee vs m with
+          | .error e => .error e
+          | .ok (ret, m', π') =>
+            .ok ((envExtend ρ dst ret, m', π' ++ π), .fellThrough)
   | .seq a b, ρ, m, π =>
     match memEvalProgStmt prog fuel a ρ m π with
     | .error e => .error e
@@ -1932,6 +1947,24 @@ def memEvalProgFunc (prog : Prog) (fuel : Nat) (f : Func)
     | .ok (_, .broke) => .error .AssertFail
     | .ok (_, .continued) => .error .AssertFail
     | .ok (_, .fellThrough) => .error .AssertFail
+  termination_by (fuel, 1, f.body)
+
+/-- Whole-program memory function evaluation over a caller memory:
+    the sharing-call twin of `memEvalProgFunc` (M1c call frame).
+    The callee binds over `m₀` (fresh addresses via `memAllocData`,
+    so no aliasing with caller blocks), runs, and returns the value
+    alongside the final memory and layout; the `callShare` arm merges
+    the callee layout in front of the caller's (shadowing same-named
+    pins, so `dst` re-points at the callee block). -/
+def memEvalProgFuncOn (prog : Prog) (fuel : Nat) (f : Func)
+    (args : List Value) (m₀ : Mem) : Result (Value × Mem × Layout) :=
+  match bindMemArgs f.args args m₀ with
+  | none => .error .AssertFail
+  | some (ρ, m, π) =>
+    match memEvalProgStmt prog fuel f.body ρ m π with
+    | .error e => .error e
+    | .ok ((_, m', π'), .returned v) => .ok (v, m', π')
+    | .ok _ => .error .AssertFail
   termination_by (fuel, 1, f.body)
 end
 
@@ -2120,6 +2153,60 @@ theorem memEvalProgStmt_callProg_nofuel (prog : Prog) (fuel : Nat)
     (hargs : lookupArgs ρ xs = some vs)
     (hfind : findFunc prog f = some callee) :
     memEvalProgStmt prog 0 (.callProg dst f xs) ρ m π =
+      .error .AssertFail := by
+  simp [memEvalProgStmt, hargs, hfind]
+
+/-- Sharing call with resolved actuals + callee runs the callee over the
+    caller memory (one fuel less) and re-pins `dst` to the callee block
+    (callee layout shadows the caller's). -/
+theorem memEvalProgStmt_callShare_ok (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value) (callee : Func) (ret : Value)
+    (m' : Mem) (π' : Layout)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : memEvalProgFuncOn prog fuel callee vs m =
+      .ok (ret, m', π')) :
+    memEvalProgStmt prog (fuel + 1) (.callShare dst f xs) ρ m π =
+      .ok ((envExtend ρ dst ret, m', π' ++ π), .fellThrough) := by
+  simp [memEvalProgStmt, hargs, hfind, hcall]
+
+/-- Sharing call propagates callee errors. -/
+theorem memEvalProgStmt_callShare_err (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value) (callee : Func) (e : Panic)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee)
+    (hcall : memEvalProgFuncOn prog fuel callee vs m = .error e) :
+    memEvalProgStmt prog (fuel + 1) (.callShare dst f xs) ρ m π =
+      .error e := by
+  simp [memEvalProgStmt, hargs, hfind, hcall]
+
+/-- Sharing call to an unknown callee is rejected, never silently modeled. -/
+theorem memEvalProgStmt_callShare_unknown (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = none) :
+    memEvalProgStmt prog fuel (.callShare dst f xs) ρ m π =
+      .error .AssertFail := by
+  simp [memEvalProgStmt, hargs, hfind]
+
+/-- Sharing call with unbound actuals is `Uninit`. -/
+theorem memEvalProgStmt_callShare_unbound (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (hargs : lookupArgs ρ xs = none) :
+    memEvalProgStmt prog fuel (.callShare dst f xs) ρ m π =
+      .error .Uninit := by
+  simp [memEvalProgStmt, hargs]
+
+/-- Sharing call at zero fuel is loud (the call-depth budget is spent). -/
+theorem memEvalProgStmt_callShare_nofuel (prog : Prog) (fuel : Nat)
+    (dst f : String) (xs : List String) (ρ : Env) (m : Mem) (π : Layout)
+    (vs : List Value) (callee : Func)
+    (hargs : lookupArgs ρ xs = some vs)
+    (hfind : findFunc prog f = some callee) :
+    memEvalProgStmt prog 0 (.callShare dst f xs) ρ m π =
       .error .AssertFail := by
   simp [memEvalProgStmt, hargs, hfind]
 

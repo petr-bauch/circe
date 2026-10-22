@@ -41,7 +41,7 @@ def sortClampHi : CStmt :=
 
 /-- One segment call (rebinds `"tmp"` to the merged run). -/
 def sortSegCall : CStmt :=
-  (.callProg "tmp" VecMergeRuns.mergeRunsName ["a", "tmp", "lo", "mid", "hi"])
+  (.callShare "tmp" VecMergeRuns.mergeRunsName ["a", "tmp", "lo", "mid", "hi"])
 
 /-- Copy-back body: fused `tmp` read + `a` write, advance `t`. -/
 def sortCopyBody : CStmt :=
@@ -1099,7 +1099,7 @@ theorem sortSegBody_step (F : Nat) (ρ : Env)
     rw [hcall_fwd]; exact hmr
   have hstep_call : evalProgStmt vecMergeSortProg (G + 1) sortSegCall
       ρ₄ = .ok (envExtend ρ₄ "tmp" (.stdVecVal lt'), .fellThrough) :=
-    evalProgStmt_callProg_ok vecMergeSortProg G "tmp" VecMergeRuns.mergeRunsName
+    evalProgStmt_callShare_ok vecMergeSortProg G "tmp" VecMergeRuns.mergeRunsName
       ["a", "tmp", "lo", "mid", "hi"] ρ₄
       [.stdVecVal la, .stdVecVal lt, .u64 lo, .u64 mid₂, .u64 hi₂]
       VecMergeRuns.mergeRunsFunc (.stdVecVal lt') hargs findFunc_mergeRuns hcall
@@ -1382,7 +1382,7 @@ theorem sortSeg_err (F : Nat) (ρ : Env)
             [.stdVecVal la, .stdVecVal lt, .u64 lo, .u64 mid₂,
               .u64 hi₂] = .error e := by
           rw [hcall_fwd]; exact hmr
-        have hstep_call := evalProgStmt_callProg_err vecMergeSortProg
+        have hstep_call := evalProgStmt_callShare_err vecMergeSortProg
           G "tmp" VecMergeRuns.mergeRunsName ["a", "tmp", "lo", "mid", "hi"] ρ₄
           [.stdVecVal la, .stdVecVal lt, .u64 lo, .u64 mid₂, .u64 hi₂]
           VecMergeRuns.mergeRunsFunc e hargs findFunc_mergeRuns hcall
@@ -1409,7 +1409,7 @@ theorem sortSeg_err (F : Nat) (ρ : Env)
             sortSegCall ρ₄ =
             .ok (envExtend ρ₄ "tmp" (.stdVecVal lt₁),
               .fellThrough) :=
-          evalProgStmt_callProg_ok vecMergeSortProg G "tmp"
+          evalProgStmt_callShare_ok vecMergeSortProg G "tmp"
             VecMergeRuns.mergeRunsName ["a", "tmp", "lo", "mid", "hi"] ρ₄
             [.stdVecVal la, .stdVecVal lt, .u64 lo, .u64 mid₂,
               .u64 hi₂]

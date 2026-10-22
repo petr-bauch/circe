@@ -43,6 +43,8 @@ import Circe.Emit.Array
 import Circe.Emit.ArraySort
 import Circe.Emit.Optional
 import Circe.Emit.Box
+import Circe.Emit.VecMergeRuns
+import Circe.Emit.VecMergeSort
 
 /-! ## All-scalar shapes: empty footprint -/
 
@@ -848,6 +850,36 @@ theorem bindMemArgs_vecMergeRuns (la lt : List (BitVec 32))
       emptyMem =
       some ([("a", .stdVecVal la), ("tmp", .stdVecVal lt),
         ("lo", .u64 loB), ("mid", .u64 midB), ("hi", .u64 hiB)],
+        ⟨2, [(1, ⟨1, true,
+          (BitVec.ofNat 32 la.length) :: la⟩),
+          (0, ⟨0, true,
+          (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩,
+        [("a", 1, 1), ("tmp", 0, 0)]) := by
+  rfl
+
+/-- Caller-memory variant of the merge-runs binding: the two snapshot
+    blocks land on fresh addrs above `m₀.next` (so no aliasing with
+    caller blocks); `tmp` first, `a` second. -/
+theorem bindMemArgsOn_vecMergeRuns (la lt : List (BitVec 32))
+    (loB midB hiB : BitVec 64) (m₀ : Mem) :
+    bindMemArgs VecMergeRuns.mergeRunsFunc.args
+      [.stdVecVal la, .stdVecVal lt, .u64 loB, .u64 midB, .u64 hiB]
+      m₀ =
+      some ([("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 loB), ("mid", .u64 midB), ("hi", .u64 hiB)],
+        ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks,
+          m₀.blocks64⟩,
+        [("a", m₀.next + 1, m₀.next + 1),
+          ("tmp", m₀.next, m₀.next)]) := by
+  rfl
+
+/-- Sort entry binding pins two snapshots: `tmp` first (addr `0`),
+    `a` second (addr `1`) — the merge-binding precedent (`tmp`
+    later-listed, binds first; owned bounds bind by value only). -/
+theorem bindMemArgs_vecMergeSort (la lt : List (BitVec 32)) :
+    bindMemArgs VecMergeSort.vecMergeSortFunc.args
+      [.stdVecVal la, .stdVecVal lt] emptyMem =
+      some ([("a", .stdVecVal la), ("tmp", .stdVecVal lt)],
         ⟨2, [(1, ⟨1, true,
           (BitVec.ofNat 32 la.length) :: la⟩),
           (0, ⟨0, true,

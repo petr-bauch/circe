@@ -3077,3 +3077,395 @@ theorem memEvalProgFunc_mergeRuns (prog : Prog) (F : Nat)
             memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hJstmt]
           exact hret
         simp [memEvalProgFunc, hbind, hstmt, hfwd]
+
+/-- General-caller-memory entry for `mergeRunsFunc`: the callee
+    binds its snapshots on fresh addrs above `m₀.next`, threads the
+    caller memory through, and (on the ok leg) pins the `tmp` block
+    and layout for the sharing-call consumer. -/
+theorem memEvalProgFuncOn_mergeRuns (prog : Prog) (F : Nat)
+    (la lt : List (BitVec 32)) (lo mid hi : BitVec 64) (m₀ : Mem)
+    (hlent : lt.length < 2 ^ 64)
+    (hlo_mid : lo.toNat ≤ mid.toNat) (hmid_hi : mid.toNat ≤ hi.toNat)
+    (hmid_le : mid.toNat ≤ la.length) (hhi_le : hi.toNat ≤ la.length)
+    (hlo_lt : lo.toNat ≤ lt.length)
+    (hF : ((mid.toNat - lo.toNat) + (hi.toNat - lo.toNat)) + 1 ≤ F) :
+    ∃ m' π', (memEvalProgFuncOn prog F mergeRunsFunc
+      [.stdVecVal la, .stdVecVal lt, .u64 lo, .u64 mid, .u64 hi] m₀ =
+      match mergeRunsFwd la lt lo.toNat mid.toNat hi.toNat with
+      | .error e => .error e
+      | .ok (.stdVecVal lt') => .ok ((.stdVecVal lt'), m', π')
+      | .ok _ => .error .AssertFail)
+      ∧ (match mergeRunsFwd la lt lo.toNat mid.toNat hi.toNat with
+      | .ok (.stdVecVal lt') =>
+        memFind m' m₀.next =
+          some ⟨m₀.next, true,
+            (BitVec.ofNat 32 lt.length) :: lt'⟩ ∧
+        memFind m' (m₀.next + 1) =
+          some ⟨m₀.next + 1, true,
+            (BitVec.ofNat 32 la.length) :: la⟩ ∧
+        π' = [("a", m₀.next + 1, m₀.next + 1),
+          ("tmp", m₀.next, m₀.next)]
+      | _ => True) := by
+  have hbind : bindMemArgs mergeRunsFunc.args
+      [.stdVecVal la, .stdVecVal lt, .u64 lo, .u64 mid, .u64 hi]
+      m₀ =
+      some ([("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)],
+        ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks,
+          m₀.blocks64⟩,
+        [("a", m₀.next + 1, m₀.next + 1),
+          ("tmp", m₀.next, m₀.next)]) :=
+    bindMemArgsOn_vecMergeRuns la lt lo mid hi m₀
+  have hbody : mergeRunsFunc.body =
+      (.seq (.let_ "i" (.u 64) (.var "lo"))
+        (.seq (.let_ "j" (.u 64) (.var "mid"))
+          (.seq (.let_ "k" (.u 64) (.var "lo"))
+            (.seq mergeRunsMain
+              (.seq mergeRunsDrainI
+                (.seq mergeRunsDrainJ
+                  (.return_ (.var "tmp")))))))) := rfl
+  have hvar_lo : evalExpr (.var "lo")
+      [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)] =
+      .ok (.u64 lo) :=
+    evalExpr_var_hit _ _ _ rfl
+  have hlet_i := memRevLet prog F "i" (.u 64) (.var "lo")
+    [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+      ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+    ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+    [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] (.u64 lo)
+    (by intro se h; cases h) (by intro se h; cases h)
+    (by intro ce h; cases h)
+    (memEvalExpr_var _ _ _ _) hvar_lo
+  have hmid1 : envLookup
+      (envExtend [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "mid" =
+      some (.u64 mid) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("mid" : String) ≠ "i")]
+    rfl
+  have hvar_mid : evalExpr (.var "mid")
+      (envExtend [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) =
+      .ok (.u64 mid) :=
+    evalExpr_var_hit _ _ _ hmid1
+  have hlet_j := memRevLet prog F "j" (.u 64) (.var "mid")
+    (envExtend [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+      ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+      "i" (.u64 lo))
+    ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+    [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] (.u64 mid)
+    (by intro se h; cases h) (by intro se h; cases h)
+    (by intro ce h; cases h)
+    (memEvalExpr_var _ _ _ _) hvar_mid
+  have hlo2 : envLookup
+      (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "lo" =
+      some (.u64 lo) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("lo" : String) ≠ "j"),
+      envExtend_miss _ _ _ _ (by decide : ("lo" : String) ≠ "i")]
+    rfl
+  have hvar_lo2 : evalExpr (.var "lo")
+      (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) =
+      .ok (.u64 lo) :=
+    evalExpr_var_hit _ _ _ hlo2
+  have hlet_k := memRevLet prog F "k" (.u 64) (.var "lo")
+    (envExtend (envExtend
+      [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+      "i" (.u64 lo)) "j" (.u64 mid))
+    ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+    [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] (.u64 lo)
+    (by intro se h; cases h) (by intro se h; cases h)
+    (by intro ce h; cases h)
+    (memEvalExpr_var _ _ _ _) hvar_lo2
+  have hi3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "i" =
+      some (.u64 lo) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("i" : String) ≠ "k"),
+      envExtend_miss _ _ _ _ (by decide : ("i" : String) ≠ "j")]
+    exact envExtend_hit _ _ _
+  have hj3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "j" =
+      some (.u64 mid) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("j" : String) ≠ "k")]
+    exact envExtend_hit _ _ _
+  have hk3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "k" =
+      some (.u64 lo) :=
+    envExtend_hit _ _ _
+  have ha3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "a" =
+      some (.stdVecVal la) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("a" : String) ≠ "k"),
+      envExtend_miss _ _ _ _ (by decide : ("a" : String) ≠ "j"),
+      envExtend_miss _ _ _ _ (by decide : ("a" : String) ≠ "i")]
+    rfl
+  have hmid3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "mid" =
+      some (.u64 mid) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("mid" : String) ≠ "k"),
+      envExtend_miss _ _ _ _ (by decide : ("mid" : String) ≠ "j"),
+      envExtend_miss _ _ _ _ (by decide : ("mid" : String) ≠ "i")]
+    rfl
+  have hhi3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "hi" =
+      some (.u64 hi) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("hi" : String) ≠ "k"),
+      envExtend_miss _ _ _ _ (by decide : ("hi" : String) ≠ "j"),
+      envExtend_miss _ _ _ _ (by decide : ("hi" : String) ≠ "i")]
+    rfl
+  have htmp3 : envLookup
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo)) "tmp" =
+      some (.stdVecVal lt) := by
+    rw [envExtend_miss _ _ _ _ (by decide : ("tmp" : String) ≠ "k"),
+      envExtend_miss _ _ _ _ (by decide : ("tmp" : String) ≠ "j"),
+      envExtend_miss _ _ _ _ (by decide : ("tmp" : String) ≠ "i")]
+    rfl
+  have hlay_a : layoutLookup [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] "a" =
+      some (m₀.next + 1, m₀.next + 1) := by
+    simp [layoutLookup]
+  have hlay_tmp : layoutLookup [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] "tmp" =
+      some (m₀.next, m₀.next) := by
+    simp [layoutLookup]
+  have hmem_a : memFind ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩ (m₀.next + 1) =
+      some ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩ :=
+    memFind_cons_hit _ _ _ _ _
+  have hmem_b : memFind ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩ m₀.next =
+      some ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩ := by
+    rw [memFind_cons_miss _ _ _ _ _ _ (by omega : m₀.next ≠ m₀.next + 1)]
+    exact memFind_cons_hit _ _ _ _ _
+  have hnB0 : BitVec.ofNat 32 lt.length =
+      BitVec.ofNat 32 lt.length := rfl
+  match hmain : mergeRunsMainFwd la lt
+      ((mid.toNat - lo.toNat) + (hi.toNat - mid.toNat))
+      lo.toNat mid.toNat lo.toNat mid.toNat hi.toNat with
+  | .error e =>
+    have hM := memRunsMain_err prog F
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo))
+      ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+      [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]
+      la lt mid hi lo mid lo e
+      (m₀.next + 1) m₀.next (m₀.next + 1) m₀.next (BitVec.ofNat 32 la.length) (BitVec.ofNat 32 lt.length)
+      (by omega : m₀.next + 1 ≠ m₀.next)
+      hlay_a hlay_tmp hmem_a hmem_b hnB0 hi3 hj3 hk3 ha3 hmid3 hhi3 htmp3
+      hlent hmid_le hhi_le (by omega) (by simpa using hmain)
+    have hfwd : mergeRunsFwd la lt lo.toNat mid.toNat hi.toNat =
+        .error e := by
+      simp [mergeRunsFwd, hmain]
+    have hstmt : memEvalProgStmt prog F mergeRunsFunc.body
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+        [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] =
+        .error e := by
+      rw [hbody,
+        memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_i,
+        memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_j,
+        memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_k,
+        memEvalProgStmt_seq_err prog F _ _ _ _ _ _ hM]
+    exact ⟨m₀, [("a", m₀.next + 1, m₀.next + 1),
+      ("tmp", m₀.next, m₀.next)],
+      by simp [hfwd, memEvalProgFuncOn, hbind, hstmt], by simp [hfwd]⟩
+  | .ok (i₁, j₁, k₁, lt₁) =>
+    obtain ⟨hi₁, hj₁, hk₁, hlen₁, hloi₁, hloj₁⟩ :=
+      mergeRunsMainFwd_le la _ _ _ _ _ _ _ _ _ _ _
+        hlo_mid hmid_hi hlo_lt hmain
+    have hleno₁ : lt₁.length < 2 ^ 64 := by
+      rw [hlen₁]; exact hlent
+    have hk₁' : k₁ ≤ lt₁.length := by
+      rw [hlen₁]; exact hk₁
+    have ti₁ : (BitVec.ofNat 64 i₁).toNat = i₁ :=
+      bv64_toNat_ofNat i₁ (Nat.lt_of_le_of_lt hi₁ (by omega))
+    have tj₁ : (BitVec.ofNat 64 j₁).toNat = j₁ :=
+      bv64_toNat_ofNat j₁ (Nat.lt_of_le_of_lt hj₁ (by omega))
+    have tk₁ : (BitVec.ofNat 64 k₁).toNat = k₁ :=
+      bv64_toNat_ofNat k₁ (Nat.lt_of_le_of_lt hk₁' hleno₁)
+    have hM := memRunsMain_ok prog F
+      (envExtend (envExtend (envExtend
+        [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+          ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+        "i" (.u64 lo)) "j" (.u64 mid)) "k" (.u64 lo))
+      ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+      [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]
+      la lt mid hi lo mid lo i₁ j₁ k₁ lt₁
+      (m₀.next + 1) m₀.next (m₀.next + 1) m₀.next (BitVec.ofNat 32 la.length) (BitVec.ofNat 32 lt.length)
+      (by omega : m₀.next + 1 ≠ m₀.next)
+      hlay_a hlay_tmp hmem_a hmem_b hnB0 hi3 hj3 hk3 ha3 hmid3 hhi3 htmp3
+      hlent hmid_le hhi_le (by omega) (by simpa using hmain)
+    obtain ⟨ρ₄, m₄, hMstmt, htmp₄, hi₄, hj₄, hk₄, ha₄, hmid₄, hhi₄,
+      hmem_a₄, hmem_b₄, hnB₄⟩ := hM
+    match hdrainI : mergeRunsDrainIFwd la lt₁ (mid.toNat - i₁)
+        i₁ k₁ mid.toNat with
+    | .error e =>
+      have hdrainI' : mergeRunsDrainIFwd la lt₁
+          (mid.toNat - (BitVec.ofNat 64 i₁).toNat)
+          (BitVec.ofNat 64 i₁).toNat (BitVec.ofNat 64 k₁).toNat
+          mid.toNat = .error e := by
+        rw [ti₁, tk₁]; exact hdrainI
+      have hI := memRunsDrainI_err prog F ρ₄ m₄
+        [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]
+        la lt₁ mid (BitVec.ofNat 64 i₁)
+        (BitVec.ofNat 64 k₁) e
+        (m₀.next + 1) m₀.next (m₀.next + 1) m₀.next (BitVec.ofNat 32 la.length) (BitVec.ofNat 32 lt.length)
+        (by omega : m₀.next + 1 ≠ m₀.next)
+        hlay_a hlay_tmp hmem_a₄ hmem_b₄ hnB₄ hi₄ hk₄ ha₄ hmid₄ htmp₄
+        hleno₁ hmid_le (by rw [ti₁]; omega) hdrainI'
+      have hfwd : mergeRunsFwd la lt lo.toNat mid.toNat hi.toNat =
+          .error e := by
+        simp [mergeRunsFwd, hmain, hdrainI]
+      have hstmt : memEvalProgStmt prog F mergeRunsFunc.body
+          [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+            ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+          ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+          [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] =
+          .error e := by
+        rw [hbody,
+          memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_i,
+          memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_j,
+          memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_k,
+          memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hMstmt,
+          memEvalProgStmt_seq_err prog F _ _ _ _ _ _ hI]
+      exact ⟨m₀, [("a", m₀.next + 1, m₀.next + 1),
+      ("tmp", m₀.next, m₀.next)],
+      by simp [hfwd, memEvalProgFuncOn, hbind, hstmt], by simp [hfwd]⟩
+    | .ok (i₂, k₂, lt₂) =>
+      obtain ⟨hi₂, hk₂, hlen₂, hloi₂⟩ :=
+        mergeRunsDrainIFwd_le la _ _ _ _ _ _ _ _ hi₁ hk₁' hdrainI
+      have hdrainI' : mergeRunsDrainIFwd la lt₁
+          (mid.toNat - (BitVec.ofNat 64 i₁).toNat)
+          (BitVec.ofNat 64 i₁).toNat (BitVec.ofNat 64 k₁).toNat
+          mid.toNat = .ok (i₂, k₂, lt₂) := by
+        rw [ti₁, tk₁]; exact hdrainI
+      have hleno₂ : lt₂.length < 2 ^ 64 := by
+        rw [hlen₂, hlen₁]; exact hlent
+      have hI := memRunsDrainI_ok prog F ρ₄ m₄
+        [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]
+        la lt₁ mid hi (BitVec.ofNat 64 i₁)
+        (BitVec.ofNat 64 j₁) (BitVec.ofNat 64 k₁) i₂ k₂ lt₂
+        (m₀.next + 1) m₀.next (m₀.next + 1) m₀.next (BitVec.ofNat 32 la.length) (BitVec.ofNat 32 lt.length)
+        (by omega : m₀.next + 1 ≠ m₀.next)
+        hlay_a hlay_tmp hmem_a₄ hmem_b₄ hnB₄ hi₄ hk₄ ha₄ hmid₄ htmp₄ hj₄ hhi₄
+        hleno₁ hmid_le (by rw [ti₁]; omega) hdrainI'
+      have hk₂' : k₂ ≤ lt₂.length := by
+        rw [hlen₂]; exact hk₂
+      have tk₂ : (BitVec.ofNat 64 k₂).toNat = k₂ :=
+        bv64_toNat_ofNat k₂ (Nat.lt_of_le_of_lt hk₂' hleno₂)
+      obtain ⟨ρ₅, m₅, hIstmt, htmp₅, hi₅, hk₅, ha₅, hmid₅, hj₅, hhi₅,
+        hmem_a₅, hmem_b₅, hnB₅⟩ := hI
+      match hdrainJ : mergeRunsDrainJFwd la lt₂ (hi.toNat - j₁)
+          j₁ k₂ hi.toNat with
+      | .error e =>
+        have hdrainJ' : mergeRunsDrainJFwd la lt₂
+            (hi.toNat - (BitVec.ofNat 64 j₁).toNat)
+            (BitVec.ofNat 64 j₁).toNat (BitVec.ofNat 64 k₂).toNat
+            hi.toNat = .error e := by
+          rw [tj₁, tk₂]; exact hdrainJ
+        have hJ := memRunsDrainJ_err prog F ρ₅ m₅
+          [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]
+          la lt₂ hi (BitVec.ofNat 64 j₁)
+          (BitVec.ofNat 64 k₂) e
+          (m₀.next + 1) m₀.next (m₀.next + 1) m₀.next (BitVec.ofNat 32 la.length) (BitVec.ofNat 32 lt.length)
+          (by omega : m₀.next + 1 ≠ m₀.next)
+          hlay_a hlay_tmp hmem_a₅ hmem_b₅ hnB₅ hj₅ hk₅ ha₅ hhi₅ htmp₅
+          hleno₂ hhi_le (by rw [tj₁]; omega) hdrainJ'
+        have hfwd : mergeRunsFwd la lt lo.toNat mid.toNat hi.toNat =
+            .error e := by
+          simp [mergeRunsFwd, hmain, hdrainI, hdrainJ]
+        have hstmt : memEvalProgStmt prog F mergeRunsFunc.body
+            [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+              ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+            ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+            [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] =
+            .error e := by
+          rw [hbody,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_i,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_j,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_k,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hMstmt,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hIstmt,
+            memEvalProgStmt_seq_err prog F _ _ _ _ _ _ hJ]
+        exact ⟨m₀, [("a", m₀.next + 1, m₀.next + 1),
+      ("tmp", m₀.next, m₀.next)],
+      by simp [hfwd, memEvalProgFuncOn, hbind, hstmt], by simp [hfwd]⟩
+      | .ok (j₃, k₃, lt₃) =>
+        obtain ⟨hj₃, hk₃, hlen₃, hloj₃⟩ :=
+          mergeRunsDrainJFwd_le la _ _ _ _ _ _ _ _ hj₁ hk₂' hdrainJ
+        have hdrainJ' : mergeRunsDrainJFwd la lt₂
+            (hi.toNat - (BitVec.ofNat 64 j₁).toNat)
+            (BitVec.ofNat 64 j₁).toNat (BitVec.ofNat 64 k₂).toNat
+            hi.toNat = .ok (j₃, k₃, lt₃) := by
+          rw [tj₁, tk₂]; exact hdrainJ
+        have hleno₃ : lt₃.length < 2 ^ 64 := by
+          rw [hlen₃, hlen₂, hlen₁]; exact hlent
+        have hJ := memRunsDrainJ_ok prog F ρ₅ m₅
+          [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]
+          la lt₂ hi (BitVec.ofNat 64 j₁)
+          (BitVec.ofNat 64 k₂) j₃ k₃ lt₃
+          (m₀.next + 1) m₀.next (m₀.next + 1) m₀.next (BitVec.ofNat 32 la.length) (BitVec.ofNat 32 lt.length)
+          (by omega : m₀.next + 1 ≠ m₀.next)
+          hlay_a hlay_tmp hmem_a₅ hmem_b₅ hnB₅ hj₅ hk₅ ha₅ hhi₅ htmp₅
+          hleno₂ hhi_le (by rw [tj₁]; omega) hdrainJ'
+        obtain ⟨ρ₆, m₆, hJstmt, htmp₆, hj₆, hk₆, ha₆, hhi₆,
+          hmem_a₆, hmem_b₆, hnB₆⟩ := hJ
+        have hmem_ret : memEvalExpr (.var "tmp") ρ₆ m₆
+            [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] = .ok (.stdVecVal lt₃) :=
+          (memEvalExpr_var _ _ _ _).trans
+            (evalExpr_var_hit _ _ _ htmp₆)
+        have hret : memEvalProgStmt prog F (.return_ (.var "tmp"))
+            ρ₆ m₆ [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] =
+            .ok ((ρ₆, m₆, [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]),
+              .returned (.stdVecVal lt₃)) :=
+          memEvalProgStmt_return prog F _ _ _ _ _ hmem_ret
+        have hfwd : mergeRunsFwd la lt lo.toNat mid.toNat hi.toNat =
+            .ok (.stdVecVal lt₃) := by
+          simp [mergeRunsFwd, hmain, hdrainI, hdrainJ]
+        have hstmt : memEvalProgStmt prog F mergeRunsFunc.body
+            [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+              ("lo", .u64 lo), ("mid", .u64 mid), ("hi", .u64 hi)]
+            ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
+            [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] =
+            .ok ((ρ₆, m₆, [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)]),
+              .returned (.stdVecVal lt₃)) := by
+          rw [hbody,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_i,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_j,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hlet_k,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hMstmt,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hIstmt,
+            memEvalProgStmt_seq_fallthrough prog F _ _ _ _ _ _ _ _ hJstmt]
+          exact hret
+        exact ⟨m₆, [("a", m₀.next + 1, m₀.next + 1),
+          ("tmp", m₀.next, m₀.next)],
+          by simp [hfwd, memEvalProgFuncOn, hbind, hstmt],
+          by simp only [hfwd]; exact ⟨hmem_b₆, hmem_a₆, trivial⟩⟩

@@ -110,6 +110,7 @@ def beqStmt : CStmt → CStmt → Bool
   | .call f a, .call f' a' => f == f' && a == a'
   | .callRet d f a, .callRet d' f' a' => d == d' && f == f' && a == a'
   | .callProg d f a, .callProg d' f' a' => d == d' && f == f' && a == a'
+  | .callShare d f a, .callShare d' f' a' => d == d' && f == f' && a == a'
   | .return_ v, .return_ v' => decide (v = v')
   | _, _ => false
 
@@ -971,7 +972,7 @@ def matchFrag : Func → Option FragKind
       (.ult (.var "lo") (.var "n")) (.seq (.assign "mid" (.uadd (.var "lo") (.var "width"))) (.seq
       (.if_ (.ult (.var "n") (.var "mid")) (.assign "mid" (.var "n")) .skip) (.seq (.assign "hi"
       (.uadd (.uadd (.var "lo") (.var "width")) (.var "width"))) (.seq (.if_ (.ult (.var "n") (.var
-      "hi")) (.assign "hi" (.var "n")) .skip) (.seq (.callProg "tmp"
+      "hi")) (.assign "hi" (.var "n")) .skip) (.seq (.callShare "tmp"
       "_Z10merge_runsRKSt6vectorIiSaIiEERS1_mmm" ["a", "tmp", "lo", "mid", "hi"]) (.seq (.assign "t"
       (.var "lo")) (.seq (.while_ (.ult (.var "t") (.var "hi")) (.seq (.if_ (.ult (.var "t")
       (.stdVecLen "tmp")) (.vecSet "a" (.var "t") (.stdVecAt "tmp" (.var "t"))) .fail) (.assign "t"
