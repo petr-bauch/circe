@@ -70,3 +70,89 @@ elab "cir_fold_end" "(" dropEq:ident "," hget:ident ")" : tactic => do
       ("simp [" ++ hget.getId.toString ++ "]")
     | throwError "cir_fold_end: could not parse simp step"
   Lean.Elab.Tactic.evalTactic simpStx
+
+/-- T2 fuel-split step (audit #5): the `fuel_step_down` prefix shared
+    verbatim by the 10 value+mem loop sites (M2c/M3c/M4c). Emits the
+    N5a-mandated `have hF'` side goal (`omega`) then the `obtain`
+    split. `F`/`G` are idents (loop fuel, forward fuel); `M` is the
+    measure term (`l.length - (i + 1)` shape, source text reused).
+    Usage: `cir_fuel_step (F, G, l.length - (i + 1))`.
+    (Reparse, not splice: introduced `hF'`/`G'`/`hG'` must be
+    use-site accessible — `cir_fold_end` precedent above.) -/
+elab "cir_fuel_step" "(" F:ident "," G:ident "," M:term ")" : tactic => do
+  let env ← Lean.MonadEnv.getEnv
+  let mStr := M.raw.getSubstring?.map Substring.Raw.toString |>.getD ""
+  if mStr.isEmpty then throwError "cir_fuel_step: cannot recover measure source text"
+  let fStr := F.getId.toString
+  let gStr := G.getId.toString
+  let .ok haveStx := Lean.Parser.runParserCategory env `tactic
+      s!"have hF' : {mStr} ≤ {fStr} := by omega"
+    | throwError "cir_fuel_step: could not parse have step"
+  Lean.Elab.Tactic.evalTactic haveStx
+  let .ok obtainStx := Lean.Parser.runParserCategory env `tactic
+      s!"obtain ⟨{gStr}', rfl, h{gStr}'⟩ := fuel_step_down (F := {gStr}) ({mStr}) (by omega)"
+    | throwError "cir_fuel_step: could not parse obtain step"
+  Lean.Elab.Tactic.evalTactic obtainStx
+
+/-- T2 program-loop unfold (audit #4): the `have hwhile` step shared by
+    the program-level loops (R/S/T/M1/M2c/M3c/M4c, value + mem). The
+    rule application is `RULE PROG (F) _..._ hg` — concrete program and
+    fuel, underscores elsewhere — so `LOOP`/`PROG`/`hg` are idents
+    while `F` and `hbody` are terms (`F` is usually `F`, once `G + 1`;
+    `hbody` is once a projection, `hstep.1`). Value vs mem
+    family is read off the goal head (`evalProgStmt` /
+    `memEvalProgStmt`); anything else errors loudly.
+    Usage: `cir_unfold_prog (selectionSortLoop, vecSelectionSortProg, F, hguardT, hbody)`.
+    (Reparse: `simp only` arg kinds reject spliced idents.) -/
+elab "cir_unfold_prog" "(" loopDef:ident "," progArg:ident "," fuel:term ","
+    hguard:ident "," hbody:term ")" : tactic => do
+  let tgt ← Lean.Elab.Tactic.getMainTarget
+  let tgt := tgt.consumeMData
+  let fnName? : Option Lean.Name := do
+    guard (tgt.getAppFn.constName? == some `Eq)
+    let args := tgt.getAppArgs
+    guard (args.size == 3)
+    args[1]!.getAppFn.constName?
+  let lStr := loopDef.getId.toString
+  let pStr := progArg.getId.toString
+  let env ← Lean.MonadEnv.getEnv
+  let fStr := fuel.raw.getSubstring?.map Substring.Raw.toString |>.getD ""
+  if fStr.isEmpty then throwError "cir_unfold_prog: cannot recover fuel source text"
+  let hgStr := hguard.getId.toString
+  let hbStr := hbody.raw.getSubstring?.map Substring.Raw.toString |>.getD ""
+  if hbStr.isEmpty then throwError "cir_unfold_prog: cannot recover body source text"
+  let ruleApp : String ← match fnName? with
+    | some `evalProgStmt =>
+      pure s!"evalProgStmt_while_true {pStr} ({fStr}) _ _ _ {hgStr}"
+    | some `memEvalProgStmt =>
+      pure s!"memEvalProgStmt_while_true {pStr} ({fStr}) _ _ _ _ _ {hgStr}"
+    | _ => throwError "cir_unfold_prog: goal is not a program-level while equation"
+  let .ok stx := Lean.Parser.runParserCategory env `tactic
+      s!"simp only [{lStr}, {ruleApp}, {hbStr}]"
+    | throwError "cir_unfold_prog: could not parse simp step"
+  Lean.Elab.Tactic.evalTactic stx
+
+/-- T2 leaf-loop unfold (audit #4): the fuel-level `have hwhile` step
+    (`simp [LOOP, evalStmtFuel, evalStmtSuccHandler, evalStmtWith, hg,
+    hbody]`, ~17 ArraySort/Vec64/Span/VecAtSum/M4c-min_index sites).
+    Goal must be an `evalStmtFuel` equation; the mem fuel-level rule
+    (`memEvalStmtFuel_while_true`, 2 M4c sites, concrete-arg form)
+    stays prose until a third consumer earns its branch.
+    Usage: `cir_unfold_leaf (minIndexLoop, hguardT, hbody)`. -/
+elab "cir_unfold_leaf" "(" loopDef:ident "," hguard:ident "," hbody:term ")" : tactic => do
+  let tgt ← Lean.Elab.Tactic.getMainTarget
+  let tgt := tgt.consumeMData
+  let fnName? : Option Lean.Name := do
+    guard (tgt.getAppFn.constName? == some `Eq)
+    let args := tgt.getAppArgs
+    guard (args.size == 3)
+    args[1]!.getAppFn.constName?
+  if fnName? != some `evalStmtFuel then
+    throwError "cir_unfold_leaf: goal is not a fuel-level while equation"
+  let env ← Lean.MonadEnv.getEnv
+  let hbodyStr := hbody.raw.getSubstring?.map Substring.Raw.toString |>.getD ""
+  if hbodyStr.isEmpty then throwError "cir_unfold_leaf: cannot recover body source text"
+  let cmd := s!"simp [{loopDef.getId.toString}, evalStmtFuel, evalStmtSuccHandler, evalStmtWith, {hguard.getId.toString}, {hbodyStr}]"
+  let .ok stx := Lean.Parser.runParserCategory env `tactic cmd
+    | throwError "cir_unfold_leaf: could not parse simp step"
+  Lean.Elab.Tactic.evalTactic stx

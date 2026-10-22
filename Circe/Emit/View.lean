@@ -309,16 +309,14 @@ theorem viewWhile_correct (l : List (BitVec 8))
           hget hc
         have hstep : evalStmtFuel (F + 1) viewWhile (mkViewEnv l k acc)
             = .error e := by
-          simp [viewWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-            hcond, hbody]
+          cir_unfold_leaf (viewWhile, hcond, hbody)
         rw [hstep, hunfold, hc]
       | ok a =>
         have hbody := viewBody_step_ok F l k acc l[k] a hlt hk64 hl64
           hget hc
         have hstep : evalStmtFuel (F + 1) viewWhile (mkViewEnv l k acc)
             = evalStmtFuel F viewWhile (mkViewEnv l (k + 1) a) := by
-          simp [viewWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-            hcond, hbody]
+          cir_unfold_leaf (viewWhile, hcond, hbody)
         rw [hstep, hunfold, hc]
         exact ih (k + 1) a (by omega) (by omega)
     · have hkk : k = l.length := by omega
@@ -333,8 +331,7 @@ theorem viewWhile_correct (l : List (BitVec 8))
       have hnone : l[l.length]? = none :=
         List.getElem?_eq_none (Nat.le_refl _)
       have hnil : viewFold [] acc = .ok acc := rfl
-      simp [viewWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcond, hnil]
+      cir_unfold_leaf (viewWhile, hcond, hnil)
 
 /-- `emit_correct` for `view_sum`, fuel-generalized (the S3a
     `evalFuncFuel_skip` shape; the fuel hypothesis is the slice's

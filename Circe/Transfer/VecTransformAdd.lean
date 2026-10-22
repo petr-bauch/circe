@@ -353,9 +353,7 @@ theorem memTransformLoop_ok (prog : Prog) (F G : Nat)
         rw [hag]; exact hval
       obtain ⟨z, hz⟩ := hread_lo i hlt
       obtain ⟨x, y, hx, hy⟩ := hadd i (Nat.le_refl _) hlt
-      have hF' : li.length - (i + 1) ≤ F := by omega
-      obtain ⟨G', rfl, hG'⟩ :=
-        fuel_step_down (F := G) (li.length - (i + 1)) (by omega)
+      cir_fuel_step (F, G, li.length - (i + 1))
       have hlo64' : (lo.set i y).length < 2 ^ 64 := by
         rw [List.length_set]; exact hlo64
       have hread_lo' : ∀ p, p < li.length →
@@ -398,9 +396,7 @@ theorem memTransformLoop_ok (prog : Prog) (F G : Nat)
       have hwhile : memEvalProgStmt prog (F + 1) vecTransformLoop
           ρ m π =
           memEvalProgStmt prog F vecTransformLoop ρ₁ m₁ π := by
-        simp only [vecTransformLoop,
-          memEvalProgStmt_while_true prog F _ _ _ _ _ hguardT,
-          hbody]
+        cir_unfold_prog (vecTransformLoop, prog, F, hguardT, hbody)
       rw [hwhile]
       exact hloop
     · have him : i = li.length := by omega
@@ -559,13 +555,10 @@ theorem memTransformLoop_err_short (prog : Prog) (F G : Nat)
           .error .AssertFail := by
         rw [hbody]
         exact memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hif
-      simp only [vecTransformLoop,
-        memEvalProgStmt_while_true prog F _ _ _ _ _ hguardT, hbodyval]
+      cir_unfold_prog (vecTransformLoop, prog, F, hguardT, hbodyval)
     · have hlt : i < j := by omega
       have hlt_len : i < li.length := by omega
-      have hF' : j - (i + 1) + 1 ≤ F := by omega
-      obtain ⟨G', rfl, hG'⟩ :=
-        fuel_step_down (F := G) (j - (i + 1) + 1) (by omega)
+      cir_fuel_step (F, G, j - (i + 1) + 1)
       obtain ⟨z, hz⟩ := hreads i (Nat.le_refl _) hlt
       obtain ⟨x, y, hx, hy⟩ := hadds i (Nat.le_refl _) hlt
       have hlo64' : (lo.set i y).length < 2 ^ 64 := by
@@ -637,9 +630,7 @@ theorem memTransformLoop_err_short (prog : Prog) (F G : Nat)
       have hwhile : memEvalProgStmt prog (F + 1) vecTransformLoop
           ρ m π =
           memEvalProgStmt prog F vecTransformLoop ρ₁ m₁ π := by
-        simp only [vecTransformLoop,
-          memEvalProgStmt_while_true prog F _ _ _ _ _ hguardT,
-          hbodyval]
+        cir_unfold_prog (vecTransformLoop, prog, F, hguardT, hbodyval)
       rw [hwhile]
       exact hloop
 
@@ -804,14 +795,10 @@ theorem memTransformLoop_err_add (prog : Prog) (F G : Nat)
           .error e := by
         rw [hbody]
         exact memEvalProgStmt_seq_err _ _ _ _ _ _ _ _ hif
-      simp only [vecTransformLoop,
-        memEvalProgStmt_while_true prog F _ _ _ _ _ hguardLoop,
-        hbodyval]
+      cir_unfold_prog (vecTransformLoop, prog, F, hguardLoop, hbodyval)
     · have hlt : i < j := by omega
       have hlt_len : i < li.length := by omega
-      have hF' : j - (i + 1) + 1 ≤ F := by omega
-      obtain ⟨G', rfl, hG'⟩ :=
-        fuel_step_down (F := G) (j - (i + 1) + 1) (by omega)
+      cir_fuel_step (F, G, j - (i + 1) + 1)
       obtain ⟨z, hz⟩ := hreads i (Nat.le_refl _) (by omega)
       obtain ⟨x, y, hx, hy⟩ := hadds i (Nat.le_refl _) hlt
       have hlo64' : (lo.set i y).length < 2 ^ 64 := by
@@ -879,9 +866,7 @@ theorem memTransformLoop_err_add (prog : Prog) (F G : Nat)
       have hwhile : memEvalProgStmt prog (F + 1) vecTransformLoop
           ρ m π =
           memEvalProgStmt prog F vecTransformLoop ρ₁ m₁ π := by
-        simp only [vecTransformLoop,
-          memEvalProgStmt_while_true prog F _ _ _ _ _ hguardT,
-          hbodyval]
+        cir_unfold_prog (vecTransformLoop, prog, F, hguardT, hbodyval)
       rw [hwhile]
       exact hloop
 

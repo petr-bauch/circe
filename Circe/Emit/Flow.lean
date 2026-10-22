@@ -4,6 +4,7 @@ Circe.Emit.Flow — S3a control flow: `nested_sum`, `skip_sum`
 -/
 import Circe.Emit.Fragment
 import Circe.Emit.FlowFwd
+import Circe.LeafTactics
 
 /-! ## S3a: control-flow hardening (nested loops, break/continue,
 early return, switch-as-if-chain) -/
@@ -254,8 +255,7 @@ theorem nestedInner_correct (nv mv : BitVec 32)
             (mkNestedEnv nv mv k acc t)
           = evalStmtFuel F nestedInner
             (mkNestedEnv nv mv k (acc + BitVec.ofNat 32 (k * t)) (t + 1)) := by
-        simp [nestedInner, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (nestedInner, hcond, hbody)
       rw [hstep]
       have hrec := ih (t + 1) (acc + BitVec.ofNat 32 (k * t))
         (by omega) (by omega) (by omega)
@@ -361,8 +361,7 @@ theorem nestedOuter_correct (nv mv : BitVec 32)
             (mkNestedEnv nv mv k acc 0)
           = evalStmtFuel F nestedOuter
             (mkNestedEnv nv mv (k + 1) (acc + rowU32 k mv.toNat) 0) := by
-        simp [nestedOuter, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (nestedOuter, hcond, hbody)
       rw [hstep]
       have hsplit : (nv.toNat - k) * (mv.toNat + 1)
           = (nv.toNat - (k + 1)) * (mv.toNat + 1) + (mv.toNat + 1) := by
@@ -655,8 +654,7 @@ theorem skipWhile_correct (nv : BitVec 32)
         have hbody := skipBody_continue F nv acc
         have hstep : evalStmtFuel (F + 1) skipWhile (mkSkipEnv nv 2 acc)
             = evalStmtFuel F skipWhile (mkSkipEnv nv 3 acc) := by
-          simp [skipWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-            hcond, hbody]
+          cir_unfold_leaf (skipWhile, hcond, hbody)
         rw [hstep]
         have hrec := ih 3 acc (by omega) (by omega)
         rw [hrec]
@@ -684,8 +682,7 @@ theorem skipWhile_correct (nv : BitVec 32)
           have hstep : evalStmtFuel (F + 1) skipWhile (mkSkipEnv nv k acc)
               = evalStmtFuel F skipWhile
                 (mkSkipEnv nv (k + 1) (acc + BitVec.ofNat 32 k)) := by
-            simp [skipWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-              hcond, hbody]
+            cir_unfold_leaf (skipWhile, hcond, hbody)
           rw [hstep]
           have hrec := ih (k + 1) (acc + BitVec.ofNat 32 k)
             (by omega) (by omega)
@@ -1000,8 +997,7 @@ theorem findWhile_some (l : List (BitVec 32)) (nv kv : BitVec 32)
                 (mkFindEnv l nv kv t)
               = .ok (mkFindEnv l nv kv t,
                 .returned (.u32 (BitVec.ofNat 32 t))) := by
-            simp [findWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-              hcond, hbody]
+            cir_unfold_leaf (findWhile, hcond, hbody)
           rw [← hjt]
           exact hstep
         · have hmiss : ∀ y, l[t]? = some y → y ≠ kv := by
@@ -1015,8 +1011,7 @@ theorem findWhile_some (l : List (BitVec 32)) (nv kv : BitVec 32)
           have hstep : evalStmtFuel (F + 1) findWhile
                 (mkFindEnv l nv kv t)
               = evalStmtFuel F findWhile (mkFindEnv l nv kv (t + 1)) := by
-            simp [findWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-              hcond, hbody]
+            cir_unfold_leaf (findWhile, hcond, hbody)
           rw [hstep]
           rw [htail] at hfind
           exact ih (t + 1) j (by omega) (by omega) hfind
@@ -1072,8 +1067,7 @@ theorem findWhile_none (l : List (BitVec 32)) (nv kv : BitVec 32)
         have hstep : evalStmtFuel (F + 1) findWhile
               (mkFindEnv l nv kv t)
             = evalStmtFuel F findWhile (mkFindEnv l nv kv (t + 1)) := by
-          simp [findWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-            hcond, hbody]
+          cir_unfold_leaf (findWhile, hcond, hbody)
         rw [hstep]
         rw [htail] at hfind
         exact ih (t + 1) (by omega) (by omega) hfind
@@ -1086,8 +1080,7 @@ theorem findWhile_none (l : List (BitVec 32)) (nv kv : BitVec 32)
           simpa using (findCond_eval l nv kv nv.toNat h32n)
         have htrue : (decide (nv.toNat ≤ l.length)) = true := by
           simp [hnlen]
-        simp [findWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, htrue]
+        cir_unfold_leaf (findWhile, hcond, htrue)
       · have htl2 : t = l.length := by omega
         subst htl2
         have hlt' : l.length < nv.toNat := by omega

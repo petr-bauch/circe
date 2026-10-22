@@ -369,8 +369,7 @@ theorem vec2FillWhile_correct (blkA blkB : Vec32) (nv : BitVec 32)
           = evalStmtFuel F vec2FillWhile
             (mkVec2Env ⟨blkA.val.set k (BitVec.ofNat 32 k), false⟩ blkB nv
               (BitVec.ofNat 32 (k + 1)) jv kv sv) := by
-        simp [vec2FillWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (vec2FillWhile, hcond, hbody)
       rw [hstep]
       have hlenMid : (⟨blkA.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
           = nv.toNat := by
@@ -461,8 +460,7 @@ theorem vec2CopyWhile_correct (blkA blkB : Vec32) (nv : BitVec 32)
             (mkVec2Env blkA
               ⟨blkB.val.set k (BitVec.ofNat 32 k), false⟩ nv iv
               (BitVec.ofNat 32 (k + 1)) kv sv) := by
-        simp [vec2CopyWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (vec2CopyWhile, hcond, hbody)
       rw [hstep]
       have hlenMid : (⟨blkB.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
           = nv.toNat := by
@@ -548,8 +546,7 @@ theorem vec2SumWhile_correct (blkA blkB : Vec32) (nv : BitVec 32)
           = evalStmtFuel F vec2SumWhile
             (mkVec2Env blkA blkB nv iv jv (BitVec.ofNat 32 (k + 1))
               (sv + BitVec.ofNat 32 k)) := by
-        simp [vec2SumWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (vec2SumWhile, hcond, hbody)
       rw [hstep]
       exact ih (k + 1) (sv + BitVec.ofNat 32 k) sout (by omega)
         (fun j hjlo hjhi => hget j (by omega) hjhi) hsum (by omega)

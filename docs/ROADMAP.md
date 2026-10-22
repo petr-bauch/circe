@@ -71,10 +71,12 @@ Proposed (toward the platform goal — for approval, in order):
   scan-and-swap entry, calls in the loop body via the M1c kit) —
   the second vector sort (quicksort stays out: the gate rejects
   recursion) and the fourth loop-shape data point. One admission
-  pin. WIP (M4a admission).
+  pin. DONE (`49c6d02`, gate 445/445).
 - P3-T2: rule-of-three harvest — fuel-arithmetic (audit #5) and
   loop-unfold tactics plus the transfer-leg audit (#4), converting
   the R/S/T/M3/M4 sites. Proof-only, no admission.
+  DONE (gate 445/445; `cir_fuel_step` ×10, `cir_unfold_prog` ×63,
+  `cir_unfold_leaf` ×69; mem fuel-level branch deferred — 2 sites).
 - P2-M5: vector sortedness/permutation specs (N9-tier, ported
   from array insertion sort to the partition/merge/selection
   kernels). Proof-only, no admission.

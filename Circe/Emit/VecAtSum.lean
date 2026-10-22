@@ -143,16 +143,14 @@ theorem vecAtSumWhile_correct (l : List (BitVec 32))
           hget hc
         have hstep : evalStmtFuel (F + 1) vecAtSumWhile (mkStdVecEnv l k acc)
             = .error e := by
-          simp [vecAtSumWhile, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecAtSumWhile, hcond, hbody)
         rw [hstep, hunfold, hc]
       | ok a =>
         have hbody := vecAtSumBody_step_ok F l k acc l[k] a hlt hk64 hl64
           hget hc
         have hstep : evalStmtFuel (F + 1) vecAtSumWhile (mkStdVecEnv l k acc)
             = evalStmtFuel F vecAtSumWhile (mkStdVecEnv l (k + 1) a) := by
-          simp [vecAtSumWhile, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecAtSumWhile, hcond, hbody)
         rw [hstep, hunfold, hc]
         exact ih (k + 1) a (by omega) (by omega)
     · have hkk : k = l.length := by omega
@@ -165,8 +163,7 @@ theorem vecAtSumWhile_correct (l : List (BitVec 32))
         have h := stdVecCond_eval l l.length acc hk64 hl64
         rwa [hfalse] at h
       have hnil : stdVecFold [] acc = .ok acc := rfl
-      simp [vecAtSumWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcond, hnil]
+      cir_unfold_leaf (vecAtSumWhile, hcond, hnil)
 
 /-- `emit_correct` for `vec_at_sum`, fuel-generalized (the S3a shape;
     the fuel hypothesis is the slice's dynamic-length side

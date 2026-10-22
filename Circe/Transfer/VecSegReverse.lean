@@ -432,9 +432,7 @@ theorem segMemWhile_ok (prog : Prog) (F : Nat) (ρ : Env) (m : Mem)
       have hwhile : memEvalProgStmt prog (F + 1)
           vecReverseWhile ρ m π =
           memEvalProgStmt prog F vecReverseWhile ρ₆ m₆ π := by
-        simp only [vecReverseWhile,
-          memEvalProgStmt_while_true prog F _ _ _ _ _
-            hguard, heval]
+        cir_unfold_prog (vecReverseWhile, prog, F, hguard, heval)
       rw [hwhile]
       exact hloop
     · -- Exit: guard false, state exits; the value invariant (threaded

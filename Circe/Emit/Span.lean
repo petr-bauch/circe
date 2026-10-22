@@ -389,16 +389,14 @@ theorem spanWhile_correct (l : List (BitVec 32))
           hget hc
         have hstep : evalStmtFuel (F + 1) spanWhile (mkSpanEnv l k acc)
             = .error e := by
-          simp [spanWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-            hcond, hbody]
+          cir_unfold_leaf (spanWhile, hcond, hbody)
         rw [hstep, hunfold, hc]
       | ok a =>
         have hbody := spanBody_step_ok F l k acc l[k] a hlt hk64 hl64
           hget hc
         have hstep : evalStmtFuel (F + 1) spanWhile (mkSpanEnv l k acc)
             = evalStmtFuel F spanWhile (mkSpanEnv l (k + 1) a) := by
-          simp [spanWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-            hcond, hbody]
+          cir_unfold_leaf (spanWhile, hcond, hbody)
         rw [hstep, hunfold, hc]
         exact ih (k + 1) a (by omega) (by omega)
     · have hkk : k = l.length := by omega
@@ -413,8 +411,7 @@ theorem spanWhile_correct (l : List (BitVec 32))
       have hnone : l[l.length]? = none :=
         List.getElem?_eq_none (Nat.le_refl _)
       have hnil : spanFold [] acc = .ok acc := rfl
-      simp [spanWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcond, hnil]
+      cir_unfold_leaf (spanWhile, hcond, hnil)
 
 /-- `emit_correct` for `span_sum`, fuel-generalized (the S3a
     `evalFuncFuel_skip` shape; the fuel hypothesis is the slice's

@@ -304,9 +304,7 @@ theorem valMinIndexLoop_ok (F G : Nat)
         rwa [htb] at hult
       obtain ⟨x, hx⟩ := hread j hlt
       obtain ⟨y, hy⟩ := hread m hmlt
-      have hF' : l.length - (j + 1) ≤ F := by omega
-      obtain ⟨G', rfl, hG'⟩ :=
-        fuel_step_down (F := G) (l.length - (j + 1)) (by omega)
+      cir_fuel_step (F, G, l.length - (j + 1))
       by_cases htake : (x.slt y) = true
       · obtain ⟨ρ₁, hbody, hm₁, hva₁, ⟨jB₁, hjB₁, hjN₁⟩⟩ :=
           valMinIndexBody_take F ρ l j m jB mB x y
@@ -329,8 +327,7 @@ theorem valMinIndexLoop_ok (F G : Nat)
         refine ⟨ρ', ?_, ⟨mB', hmB', hmN'⟩, ⟨jB', hjB', hjN'⟩⟩
         have hwhile : evalStmtFuel (F + 1) minIndexLoop ρ =
             evalStmtFuel F minIndexLoop ρ₁ := by
-          simp [minIndexLoop, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hguardT, hbody]
+          cir_unfold_leaf (minIndexLoop, hguardT, hbody)
         rw [hwhile]
         exact hloop
       · have hskip : (x.slt y) = false := by
@@ -356,8 +353,7 @@ theorem valMinIndexLoop_ok (F G : Nat)
         refine ⟨ρ', ?_, ⟨mB', hmB', hmN'⟩, ⟨jB', hjB', hjN'⟩⟩
         have hwhile : evalStmtFuel (F + 1) minIndexLoop ρ =
             evalStmtFuel F minIndexLoop ρ₁ := by
-          simp [minIndexLoop, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hguardT, hbody]
+          cir_unfold_leaf (minIndexLoop, hguardT, hbody)
         rw [hwhile]
         exact hloop
     · have him : j = l.length := by omega
@@ -847,9 +843,7 @@ theorem memMinIndexLoop_ok (F G : Nat)
         rw [hag]; exact hval
       obtain ⟨x, hx⟩ := hread j hlt
       obtain ⟨y, hy⟩ := hread m hmlt
-      have hF' : l.length - (j + 1) ≤ F := by omega
-      obtain ⟨G', rfl, hG'⟩ :=
-        fuel_step_down (F := G) (l.length - (j + 1)) (by omega)
+      cir_fuel_step (F, G, l.length - (j + 1))
       by_cases htake : (x.slt y) = true
       · obtain ⟨ρ₁, hbody, hm₁, hva₁, ⟨jB₁, hjB₁, hjN₁⟩,
             hmem₁⟩ :=
@@ -1489,9 +1483,7 @@ theorem valSelectionSortLoop_ok (F G : Nat)
       have hwhile : evalProgStmt vecSelectionSortProg (F + 1)
           selectionSortLoop ρ =
           evalProgStmt vecSelectionSortProg F selectionSortLoop ρ₁ := by
-        simp only [selectionSortLoop,
-          evalProgStmt_while_true vecSelectionSortProg F _ _ _ hguardT,
-          hbody]
+        cir_unfold_prog (selectionSortLoop, vecSelectionSortProg, F, hguardT, hbody)
       rw [hwhile]
       exact hloop
     · have him : i = l.length := by omega
@@ -2056,10 +2048,7 @@ theorem memSelectionSortLoop_ok (F G : Nat)
           selectionSortLoop ρ mm π =
           memEvalProgStmt vecSelectionSortProg F selectionSortLoop
             ρ₁ mm₁ π := by
-        simp only [selectionSortLoop,
-          memEvalProgStmt_while_true vecSelectionSortProg F _ _ _ _ _
-            hguardT,
-          hbody]
+        cir_unfold_prog (selectionSortLoop, vecSelectionSortProg, F, hguardT, hbody)
       rw [hwhile]
       exact hloop
     · have him : i = l.length := by omega

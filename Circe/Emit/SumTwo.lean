@@ -18,6 +18,7 @@ through every environment.
 import Circe.Emit.Fragment
 import Circe.Emit.Sum
 import Circe.ReadOnly
+import Circe.LeafTactics
 
 /-! ## Pairwise wrapping fold -/
 
@@ -287,8 +288,7 @@ theorem sumTwoWhile_correct (l₁ l₂ : List (BitVec 32)) (nv : BitVec 32)
             (mkSumTwoEnv l₁ l₂ nv k acc)
           = evalStmtFuel F sumTwoWhile
             (mkSumTwoEnv l₁ l₂ nv (k + 1) (acc + (l₁[k] + l₂[k]))) := by
-        simp [sumTwoWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (sumTwoWhile, hcond, hbody)
       rw [hstep]
       have hrec := ih (k + 1) (acc + (l₁[k] + l₂[k])) (by omega) (by omega)
       rw [hrec]
@@ -339,8 +339,7 @@ theorem sumTwoWhile_oob (l₁ l₂ : List (BitVec 32)) (nv : BitVec 32)
             (mkSumTwoEnv l₁ l₂ nv k acc)
           = evalStmtFuel F sumTwoWhile
             (mkSumTwoEnv l₁ l₂ nv (k + 1) (acc + (l₁[k] + l₂[k]))) := by
-        simp [sumTwoWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (sumTwoWhile, hcond, hbody)
       rw [hstep]
       exact ih (k + 1) (acc + (l₁[k] + l₂[k])) (by omega) (by omega)
     · have hbody : evalStmtFuel F sumTwoBody
@@ -360,8 +359,7 @@ theorem sumTwoWhile_oob (l₁ l₂ : List (BitVec 32)) (nv : BitVec 32)
           have hget₁ : l₁[l₁.length]? = none :=
             List.getElem?_eq_none (Nat.le_refl _)
           exact sumTwoBody_oob_a F l₁ l₂ nv l₁.length acc hget₁ hk32
-      simp [sumTwoWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcond, hbody]
+      cir_unfold_leaf (sumTwoWhile, hcond, hbody)
 
 /-! ### Whole-function correctness (fuel-generalized, then instantiated) -/
 

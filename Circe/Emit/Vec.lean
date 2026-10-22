@@ -4,6 +4,7 @@ whole-function correctness).
 -/
 import Circe.Emit.Fragment
 import Circe.Emit.VecFwd
+import Circe.LeafTactics
 
 /-! ## `vec_alloc`: uniquely-owned heap block (Phase 7, u32-only) -/
 
@@ -269,8 +270,7 @@ theorem vecFillWhile_correct (blk : Vec32) (nv : BitVec 32)
           = evalStmtFuel F vecFillWhile
             (mkVecEnv ⟨blk.val.set k (BitVec.ofNat 32 k), false⟩ nv
               (BitVec.ofNat 32 (k + 1)) sv jv) := by
-        simp [vecFillWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (vecFillWhile, hcond, hbody)
       rw [hstep]
       have hlenMid : (⟨blk.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
           = nv.toNat := by
@@ -341,8 +341,7 @@ theorem vecSumWhile_correct (blk : Vec32) (nv : BitVec 32)
           = evalStmtFuel F vecSumWhile
             (mkVecEnv blk nv iv (sv + BitVec.ofNat 32 k)
               (BitVec.ofNat 32 (k + 1))) := by
-        simp [vecSumWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (vecSumWhile, hcond, hbody)
       rw [hstep]
       have hkk1 : nv.toNat - k = (nv.toNat - (k + 1)) + 1 := by omega
       rw [hkk1] at hsum

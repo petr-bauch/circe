@@ -7,6 +7,7 @@ to CIRGen — the N9 precedent; the S3 `u32` reader precedent does not
 apply to writer loops).
 -/
 import Circe.Emit.Fragment
+import Circe.LeafTactics
 
 /-- Loop body: `out[i] = a[i] ^ b[i]; i++` (one `cir.xor` + one
     word-store, the `cir.for` step region). -/
@@ -286,8 +287,7 @@ theorem xorWhile_correct (o a b : List (BitVec 32)) (nv : BitVec 64)
       have hstep : evalStmtFuel (F + 1) xorWhile (mkXorEnv a b nv k cur)
           = evalStmtFuel F xorWhile
             (mkXorEnv a b nv (k + 1) (cur.set k (a[k] ^^^ b[k]))) := by
-        simp [xorWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcondT, hbody]
+        cir_unfold_leaf (xorWhile, hcondT, hbody)
       rw [hstep]
       exact ih (k + 1) (cur.set k (a[k] ^^^ b[k])) (by omega)
         (xorCur_step o a b k cur hcur hka hkb) (by omega)
@@ -299,8 +299,7 @@ theorem xorWhile_correct (o a b : List (BitVec 32)) (nv : BitVec 64)
         simpa [hkn'] using hcond
       rw [hkn'] at hcondF hcur ⊢
       rw [hcur] at hcondF
-      simp [xorWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-        hcondF, hcur]
+      cir_unfold_leaf (xorWhile, hcondF, hcur)
 
 /-- Exiting past the end with a short buffer is impossible (the
     failure below fires first); shared by the `OOB` induction exits. -/
@@ -353,8 +352,7 @@ theorem xorWhile_oob (o a b : List (BitVec 32)) (nv : BitVec 64)
                 = evalStmtFuel F xorWhile
                   (mkXorEnv a b nv (k + 1)
                     (cur.set k (a[k] ^^^ b[k]))) := by
-              simp [xorWhile, evalStmtFuel, evalStmtSuccHandler,
-                evalStmtWith, hcondT, hbody]
+              cir_unfold_leaf (xorWhile, hcondT, hbody)
             rw [hstep]
             -- The step keeps every index `< k + 1` valid (`k` itself
             -- lands in `o` via the just-written prefix).
@@ -373,14 +371,11 @@ theorem xorWhile_oob (o a b : List (BitVec 32)) (nv : BitVec 64)
               (xorCur_step o a b k cur hcur hka hkb) hvalid' (by omega)
           · have hbody := xorBody_error_o F a b nv k cur hka hkb hko
               hk64
-            simp [xorWhile, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcondT, hbody]
+            cir_unfold_leaf (xorWhile, hcondT, hbody)
         · have hbody := xorBody_error_b F a b nv k cur hka hkb hk64
-          simp [xorWhile, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcondT, hbody]
+          cir_unfold_leaf (xorWhile, hcondT, hbody)
       · have hbody := xorBody_error_a F a b nv k cur hka hk64
-        simp [xorWhile, evalStmtFuel, evalStmtSuccHandler,
-          evalStmtWith, hcondT, hbody]
+        cir_unfold_leaf (xorWhile, hcondT, hbody)
     · have hkn' : k = nv.toNat := by omega
       exact False.elim
         (xorOob_exit_false o a b nv k hkn' hfail hvalid)

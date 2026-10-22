@@ -892,8 +892,7 @@ theorem memRunsDrainI_ok (prog : Prog) (F : Nat)
             hstore _ hu _ _ huI huK
         have hloop : memEvalProgStmt prog (F + 1) mergeRunsDrainI
             ρ m π = memEvalProgStmt prog F mergeRunsDrainI ρK m₁ π := by
-          simp only [mergeRunsDrainI,
-            memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainI, prog, F, hcond, hstep)
         have h1i : (i + 1).toNat = i.toNat + 1 :=
           bv64_succ_toNat i _ hI (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1102,8 +1101,7 @@ theorem memRunsDrainI_err (prog : Prog) (F : Nat)
           hmemLen hi_env hk_env ha_env htmp_env hgetI hltK hlent
         have herr : memEvalProgStmt prog (F + 1) mergeRunsDrainI
             ρ m π = .error .AssertFail := by
-          simp only [mergeRunsDrainI,
-            memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hbody]
+          cir_unfold_prog (mergeRunsDrainI, prog, F, hcond, hbody)
         exact herr
       | some w =>
         have hltK : k.toNat < lt.length :=
@@ -1153,8 +1151,7 @@ theorem memRunsDrainI_err (prog : Prog) (F : Nat)
             hstore _ hu _ _ huI huK
         have hloop : memEvalProgStmt prog (F + 1) mergeRunsDrainI
             ρ m π = memEvalProgStmt prog F mergeRunsDrainI ρK m₁ π := by
-          simp only [mergeRunsDrainI,
-            memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainI, prog, F, hcond, hstep)
         have h1i : (i + 1).toNat = i.toNat + 1 :=
           bv64_succ_toNat i _ hI (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1325,8 +1322,7 @@ theorem memRunsDrainJ_err (prog : Prog) (F : Nat)
           hmemLen hj_env hk_env ha_env htmp_env hgetJ hltK hlent
         have herr : memEvalProgStmt prog (F + 1) mergeRunsDrainJ
             ρ m π = .error .AssertFail := by
-          simp only [mergeRunsDrainJ,
-            memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hbody]
+          cir_unfold_prog (mergeRunsDrainJ, prog, F, hcond, hbody)
         exact herr
       | some w =>
         have hltK : k.toNat < lt.length :=
@@ -1376,8 +1372,7 @@ theorem memRunsDrainJ_err (prog : Prog) (F : Nat)
             hstore _ hu _ _ huJ huK
         have hloop : memEvalProgStmt prog (F + 1) mergeRunsDrainJ
             ρ m π = memEvalProgStmt prog F mergeRunsDrainJ ρK m₁ π := by
-          simp only [mergeRunsDrainJ,
-            memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainJ, prog, F, hcond, hstep)
         have h1j : (j + 1).toNat = j.toNat + 1 :=
           bv64_succ_toNat j _ hJ (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1592,8 +1587,7 @@ theorem memRunsDrainJ_ok (prog : Prog) (F : Nat)
             hstore _ hu _ _ huJ huK
         have hloop : memEvalProgStmt prog (F + 1) mergeRunsDrainJ
             ρ m π = memEvalProgStmt prog F mergeRunsDrainJ ρK m₁ π := by
-          simp only [mergeRunsDrainJ,
-            memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainJ, prog, F, hcond, hstep)
         have h1j : (j + 1).toNat = j.toNat + 1 :=
           bv64_succ_toNat j _ hJ (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1872,8 +1866,7 @@ theorem memRunsMain_ok (prog : Prog) (F : Nat)
           have hloop : memEvalProgStmt prog (F + 1) mergeRunsMain
               ρ m π =
               memEvalProgStmt prog F mergeRunsMain ρK m₁ π := by
-            simp only [mergeRunsMain,
-              memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1i : (i + 1).toNat = i.toNat + 1 :=
             bv64_succ_toNat i _ hI (by omega)
           have hlent' : (lt.set k.toNat la[i.toNat]).length < 2 ^ 64 := by
@@ -2006,8 +1999,7 @@ theorem memRunsMain_ok (prog : Prog) (F : Nat)
           have hloop : memEvalProgStmt prog (F + 1) mergeRunsMain
               ρ m π =
               memEvalProgStmt prog F mergeRunsMain ρK m₁ π := by
-            simp only [mergeRunsMain,
-              memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1j : (j + 1).toNat = j.toNat + 1 :=
             bv64_succ_toNat j _ hJ (by omega)
           have hlent' : (lt.set k.toNat la[j.toNat]).length < 2 ^ 64 := by
@@ -2313,8 +2305,7 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
             hgetI hgetJ hslt hltK hlent
           have herr : memEvalProgStmt prog (F + 1) mergeRunsMain
               ρ m π = .error .AssertFail := by
-            simp only [mergeRunsMain,
-              memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hbody]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hbody)
           exact herr
         · have hsltF : (la[i.toNat].slt la[j.toNat]) = false :=
             Bool.eq_false_of_ne_true hslt
@@ -2325,8 +2316,7 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
             hgetI hgetJ hsltF hltK hlent
           have herr : memEvalProgStmt prog (F + 1) mergeRunsMain
               ρ m π = .error .AssertFail := by
-            simp only [mergeRunsMain,
-              memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hbody]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hbody)
           exact herr
       | some w =>
         have hltK : k.toNat < lt.length :=
@@ -2383,8 +2373,7 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
           have hloop : memEvalProgStmt prog (F + 1) mergeRunsMain
               ρ m π =
               memEvalProgStmt prog F mergeRunsMain ρK m₁ π := by
-            simp only [mergeRunsMain,
-              memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1i : (i + 1).toNat = i.toNat + 1 :=
             bv64_succ_toNat i _ hI (by omega)
           have hlent' : (lt.set k.toNat la[i.toNat]).length < 2 ^ 64 := by
@@ -2517,8 +2506,7 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
           have hloop : memEvalProgStmt prog (F + 1) mergeRunsMain
               ρ m π =
               memEvalProgStmt prog F mergeRunsMain ρK m₁ π := by
-            simp only [mergeRunsMain,
-              memEvalProgStmt_while_true prog F _ _ _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1j : (j + 1).toNat = j.toNat + 1 :=
             bv64_succ_toNat j _ hJ (by omega)
           have hlent' : (lt.set k.toNat la[j.toNat]).length < 2 ^ 64 := by

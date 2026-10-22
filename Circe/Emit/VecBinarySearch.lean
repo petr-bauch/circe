@@ -563,8 +563,7 @@ theorem vecBinSearchWhile_hit (l : List (BitVec 32)) (t : BitVec 32)
               (mkBinSearchEnv l lo hi t mid0 x0) =
               .ok (mkBinSearchEnv l lo hi t (lo + (hi - lo) / 2) xv,
                 .returned (.u64 (BitVec.ofNat 64 (lo + (hi - lo) / 2)))) := by
-            simp [vecBinSearchWhile, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hbody]
+            cir_unfold_leaf (vecBinSearchWhile, hcond, hbody)
           exact ⟨_, hstep⟩
         · have hne : (xv == t) = false := Bool.eq_false_of_ne_true heq
           by_cases hslt : (xv.slt t) = true
@@ -581,8 +580,7 @@ theorem vecBinSearchWhile_hit (l : List (BitVec 32)) (t : BitVec 32)
                 evalStmtFuel F vecBinSearchWhile
                   (mkBinSearchEnv l (lo + (hi - lo) / 2 + 1) hi t
                     (lo + (hi - lo) / 2) xv) := by
-              simp [vecBinSearchWhile, evalStmtFuel, evalStmtSuccHandler,
-                evalStmtWith, hcond, hbody]
+              cir_unfold_leaf (vecBinSearchWhile, hcond, hbody)
             rw [hstep]
             exact ih _ _ _ _ _ (by omega) (by omega) (by omega) (by omega) hhit
           · have hnlt : (xv.slt t) = false := Bool.eq_false_of_ne_true hslt
@@ -599,8 +597,7 @@ theorem vecBinSearchWhile_hit (l : List (BitVec 32)) (t : BitVec 32)
                 evalStmtFuel F vecBinSearchWhile
                   (mkBinSearchEnv l lo (lo + (hi - lo) / 2) t
                     (lo + (hi - lo) / 2) xv) := by
-              simp [vecBinSearchWhile, evalStmtFuel, evalStmtSuccHandler,
-                evalStmtWith, hcond, hbody]
+              cir_unfold_leaf (vecBinSearchWhile, hcond, hbody)
             rw [hstep]
             exact ih _ _ _ _ _ (by omega) (by omega) (by omega) (by omega) hhit
     · have hmiss : binSearch l t (F + 1) lo hi = .miss := by
@@ -656,8 +653,7 @@ theorem vecBinSearchWhile_miss (l : List (BitVec 32)) (t : BitVec 32)
                 evalStmtFuel F vecBinSearchWhile
                   (mkBinSearchEnv l (lo + (hi - lo) / 2 + 1) hi t
                     (lo + (hi - lo) / 2) xv) := by
-              simp [vecBinSearchWhile, evalStmtFuel, evalStmtSuccHandler,
-                evalStmtWith, hcond, hbody]
+              cir_unfold_leaf (vecBinSearchWhile, hcond, hbody)
             rw [hstep]
             exact ih _ _ _ _ (by omega) (by omega) (by omega) (by omega) hmiss
           · have hnlt : (xv.slt t) = false := Bool.eq_false_of_ne_true hslt
@@ -674,8 +670,7 @@ theorem vecBinSearchWhile_miss (l : List (BitVec 32)) (t : BitVec 32)
                 evalStmtFuel F vecBinSearchWhile
                   (mkBinSearchEnv l lo (lo + (hi - lo) / 2) t
                     (lo + (hi - lo) / 2) xv) := by
-              simp [vecBinSearchWhile, evalStmtFuel, evalStmtSuccHandler,
-                evalStmtWith, hcond, hbody]
+              cir_unfold_leaf (vecBinSearchWhile, hcond, hbody)
             rw [hstep]
             exact ih _ _ _ _ (by omega) (by omega) (by omega) (by omega) hmiss
     · have hgeo : lo = hi := by omega

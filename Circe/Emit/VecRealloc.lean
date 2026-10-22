@@ -376,8 +376,7 @@ theorem vecReallocFillWhile_correct (blk : Vec32) (nv mv : BitVec 32)
           = evalStmtFuel F vecReallocFillWhile
             (mkVecReallocEnv ⟨blk.val.set k (BitVec.ofNat 32 k), false⟩ nv mv
               (BitVec.ofNat 32 (k + 1)) jv kv sv) := by
-        simp [vecReallocFillWhile, evalStmtFuel, evalStmtSuccHandler,
-          evalStmtWith, hcond, hbody]
+        cir_unfold_leaf (vecReallocFillWhile, hcond, hbody)
       rw [hstep]
       have hlenMid : (⟨blk.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
           = nv.toNat := by
@@ -458,8 +457,7 @@ theorem vecReallocExtWhile_correct (blk : Vec32) (nv mv : BitVec 32)
           = evalStmtFuel F vecReallocExtWhile
             (mkVecReallocEnv ⟨blk.val.set k (BitVec.ofNat 32 k), false⟩ nv mv iv
               (BitVec.ofNat 32 (k + 1)) kv sv) := by
-        simp [vecReallocExtWhile, evalStmtFuel, evalStmtSuccHandler,
-          evalStmtWith, hcond, hbody]
+        cir_unfold_leaf (vecReallocExtWhile, hcond, hbody)
       rw [hstep]
       have hlenMid : (⟨blk.val.set k (BitVec.ofNat 32 k), false⟩ : Vec32).val.length
           = mv.toNat := by
@@ -533,8 +531,7 @@ theorem vecReallocSumWhile_correct (blk : Vec32) (nv mv : BitVec 32)
           = evalStmtFuel F vecReallocSumWhile
             (mkVecReallocEnv blk nv mv iv jv (BitVec.ofNat 32 (k + 1))
               (sv + BitVec.ofNat 32 k)) := by
-        simp [vecReallocSumWhile, evalStmtFuel, evalStmtSuccHandler,
-          evalStmtWith, hcond, hbody]
+        cir_unfold_leaf (vecReallocSumWhile, hcond, hbody)
       rw [hstep]
       have hkk1 : mv.toNat - k = (mv.toNat - (k + 1)) + 1 := by omega
       rw [hkk1] at hsum

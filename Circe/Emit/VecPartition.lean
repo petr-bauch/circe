@@ -525,9 +525,7 @@ theorem valPartitionLoop_ok (prog : Prog) (F G : Nat)
       obtain ⟨x, hx⟩ := hread i hlt
       have hslt : s < l.length := by omega
       obtain ⟨w, hw⟩ := hread s hslt
-      have hF' : l.length - (i + 1) ≤ F := by omega
-      obtain ⟨G', rfl, hG'⟩ :=
-        fuel_step_down (F := G) (l.length - (i + 1)) (by omega)
+      cir_fuel_step (F, G, l.length - (i + 1))
       by_cases htake : (x.slt pivot) = true
       · have hle' : i + 1 ≤ ((l.set i w).set s x).length := by
           have : ((l.set i w).set s x).length = l.length := by
@@ -588,8 +586,7 @@ theorem valPartitionLoop_ok (prog : Prog) (F G : Nat)
           ⟨sB', hsB', hsN'⟩⟩
         have hwhile : evalProgStmt prog (F + 1) vecPartitionLoop ρ =
             evalProgStmt prog F vecPartitionLoop ρ₁ := by
-          simp only [vecPartitionLoop,
-            evalProgStmt_while_true prog F _ _ _ hguardT, hbody]
+          cir_unfold_prog (vecPartitionLoop, prog, F, hguardT, hbody)
         rw [hwhile]
         exact hloop
       · have hskip : (x.slt pivot) = false := by
@@ -618,8 +615,7 @@ theorem valPartitionLoop_ok (prog : Prog) (F G : Nat)
           ⟨sB', hsB', hsN'⟩⟩
         have hwhile : evalProgStmt prog (F + 1) vecPartitionLoop ρ =
             evalProgStmt prog F vecPartitionLoop ρ₁ := by
-          simp only [vecPartitionLoop,
-            evalProgStmt_while_true prog F _ _ _ hguardT, hbody]
+          cir_unfold_prog (vecPartitionLoop, prog, F, hguardT, hbody)
         rw [hwhile]
         exact hloop
     · have him : i = l.length := by omega

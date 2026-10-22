@@ -619,8 +619,7 @@ theorem sortCopy_ok (prog : Prog) (F : Nat) (ρ : Env)
         hgetT hgetA (Nat.lt_of_lt_of_le hT hhi_lt) hwr hu
       have hloop : evalProgStmt prog (F + 1) sortCopyBack ρ =
           evalProgStmt prog F sortCopyBack ρ'' := by
-        simp only [sortCopyBack,
-          evalProgStmt_while_true prog F _ _ _ hcond, heval]
+        cir_unfold_prog (sortCopyBack, prog, F, hcond, heval)
       have h1t : (t + 1).toNat = t.toNat + 1 :=
         bv64_succ_toNat t _ hT (by omega)
       have hlena' : (la.set t.toNat lt[t.toNat]).length < 2 ^ 64 := by
@@ -710,8 +709,7 @@ theorem sortCopy_err (prog : Prog) (F : Nat) (ρ : Env)
         hgetT hgetA (Nat.lt_of_lt_of_le hT hhi_lt) hwr hu
       have herr : evalProgStmt prog (F + 1) sortCopyBack ρ =
           evalProgStmt prog F sortCopyBack ρ'' := by
-        simp only [sortCopyBack,
-          evalProgStmt_while_true prog F _ _ _ hcond, heval]
+        cir_unfold_prog (sortCopyBack, prog, F, hcond, heval)
       have h1t : (t + 1).toNat = t.toNat + 1 :=
         bv64_succ_toNat t _ hT (by omega)
       have hlena' : (la.set t.toNat lt[t.toNat]).length < 2 ^ 64 := by
@@ -1259,9 +1257,7 @@ theorem sortSeg_ok (F : Nat) (ρ : Env)
           have hloop : evalProgStmt vecMergeSortProg (F + 1)
               sortSegLoop ρ =
               evalProgStmt vecMergeSortProg F sortSegLoop ρ₁ := by
-            simp only [sortSegLoop,
-              evalProgStmt_while_true vecMergeSortProg F _ _ _
-                hcond, heval_body]
+            cir_unfold_prog (sortSegLoop, vecMergeSortProg, F, hcond, heval_body)
           have hF' : 2 * (n.toNat - lo₁.toNat) + 9 ≤ F := by omega
           have hfwd' : sortSegFwd la₁ lt₁ F w.toNat lo₁.toNat
               n.toNat = .ok (la', lt') := by
@@ -1392,9 +1388,7 @@ theorem sortSeg_err (F : Nat) (ρ : Env)
           exact evalProgStmt_seq_err _ _ _ _ _ _ hstep_call
         have hloop : evalProgStmt vecMergeSortProg ((G + 1) + 1)
             sortSegLoop ρ = .error e := by
-          simp only [sortSegLoop,
-            evalProgStmt_while_true vecMergeSortProg (G + 1) _ _ _
-              hcond, hfull]
+          cir_unfold_prog (sortSegLoop, vecMergeSortProg, (G + 1), hcond, hfull)
         exact hloop
       | .ok v =>
         obtain ⟨lt₁, rfl⟩ := VecMergeRuns.mergeRunsFwd_ok_shape la lt lo.toNat
@@ -1480,9 +1474,7 @@ theorem sortSeg_err (F : Nat) (ρ : Env)
             exact hrest
           have hloop : evalProgStmt vecMergeSortProg ((G + 1) + 1)
               sortSegLoop ρ = .error e := by
-            simp only [sortSegLoop,
-              evalProgStmt_while_true vecMergeSortProg (G + 1) _ _ _
-                hcond, hfull]
+            cir_unfold_prog (sortSegLoop, vecMergeSortProg, (G + 1), hcond, hfull)
           exact hloop
         | .ok (la₁, t₁) =>
           simp only [hcp] at hfwd
@@ -1510,9 +1502,7 @@ theorem sortSeg_err (F : Nat) (ρ : Env)
               sortSegLoop ρ =
               evalProgStmt vecMergeSortProg (G + 1) sortSegLoop
                 ρ₈ := by
-            simp only [sortSegLoop,
-              evalProgStmt_while_true vecMergeSortProg (G + 1) _ _ _
-                hcond, heval_ok]
+            cir_unfold_prog (sortSegLoop, vecMergeSortProg, (G + 1), hcond, heval_ok)
           rw [hloop]
           exact ih _ _ _ _ _ _ _ _ _ _ hinv₈ hn₈ hlent₈ hlena₈
             hlen62₈ htmp_ge₈ hw1 hw_lt hF' hfwd'
@@ -1795,9 +1785,7 @@ theorem sortOuter_ok (F : Nat) (ρ : Env)
         have hloop : evalProgStmt vecMergeSortProg (F + 1)
             sortOuterLoop ρ =
             evalProgStmt vecMergeSortProg F sortOuterLoop ρ₁ := by
-          simp only [sortOuterLoop,
-            evalProgStmt_while_true vecMergeSortProg F _ _ _ hcond,
-            heval_body]
+          cir_unfold_prog (sortOuterLoop, vecMergeSortProg, F, hcond, heval_body)
         have hw1' : 1 ≤ w₁.toNat := by omega
         have hF' : 2 * (n.toNat - w₁.toNat) + 2 * n.toNat + 10 ≤
             F := by
@@ -1875,9 +1863,7 @@ theorem sortOuter_err (F : Nat) (ρ : Env)
           sortOuterBody_err F ρ la lt n w lo₀ mid₀ hi₀ t₀ e
             hinv hn hlent hlena hlen62 htmp_ge hw1 hW (by omega)
             hseg
-        simp only [sortOuterLoop,
-          evalProgStmt_while_true vecMergeSortProg F _ _ _ hcond,
-          heval_body]
+        cir_unfold_prog (sortOuterLoop, vecMergeSortProg, F, hcond, heval_body)
       | .ok (la₁, lt₁) =>
         simp only [hseg] at hfwd
         obtain ⟨ρ₁, w₁, lo₁, mid₁, hi₁, t₁, heval_body, hinv₁,
@@ -1887,9 +1873,7 @@ theorem sortOuter_err (F : Nat) (ρ : Env)
         have hloop : evalProgStmt vecMergeSortProg (F + 1)
             sortOuterLoop ρ =
             evalProgStmt vecMergeSortProg F sortOuterLoop ρ₁ := by
-          simp only [sortOuterLoop,
-            evalProgStmt_while_true vecMergeSortProg F _ _ _ hcond,
-            heval_body]
+          cir_unfold_prog (sortOuterLoop, vecMergeSortProg, F, hcond, heval_body)
         have hw1' : 1 ≤ w₁.toNat := by omega
         have hF' : 2 * (n.toNat - w₁.toNat) + 2 * n.toNat + 10 ≤
             F := by

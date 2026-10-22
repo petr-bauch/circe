@@ -825,8 +825,7 @@ theorem mergeRunsMain_ok (prog : Prog) (F : Nat)
               evalProgStmt prog F mergeRunsMain
                 (mkRunsEnv la (lt.set k.toNat la[i.toNat]) lo mid hi
                   (i + 1) j (k + 1)) := by
-            simp only [mergeRunsMain,
-              evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1i : (i + 1).toNat = i.toNat + 1 :=
             bv64_succ_toNat i _ hI (by omega)
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -869,8 +868,7 @@ theorem mergeRunsMain_ok (prog : Prog) (F : Nat)
               evalProgStmt prog F mergeRunsMain
                 (mkRunsEnv la (lt.set k.toNat la[j.toNat]) lo mid hi
                   i (j + 1) (k + 1)) := by
-            simp only [mergeRunsMain,
-              evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1j : (j + 1).toNat = j.toNat + 1 :=
             bv64_succ_toNat j _ hJ (by omega)
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -975,8 +973,7 @@ theorem mergeRunsMain_err (prog : Prog) (F : Nat)
           have herr : evalProgStmt prog (F + 1) mergeRunsMain
               (mkRunsEnv la lt lo mid hi i j k) =
               .error .AssertFail := by
-            simp only [mergeRunsMain,
-              evalProgStmt_while_true prog F _ _ _ hcond, hbody]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hbody)
           exact herr
         · have hsltF : (la[i.toNat].slt la[j.toNat]) = false :=
             Bool.eq_false_of_ne_true hslt
@@ -985,8 +982,7 @@ theorem mergeRunsMain_err (prog : Prog) (F : Nat)
           have herr : evalProgStmt prog (F + 1) mergeRunsMain
               (mkRunsEnv la lt lo mid hi i j k) =
               .error .AssertFail := by
-            simp only [mergeRunsMain,
-              evalProgStmt_while_true prog F _ _ _ hcond, hbody]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hbody)
           exact herr
       | some w =>
         have hltK : k.toNat < lt.length :=
@@ -1011,8 +1007,7 @@ theorem mergeRunsMain_err (prog : Prog) (F : Nat)
               evalProgStmt prog F mergeRunsMain
                 (mkRunsEnv la (lt.set k.toNat la[i.toNat]) lo mid hi
                   (i + 1) j (k + 1)) := by
-            simp only [mergeRunsMain,
-              evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1i : (i + 1).toNat = i.toNat + 1 :=
             bv64_succ_toNat i _ hI (by omega)
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1054,8 +1049,7 @@ theorem mergeRunsMain_err (prog : Prog) (F : Nat)
               evalProgStmt prog F mergeRunsMain
                 (mkRunsEnv la (lt.set k.toNat la[j.toNat]) lo mid hi
                   i (j + 1) (k + 1)) := by
-            simp only [mergeRunsMain,
-              evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+            cir_unfold_prog (mergeRunsMain, prog, F, hcond, hstep)
           have h1j : (j + 1).toNat = j.toNat + 1 :=
             bv64_succ_toNat j _ hJ (by omega)
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1156,8 +1150,7 @@ theorem mergeRunsDrainI_ok (prog : Prog) (F : Nat)
             evalProgStmt prog F mergeRunsDrainI
               (mkRunsEnv la (lt.set k.toNat la[i.toNat]) lo mid hi
                 (i + 1) j (k + 1)) := by
-          simp only [mergeRunsDrainI,
-            evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainI, prog, F, hcond, hstep)
         have h1i : (i + 1).toNat = i.toNat + 1 :=
           bv64_succ_toNat i _ hI (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1240,8 +1233,7 @@ theorem mergeRunsDrainI_err (prog : Prog) (F : Nat)
         have herr : evalProgStmt prog (F + 1) mergeRunsDrainI
             (mkRunsEnv la lt lo mid hi i j k) =
             .error .AssertFail := by
-          simp only [mergeRunsDrainI,
-            evalProgStmt_while_true prog F _ _ _ hcond, hbody]
+          cir_unfold_prog (mergeRunsDrainI, prog, F, hcond, hbody)
         exact herr
       | some w =>
         have hltK : k.toNat < lt.length :=
@@ -1264,8 +1256,7 @@ theorem mergeRunsDrainI_err (prog : Prog) (F : Nat)
             evalProgStmt prog F mergeRunsDrainI
               (mkRunsEnv la (lt.set k.toNat la[i.toNat]) lo mid hi
                 (i + 1) j (k + 1)) := by
-          simp only [mergeRunsDrainI,
-            evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainI, prog, F, hcond, hstep)
         have h1i : (i + 1).toNat = i.toNat + 1 :=
           bv64_succ_toNat i _ hI (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1355,8 +1346,7 @@ theorem mergeRunsDrainJ_ok (prog : Prog) (F : Nat)
             evalProgStmt prog F mergeRunsDrainJ
               (mkRunsEnv la (lt.set k.toNat la[j.toNat]) lo mid hi
                 i (j + 1) (k + 1)) := by
-          simp only [mergeRunsDrainJ,
-            evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainJ, prog, F, hcond, hstep)
         have h1j : (j + 1).toNat = j.toNat + 1 :=
           bv64_succ_toNat j _ hJ (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1439,8 +1429,7 @@ theorem mergeRunsDrainJ_err (prog : Prog) (F : Nat)
         have herr : evalProgStmt prog (F + 1) mergeRunsDrainJ
             (mkRunsEnv la lt lo mid hi i j k) =
             .error .AssertFail := by
-          simp only [mergeRunsDrainJ,
-            evalProgStmt_while_true prog F _ _ _ hcond, hbody]
+          cir_unfold_prog (mergeRunsDrainJ, prog, F, hcond, hbody)
         exact herr
       | some w =>
         have hltK : k.toNat < lt.length :=
@@ -1463,8 +1452,7 @@ theorem mergeRunsDrainJ_err (prog : Prog) (F : Nat)
             evalProgStmt prog F mergeRunsDrainJ
               (mkRunsEnv la (lt.set k.toNat la[j.toNat]) lo mid hi
                 i (j + 1) (k + 1)) := by
-          simp only [mergeRunsDrainJ,
-            evalProgStmt_while_true prog F _ _ _ hcond, hstep]
+          cir_unfold_prog (mergeRunsDrainJ, prog, F, hcond, hstep)
         have h1j : (j + 1).toNat = j.toNat + 1 :=
           bv64_succ_toNat j _ hJ (by omega)
         have h1k : (k + 1).toNat = k.toNat + 1 :=

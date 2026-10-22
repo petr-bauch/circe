@@ -547,9 +547,7 @@ theorem segWhile_ok (prog : Prog) (F : Nat) (ρ : Env)
       have hwhile :
           evalProgStmt prog (F + 1) vecReverseWhile ρ =
           evalProgStmt prog F vecReverseWhile ρ₆ := by
-        simp only [vecReverseWhile,
-          evalProgStmt_while_true prog F _ _ _ hguard,
-          heval]
+        cir_unfold_prog (vecReverseWhile, prog, F, hguard, heval)
       rw [hwhile]
       exact hloop
     · -- Exit: guard false, state exits, invariant closes to the window.

@@ -476,9 +476,7 @@ theorem memWhile_ok (F : Nat) (ρ : Env) (m : Mem) (π : Layout)
       have hwhile : memEvalProgStmt vecReverseProg (F + 1)
           vecReverseWhile ρ m π =
           memEvalProgStmt vecReverseProg F vecReverseWhile ρ₆ m₆ π := by
-        simp only [vecReverseWhile,
-          memEvalProgStmt_while_true vecReverseProg F _ _ _ _ _
-            hguard, heval]
+        cir_unfold_prog (vecReverseWhile, vecReverseProg, F, hguard, heval)
       rw [hwhile]
       exact hloop
     · -- Exit: guard false, state exits; the value invariant (threaded

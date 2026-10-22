@@ -588,8 +588,7 @@ theorem revWhile_ok (F : Nat) (ρ : Env)
       refine ⟨ρ', l', ?_, hrev, hv'⟩
       have hwhile : evalProgStmt vecReverseProg (F + 1) vecReverseWhile ρ =
           evalProgStmt vecReverseProg F vecReverseWhile ρ₆ := by
-        simp only [vecReverseWhile,
-          evalProgStmt_while_true vecReverseProg F _ _ _ hguard, heval]
+        cir_unfold_prog (vecReverseWhile, vecReverseProg, F, hguard, heval)
       rw [hwhile]
       exact hloop
     · -- Exit: guard false, state exits, invariant closes to `reverse`.

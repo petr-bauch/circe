@@ -525,8 +525,7 @@ theorem vecTwoSumInner_hit (l : List (BitVec 32)) (t : BitVec 32) (n : Nat)
                   .ok (mkTwoSumEnv l n i j t,
                     .returned (.structVal "IPair" [(("a", BitVec.ofNat 32 ((BitVec.ofNat 64 i).toNat))),
                       (("b", BitVec.ofNat 32 ((BitVec.ofNat 64 j).toNat)))])) := by
-                simp [vecTwoSumInner, evalStmtFuel, evalStmtSuccHandler,
-                  evalStmtWith, hcond, hbody]
+                cir_unfold_leaf (vecTwoSumInner, hcond, hbody)
               rw [hiN, hjN] at hstep
               exact ⟨_, hstep⟩
             · have hne : (s == t) = false := Bool.eq_false_of_ne_true heq
@@ -546,8 +545,7 @@ theorem vecTwoSumInner_hit (l : List (BitVec 32)) (t : BitVec 32) (n : Nat)
                   (mkTwoSumEnv l n i j t) =
                   evalStmtFuel F vecTwoSumInner
                     (mkTwoSumEnv l n i (j + 1) t) := by
-                simp [vecTwoSumInner, evalStmtFuel, evalStmtSuccHandler,
-                  evalStmtWith, hcond, hbody]
+                cir_unfold_leaf (vecTwoSumInner, hcond, hbody)
               rw [hstep]
               exact ih i (j + 1) a b (hjle := by omega) (hilt := hilt) (hF := by omega) (hhit := hhit)
     · have hmiss : twoSumInner l t n (F + 1) i j = .miss := by
@@ -624,8 +622,7 @@ theorem vecTwoSumInner_miss (l : List (BitVec 32)) (t : BitVec 32) (n : Nat)
                   (mkTwoSumEnv l n i j t) =
                   evalStmtFuel F vecTwoSumInner
                     (mkTwoSumEnv l n i (j + 1) t) := by
-                simp [vecTwoSumInner, evalStmtFuel, evalStmtSuccHandler,
-                  evalStmtWith, hcond, hbody]
+                cir_unfold_leaf (vecTwoSumInner, hcond, hbody)
               rw [hstep]
               exact ih i (j + 1) (hjle := by omega) (hilt := hilt) (hF := by omega) (hmiss := hmiss)
     · have hjn : j = n := by omega
@@ -682,8 +679,7 @@ theorem vecTwoSumInner_overflow (l : List (BitVec 32)) (t : BitVec 32)
               hgeti' hgetj' e hadd
             have hstep : evalStmtFuel (F + 1) vecTwoSumInner
                 (mkTwoSumEnv l n i j t) = .error e := by
-              simp [vecTwoSumInner, evalStmtFuel, evalStmtSuccHandler,
-                evalStmtWith, hcond, hbody]
+              cir_unfold_leaf (vecTwoSumInner, hcond, hbody)
             have hoe := checkedAddI32_err_eq x y e hadd
             subst hoe
             exact hstep
@@ -712,8 +708,7 @@ theorem vecTwoSumInner_overflow (l : List (BitVec 32)) (t : BitVec 32)
                   rw [hjN]; exact hgetj
                 have hbody := vecTwoSumInnerBody_next F l n i j t x y
                   hl64 hn hjlt hgeti' hgetj' s hadd hne
-                simp [vecTwoSumInner, evalStmtFuel, evalStmtSuccHandler,
-                  evalStmtWith, hcond, hbody]
+                cir_unfold_leaf (vecTwoSumInner, hcond, hbody)
               rw [hstep]
               exact ih i (j + 1) (hjle := by omega) (hilt := hilt) (hF := by omega) (hover := hover)
     · have hmiss : twoSumInner l t n (F + 1) i j = .miss := by
@@ -770,8 +765,7 @@ theorem vecTwoSumOuter_hit (l : List (BitVec 32)) (t : BitVec 32) (n : Nat)
         have hstep : evalStmtFuel (F + 1) vecTwoSumOuter
             (mkTwoSumEnv l n i j0 t) =
             .ok (ρ1, .returned (.structVal "IPair" [(("a", BitVec.ofNat 32 a')), (("b", BitVec.ofNat 32 b'))])) := by
-          simp [vecTwoSumOuter, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecTwoSumOuter, hcond, hbody)
         exact ⟨_, hstep⟩
       | miss =>
         have hinnerM := vecTwoSumInner_miss l t n F i (i + 1)
@@ -799,8 +793,7 @@ theorem vecTwoSumOuter_hit (l : List (BitVec 32)) (t : BitVec 32) (n : Nat)
             (mkTwoSumEnv l n i j0 t) =
             evalStmtFuel F vecTwoSumOuter
               (mkTwoSumEnv l n (i + 1) n t) := by
-          simp [vecTwoSumOuter, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecTwoSumOuter, hcond, hbody)
         rw [hstep]
         exact ih (i + 1) n a b (hile := by omega) (hF := by omega) (hhit := hhit)
       | overflow =>
@@ -872,8 +865,7 @@ theorem vecTwoSumOuter_miss (l : List (BitVec 32)) (t : BitVec 32) (n : Nat)
             (mkTwoSumEnv l n i j0 t) =
             evalStmtFuel F vecTwoSumOuter
               (mkTwoSumEnv l n (i + 1) n t) := by
-          simp [vecTwoSumOuter, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecTwoSumOuter, hcond, hbody)
         rw [hstep]
         exact ih (i + 1) n (hile := by omega) (hF := by omega) (hmiss := hmiss)
       | overflow =>
@@ -944,8 +936,7 @@ theorem vecTwoSumOuter_overflow (l : List (BitVec 32)) (t : BitVec 32)
             (mkTwoSumEnv l n i j0 t) =
             evalStmtFuel F vecTwoSumOuter
               (mkTwoSumEnv l n (i + 1) n t) := by
-          simp [vecTwoSumOuter, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecTwoSumOuter, hcond, hbody)
         rw [hstep]
         exact ih (i + 1) n (hile := by omega) (hF := by omega) (hover := hover)
       | overflow =>
@@ -968,8 +959,7 @@ theorem vecTwoSumOuter_overflow (l : List (BitVec 32)) (t : BitVec 32)
           exact hseq
         have hstep : evalStmtFuel (F + 1) vecTwoSumOuter
             (mkTwoSumEnv l n i j0 t) = .error .Overflow := by
-          simp [vecTwoSumOuter, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecTwoSumOuter, hcond, hbody)
         exact hstep
     · have hmiss : twoSumOuter l t n (F + 1) i = .miss := by
         simp [twoSumOuter, hilt]

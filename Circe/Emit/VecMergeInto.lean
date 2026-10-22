@@ -770,8 +770,7 @@ theorem mergeMain_ok (F : Nat) (la lb lo : List (BitVec 32))
               evalStmtFuel F vecMergeMain
                 (mkMergeEnv la lb (lo.set k.toNat la[i.toNat])
                   (i + 1) j (k + 1)) := by
-            simp [vecMergeMain, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hstep]
+            cir_unfold_leaf (vecMergeMain, hcond, hstep)
           have h1i : (i + 1).toNat = i.toNat + 1 :=
             bv64_succ_toNat i _ hA hlena
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -814,8 +813,7 @@ theorem mergeMain_ok (F : Nat) (la lb lo : List (BitVec 32))
               evalStmtFuel F vecMergeMain
                 (mkMergeEnv la lb (lo.set k.toNat lb[j.toNat])
                   i (j + 1) (k + 1)) := by
-            simp [vecMergeMain, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hstep]
+            cir_unfold_leaf (vecMergeMain, hcond, hstep)
           have h1j : (j + 1).toNat = j.toNat + 1 :=
             bv64_succ_toNat j _ hB hlenb
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -917,8 +915,7 @@ theorem mergeMain_err (F : Nat) (la lb lo : List (BitVec 32))
             hleno hgetA hgetB hslt hltK
           have herr : evalStmtFuel (F + 1) vecMergeMain
               (mkMergeEnv la lb lo i j k) = .error .AssertFail := by
-            simp [vecMergeMain, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hbody]
+            cir_unfold_leaf (vecMergeMain, hcond, hbody)
           exact herr
         · have hsltF : (la[i.toNat].slt lb[j.toNat]) = false :=
             Bool.eq_false_of_ne_true hslt
@@ -926,8 +923,7 @@ theorem mergeMain_err (F : Nat) (la lb lo : List (BitVec 32))
             hleno hgetA hgetB hsltF hltK
           have herr : evalStmtFuel (F + 1) vecMergeMain
               (mkMergeEnv la lb lo i j k) = .error .AssertFail := by
-            simp [vecMergeMain, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hbody]
+            cir_unfold_leaf (vecMergeMain, hcond, hbody)
           exact herr
       | some w =>
         have hltK : k.toNat < lo.length :=
@@ -951,8 +947,7 @@ theorem mergeMain_err (F : Nat) (la lb lo : List (BitVec 32))
               evalStmtFuel F vecMergeMain
                 (mkMergeEnv la lb (lo.set k.toNat la[i.toNat])
                   (i + 1) j (k + 1)) := by
-            simp [vecMergeMain, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hstep]
+            cir_unfold_leaf (vecMergeMain, hcond, hstep)
           have h1i : (i + 1).toNat = i.toNat + 1 :=
             bv64_succ_toNat i _ hA hlena
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -992,8 +987,7 @@ theorem mergeMain_err (F : Nat) (la lb lo : List (BitVec 32))
               evalStmtFuel F vecMergeMain
                 (mkMergeEnv la lb (lo.set k.toNat lb[j.toNat])
                   i (j + 1) (k + 1)) := by
-            simp [vecMergeMain, evalStmtFuel, evalStmtSuccHandler,
-              evalStmtWith, hcond, hstep]
+            cir_unfold_leaf (vecMergeMain, hcond, hstep)
           have h1j : (j + 1).toNat = j.toNat + 1 :=
             bv64_succ_toNat j _ hB hlenb
           have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1087,8 +1081,7 @@ theorem mergeDrainA_ok (F : Nat) (la lb lo : List (BitVec 32))
             evalStmtFuel F vecMergeDrainA
               (mkMergeEnv la lb (lo.set k.toNat la[i.toNat])
                 (i + 1) j (k + 1)) := by
-          simp [vecMergeDrainA, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hstep]
+          cir_unfold_leaf (vecMergeDrainA, hcond, hstep)
         have h1i : (i + 1).toNat = i.toNat + 1 :=
           bv64_succ_toNat i _ hA hlena
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1168,8 +1161,7 @@ theorem mergeDrainA_err (F : Nat) (la lb lo : List (BitVec 32))
           hleno hltK
         have herr : evalStmtFuel (F + 1) vecMergeDrainA
             (mkMergeEnv la lb lo i j k) = .error .AssertFail := by
-          simp [vecMergeDrainA, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecMergeDrainA, hcond, hbody)
         exact herr
       | some w =>
         have hltK : k.toNat < lo.length :=
@@ -1191,8 +1183,7 @@ theorem mergeDrainA_err (F : Nat) (la lb lo : List (BitVec 32))
             evalStmtFuel F vecMergeDrainA
               (mkMergeEnv la lb (lo.set k.toNat la[i.toNat])
                 (i + 1) j (k + 1)) := by
-          simp [vecMergeDrainA, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hstep]
+          cir_unfold_leaf (vecMergeDrainA, hcond, hstep)
         have h1i : (i + 1).toNat = i.toNat + 1 :=
           bv64_succ_toNat i _ hA hlena
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1277,8 +1268,7 @@ theorem mergeDrainB_ok (F : Nat) (la lb lo : List (BitVec 32))
             evalStmtFuel F vecMergeDrainB
               (mkMergeEnv la lb (lo.set k.toNat lb[j.toNat])
                 i (j + 1) (k + 1)) := by
-          simp [vecMergeDrainB, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hstep]
+          cir_unfold_leaf (vecMergeDrainB, hcond, hstep)
         have h1j : (j + 1).toNat = j.toNat + 1 :=
           bv64_succ_toNat j _ hB hlenb
         have h1k : (k + 1).toNat = k.toNat + 1 :=
@@ -1358,8 +1348,7 @@ theorem mergeDrainB_err (F : Nat) (la lb lo : List (BitVec 32))
           hleno hltK
         have herr : evalStmtFuel (F + 1) vecMergeDrainB
             (mkMergeEnv la lb lo i j k) = .error .AssertFail := by
-          simp [vecMergeDrainB, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (vecMergeDrainB, hcond, hbody)
         exact herr
       | some w =>
         have hltK : k.toNat < lo.length :=
@@ -1381,8 +1370,7 @@ theorem mergeDrainB_err (F : Nat) (la lb lo : List (BitVec 32))
             evalStmtFuel F vecMergeDrainB
               (mkMergeEnv la lb (lo.set k.toNat lb[j.toNat])
                 i (j + 1) (k + 1)) := by
-          simp [vecMergeDrainB, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hstep]
+          cir_unfold_leaf (vecMergeDrainB, hcond, hstep)
         have h1j : (j + 1).toNat = j.toNat + 1 :=
           bv64_succ_toNat j _ hB hlenb
         have h1k : (k + 1).toNat = k.toNat + 1 :=

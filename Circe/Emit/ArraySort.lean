@@ -1265,8 +1265,7 @@ theorem sortInnerWhile_correct (N : Nat) (F : Nat) (ρ : Env)
           some (.u64 (BitVec.ofNat 64 k)) := hj₄
         have hstep : evalStmtFuel (F + 1) sortInnerWhile ρ =
             evalStmtFuel F sortInnerWhile ρ₄ := by
-          simp [sortInnerWhile, evalStmtFuel, evalStmtSuccHandler,
-            evalStmtWith, hcond, hbody]
+          cir_unfold_leaf (sortInnerWhile, hcond, hbody)
         rw [hstep]
         have hAlen : (l.take k).length = k := take_length_eq _ _ (by omega)
         have hzj : l[k + 1] = z := by
@@ -1536,8 +1535,7 @@ theorem sortOuterWhile_correct (N : Nat) (F : Nat) (ρ : Env)
           (by omega)
       have hstep : evalStmtFuel (F + 1) (sortOuterWhile N) ρ =
           evalStmtFuel F (sortOuterWhile N) ρ₂ := by
-        simp [sortOuterWhile, evalStmtFuel, evalStmtSuccHandler, evalStmtWith,
-          hcond, hbody]
+        cir_unfold_leaf (sortOuterWhile, hcond, hbody)
       rw [hstep]
       have hfuel : N - i = (N - (i + 1)) + 1 := by omega
       have hF' : (N - (i + 1)) + N ≤ F := by omega
