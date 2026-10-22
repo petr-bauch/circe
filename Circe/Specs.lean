@@ -1426,3 +1426,479 @@ theorem vecInsertSumEntry_correct :
     before the reads). -/
 theorem vecEraseSumEntry_correct :
     vecEraseSumEntryFwd = .ok (.i32 4) := rfl
+
+/-! ## P2-M1 merge-drain contracts (U2 template instances) -/
+
+/-- Drain-`i` ok leg: fuel covering the remaining `mid - i`
+    copies plus succeeding reads discharge the drain at
+    `i = mid`, with `k` advanced and length preserved.
+    Template instance: sequential-threading callee (see
+    VERIFYING.md Contracts). -/
+theorem VecMergeRuns.mergeRunsDrainIFwd_ok (la lt : List (BitVec 32))
+    (fuel i k mid : Nat)
+    (hle : i ≤ mid)
+    (hfuel : mid - i ≤ fuel)
+    (hread_la : ∀ p, i ≤ p → p < mid → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, k ≤ q → q < k + (mid - i) → ∃ y, lt[q]? = some y) :
+    ∃ k' lt', VecMergeRuns.mergeRunsDrainIFwd la lt fuel i k mid = .ok (mid, k', lt') ∧
+      k' = k + (mid - i) ∧ lt'.length = lt.length := by
+  induction fuel generalizing i k lt with
+  | zero =>
+    have him : i = mid := by omega
+    subst him
+    refine ⟨k, lt, ?_, ?_, rfl⟩
+    · simp [VecMergeRuns.mergeRunsDrainIFwd]
+    · simp
+  | succ n ih =>
+    by_cases hlt : i < mid
+    · obtain ⟨x, hx⟩ := hread_la i (Nat.le_refl _) hlt
+      obtain ⟨y, hy⟩ := hread_lt k (Nat.le_refl _) (by omega)
+      have hfuel' : mid - (i + 1) ≤ n := by omega
+      have ih' := ih (lt.set k x) (i + 1) (k + 1) (by omega) hfuel'
+        (fun p h1 h2 => hread_la p (by omega) h2)
+        (fun q h1 h2 => by
+          obtain ⟨z, hz⟩ := hread_lt q (by omega) (by omega)
+          exact ⟨z, by
+            rw [List.getElem?_set_ne (show k ≠ q by omega)]
+            exact hz⟩)
+      obtain ⟨k', lt', heq, hk', hlen⟩ := ih'
+      refine ⟨k', lt', ?_, ?_, ?_⟩
+      · simp only [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_left hlt, hy, hx]
+        exact heq
+      · omega
+      · have hset : (lt.set k x).length = lt.length := List.length_set
+        exact hlen.trans hset
+    · have him : i = mid := by omega
+      subst him
+      refine ⟨k, lt, ?_, ?_, rfl⟩
+      · simp only [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_right hlt]
+      · simp
+
+/-- Drain-`i` error leg, `tmp` fails first: the `j`-th `tmp`
+    read is `none` while all prior reads succeed. -/
+theorem VecMergeRuns.mergeRunsDrainIFwd_err_lt (la lt : List (BitVec 32))
+    (fuel i k mid j : Nat)
+    (hle : i ≤ mid)
+    (hlt : j < mid - i)
+    (hfuel : j < fuel)
+    (hread : ∀ p, p < j → (∃ x, la[i + p]? = some x) ∧
+      (∃ y, lt[k + p]? = some y))
+    (hfail : lt[k + j]? = none) :
+    VecMergeRuns.mergeRunsDrainIFwd la lt fuel i k mid =
+      .error .AssertFail := by
+  induction j generalizing i k lt fuel with
+  | zero =>
+    have hi : i < mid := by omega
+    obtain ⟨n, rfl, _⟩ := fuel_step_down 0 hfuel
+    have hfail0 : lt[k]? = none := hfail
+    simp only [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_left hi, hfail0]
+  | succ j ih =>
+    have hi : i < mid := by omega
+    obtain ⟨x, hx⟩ := (hread 0 (by omega)).1
+    obtain ⟨y, hy⟩ := (hread 0 (by omega)).2
+    obtain ⟨n, rfl, _⟩ := fuel_step_down (j + 1) hfuel
+    have hx0 : la[i]? = some x := hx
+    have hy0 : lt[k]? = some y := hy
+    have hfail' : (lt.set k x)[(k + 1) + j]? = none := by
+      have e : (k + 1) + j = k + (j + 1) := by omega
+      have hne : k ≠ (k + 1) + j := by omega
+      rw [List.getElem?_set_ne hne, e]
+      exact hfail
+    have hread' : ∀ p, p < j → (∃ x, la[(i + 1) + p]? = some x) ∧
+        (∃ y, (lt.set k x)[(k + 1) + p]? = some y) := by
+      intro p hp
+      obtain ⟨x', hx'⟩ := (hread (p + 1) (by omega)).1
+      obtain ⟨y', hy'⟩ := (hread (p + 1) (by omega)).2
+      have e1 : (i + 1) + p = i + (p + 1) := by omega
+      have e2 : (k + 1) + p = k + (p + 1) := by omega
+      have hne : k ≠ (k + 1) + p := by omega
+      refine ⟨⟨x', by rw [e1]; exact hx'⟩, y', ?_⟩
+      rw [List.getElem?_set_ne hne, e2]
+      exact hy'
+    simp only [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_left hi, hy0, hx0]
+    exact ih (fuel := n) (lt := lt.set k x) (i := i + 1) (k := k + 1)
+      (by omega) (by omega) (by omega) hread' hfail'
+
+/-- Drain-`i` error leg, `la` fails first: the `j`-th `la`
+    read is `none` while the `j`-th `tmp` read (checked first)
+    and all prior reads succeed. -/
+theorem VecMergeRuns.mergeRunsDrainIFwd_err_la (la lt : List (BitVec 32))
+    (fuel i k mid j : Nat)
+    (hle : i ≤ mid)
+    (hlt : j < mid - i)
+    (hfuel : j < fuel)
+    (hread : ∀ p, p < j → (∃ x, la[i + p]? = some x) ∧
+      (∃ y, lt[k + p]? = some y))
+    (htmp : ∃ y, lt[k + j]? = some y)
+    (hfail : la[i + j]? = none) :
+    VecMergeRuns.mergeRunsDrainIFwd la lt fuel i k mid =
+      .error .AssertFail := by
+  induction j generalizing i k lt fuel with
+  | zero =>
+    have hi : i < mid := by omega
+    obtain ⟨n, rfl, _⟩ := fuel_step_down 0 hfuel
+    obtain ⟨y, hy⟩ := htmp
+    have hy0 : lt[k]? = some y := hy
+    have hfail0 : la[i]? = none := hfail
+    simp only [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_left hi, hy0, hfail0]
+  | succ j ih =>
+    have hi : i < mid := by omega
+    obtain ⟨x, hx⟩ := (hread 0 (by omega)).1
+    obtain ⟨y, hy⟩ := (hread 0 (by omega)).2
+    obtain ⟨n, rfl, _⟩ := fuel_step_down (j + 1) hfuel
+    have hx0 : la[i]? = some x := hx
+    have hy0 : lt[k]? = some y := hy
+    obtain ⟨z, hz⟩ := htmp
+    have htmp' : ∃ y, (lt.set k x)[(k + 1) + j]? = some y := by
+      have e2 : (k + 1) + j = k + (j + 1) := by omega
+      have hne : k ≠ (k + 1) + j := by omega
+      refine ⟨z, by rw [List.getElem?_set_ne hne, e2]; exact hz⟩
+    have hfail' : la[(i + 1) + j]? = none := by
+      have e1 : (i + 1) + j = i + (j + 1) := by omega
+      rw [e1]; exact hfail
+    have hread' : ∀ p, p < j → (∃ x, la[(i + 1) + p]? = some x) ∧
+        (∃ y, (lt.set k x)[(k + 1) + p]? = some y) := by
+      intro p hp
+      obtain ⟨x', hx'⟩ := (hread (p + 1) (by omega)).1
+      obtain ⟨y', hy'⟩ := (hread (p + 1) (by omega)).2
+      have e1 : (i + 1) + p = i + (p + 1) := by omega
+      have e2 : (k + 1) + p = k + (p + 1) := by omega
+      have hne : k ≠ (k + 1) + p := by omega
+      refine ⟨⟨x', by rw [e1]; exact hx'⟩, y', ?_⟩
+      rw [List.getElem?_set_ne hne, e2]
+      exact hy'
+    simp only [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_left hi, hy0, hx0]
+    exact ih (fuel := n) (lt := lt.set k x) (i := i + 1) (k := k + 1)
+      (by omega) (by omega) (by omega) hread' htmp' hfail'
+
+/-- Drain-`j` ok leg: fuel covering the remaining `hi - j`
+    copies plus succeeding reads discharge the drain at
+    `j = hi`, with `k` advanced and length preserved.
+    Template instance: sequential-threading callee (see
+    VERIFYING.md Contracts). -/
+theorem VecMergeRuns.mergeRunsDrainJFwd_ok (la lt : List (BitVec 32))
+    (fuel j k hi : Nat)
+    (hle : j ≤ hi)
+    (hfuel : hi - j ≤ fuel)
+    (hread_la : ∀ p, j ≤ p → p < hi → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, k ≤ q → q < k + (hi - j) → ∃ y, lt[q]? = some y) :
+    ∃ k' lt', VecMergeRuns.mergeRunsDrainJFwd la lt fuel j k hi = .ok (hi, k', lt') ∧
+      k' = k + (hi - j) ∧ lt'.length = lt.length := by
+  induction fuel generalizing j k lt with
+  | zero =>
+    have him : j = hi := by omega
+    subst him
+    refine ⟨k, lt, ?_, ?_, rfl⟩
+    · simp [VecMergeRuns.mergeRunsDrainJFwd]
+    · simp
+  | succ n ih =>
+    by_cases hlt : j < hi
+    · obtain ⟨x, hx⟩ := hread_la j (Nat.le_refl _) hlt
+      obtain ⟨y, hy⟩ := hread_lt k (Nat.le_refl _) (by omega)
+      have hfuel' : hi - (j + 1) ≤ n := by omega
+      have ih' := ih (lt.set k x) (j + 1) (k + 1) (by omega) hfuel'
+        (fun p h1 h2 => hread_la p (by omega) h2)
+        (fun q h1 h2 => by
+          obtain ⟨z, hz⟩ := hread_lt q (by omega) (by omega)
+          exact ⟨z, by
+            rw [List.getElem?_set_ne (show k ≠ q by omega)]
+            exact hz⟩)
+      obtain ⟨k', lt', heq, hk', hlen⟩ := ih'
+      refine ⟨k', lt', ?_, ?_, ?_⟩
+      · simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hlt, hy, hx]
+        exact heq
+      · omega
+      · have hset : (lt.set k x).length = lt.length := List.length_set
+        exact hlen.trans hset
+    · have him : j = hi := by omega
+      subst him
+      refine ⟨k, lt, ?_, ?_, rfl⟩
+      · simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_right hlt]
+      · simp
+
+/-- Drain-`j` error leg, `tmp` fails first: the `d`-th `tmp`
+    read is `none` while all prior reads succeed. -/
+theorem VecMergeRuns.mergeRunsDrainJFwd_err_lt (la lt : List (BitVec 32))
+    (fuel j k hi d : Nat)
+    (hle : j ≤ hi)
+    (hlt : d < hi - j)
+    (hfuel : d < fuel)
+    (hread : ∀ p, p < d → (∃ x, la[j + p]? = some x) ∧
+      (∃ y, lt[k + p]? = some y))
+    (hfail : lt[k + d]? = none) :
+    VecMergeRuns.mergeRunsDrainJFwd la lt fuel j k hi =
+      .error .AssertFail := by
+  induction d generalizing j k lt fuel with
+  | zero =>
+    have hi : j < hi := by omega
+    obtain ⟨n, rfl, _⟩ := fuel_step_down 0 hfuel
+    have hfail0 : lt[k]? = none := hfail
+    simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hi, hfail0]
+  | succ d ih =>
+    have hi : j < hi := by omega
+    obtain ⟨x, hx⟩ := (hread 0 (by omega)).1
+    obtain ⟨y, hy⟩ := (hread 0 (by omega)).2
+    obtain ⟨n, rfl, _⟩ := fuel_step_down (d + 1) hfuel
+    have hx0 : la[j]? = some x := hx
+    have hy0 : lt[k]? = some y := hy
+    have hfail' : (lt.set k x)[(k + 1) + d]? = none := by
+      have e : (k + 1) + d = k + (d + 1) := by omega
+      have hne : k ≠ (k + 1) + d := by omega
+      rw [List.getElem?_set_ne hne, e]
+      exact hfail
+    have hread' : ∀ p, p < d → (∃ x, la[(j + 1) + p]? = some x) ∧
+        (∃ y, (lt.set k x)[(k + 1) + p]? = some y) := by
+      intro p hp
+      obtain ⟨x', hx'⟩ := (hread (p + 1) (by omega)).1
+      obtain ⟨y', hy'⟩ := (hread (p + 1) (by omega)).2
+      have e1 : (j + 1) + p = j + (p + 1) := by omega
+      have e2 : (k + 1) + p = k + (p + 1) := by omega
+      have hne : k ≠ (k + 1) + p := by omega
+      refine ⟨⟨x', by rw [e1]; exact hx'⟩, y', ?_⟩
+      rw [List.getElem?_set_ne hne, e2]
+      exact hy'
+    simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hi, hy0, hx0]
+    exact ih (fuel := n) (lt := lt.set k x) (j := j + 1) (k := k + 1)
+      (by omega) (by omega) (by omega) hread' hfail'
+
+/-- Main-loop ok leg: fuel covering the remaining
+    `(mid - i) + (hi - j)` iterations plus succeeding reads
+    discharges the merge at an exit (`i = mid` or `j = hi`),
+    with `k` advanced by the consumed pairs and length
+    preserved. Template instance: sequential-threading callee. -/
+theorem VecMergeRuns.mergeRunsMainFwd_ok (la lt : List (BitVec 32))
+    (fuel i j k mid hi : Nat)
+    (hle_i : i ≤ mid) (hle_j : j ≤ hi)
+    (hfuel : (mid - i) + (hi - j) ≤ fuel)
+    (hread_i : ∀ p, i ≤ p → p < mid → ∃ x, la[p]? = some x)
+    (hread_j : ∀ p, j ≤ p → p < hi → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, k ≤ q → q < k + ((mid - i) + (hi - j)) →
+      ∃ y, lt[q]? = some y) :
+    ∃ i' j' k' lt',
+      VecMergeRuns.mergeRunsMainFwd la lt fuel i j k mid hi =
+        .ok (i', j', k', lt') ∧
+      (i' = mid ∨ j' = hi) ∧ i' ≤ mid ∧ j' ≤ hi ∧
+      i ≤ i' ∧ j ≤ j' ∧
+      k' = k + ((i' - i) + (j' - j)) ∧ lt'.length = lt.length := by
+  induction fuel generalizing i j k lt with
+  | zero =>
+    have him : i = mid := by omega
+    have hjm : j = hi := by omega
+    rw [him, hjm]
+    refine ⟨mid, hi, k, lt, ?_, ?_, ?_, ?_, ?_, ?_, ?_, rfl⟩
+    · simp [VecMergeRuns.mergeRunsMainFwd]
+    · exact Or.inl rfl
+    · exact Nat.le_refl _
+    · exact Nat.le_refl _
+    · exact Nat.le_refl _
+    · exact Nat.le_refl _
+    · simp
+  | succ n ih =>
+    by_cases hi_lt : i < mid
+    · by_cases hj_lt : j < hi
+      · obtain ⟨x, hx⟩ := hread_i i (Nat.le_refl _) hi_lt
+        obtain ⟨z, hz⟩ := hread_j j (Nat.le_refl _) hj_lt
+        obtain ⟨w, hw⟩ := hread_lt k (Nat.le_refl _) (by omega)
+        by_cases hslt : x.slt z = true
+        · have ih' := ih (lt.set k x) (i + 1) j (k + 1)
+            (by omega) (by omega) (by omega)
+            (fun p h1 h2 => hread_i p (by omega) h2)
+            (fun p h1 h2 => hread_j p h1 h2)
+            (fun q h1 h2 => by
+              obtain ⟨v, hv⟩ := hread_lt q (by omega) (by omega)
+              exact ⟨v, by
+                rw [List.getElem?_set_ne (show k ≠ q by omega)]
+                exact hv⟩)
+          obtain ⟨i', j', k', lt', heq, hexit, hbi, hbj, hmi', hmj', hk', hlen⟩ := ih'
+          refine ⟨i', j', k', lt', ?_, hexit, hbi, hbj, ?_, ?_, ?_, ?_⟩
+          · simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hi_lt,
+              dite_eq_left hj_lt, hw, hx, hz]
+            rw [ite_eq_left hslt]
+            exact heq
+          · omega
+          · omega
+          · omega
+          · have hset : (lt.set k x).length = lt.length := List.length_set
+            exact hlen.trans hset
+        · have ih' := ih (lt.set k z) i (j + 1) (k + 1)
+            (by omega) (by omega) (by omega)
+            (fun p h1 h2 => hread_i p h1 h2)
+            (fun p h1 h2 => hread_j p (by omega) h2)
+            (fun q h1 h2 => by
+              obtain ⟨v, hv⟩ := hread_lt q (by omega) (by omega)
+              exact ⟨v, by
+                rw [List.getElem?_set_ne (show k ≠ q by omega)]
+                exact hv⟩)
+          obtain ⟨i', j', k', lt', heq, hexit, hbi, hbj, hmi', hmj', hk', hlen⟩ := ih'
+          refine ⟨i', j', k', lt', ?_, hexit, hbi, hbj, ?_, ?_, ?_, ?_⟩
+          · simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hi_lt,
+              dite_eq_left hj_lt, hw, hx, hz]
+            rw [ite_eq_right hslt]
+            exact heq
+          · exact hmi'
+          · omega
+          · omega
+          · have hset : (lt.set k z).length = lt.length := List.length_set
+            exact hlen.trans hset
+      · have hjm : j = hi := by omega
+        rw [hjm] at hj_lt ⊢
+        refine ⟨i, hi, k, lt, ?_, ?_, ?_, ?_, ?_, ?_, ?_, rfl⟩
+        · simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hi_lt,
+            dite_eq_right hj_lt]
+        · exact Or.inr rfl
+        · exact hle_i
+        · exact Nat.le_refl _
+        · exact Nat.le_refl _
+        · exact Nat.le_refl _
+        · simp
+    · have him : i = mid := by omega
+      rw [him] at hi_lt ⊢
+      refine ⟨mid, j, k, lt, ?_, ?_, ?_, ?_, ?_, ?_, ?_, rfl⟩
+      · simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_right hi_lt]
+      · exact Or.inl rfl
+      · exact Nat.le_refl _
+      · exact hle_j
+      · exact Nat.le_refl _
+      · exact Nat.le_refl _
+      · simp
+
+/-- Main-loop error leg, `tmp` fails first: with both cursors
+    live, a missing `tmp` word fails immediately. -/
+theorem VecMergeRuns.mergeRunsMainFwd_err_lt (la lt : List (BitVec 32))
+    (fuel i j k mid hi : Nat)
+    (hi_lt : i < mid) (hj_lt : j < hi)
+    (hfail : lt[k]? = none) :
+    VecMergeRuns.mergeRunsMainFwd la lt (fuel + 1) i j k mid hi =
+      .error .AssertFail := by
+  simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hi_lt,
+    dite_eq_left hj_lt, hfail]
+
+/-- Main-loop error leg, `la[i]` fails: `tmp` ok, left read
+    missing. -/
+theorem VecMergeRuns.mergeRunsMainFwd_err_la (la lt : List (BitVec 32))
+    (fuel i j k mid hi : Nat)
+    (hi_lt : i < mid) (hj_lt : j < hi)
+    (htmp : ∃ y, lt[k]? = some y)
+    (hfail : la[i]? = none) :
+    VecMergeRuns.mergeRunsMainFwd la lt (fuel + 1) i j k mid hi =
+      .error .AssertFail := by
+  obtain ⟨y, hy⟩ := htmp
+  simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hi_lt,
+    dite_eq_left hj_lt, hy, hfail]
+
+/-- Main-loop error leg, `la[j]` fails: `tmp` and left read ok,
+    right read missing. -/
+theorem VecMergeRuns.mergeRunsMainFwd_err_la_j (la lt : List (BitVec 32))
+    (fuel i j k mid hi : Nat)
+    (hi_lt : i < mid) (hj_lt : j < hi)
+    (htmp : ∃ y, lt[k]? = some y)
+    (ha : ∃ x, la[i]? = some x)
+    (hfail : la[j]? = none) :
+    VecMergeRuns.mergeRunsMainFwd la lt (fuel + 1) i j k mid hi =
+      .error .AssertFail := by
+  obtain ⟨y, hy⟩ := htmp
+  obtain ⟨x, hx⟩ := ha
+  simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hi_lt,
+    dite_eq_left hj_lt, hy, hx, hfail]
+
+/-- Entry ok leg: sequential threading — main, drain-`i`,
+    drain-`j`, one equation per composer `callRet`, exactly the
+    U2 `addCaller` shape at three calls. Template instance. -/
+theorem VecMergeRuns.mergeRunsFwd_ok (la lt : List (BitVec 32))
+    (lo mid hi : Nat) (i j k k' k'' : Nat)
+    (lt' lt'' lt''' : List (BitVec 32))
+    (hmain : VecMergeRuns.mergeRunsMainFwd la lt
+      ((mid - lo) + (hi - mid)) lo mid lo mid hi = .ok (i, j, k, lt'))
+    (hdi : VecMergeRuns.mergeRunsDrainIFwd la lt' (mid - i) i k mid =
+      .ok (mid, k', lt''))
+    (hdj : VecMergeRuns.mergeRunsDrainJFwd la lt'' (hi - j) j k' hi =
+      .ok (hi, k'', lt''')) :
+    VecMergeRuns.mergeRunsFwd la lt lo mid hi =
+      .ok (.stdVecVal lt''') := by
+  simp only [VecMergeRuns.mergeRunsFwd, hmain, hdi, hdj]
+
+/-- Entry err leg, main fails: first-failure-wins matches the
+    forward's binds (failed callee equation as hypothesis). -/
+theorem VecMergeRuns.mergeRunsFwd_err_main (la lt : List (BitVec 32))
+    (lo mid hi : Nat) (e : Panic)
+    (hmain : VecMergeRuns.mergeRunsMainFwd la lt
+      ((mid - lo) + (hi - mid)) lo mid lo mid hi = .error e) :
+    VecMergeRuns.mergeRunsFwd la lt lo mid hi = .error e := by
+  simp only [VecMergeRuns.mergeRunsFwd, hmain]
+
+/-- Entry err leg, drain-`i` fails: main ok, drain-`i` errors. -/
+theorem VecMergeRuns.mergeRunsFwd_err_drainI (la lt : List (BitVec 32))
+    (lo mid hi : Nat) (i j k : Nat) (lt' : List (BitVec 32))
+    (e : Panic)
+    (hmain : VecMergeRuns.mergeRunsMainFwd la lt
+      ((mid - lo) + (hi - mid)) lo mid lo mid hi = .ok (i, j, k, lt'))
+    (hdi : VecMergeRuns.mergeRunsDrainIFwd la lt' (mid - i) i k mid =
+      .error e) :
+    VecMergeRuns.mergeRunsFwd la lt lo mid hi = .error e := by
+  simp only [VecMergeRuns.mergeRunsFwd, hmain, hdi]
+
+/-- Entry err leg, drain-`j` fails: main and drain-`i` ok,
+    drain-`j` errors. -/
+theorem VecMergeRuns.mergeRunsFwd_err_drainJ (la lt : List (BitVec 32))
+    (lo mid hi : Nat) (i j k k' : Nat)
+    (lt' lt'' : List (BitVec 32)) (e : Panic)
+    (hmain : VecMergeRuns.mergeRunsMainFwd la lt
+      ((mid - lo) + (hi - mid)) lo mid lo mid hi = .ok (i, j, k, lt'))
+    (hdi : VecMergeRuns.mergeRunsDrainIFwd la lt' (mid - i) i k mid =
+      .ok (mid, k', lt''))
+    (hdj : VecMergeRuns.mergeRunsDrainJFwd la lt'' (hi - j) j k' hi =
+      .error e) :
+    VecMergeRuns.mergeRunsFwd la lt lo mid hi = .error e := by
+  simp only [VecMergeRuns.mergeRunsFwd, hmain, hdi, hdj]
+
+/-- Drain-`j` error leg, `la` fails first: the `d`-th `la`
+    read is `none` while the `d`-th `tmp` read (checked first)
+    and all prior reads succeed. -/
+theorem VecMergeRuns.mergeRunsDrainJFwd_err_la (la lt : List (BitVec 32))
+    (fuel j k hi d : Nat)
+    (hle : j ≤ hi)
+    (hlt : d < hi - j)
+    (hfuel : d < fuel)
+    (hread : ∀ p, p < d → (∃ x, la[j + p]? = some x) ∧
+      (∃ y, lt[k + p]? = some y))
+    (htmp : ∃ y, lt[k + d]? = some y)
+    (hfail : la[j + d]? = none) :
+    VecMergeRuns.mergeRunsDrainJFwd la lt fuel j k hi =
+      .error .AssertFail := by
+  induction d generalizing j k lt fuel with
+  | zero =>
+    have hi : j < hi := by omega
+    obtain ⟨n, rfl, _⟩ := fuel_step_down 0 hfuel
+    obtain ⟨y, hy⟩ := htmp
+    have hy0 : lt[k]? = some y := hy
+    have hfail0 : la[j]? = none := hfail
+    simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hi, hy0, hfail0]
+  | succ d ih =>
+    have hi : j < hi := by omega
+    obtain ⟨x, hx⟩ := (hread 0 (by omega)).1
+    obtain ⟨y, hy⟩ := (hread 0 (by omega)).2
+    obtain ⟨n, rfl, _⟩ := fuel_step_down (d + 1) hfuel
+    have hx0 : la[j]? = some x := hx
+    have hy0 : lt[k]? = some y := hy
+    obtain ⟨z, hz⟩ := htmp
+    have htmp' : ∃ y, (lt.set k x)[(k + 1) + d]? = some y := by
+      have e2 : (k + 1) + d = k + (d + 1) := by omega
+      have hne : k ≠ (k + 1) + d := by omega
+      refine ⟨z, by rw [List.getElem?_set_ne hne, e2]; exact hz⟩
+    have hfail' : la[(j + 1) + d]? = none := by
+      have e1 : (j + 1) + d = j + (d + 1) := by omega
+      rw [e1]; exact hfail
+    have hread' : ∀ p, p < d → (∃ x, la[(j + 1) + p]? = some x) ∧
+        (∃ y, (lt.set k x)[(k + 1) + p]? = some y) := by
+      intro p hp
+      obtain ⟨x', hx'⟩ := (hread (p + 1) (by omega)).1
+      obtain ⟨y', hy'⟩ := (hread (p + 1) (by omega)).2
+      have e1 : (j + 1) + p = j + (p + 1) := by omega
+      have e2 : (k + 1) + p = k + (p + 1) := by omega
+      have hne : k ≠ (k + 1) + p := by omega
+      refine ⟨⟨x', by rw [e1]; exact hx'⟩, y', ?_⟩
+      rw [List.getElem?_set_ne hne, e2]
+      exact hy'
+    simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hi, hy0, hx0]
+    exact ih (fuel := n) (lt := lt.set k x) (j := j + 1) (k := k + 1)
+      (by omega) (by omega) (by omega) hread' htmp' hfail'

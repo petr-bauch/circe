@@ -49,10 +49,11 @@ multi-writer algorithms.
 
 Proposed (toward the platform goal — for approval, in order):
 - P2-M1: merge-drain specs — the missing `mergeRuns` callee
-  contracts named as U3 material. Completes merge sort
-  end-to-end (U2 contract trio over the sort entry plus an
-  F2-style closed spine). No new admission; pure verification
-  debt.
+  contracts named as U3 material. M1a DONE 2026-10-21 (14 U2
+  contracts in `Specs.lean`: ok + per-site err legs for main /
+  both drains by fuel induction, threading trio for the entry).
+  M1b (mem-level entry transfer) and M1c (closed sort-segment
+  spine) pending. No new admission; pure verification debt.
 - P2-M2: out-of-place transform kernel (read-only input,
   checked-op written output) — first multi-block framed proof
   (`cellsAt` + framed `cellsAt`, an H-kit customer) and the

@@ -342,7 +342,11 @@ the shape; it invents nothing):
   shapes. Instances: `add3_correct_ok/err`, `addCaller_correct_ok/err`,
   `stdVecGrowRealloc_correct_ok` (eight callee equations),
   `stdVecReserve_correct_realloc` (allocate → relocate →
-  deallocate-guard), each marked `Template instance` at its doc.
+  deallocate-guard), `VecMergeRuns.mergeRunsFwd_ok` (main →
+  drain-`i` → drain-`j`), each marked `Template instance` at
+  its doc. Recursive callees carry fuel-indexed ok legs plus
+  per-failure-site err legs (`mergeRunsMainFwd`,
+  `mergeRunsDrainIFwd/JFwd`), proved by fuel induction.
 - Delegation: the composer forward is the callee (plus a
   projection) — rewrite with the delegation equation, apply the
   callee's spec. Instances: `sumCaller_correct` (→ `sum_correct`),
