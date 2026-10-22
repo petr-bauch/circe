@@ -836,6 +836,25 @@ theorem oracleNoalias_vecSegReverse (l : List (BitVec 32))
     simp [LayoutNoAlias, layoutAddrs]
   exact ⟨_, _, _, hb, hn⟩
 
+/-- Merge binding pins two snapshots: `tmp` first (addr `0`),
+    `a` second (addr `1`) — `bindMemArgs` recurses tail-first,
+    so the later-listed vector binds first; owned bounds bind by
+    value only. The `mutBorrow` role binds exactly like
+    `sharedBorrow` reads (value-dispatched). -/
+theorem bindMemArgs_vecMergeRuns (la lt : List (BitVec 32))
+    (loB midB hiB : BitVec 64) :
+    bindMemArgs VecMergeRuns.mergeRunsFunc.args
+      [.stdVecVal la, .stdVecVal lt, .u64 loB, .u64 midB, .u64 hiB]
+      emptyMem =
+      some ([("a", .stdVecVal la), ("tmp", .stdVecVal lt),
+        ("lo", .u64 loB), ("mid", .u64 midB), ("hi", .u64 hiB)],
+        ⟨2, [(1, ⟨1, true,
+          (BitVec.ofNat 32 la.length) :: la⟩),
+          (0, ⟨0, true,
+          (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩,
+        [("a", 1, 1), ("tmp", 0, 0)]) := by
+  rfl
+
 /-- Rotate binding pins the `(1 + length)`-word snapshot (the owned
     `u64` rotation count binds by value: env entry only, no blocks,
     no layout — the `stdVecIndex` precedent). -/
