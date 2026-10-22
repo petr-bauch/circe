@@ -4,7 +4,7 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-16): all delivered milestones live in `DELIVERED.md`.
+State (2026-10-21): all delivered milestones live in `DELIVERED.md`.
 Work going forward is organized under four pillars; each slice
 still follows the standing convention below.
 
@@ -18,14 +18,11 @@ L4 second sequential-writer admission; L5 verdicts — regions
 vestigial-by-design, L3 roots extract-only). The C core is
 complete within the standing non-goals.
 
-Next:
-- L-track is closed (L4/L5); the Iris revisit trigger fired on
-  both legs 2026-10-16 and the revisit is DEFERRED with a
-  limitations note — see `DELIVERED.md` "Iris spike report".
-- `optional::value` throw path closed (O1/O2, 2026-10-16):
-  guarded `.value()` admitted (checked leaf + throw helper +
-  guarded entry), unguarded rejects loudly; general `cir.try`
-  semantics stay out per standing non-goals.
+Next: nothing open — the C core is complete within the
+standing non-goals (L-track closed, Iris revisit deferred with
+a limitations note; `optional::value` throw path closed,
+general `cir.try` stays out). See `DELIVERED.md` §§ M3/N1, S3,
+N6, L–L5, O1/O2, Iris.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
@@ -36,7 +33,9 @@ Sorted/Permutation spec); the `std::vector<int>` algorithm run —
 binary search (V1), two-sum (V2), checked `at()` store (W),
 out-of-place merge kernel (M), bottom-up merge sort with
 calls-in-loop-bodies (C), in-place countdown reverse with
-stores-in-loop (R); crypto programs over `std::array`
+stores-in-loop (R), range-bounded segment reverse reusing the
+R loop (S), loopless rotate-by-three-reversals over the
+admitted seg entry (T); crypto programs over `std::array`
 (K1–K5: u32 bitwise leaves, buffer-xor, quarter-round, ChaCha20,
 SHA-256 vs KATs). Discipline throughout: pre-sized caller-owned
 buffers, loud misses (native exit 4), caller-debt side conditions
@@ -44,22 +43,30 @@ buffers, loud misses (native exit 4), caller-debt side conditions
 
 Next: further `std::vector` algorithm shapes and broader STD
 coverage, one admission-shaped slice at a time — speculative STD
-stays out (see non-goals). Multi-output support (G2/G2b/G3:
-`wr_pair`, `cond_pair`, `alias_cond`) unblocks accumulate-style
-and multi-writer algorithms.
-- Next Pillar 2 target: range-bounded in-place algorithms —
-  segment reverse over `(lo, hi)` DONE (2026-10-17, S slice:
-  window invariant `SegInv`, reused R loop body, `vecSet`
-  lockstep), then rotate-by-three-reversals DONE (2026-10-18,
-  T slice: loopless triple entry-over-entry composition over
-  the admitted seg entry — one new admission pin, one
-  admission-shaped slice at a time).
+stays out (see non-goals). Multi-output support (G2/G2b/G3,
+`DELIVERED.md` §§ N12–N14) unblocks accumulate-style and
+multi-writer algorithms.
+
+Proposed (toward the platform goal — for approval, in order):
+- P2-M1: merge-drain specs — the missing `mergeRuns` callee
+  contracts named as U3 material. Completes merge sort
+  end-to-end (U2 contract trio over the sort entry plus an
+  F2-style closed spine). No new admission; pure verification
+  debt.
+- P2-M2: out-of-place transform kernel (read-only input,
+  checked-op written output) — first multi-block framed proof
+  (`cellsAt` + framed `cellsAt`, an H-kit customer) and the
+  accumulate-adjacent shape G2 unblocked. One admission pin.
+- P2-M3: in-place partition (forward scan with stores) — a new
+  loop shape beyond countdown/rotate, and the third data point
+  for the fuel-arithmetic (audit #5) and loop-tactic triggers.
+  One admission pin.
 
 ## Pillar 3 — Human-readable/writable proofs
 
 Delivered (all re-verified against the repo 2026-10-21;
-details in `DELIVERED.md` §§ N5, H1–H3, A, P3a/b, Frontend,
-U1–U3, T1): proof ergonomics (N5: `cir_fuel`, fuel-bound
+details in `DELIVERED.md` §§ N5, H1–H3, A, P3a/b/c/d/e,
+Frontend, U1–U3, T1, H1): proof ergonomics (N5: `cir_fuel`, fuel-bound
 lemmas, per-step cascades; N5a/N5b micro-tactics
 `fuel_step_down` / `cir_step` with adoption gates), proof
 scale-down (N8: `cir_eval_closed`), Hoare rule library +
@@ -77,7 +84,11 @@ instances, fan-out boundary), lemma packs (U3: P0 audit,
 P1 `CheckedIx` extracted and consumed by R+S, P2 negative
 recorded, P3 closed with no pack), fold-end tactic (T1:
 `cir_fold_end`, six sites converted + `hello_fold_end`
-demo), and generator tooling (`tools/GenOut.lean`,
+demo), program-level composition (P3c/d/e: `seq_at`,
+`callProg_at`, call frame rules, closed rotate prefix,
+framed leaf), cell-kit promotion (H1: kit out of the
+report-only spike into `Circe.Mem.Agree`), and generator
+tooling (`tools/GenOut.lean`,
 `tools/GenMatch.lean`). Strategy capture lives in
 `docs/VERIFYING.md` (galleries, For-users, Contracts, Lemma
 packs) — correction: the `notes/proof-patterns.md` path named
@@ -85,31 +96,17 @@ in an earlier revision never landed in the repo (no such file,
 no git history); that material is session memory, not a repo
 deliverable.
 
-Next: the remaining frame work lives at statement level
-(H-track: overlapping footprints, multi-word assertions) —
-program-level call frame is DONE 2026-10-21, F3, and turned
-out definitional: `htripleProg_callProg_frame_at` /
-`htripleProg_callRet_frame_at` (caller memory unreachable —
-callee binds into `emptyMem`, equations keep `(m, π)`);
-`hoare_segCall1_framed` exercises the rule; a fully framed
-spine waits for an actual multi-cell caller. F1/F2 stand
-(`seq_at`, `callProg_at`, closed rotate prefix; trailing
-`return_` still needs the seq-return equation)
-(the T rotate entry is the motivating customer; only the
-single-cell `htriple_mstore_frame` exists today). Harvesting
-continues by the rule of three, with open triggers: third
+Next: open triggers only. Rule-of-three harvesting: third
 checked-add arity (audit #3), third user-goal transfer-leg use
 for a `cir_transfer_leg`-shaped tactic (audit #4), third
 countdown-loop shape for fuel arithmetic (audit #5) and for
 the unfold-loop-`show` tactic (R/S are two uses);
-R memory-threading stays prose at first use. A gallery per
-new admitted shape, as always. H-track: cell kit promoted to
-`Circe.Mem.Agree` (H1 DONE 2026-10-21 — was defined in the
-report-only `CondFrame` spike while admitted proofs stood on
-it); remaining triggers need no code today: third lockstep
-use earns a tactic, first triple-level store customer earns a
-rule (loop bodies with stores contain calls, so they live at
-prog level).
+R memory-threading stays prose at first use; third lockstep
+use earns a tactic; first triple-level store customer earns a
+rule; a fully framed spine waits for an actual multi-cell
+caller (P2-M2 would be one). The trailing `return_` still
+needs the prog-level seq-return equation. A gallery per new
+admitted shape, as always.
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`
@@ -171,5 +168,8 @@ changes stay out.
   `DELIVERED.md` "F2." / "S0–S4 + G1 dispositions".
 - K1–K5 crypto programs — `DELIVERED.md` "K." (summary; details
   under each K header).
-- All N/H/A/B/M/V/W/C/G slices — `DELIVERED.md` under their
-  headers.
+- All N/H/A/B/M/V/W/C/G/S/T slices — `DELIVERED.md` under
+  their headers (vector run V1/V2/W/M/C under N7; R/S/T own
+  sections; G2/G2b/G3 under N12–N14).
+- P3a/b program-level rules + Frontend + U1–U3 + T1 + P3c/d/e
+  + H1 — `DELIVERED.md` under their headers.

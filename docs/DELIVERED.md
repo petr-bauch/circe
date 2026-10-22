@@ -1614,3 +1614,36 @@ Audit remainder (no code): the R/S store lockstep has exactly
 two uses (prose stage); triple-level store rules have no
 customer (loop bodies with stores contain calls, so they live
 at prog level where frame is definitional per F3).
+
+### P3c. Program-level seq rule (F1) — DONE (2026-10-21)
+
+`memEvalProgStmt_seq` (no fuel split — the `seq` arm threads
+state directly) + `htripleProg_seq` / fixed-fuel
+`htripleProg_seq_at` (F1's rule refactored over the `At`
+version), `fellThrough`-pinned like `htriple_seq` with the
+same early-return deferral. `hoare_rotateSpine_seq` composes
+the rotate prefix from five leaf triples (call leaves as
+hypotheses).
+
+### P3d. Program-level call rule + closed spine (F2) — DONE (2026-10-21)
+
+`htripleProg_callProg_at`: caller triple from the callee run
+at one less fuel (`At (F+1)` — the zero-fuel arm errors). The
+U2 contract + transfer plug in as the run equation, never
+re-verified. `hoare_rotateSpine_closed`: the closed rotate
+prefix — all five leaves discharged (size/`z` wrap transfer
+equations; each seg call composes `segMemEvalProgFunc` with
+`vecSegReverse_correct`), four `seq_at` compositions at fuel
+`G+1`. Deliberate scope: no gallery instance (general over
+`l`/`k`, so a closed instance re-proves nothing); trailing
+`return_` stays out (deferred seq-return equation).
+
+### P3e. Program-level call frame rules (F3) — DONE (2026-10-21)
+
+`htripleProg_callProg_frame_at` /
+`htripleProg_callRet_frame_at`: a caller-memory frame rides
+the call untouched. Definitional, not deep: the callee binds
+into `emptyMem` (caller memory unreachable) and both call
+equations keep `(m, π)`. `hoare_segCall1_framed` exercises the
+rule. A fully framed spine waits for an actual multi-cell
+caller; the real frame work is statement-level (H-track).
