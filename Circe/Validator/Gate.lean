@@ -21,6 +21,7 @@ import Circe.Emit.VecRotate
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecTransformAdd
+import Circe.Emit.VecPartition
 import Circe.Emit.VecMergeSort
 import Circe.Emit.Reborrow
 import Circe.Emit.Reborrow34
@@ -1774,6 +1775,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecMergeIntoFunc with name := raw.name }
       else if isVecTransformAddShape raw then
         .ok { vecTransformAddFunc with name := raw.name }
+      else if isVecPartitionShape raw then
+        .ok { vecPartitionFunc with name := raw.name }
       else if isVecMergeRunsShape raw then
         .ok { VecMergeRuns.mergeRunsFunc with name := raw.name }
       else if isVecMergeSortShape raw then

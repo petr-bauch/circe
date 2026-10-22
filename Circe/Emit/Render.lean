@@ -917,6 +917,32 @@ def emitVecTransformAddText (name : String) : String :=
   ++ "        | none => .error .AssertFail\n"
   ++ "    else .ok (i, lo)\n"
 
+/-- Render the `vec_partition` entry forward definition: the
+    in-place Lomuto partition over the reified words (guard-justified
+    accesses, so the model is total). -/
+def emitVecPartitionText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (in-place Lomuto partition over the reified words; guard-justified, total). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (pivot : BitVec 32) : Result (List (BitVec 32)) :=\n"
+  ++ "  match loop pivot l l.length 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, _, l') => .ok l'\n"
+  ++ "where\n"
+  ++ "  loop (pivot : BitVec 32) : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, i, s => .ok (i, s, l)\n"
+  ++ "  | l, fuel + 1, i, s =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match l[i]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some x =>\n"
+  ++ "        if x.slt pivot then\n"
+  ++ "          match l[s]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some w => loop pivot ((l.set i w).set s x) fuel (i + 1) (s + 1)\n"
+  ++ "        else loop pivot l fuel (i + 1) s\n"
+  ++ "    else .ok (i, s, l)\n"
+
 /-- Render the `merge_runs` ranged callee forward definition: the
     in-place segment merge over the reified words (`a[lo,mid)` and
     `a[mid,hi)` merged into `tmp[lo,hi)`; short `tmp` aborts loudly). -/

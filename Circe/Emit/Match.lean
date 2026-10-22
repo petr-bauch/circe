@@ -23,6 +23,7 @@ import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecTransformAdd
+import Circe.Emit.VecPartition
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -950,6 +951,27 @@ def matchFrag : Func → Option FragKind
                       (.lit (.u64 v0))))))
           (.return_ (.var "out"))))⟩ =>
     some .vecTransformAdd
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"pivot", .i 32, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.seq (.let_ "s" (.u 64) (.lit (.u64 z0)))
+        (.seq (.let_ "i" (.u 64) (.lit (.u64 z1)))
+          (.seq (.while_ (.ult (.var "i") (.stdVecLen "v"))
+                  (.seq (.if_ (.slt (.stdVecAt "v" (.var "i"))
+                                    (.var "pivot"))
+                            (.seq (.let_ "t" (.i 32)
+                                      (.stdVecAt "v" (.var "i")))
+                              (.seq (.vecSet "v" (.var "i")
+                                        (.stdVecAt "v" (.var "s")))
+                                (.seq (.vecSet "v" (.var "s") (.var "t"))
+                                  (.assign "s" (.uadd (.var "s")
+                                    (.lit (.u64 v0)))))))
+                            .skip)
+                    (.assign "i" (.uadd (.var "i")
+                      (.lit (.u64 v1))))))
+            (.return_ (.var "v")))))⟩ =>
+    some .vecPartition
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"tmp", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
         ⟨"lo", .u 64, .owned⟩,
@@ -1592,6 +1614,8 @@ theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :
     matchFrag vecTransformAddFunc = some .vecTransformAdd := rfl
+theorem matchFrag_vecPartition :
+    matchFrag vecPartitionFunc = some .vecPartition := rfl
 theorem matchFrag_mergeRuns :
     matchFrag VecMergeRuns.mergeRunsFunc = some .vecMergeRuns := rfl
 theorem matchFrag_vecMergeSort :

@@ -61,10 +61,11 @@ Proposed (toward the platform goal — for approval, in order):
   checked-op written output) — first multi-block framed proof
   (`cellsAt` + framed `cellsAt`, an H-kit customer) and the
   accumulate-adjacent shape G2 unblocked. One admission pin.
+  DONE (`d555844`, gate 433/433).
 - P2-M3: in-place partition (forward scan with stores) — a new
   loop shape beyond countdown/rotate, and the third data point
   for the fuel-arithmetic (audit #5) and loop-tactic triggers.
-  One admission pin.
+  One admission pin. WIP (M3a admission).
 
 ## Pillar 3 — Human-readable/writable proofs
 

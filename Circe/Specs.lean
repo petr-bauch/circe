@@ -2092,3 +2092,81 @@ theorem transformAddFwd_err_add (li lo : List (BitVec 32))
         hreads' hadds'
       simp only [transformAddFwd, dite_eq_left hlt_len, hz, hx, hy]
       exact heq
+
+/-! ## P2-M3: in-place partition forward contract -/
+
+/-- M3 forward contract, ok leg: the scan runs to `l.length` with
+    full reads (single leg — the kernel is total: every access is
+    guard-justified, so the `none` arms never fire in-invariant).
+    Fuel induction threading the store bound `s ≤ i`. -/
+theorem partitionFwd_ok (pivot : BitVec 32) (l : List (BitVec 32))
+    (fuel i s : Nat)
+    (hle : i ≤ l.length) (hsle : s ≤ i)
+    (hF : l.length - i ≤ fuel)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x) :
+    ∃ s' l', partitionFwd pivot l fuel i s = .ok (l.length, s', l') := by
+  induction fuel generalizing l i s with
+  | zero =>
+    have him : i = l.length := by omega
+    subst him
+    exact ⟨s, l, by simp [partitionFwd]⟩
+  | succ n ih =>
+    by_cases hlt : i < l.length
+    · obtain ⟨x, hx⟩ := hread i hlt
+      have hslt : s < l.length := by omega
+      obtain ⟨w, hw⟩ := hread s hslt
+      have hF' : l.length - (i + 1) ≤ n := by omega
+      have hF'_take : ((l.set i w).set s x).length - (i + 1) ≤ n := by
+        have : ((l.set i w).set s x).length = l.length := by
+          simp [List.length_set]
+        omega
+      have hread' : ∀ p, p < ((l.set i w).set s x).length →
+          ∃ y, ((l.set i w).set s x)[p]? = some y := by
+        intro p hp
+        have hplen : p < l.length := by
+          have : ((l.set i w).set s x).length = l.length := by
+            simp [List.length_set]
+          omega
+        by_cases hpi : p = i
+        · rw [hpi]
+          by_cases hsi : s = i
+          · rw [hsi]
+            exact ⟨x, List.getElem?_set_self (by
+              rw [List.length_set]; exact hlt)⟩
+          · exact ⟨w, by
+              rw [List.getElem?_set_ne (show s ≠ i by omega)]
+              exact List.getElem?_set_self hlt⟩
+        · by_cases hps : p = s
+          · rw [hps]
+            exact ⟨x, List.getElem?_set_self (by
+              rw [List.length_set]; exact hslt)⟩
+          · obtain ⟨y, hy⟩ := hread p hplen
+            exact ⟨y, by
+              rw [List.getElem?_set_ne (show s ≠ p by omega),
+                List.getElem?_set_ne (show i ≠ p by omega)]
+              exact hy⟩
+      by_cases htake : x.slt pivot
+      · have hle' : i + 1 ≤ ((l.set i w).set s x).length := by
+          have : ((l.set i w).set s x).length = l.length := by
+            simp [List.length_set]
+          omega
+        have hsle' : s + 1 ≤ i + 1 := by omega
+        obtain ⟨s'', l'', heq⟩ := ih ((l.set i w).set s x) (i + 1)
+          (s + 1) hle' hsle' hF'_take hread'
+        have hlen : ((l.set i w).set s x).length = l.length := by
+          simp [List.length_set]
+        rw [hlen] at heq
+        refine ⟨s'', l'', ?_⟩
+        simp only [partitionFwd, dite_eq_left hlt, hx, htake, hw]
+        exact heq
+      · have hle' : i + 1 ≤ l.length := by omega
+        have hsle' : s ≤ i + 1 := by omega
+        obtain ⟨s'', l'', heq⟩ := ih l (i + 1) s hle' hsle' hF' hread
+        refine ⟨s'', l'', ?_⟩
+        simp only [partitionFwd, dite_eq_left hlt, hx, htake]
+        exact heq
+    · have him : i = l.length := by omega
+      subst him
+      have hneg : ¬ l.length < l.length := by omega
+      refine ⟨s, l, ?_⟩
+      simp only [partitionFwd, dite_eq_right hneg]

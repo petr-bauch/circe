@@ -1759,6 +1759,36 @@ def isVecTransformAddShape (raw : RawFunc) : Bool :=
   | _ => false
 
 
+/-- `vec_partition` shape: one `mutBorrow` vector plus one owned `i32`
+    pivot in, `void` out, exactly six calls (one `size` + five `at()`),
+    one `cir.while` (the forward scan), two compares (one `u64` bound
+    check + one signed pivot compare), one `cir.if` (the conditional
+    swap). No allocation, no recursion, no `unreachable`. -/
+def isVecPartitionShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, piv] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 piv.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 6 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.const" == 8 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 19 &&
+    opCount raw.text "cir.store" == 9 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.add nsw"
+  | _ => false
+
+
 /-- `merge_runs` ranged-callee shape (C2): shared-borrow vector +
     mutable-borrow temp + three `u64` bounds in, `void` out, exactly
     ten calls (six const `at()` + four mut `at()`), three `cir.while`

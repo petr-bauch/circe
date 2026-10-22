@@ -1705,6 +1705,46 @@ def emitVecTransformAddSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_partition`. The mirror is the in-place Lomuto
+    scan over the reified words; edges carry ground truth (empty is
+    identity, all-below/all-above are fixed, the mixed case follows
+    the swap trace). -/
+def emitVecPartitionSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, pivot)` Lomuto-partitions `v.at(i) < pivot` to the front by swaps. Base body reference: the same scan on the reified words (cf. emitted `{name}_fwd`). Guard-justified, total. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (pivot : BitVec 32) : Result (List (BitVec 32)) :=\n"
+  ++ "  match loop pivot l l.length 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, _, l') => .ok l'\n"
+  ++ "where\n"
+  ++ "  loop (pivot : BitVec 32) : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, i, s => .ok (i, s, l)\n"
+  ++ "  | l, fuel + 1, i, s =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match l[i]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some x =>\n"
+  ++ "        if x.slt pivot then\n"
+  ++ "          match l[s]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some w => loop pivot ((l.set i w).set s x) fuel (i + 1) (s + 1)\n"
+  ++ "        else loop pivot l fuel (i + 1) s\n"
+  ++ "    else .ok (i, s, l)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty is identity, all-below/all-above are fixed, mixed follows the swap trace. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 32) × Result (List (BitVec 32))) :=\n"
+  ++ "  [(([], 5), .ok []),\n"
+  ++ "   (([3, 1, 2], 5), .ok [3, 1, 2]),\n"
+  ++ "   (([7, 8], 5), .ok [7, 8]),\n"
+  ++ "   (([3, 7, 1, 8, 2], 5), .ok [3, 1, 2, 8, 7]),\n"
+  ++ "   (([5, 1], 5), .ok [1, 5])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `merge_runs` ranged callee. The mirror is an
     independent ranged two-pointer merge over the reified words;
     edges carry ground truth (interleave, empty-left drain,
