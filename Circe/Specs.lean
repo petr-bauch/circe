@@ -1902,3 +1902,193 @@ theorem VecMergeRuns.mergeRunsDrainJFwd_err_la (la lt : List (BitVec 32))
     simp only [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hi, hy0, hx0]
     exact ih (fuel := n) (lt := lt.set k x) (j := j + 1) (k := k + 1)
       (by omega) (by omega) (by omega) hread' htmp' hfail'
+
+/-! ## M2: out-of-place checked transform (`vec_transform_add`).
+
+Forward contracts for `transformAddFwd`: the ok leg (all reads
+succeed, all checked adds succeed) pins the elementwise result and
+length; the two per-site err legs pin short-`out` (`AssertFail`)
+and checked-add failure (propagated). Fuel inductions generalizing
+the index and the output words, threading reads through `set`
+(the `getElem?_set_ne` idiom). -/
+
+/-- Transform ok leg: every position reads on both sides and every
+    checked add succeeds. Positions before `i` are already done (the
+    frame: `lo` and `lo'` agree there); positions from `i` get the
+    checked sum. -/
+theorem transformAddFwd_ok (li lo : List (BitVec 32)) (c : BitVec 32)
+    (fuel i : Nat)
+    (hle : i ≤ li.length)
+    (hfuel : li.length - i ≤ fuel)
+    (hread_lo : ∀ p, p < li.length → ∃ z, lo[p]? = some z)
+    (hadd : ∀ p, i ≤ p → p < li.length →
+      ∃ x y, li[p]? = some x ∧ checkedAddI32 x c = .ok y) :
+    ∃ lo', transformAddFwd li c lo fuel i = .ok (li.length, lo') ∧
+      lo'.length = lo.length ∧
+      (∀ p, p < i → p < li.length →
+        ∃ z, lo[p]? = some z ∧ lo'[p]? = some z) ∧
+      (∀ p, i ≤ p → p < li.length →
+        ∃ x y, li[p]? = some x ∧ lo'[p]? = some y ∧
+          checkedAddI32 x c = .ok y) := by
+  induction fuel generalizing i lo with
+  | zero =>
+    have him : i = li.length := by omega
+    subst him
+    refine ⟨lo, ?_, rfl, ?_, ?_⟩
+    · simp [transformAddFwd]
+    · intro p h1 h2
+      obtain ⟨z, hz⟩ := hread_lo p h2
+      exact ⟨z, hz, hz⟩
+    · intro p h1 h2
+      exact (by omega : False).elim
+  | succ n ih =>
+    by_cases hlt : i < li.length
+    · obtain ⟨z, hz⟩ := hread_lo i hlt
+      obtain ⟨x, y, hx, hy⟩ := hadd i (Nat.le_refl _) hlt
+      have hfuel' : li.length - (i + 1) ≤ n := by omega
+      have hread_lo' : ∀ p, p < li.length →
+          ∃ z, ((lo.set i y)[p]? = some z) := by
+        intro p hp
+        by_cases hpi : p = i
+        · rw [hpi]
+          have hlo : i < lo.length := by
+            by_cases h : i < lo.length
+            · exact h
+            · have hle : lo.length ≤ i := by omega
+              have hnone : lo[i]? = none := List.getElem?_eq_none hle
+              rw [hnone] at hz
+              simp at hz
+          exact ⟨y, List.getElem?_set_self hlo⟩
+        · obtain ⟨z, hz⟩ := hread_lo p hp
+          exact ⟨z, by
+            rw [List.getElem?_set_ne (show i ≠ p by omega)]
+            exact hz⟩
+      have hadd' : ∀ p, i + 1 ≤ p → p < li.length →
+          ∃ x y, li[p]? = some x ∧ checkedAddI32 x c = .ok y := by
+        intro p h1 h2
+        exact hadd p (by omega) h2
+      obtain ⟨lo', heq, hlen', hframe', hele'⟩ :=
+        ih (i := i + 1) (lo := lo.set i y) (by omega) hfuel' hread_lo' hadd'
+      refine ⟨lo', ?_, ?_, ?_, ?_⟩
+      · simp only [transformAddFwd, dite_eq_left hlt, hz, hx, hy]
+        exact heq
+      · exact hlen'.trans List.length_set
+      · intro p h1 h2
+        obtain ⟨z, hz1, hz2⟩ := hframe' p (by omega) h2
+        have hlo : lo[p]? = some z := by
+          have hne : i ≠ p := by omega
+          rw [List.getElem?_set_ne hne] at hz1
+          exact hz1
+        exact ⟨z, hlo, hz2⟩
+      · intro p h1 h2
+        by_cases hpi : p = i
+        · have hpi' : i = p := hpi.symm
+          subst hpi'
+          obtain ⟨w, hw1, hw2⟩ := hframe' i (by omega) h2
+          have hbound : i < lo.length := by
+            by_cases h : i < lo.length
+            · exact h
+            · have hle : lo.length ≤ i := by omega
+              have hnone : lo[i]? = none := List.getElem?_eq_none hle
+              rw [hnone] at hz
+              simp at hz
+          have hss : (lo.set i y)[i]? = some y :=
+            List.getElem?_set_self hbound
+          have hwy : w = y := by
+            rw [hss] at hw1
+            cases hw1
+            rfl
+          rw [hwy] at hw2
+          exact ⟨x, y, hx, hw2, hy⟩
+        · exact hele' p (by omega) h2
+    · have him : i = li.length := by omega
+      subst him
+      refine ⟨lo, ?_, rfl, ?_, ?_⟩
+      · have hneg : ¬ li.length < li.length := by omega
+        simp only [transformAddFwd, dite_eq_right hneg]
+      · intro p h1 h2
+        obtain ⟨z, hz⟩ := hread_lo p h2
+        exact ⟨z, hz, hz⟩
+      · intro p h1 h2
+        exact (by omega : False).elim
+
+/-- Transform error leg, short `out`: position `j` is the first
+    missing write while all prior reads and adds succeed. -/
+theorem transformAddFwd_err_short (li lo : List (BitVec 32))
+    (c : BitVec 32) (fuel i j : Nat)
+    (hj : j < li.length)
+    (hle : i ≤ j) (hfuel : j - i + 1 ≤ fuel)
+    (hreads : ∀ p, i ≤ p → p < j → ∃ z, lo[p]? = some z)
+    (hadds : ∀ p, i ≤ p → p < j →
+      ∃ x y, li[p]? = some x ∧ checkedAddI32 x c = .ok y)
+    (hmiss : lo[j]? = none) :
+    transformAddFwd li c lo fuel i = .error .AssertFail := by
+  induction fuel generalizing i lo with
+  | zero => exact (by omega : False).elim
+  | succ n ih =>
+    by_cases hij : i = j
+    · subst hij
+      simp only [transformAddFwd, dite_eq_left hj, hmiss]
+    · have hlt : i < j := by omega
+      have hlt_len : i < li.length := by omega
+      obtain ⟨z, hz⟩ := hreads i (Nat.le_refl _) hlt
+      obtain ⟨x, y, hx, hy⟩ := hadds i (Nat.le_refl _) hlt
+      have hfuel' : j - (i + 1) + 1 ≤ n := by omega
+      have hreads' : ∀ p, i + 1 ≤ p → p < j →
+          ∃ z, ((lo.set i y)[p]? = some z) := by
+        intro p h1 h2
+        obtain ⟨z, hz⟩ := hreads p (by omega) h2
+        exact ⟨z, by
+          rw [List.getElem?_set_ne (show i ≠ p by omega)]
+          exact hz⟩
+      have hadds' : ∀ p, i + 1 ≤ p → p < j →
+          ∃ x y, li[p]? = some x ∧ checkedAddI32 x c = .ok y := by
+        intro p h1 h2
+        exact hadds p (by omega) h2
+      have heq := ih (i := i + 1) (lo := lo.set i y) (by omega) hfuel'
+        hreads' hadds' (by
+          rw [List.getElem?_set_ne (show i ≠ j by omega)]
+          exact hmiss)
+      simp only [transformAddFwd, dite_eq_left hlt_len, hz, hx, hy]
+      exact heq
+
+/-- Transform error leg, checked-add failure at `j`: all prior
+    positions read and add cleanly; the `j`-th add propagates. -/
+theorem transformAddFwd_err_add (li lo : List (BitVec 32))
+    (c : BitVec 32) (fuel i j : Nat) (e : Panic)
+    (hj : j < li.length)
+    (hle : i ≤ j) (hfuel : j - i + 1 ≤ fuel)
+    (hreads : ∀ p, i ≤ p → p ≤ j → ∃ z, lo[p]? = some z)
+    (hadds : ∀ p, i ≤ p → p < j →
+      ∃ x y, li[p]? = some x ∧ checkedAddI32 x c = .ok y)
+    (hx : ∃ x, li[j]? = some x)
+    (herr : ∀ x, li[j]? = some x → checkedAddI32 x c = .error e) :
+    transformAddFwd li c lo fuel i = .error e := by
+  induction fuel generalizing i lo with
+  | zero => exact (by omega : False).elim
+  | succ n ih =>
+    by_cases hij : i = j
+    · subst hij
+      obtain ⟨x, hx'⟩ := hx
+      obtain ⟨z, hz⟩ := hreads i (Nat.le_refl _) (Nat.le_refl _)
+      simp only [transformAddFwd, dite_eq_left hj, hz, hx', herr x hx']
+    · have hlt : i < j := by omega
+      have hlt_len : i < li.length := by omega
+      obtain ⟨z, hz⟩ := hreads i (Nat.le_refl _) (by omega)
+      obtain ⟨x, y, hx, hy⟩ := hadds i (Nat.le_refl _) hlt
+      have hfuel' : j - (i + 1) + 1 ≤ n := by omega
+      have hreads' : ∀ p, i + 1 ≤ p → p ≤ j →
+          ∃ z, ((lo.set i y)[p]? = some z) := by
+        intro p h1 h2
+        obtain ⟨z, hz⟩ := hreads p (by omega) h2
+        exact ⟨z, by
+          rw [List.getElem?_set_ne (show i ≠ p by omega)]
+          exact hz⟩
+      have hadds' : ∀ p, i + 1 ≤ p → p < j →
+          ∃ x y, li[p]? = some x ∧ checkedAddI32 x c = .ok y := by
+        intro p h1 h2
+        exact hadds p (by omega) h2
+      have heq := ih (i := i + 1) (lo := lo.set i y) (by omega) hfuel'
+        hreads' hadds'
+      simp only [transformAddFwd, dite_eq_left hlt_len, hz, hx, hy]
+      exact heq

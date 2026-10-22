@@ -142,6 +142,7 @@ inductive FragKind : Type
   | vecMergeInto
   | vecMergeRuns
   | vecMergeSort
+  | vecTransformAdd
   | vecEmptyCtor
   | vecUnit
   | vecDtor

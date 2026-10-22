@@ -154,6 +154,11 @@ def binSearchName : String :=
 def atSetName : String :=
   "_Z10vec_at_setRSt6vectorIiSaIiEEmi"
 
+def transformAddCir : String := "tests/cir/vec_transform_add.cir"
+
+def transformAddName : String :=
+  "_Z17vec_transform_addRKSt6vectorIiSaIiEERS1_i"
+
 def main : IO Unit := do
   let mut passed := 0
   let c0 ← checkSortPipeline
@@ -182,12 +187,20 @@ def main : IO Unit := do
   passed := passed + r11
   let r12 ← checkShape atSetCir atSetName isVecMergeSortShape false "atset-not-sort-shaped"
   passed := passed + r12
-  let r13 ← checkRejectSort "vwsrecsort" advRecursiveSort .unknown
-    "out-of-subset" "calls a known `std::vector` leaf"
+  let r13 ← checkShape transformAddCir transformAddName isVecMergeRunsShape false "transformadd-not-runs-shaped"
   passed := passed + r13
-  let r14 ← checkRejectSort "vwsbaresort" advBareSortPtr .unknown
-    "alias-reject" "single-reference triple"
+  let r14 ← checkShape transformAddCir transformAddName isVecMergeSortShape false "transformadd-not-sort-shaped"
   passed := passed + r14
+  let r15 ← checkShape transformAddCir transformAddName isVecTransformAddShape true "transformadd-accepts-transform"
+  passed := passed + r15
+  let r16 ← checkShape mergeIntoCir mergeIntoName isVecTransformAddShape false "merge_into-not-transform-shaped"
+  passed := passed + r16
+  let r17 ← checkRejectSort "vwsrecsort" advRecursiveSort .unknown
+    "out-of-subset" "calls a known `std::vector` leaf"
+  passed := passed + r17
+  let r18 ← checkRejectSort "vwsbaresort" advBareSortPtr .unknown
+    "alias-reject" "single-reference triple"
+  passed := passed + r18
   IO.println s!"GOLDENVECMERGESORT-OK passed={passed}"
 
 end GoldenVecMergeSort

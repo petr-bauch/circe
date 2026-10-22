@@ -1720,6 +1720,44 @@ def isVecMergeIntoShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `vec_transform_add` entry shape (M2): shared-borrow input +
+    mutable-borrow output + owned `i32` constant in, `void` out,
+    exactly three calls (`size`, const `at()`, non-const `at()`), one
+    `cir.while`, one `lt` compare, one `nsw` add (the checked op),
+    one `u64` bump. Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls — all element traffic goes through
+    `at()`; no recursion, no allocation, no `unreachable`. -/
+def isVecTransformAddShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [inp, out, c] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType inp.ctype && inp.singleRef && isStdVectorType inp.ctype &&
+    isPtrType out.ctype && out.singleRef && isStdVectorType out.ctype &&
+    isI32 c.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 3 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.const" == 4 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.load" == 9 &&
+    opCount raw.text "cir.store" == 6 &&
+    containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName
+  | _ => false
+
 
 /-- `merge_runs` ranged-callee shape (C2): shared-borrow vector +
     mutable-borrow temp + three `u64` bounds in, `void` out, exactly

@@ -52,8 +52,11 @@ Proposed (toward the platform goal — for approval, in order):
   contracts named as U3 material. M1a DONE 2026-10-21 (14 U2
   contracts in `Specs.lean`: ok + per-site err legs for main /
   both drains by fuel induction, threading trio for the entry).
-  M1b (mem-level entry transfer) and M1c (closed sort-segment
-  spine) pending. No new admission; pure verification debt.
+  M1b DONE 2026-10-22 (mem-level entry transfer: bind lemma,
+  body mirrors, loop inductions, general-caller-memory entry).
+  M1c DONE 2026-10-22 (closed sort-segment spine: sharing-call
+  frame, seg/outer mirrors with pin threading, whole-function
+  entry). No new admission; pure verification debt.
 - P2-M2: out-of-place transform kernel (read-only input,
   checked-op written output) — first multi-block framed proof
   (`cellsAt` + framed `cellsAt`, an H-kit customer) and the

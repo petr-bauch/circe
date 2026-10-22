@@ -22,6 +22,7 @@ import Circe.Emit.VecRotate
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
+import Circe.Emit.VecTransformAdd
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -932,6 +933,23 @@ def matchFrag : Func → Option FragKind
                                           (.assign "k" (.uadd (.var "k") (.lit (.u64 v8)))))))
                         (.return_ (.var "out"))))))))⟩ =>
     some .vecMergeInto
+  | ⟨_, [⟨"in", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"out", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"c", .i 32, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
+        (.seq (.while_ (.ult (.var "i") (.stdVecLen "in"))
+                  (.seq (.if_ (.ult (.var "i") (.stdVecLen "out"))
+                              (.vecSet "out" (.var "i")
+                                (.add (.stdVecAt "in" (.var "i"))
+                                  (.var "c")))
+                              .fail)
+                    (.assign "i" (.uadd (.var "i")
+                      (.lit (.u64 v0))))))
+          (.return_ (.var "out"))))⟩ =>
+    some .vecTransformAdd
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"tmp", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
         ⟨"lo", .u 64, .owned⟩,
@@ -1572,6 +1590,8 @@ theorem matchFrag_vecRotate :
     matchFrag vecRotateFunc = some .vecRotate := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
+theorem matchFrag_vecTransformAdd :
+    matchFrag vecTransformAddFunc = some .vecTransformAdd := rfl
 theorem matchFrag_mergeRuns :
     matchFrag VecMergeRuns.mergeRunsFunc = some .vecMergeRuns := rfl
 theorem matchFrag_vecMergeSort :

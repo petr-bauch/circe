@@ -1665,6 +1665,46 @@ def emitVecMergeIntoSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_transform_add` entry. The mirror is an
+    independent out-of-place checked transform over the reified
+    words; edges carry ground truth (hit, empty, short-`out` abort,
+    overflow). -/
+def emitVecTransformAddSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(in, out, c)` writes `in.at(i) + c` into `out.at(i)`. Base body reference: the same transform on the reified words (cf. emitted `{name}_fwd`). Short `out` aborts loudly; overflow is loud. -/\n"
+  ++ s!"def {name}_spec_fwd (li lo : List (BitVec 32)) (c : BitVec 32) : Result (List (BitVec 32)) :=\n"
+  ++ "  match loop li c lo li.length 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, lo') => .ok lo'\n"
+  ++ "where\n"
+  ++ "  loop (li : List (BitVec 32)) (c : BitVec 32) : List (BitVec 32) → Nat → Nat → Result (Nat × List (BitVec 32))\n"
+  ++ "  | lo, 0, i => .ok (i, lo)\n"
+  ++ "  | lo, fuel + 1, i =>\n"
+  ++ "    if i < li.length then\n"
+  ++ "      match lo[i]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some _ =>\n"
+  ++ "        match li[i]? with\n"
+  ++ "        | some x =>\n"
+  ++ "          match checkedAddI32 x c with\n"
+  ++ "          | .error e => .error e\n"
+  ++ "          | .ok y => loop li c (lo.set i y) fuel (i + 1)\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "    else .ok (i, lo)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hit adds, empty is identity, short `out` aborts, `INT_MAX + 1` overflows. -/\n"
+  ++ s!"def {name}_spec_edges : List (((List (BitVec 32) × List (BitVec 32)) × BitVec 32) × Result (List (BitVec 32))) :=\n"
+  ++ "  [((([1, 2, 3], [0, 0, 0]), 10), .ok [11, 12, 13]),\n"
+  ++ "   ((([], []), 5), .ok []),\n"
+  ++ "   ((([1], []), 5), .error .AssertFail),\n"
+  ++ "   ((([2147483647], [0]), 1), .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `merge_runs` ranged callee. The mirror is an
     independent ranged two-pointer merge over the reified words;
     edges carry ground truth (interleave, empty-left drain,

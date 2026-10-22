@@ -890,6 +890,33 @@ def emitVecMergeIntoText (name : String) : String :=
   ++ "        | none => .error .AssertFail\n"
   ++ "    else .ok (j, k, lo)\n"
 
+/-- Render the `vec_transform_add` entry forward definition: the
+    out-of-place checked transform over the reified words (short
+    `out` aborts; the `nsw` add is checked). -/
+def emitVecTransformAddText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (out-of-place checked transform over the reified words; short `out` aborts). -/\n"
+  ++ s!"def {name}_fwd (li lo : List (BitVec 32)) (c : BitVec 32) : Result (List (BitVec 32)) :=\n"
+  ++ "  match loop li c lo li.length 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, lo') => .ok lo'\n"
+  ++ "where\n"
+  ++ "  loop (li : List (BitVec 32)) (c : BitVec 32) : List (BitVec 32) → Nat → Nat → Result (Nat × List (BitVec 32))\n"
+  ++ "  | lo, 0, i => .ok (i, lo)\n"
+  ++ "  | lo, fuel + 1, i =>\n"
+  ++ "    if i < li.length then\n"
+  ++ "      match lo[i]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some _ =>\n"
+  ++ "        match li[i]? with\n"
+  ++ "        | some x =>\n"
+  ++ "          match checkedAddI32 x c with\n"
+  ++ "          | .error e => .error e\n"
+  ++ "          | .ok y => loop li c (lo.set i y) fuel (i + 1)\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "    else .ok (i, lo)\n"
+
 /-- Render the `merge_runs` ranged callee forward definition: the
     in-place segment merge over the reified words (`a[lo,mid)` and
     `a[mid,hi)` merged into `tmp[lo,hi)`; short `tmp` aborts loudly). -/
