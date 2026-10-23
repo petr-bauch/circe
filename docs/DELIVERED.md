@@ -1735,6 +1735,34 @@ permutation/partition-property contract and the merge-sort
 sortedness/permutation contract.
 - Acceptance: 445 jobs TEST-OK, CHECK-OK (`2150d07`).
 
+### P2-M6. Partition contract — DONE (2026-10-23)
+
+`partitionTake_perm` (take-step permutation via `swap_perm` +
+`List.set_comm`), `PartitionedAt` (`[0,s)`-true / `[s,i)`-false
+invariant), `partitionFwd_perm` + closing
+`evalProgFunc_vecPartition_spec`. Proof-only, no admission.
+- Acceptance: 445 jobs TEST-OK, CHECK-OK (`70b93e5`).
+
+### P2-M7. Merge-sort contract — DONE (2026-10-23)
+
+Sortedness + permutation over the M1c spine, same shape as
+P2-M5. M7a: `mergeRunsMainFwd_sorted` joint sorted+perm
+induction with cross-window conditions (strengthened with
+bounds + length), drain-I/J sorted+perm, `mergeRunsFwd_sorted_perm`
+assembly (plus `mergeRunsMain_mono/ge`, drain mono/ge
+confinement). M7b: `sortCopyFwd_joint`, `sortSegFwd_joint`
+(`MergeSegInv`, `BlockedSorted`), `sortOuterFwd_joint`
+(equation + lengths + readability + perm + full sortedness),
+with `perm_window_splice` / `SortedSeg_congr` /
+`take_split_mid` helpers. M7c:
+`memEvalProgFunc_vecMergeSort_spec` (memory evaluator returns
+a sorted permutation; value-level `evalProgFunc` is out of
+reach since the program threads memory). Proof-only, no
+admission.
+- Acceptance: 445 jobs TEST-OK, CHECK-OK (`84cbc70`,
+  `c02cce9`, `f089c83`, `f7fdab5`, `d31b87f`, `a593cbd`,
+  `ef179a2`).
+
 ### P4 Phase 0. Iris vendoring re-check — DONE (2026-10-23, report-only)
 
 All three 2026-10-12 blockers re-checked in `/tmp` scratch (no

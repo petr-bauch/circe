@@ -43,16 +43,12 @@ caller-owned buffers, loud misses (native exit 4), caller-debt
 side conditions, tamper-checked diff fuzz.
 
 Next:
-(none — the selection-sort stack is closed; see Proposed)
+(none — the selection-sort, partition, and merge-sort stacks
+are closed; see `DELIVERED.md` §§ P2-M5, P2-M6, P2-M7)
 
 Proposed (toward the platform goal — for approval, in order):
-- P2-M6: partition contract — permutation + the partition
-  property (all-before `≤` pivot `≤` all-after) over the M3
-  transfer. Proof-only, no admission (M5 pattern; same size
-  class: pure model + bridge + closing spec).
-- P2-M7: merge-sort contract — sortedness + permutation over
-  the M1c spine, same shape as P2-M5. Proof-only, no
-  admission.
+(none — P2-M6 partition contract and P2-M7 merge-sort
+contract both landed proof-only; next P2 slice TBD)
 
 ## Pillar 3 — Human-readable/writable proofs
 
