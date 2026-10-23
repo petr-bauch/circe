@@ -128,7 +128,65 @@ admitted shape, as always.
 
 ## Pillar 4 — Iris separation logic for low-level aspects and concurrency
 
-To be scoped.
+Verdict to date: native first, Iris deferred. The 2026-10-12
+spike evaluated `iris-lean` (MoSeL proof interface only) and
+recommended no migration — pin mismatch (`v4.21.0` vs our
+`v4.34.0`), moving `Qq`, BI tactics but not program logic, and
+it replaces neither the oracle nor the `Mem` tags
+(`DELIVERED.md` "Iris spike report"). The revisit trigger (an
+`alias_cond`-class framing admission plus lifetime evidence)
+FIRED on 2026-10-16 (N14/G3 + L1/L3 — "L5"); decision: DEFER,
+native framing keeps winning on burden (F2: two helpers + two
+theorems).
+
+Use cases encountered so far, with dispositions:
+
+- Conditional framing (`alias_cond`): the one case needing
+  framing beyond equational specs. Delivered natively —
+  per-arm frame via `memFind_memStore_other`,
+  `condPost_disjoint` / `condPost_aliased` (F2),
+  verdict-independent admission with `pinnedCell` +
+  `mstore`/`mload` + 4-leg transfer (N14/G3). Native cost:
+  each new conditional shape re-pays a bespoke `condPost`
+  proof. A *second* conditional shape ends the deferral
+  (re-check the vendoring blockers in a fresh time-boxed
+  spike).
+- Sequential reborrows (two loans, one address): licensed
+  gate-side (L2 ranges + F0 same-address), functionalized
+  value-in/value-out — no framing logic needed (N11/F1, L4).
+  Overlapping loans stay a non-goal.
+- Disjoint writer pairs (`__restrict__` + `noalias` verdict):
+  disjointness-by-construction, empty footprints, aliased
+  caller = caller-UB — no framing logic needed (N12/G2).
+- Statement-level frame kit: `cellAt`/`cellsAt` + store and
+  read-back lemmas (promoted to `Mem/Agree`),
+  `memFind_memStore_other`, framed `cellsAt` (first
+  multi-block customer: P2-M2); sharing-frame call kit
+  (P2-M1c). No customer yet for triple-level store rules:
+  loops with stores contain calls, so they live at prog
+  level (H1 cell-kit audit).
+- Hoare triples as thin sugar: skip/seq/consequence/if/while/
+  let + program-level seq/call/call-frame rules, exercised by
+  per-shape galleries (H0–H3, P3a–e). No new semantics;
+  helpers stay first-order with explicit premises, no grand
+  whole-while abstraction. Program-level call frame is
+  definitional (callee binds into `emptyMem`) — P3e.
+- `Mem`-level writes: delivered via `mstore`/`mload` + open
+  contracts (S0–S4, N14); store equations stay hypotheses
+  under the S0 open contract instead of discharged writes. A
+  `Mem`-level write need the native path cannot meet is the
+  other line ending deferral.
+
+What Iris (MoSeL) would buy when deferral ends: a reusable
+frame rule carrying untouched locations through for free +
+BI/separation-logic tactics, once shapes multiply past the
+bespoke-post budget.
+
+Out of scope until the platform says otherwise: concurrency
+(standing non-goal) — the one use case with no native answer.
+If concurrency ever enters scope, the Iris revisit becomes
+mandatory rather than optional: invariants and ghost state
+have no equational counterpart.
 
 
 ## Guiding principle (locked)
