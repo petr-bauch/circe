@@ -4264,6 +4264,65 @@ theorem VecMergeSort.sortSegFwd_joint (la lt : List (BitVec 32))
       exact ⟨la, lt, hcur, hla_len, hlt_len, hread_la, hread_lt,
         List.Perm.refl _, hblock0⟩
 
+/-- Outer pass joint: equation, lengths, readability,
+    permutation to the original input, and full sortedness. -/
+theorem VecMergeSort.sortOuterFwd_joint (la lt : List (BitVec 32))
+    (F w n : Nat) (la₀ : List (BitVec 32))
+    (hw1 : 1 ≤ w)
+    (hla_len : la.length = n) (hlt_len : n ≤ lt.length)
+    (hread_la : ∀ p, p < n → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, q < n → ∃ y, lt[q]? = some y)
+    (hblock : BlockedSorted la w n)
+    (hperm : List.Perm la la₀)
+    (hF : 2 * (n - w) + 2 * n + 10 ≤ F) :
+    ∃ la' lt', VecMergeSort.sortOuterFwd la lt F w n = .ok (la', lt') ∧
+    la'.length = n ∧ n ≤ lt'.length ∧
+    (∀ p, p < n → ∃ x, la'[p]? = some x) ∧
+    (∀ q, q < n → ∃ y, lt'[q]? = some y) ∧
+    List.Perm la' la₀ ∧
+    SortedSeg la' 0 n := by
+  induction F generalizing la lt w with
+  | zero =>
+    have hfalse : False := by omega
+    exact hfalse.elim
+  | succ F' ih =>
+    by_cases hW : w < n
+    · have hinv0 : MergeSegInv la w 0 n :=
+        ⟨⟨0, (Nat.zero_mul _).symm⟩,
+          fun b hb => absurd hb (by omega),
+          fun b _ h2 => hblock b h2⟩
+      obtain ⟨la1, lt1, hseg, hlen1, hltlen1, hread_la1, hread_lt1,
+          hperm1, hblock1⟩ :=
+        VecMergeSort.sortSegFwd_joint la lt F' w 0 n
+          (by omega) hla_len hlt_len hread_la hread_lt hinv0 (by omega)
+      obtain ⟨la', lt', heq_ih, hlen2, hltlen2, hread_la2, hread_lt2,
+          hperm_ih, hsort⟩ :=
+        ih la1 lt1 (w + w)
+          (by omega) hlen1 hltlen1 hread_la1 hread_lt1 hblock1
+          (hperm1.trans hperm) (by omega)
+      have hcur : VecMergeSort.sortOuterFwd la lt (F' + 1) w n =
+          .ok (la', lt') := by
+        simp only [VecMergeSort.sortOuterFwd, dite_eq_left hW, hseg]
+        exact heq_ih
+      exact ⟨la', lt', hcur, hlen2, hltlen2, hread_la2, hread_lt2,
+        hperm_ih, hsort⟩
+    · have hcur : VecMergeSort.sortOuterFwd la lt (F' + 1) w n =
+        .ok (la, lt) := by
+        simp only [VecMergeSort.sortOuterFwd, dite_eq_right hW]
+      have hsort : SortedSeg la 0 n := by
+        by_cases hn : 0 < n
+        · have hb0 := hblock 0 (by rw [Nat.zero_mul]; exact hn)
+          have e1 : (0 + 1) * w = w := by omega
+          have e2 : Nat.min ((0 + 1) * w) n = n := by
+            rw [e1]; exact Nat.min_eq_right (by omega)
+          rw [Nat.zero_mul, e2] at hb0
+          exact hb0
+        · intro p q hlo_p hpq hqk a b ha hb
+          have hfalse : False := by omega
+          exact hfalse.elim
+      exact ⟨la, lt, hcur, hla_len, hlt_len, hread_la, hread_lt,
+        hperm, hsort⟩
+
 /-- Outer correctness with the sort contract: from a sorted prefix
     with everything in the prefix `≤` the suffix (positional), the
     loop returns a sorted permutation of the original input. The
