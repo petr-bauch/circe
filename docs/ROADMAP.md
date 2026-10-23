@@ -26,66 +26,33 @@ N6, L–L5, O1/O2, Iris.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
-Delivered: STL-free C++-lite admission (M2a–M2c) with proved
-transfer (M3d); `string_view` range-for + `reserve`/`insert`/`erase`
-composers (N7); insertion sort over `std::array` (N9, with
-Sorted/Permutation spec); the `std::vector<int>` algorithm run —
-binary search (V1), two-sum (V2), checked `at()` store (W),
-out-of-place merge kernel (M), bottom-up merge sort with
-calls-in-loop-bodies (C), in-place countdown reverse with
-stores-in-loop (R), range-bounded segment reverse reusing the
-R loop (S), loopless rotate-by-three-reversals over the
-admitted seg entry (T); crypto programs over `std::array`
-(K1–K5: u32 bitwise leaves, buffer-xor, quarter-round, ChaCha20,
-SHA-256 vs KATs). Discipline throughout: pre-sized caller-owned
-buffers, loud misses (native exit 4), caller-debt side conditions
-(sortedness), tamper-checked diff fuzz.
+Delivered slices (full reports in `DELIVERED.md`): merge-drain
+specs (P2-M1); the `std::vector` algorithm run — out-of-place
+checked transform (P2-M2), in-place Lomuto partition (P2-M3),
+iterative selection sort (P2-M4) with its
+sortedness/permutation contract (P2-M5); earlier: STL-free
+C++-lite admission (M2a–M2c), proved transfer (M3d),
+`string_view`-ended loop + `ElementRef` family composers (N7),
+insertion sort over `std::array` (N9), binary search (V1),
+two-sum (V2), checked `at()` store (W), out-of-place merge
+kernel (M), bottom-up merge sort (C), reverse (R), segment
+reverse (S), rotate (T), crypto over `std::array`
+(K1–K5). The rule-of-three tactic harvest (P3-T2) lives with
+the pillar-3 entries. Discipline throughout: pre-sized
+caller-owned buffers, loud misses (native exit 4), caller-debt
+side conditions, tamper-checked diff fuzz.
 
-Next: further `std::vector` algorithm shapes and broader STD
-coverage, one admission-shaped slice at a time — speculative STD
-stays out (see non-goals). Multi-output support (G2/G2b/G3,
-`DELIVERED.md` §§ N12–N14) unblocks accumulate-style and
-multi-writer algorithms.
+Next:
+(none — the selection-sort stack is closed; see Proposed)
 
 Proposed (toward the platform goal — for approval, in order):
-- P2-M1: merge-drain specs — the missing `mergeRuns` callee
-  contracts named as U3 material. M1a DONE 2026-10-21 (14 U2
-  contracts in `Specs.lean`: ok + per-site err legs for main /
-  both drains by fuel induction, threading trio for the entry).
-  M1b DONE 2026-10-22 (mem-level entry transfer: bind lemma,
-  body mirrors, loop inductions, general-caller-memory entry).
-  M1c DONE 2026-10-22 (closed sort-segment spine: sharing-call
-  frame, seg/outer mirrors with pin threading, whole-function
-  entry). No new admission; pure verification debt.
-- P2-M2: out-of-place transform kernel (read-only input,
-  checked-op written output) — first multi-block framed proof
-  (`cellsAt` + framed `cellsAt`, an H-kit customer) and the
-  accumulate-adjacent shape G2 unblocked. One admission pin.
-  DONE (`d555844`, gate 433/433).
-- P2-M3: in-place partition (forward scan with stores) — a new
-  loop shape beyond countdown/rotate, and the third data point
-  for the fuel-arithmetic (audit #5) and loop-tactic triggers.
-  One admission pin.
-  DONE (`5c941c7`, gate 438/438).
-- P2-M4: iterative selection sort (`min_index` leaf + outer
-  scan-and-swap entry, calls in the loop body via the M1c kit) —
-  the second vector sort (quicksort stays out: the gate rejects
-  recursion) and the fourth loop-shape data point. One admission
-  pin. DONE (`49c6d02`, gate 445/445).
-- P3-T2: rule-of-three harvest — fuel-arithmetic (audit #5) and
-  loop-unfold tactics plus the transfer-leg audit (#4), converting
-  the R/S/T/M3/M4 sites. Proof-only, no admission.
-  DONE (gate 445/445; `cir_fuel_step` ×10, `cir_unfold_prog` ×63,
-  `cir_unfold_leaf` ×69; mem fuel-level branch deferred — 2 sites).
-- P2-M5: vector sortedness/permutation specs (N9-tier, ported
-  from array insertion sort to the partition/merge/selection
-  kernels). Proof-only, no admission.
-  DONE (selection sort full contract, gate 445/445: pure
-  `selectionSortList` + sorted/perm; `minIndexFwd_lower` scan
-  minimality; `swap_perm` positional middle-swap; outer
-  sorted-prefix bridge `selectionSortFwd_sorted_perm`; closing
-  `evalProgFunc_vecSelectionSort_spec`. Partition property +
-  merge-sort contract stay queued as follow-ups).
+- P2-M6: partition contract — permutation + the partition
+  property (all-before `≤` pivot `≤` all-after) over the M3
+  transfer. Proof-only, no admission (M5 pattern; same size
+  class: pure model + bridge + closing spec).
+- P2-M7: merge-sort contract — sortedness + permutation over
+  the M1c spine, same shape as P2-M5. Proof-only, no
+  admission.
 
 ## Pillar 3 — Human-readable/writable proofs
 
@@ -129,7 +96,7 @@ the unfold-loop-`show` tactic (R/S are two uses);
 R memory-threading stays prose at first use; third lockstep
 use earns a tactic; first triple-level store customer earns a
 rule; a fully framed spine waits for an actual multi-cell
-caller (P2-M2 would be one). The trailing `return_` still
+caller (P2-M2 was one — delivered). The trailing `return_` still
 needs the prog-level seq-return equation. A gallery per new
 admitted shape, as always.
 - R loop-proof tactics (first use, prose-note stage): one-sided

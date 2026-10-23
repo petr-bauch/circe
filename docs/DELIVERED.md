@@ -1647,3 +1647,90 @@ into `emptyMem` (caller memory unreachable) and both call
 equations keep `(m, π)`. `hoare_segCall1_framed` exercises the
 rule. A fully framed spine waits for an actual multi-cell
 caller; the real frame work is statement-level (H-track).
+
+### P2-M1. Merge-drain specs — DONE (2026-10-22)
+
+The missing `mergeRuns` callee contracts, named as U3 material,
+closed as pure verification debt (no admission, no corpus/diff
+changes). M1a: 14 U2 contracts in `Specs.lean` — ok plus
+per-site err legs for main/both drains by fuel induction, with
+the threading trio for the entry (`46a97b1`). M1b: mem-level
+entry transfer — bind lemma, body mirrors, loop inductions, and
+the general-caller-memory entry; new
+`Circe/Transfer/VecMergeRuns.lean` (3079 lines) plus a
+`Derived` helper (`c0e96c7`). M1c: the closed sort-segment
+spine — sharing-frame call kit, seg/outer mirrors with pin
+threading, whole-function entry, with small kit extensions in
+`CoreIR`/`Derived`/`Eval`/`Mem` (`8f1efdc`).
+- Acceptance: `lake build` green at each commit; no admission,
+no corpus/diff changes (pure verification debt).
+
+### P2-M2. Out-of-place checked transform — DONE (2026-10-22)
+
+The `vec_transform_add` kernel (read-only input, checked-op
+written output): first multi-block framed proof (`cellsAt` +
+framed `cellsAt`, an H-kit customer) and the accumulate-adjacent
+shape G2 unblocked. One admission pin
+(`isVecTransformAddShape`). U2 contracts plus value and mem
+transfer (`Circe/Transfer/VecTransformAdd.lean`); goldens
+(`VecTransformAdd` + `_Spec`), `DiffVecTransformAdd` with
+tamper-checked fuzz, `cir --verify-each`, byte-identical
+emission.
+- Acceptance: 433 jobs TEST-OK, CHECK-OK (`d555844`).
+
+### P2-M3. In-place Lomuto partition — DONE (2026-10-22)
+
+In-place partition (forward scan with stores): a new loop shape
+beyond countdown/rotate, and the third data point for the
+fuel-arithmetic (audit #5) and loop-tactic triggers. One
+admission pin (`isVecPartitionShape`). U2 contracts plus value
+and mem transfer; goldens (`VecPartition` + `_Spec`),
+`DiffVecPartition` with tamper-checked fuzz.
+- Acceptance: 438 jobs TEST-OK, CHECK-OK (`5c941c7`).
+
+### P2-M4. Iterative selection sort — DONE (2026-10-22)
+
+`vec_selection_sort` (`min_index` leaf + outer scan-and-swap
+entry, calls in the loop body via the M1c kit): the second
+vector sort (quicksort stays out — the gate rejects recursion)
+and the fourth loop-shape data point. One admission pin
+(`isVecSelectionSortShape` + `isVecMinIndexShape`). U2
+contracts plus value and mem transfer (leaf at fuel level,
+outer at program level with split fuels); goldens
+(`VecMinIndex`/`VecSelectionSort` + `_Spec`),
+`DiffVecSelectionSort` with tamper-checked fuzz.
+- Acceptance: 445 jobs TEST-OK, CHECK-OK (`49c6d02`).
+
+### P3-T2. Rule-of-three tactic harvest — DONE (2026-10-22)
+
+Three reparse-based `elab` tactics in `Circe/LeafTactics.lean`
+(reparse, not splice, so introduced names stay use-site
+accessible): `cir_fuel_step` (the N5a `have hF'` +
+`fuel_step_down` split, 10 sites), `cir_unfold_prog` (the
+`have hwhile` step, value/mem family auto-detected from the
+goal head, 63 sites), `cir_unfold_leaf` (the fuel-level
+handler-set simp, 69 sites). Five old files gained a one-line
+`import Circe.LeafTactics` (Span precedent). Two intentional
+exclusions: the mem fuel-level rule stays prose (only 2 sites —
+no third consumer yet) and the `GrowErase` term-mode use. Found
+by the work: `rw at ⊢` wraps goals in `mdata`, which
+`getAppFn` cannot see through (fixed with `consumeMData`).
+- Acceptance: 445 jobs TEST-OK, CHECK-OK (`a7a88d2`).
+
+### P2-M5. Selection-sort sort contract — DONE (2026-10-23)
+
+N9-tier sortedness/permutation for selection sort, proved on
+the fwd model and closed at eval. Pure `selectionSortList`
+with `selectionSortList_sorted` (ascending under the kernel's
+`slt`) and `selectionSortList_perm` (joint induction —
+sortedness needs the tail permutation for membership
+transport). `minIndexFwd_lower` (scan minimality, mirroring
+`minIndexFwd_ok`), `swap_perm` (positional middle-swap over
+take/drop splits), and the outer sorted-prefix bridge
+`selectionSortFwd_sorted_perm` (positional invariant
+discharged by `getElem?_set_ne` / `getElem?_set_self` +
+`omega`), closed by `evalProgFunc_vecSelectionSort_spec`.
+Proof-only, no admission. Queued follow-ups: the partition
+permutation/partition-property contract and the merge-sort
+sortedness/permutation contract.
+- Acceptance: 445 jobs TEST-OK, CHECK-OK (`2150d07`).
