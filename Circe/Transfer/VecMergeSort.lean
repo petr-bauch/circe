@@ -14,6 +14,7 @@ sharing-call frame (`callShare`).
 import Circe.Transfer.VecReverse
 import Circe.Transfer.VecMergeRuns
 import Circe.Emit.VecMergeSort
+import Circe.Specs
 
 open VecMergeSort
 
@@ -2043,3 +2044,32 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       by simp [hfwd, memEvalProgFuncOn, hbind, hstmt],
       by simp only [hfwd]; exact ⟨aa', ab', ta', tb', nA', nB', lt', hlay_a',
         hlay_tmp', hmem_a', hmem_b', hnB'⟩⟩
+
+/-- Closing merge-sort contract: the memory evaluator returns a
+    sorted permutation of the input window. The equation comes from
+    the pure bottom-up joint; sortedness and permutation transport
+    along the memory correspondence. -/
+theorem memEvalProgFunc_vecMergeSort_spec (F : Nat)
+    (la lt : List (BitVec 32))
+    (hlena : la.length < 2 ^ 64)
+    (hlen62 : la.length < 2 ^ 62)
+    (hlent : lt.length < 2 ^ 64)
+    (htmp_ge : la.length ≤ lt.length)
+    (hF : 2 * (la.length - 1) + 2 * la.length + 10 ≤ F)
+    (hread_la : ∀ p, p < la.length → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, q < lt.length → ∃ y, lt[q]? = some y) :
+    ∃ la' m' π', memEvalProgFuncOn vecMergeSortProg F vecMergeSortFunc
+      [.stdVecVal la, .stdVecVal lt] emptyMem =
+      .ok ((.stdVecVal la'), m', π') ∧
+      SortedSeg la' 0 la.length ∧ List.Perm la' la := by
+  obtain ⟨la', lt', houter, hlen1, hltlen, _, _, hperm, hsort⟩ :=
+    sortOuterFwd_joint la lt F 1 la.length la (Nat.le_refl _)
+      rfl (by omega) hread_la
+      (fun q hq => hread_lt q (by omega))
+      (blockedSorted_one la la.length) List.Perm.rfl hF
+  obtain ⟨m', π', heq_mem, _⟩ :=
+    memEvalProgFunc_vecMergeSort F la lt hlena hlen62 hlent htmp_ge hF
+  have hfwd : vecMergeSortFwd la lt F = .ok (.stdVecVal la') := by
+    simp [vecMergeSortFwd, houter]
+  rw [hfwd] at heq_mem
+  exact ⟨la', m', π', heq_mem, hsort, hperm⟩
