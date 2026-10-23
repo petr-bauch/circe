@@ -1061,3 +1061,32 @@ theorem memTransferProg_vecPartition_ok (F : Nat)
   rw [memEvalProgFunc_vecPartition_ok F l l' pivot s' hl64 hF
     hread heq,
     evalProgFunc_vecPartition_ok F l l' pivot s' hl64 hF hread heq]
+
+/-- Closing partition contract (M6c): the kernel returns a
+    permutation of the input satisfying the partition boundary —
+    everything below `s'` tests `slt`-true, everything at/above
+    tests `slt`-false. Pure lemmas closed at eval. -/
+theorem evalProgFunc_vecPartition_spec (F : Nat)
+    (l : List (BitVec 32)) (pivot : BitVec 32)
+    (hl64 : l.length < 2 ^ 64)
+    (hF : l.length ≤ F)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x) :
+    ∃ l' s', evalProgFunc vecPartitionProg F vecPartitionFunc
+      [.stdVecVal l, .i32 pivot] = .ok (.stdVecVal l') ∧
+      List.Perm l' l ∧ PartitionedAt l' s' pivot := by
+  obtain ⟨s', l', heq⟩ := partitionFwd_ok pivot l l.length 0 0
+    (Nat.zero_le _) (Nat.le_refl _) (by omega) hread
+  have hpref0 : ∀ j, j < 0 → ∀ x, l[j]? = some x →
+      (x.slt pivot) = true := by
+    intro j hj
+    exact False.elim (by omega)
+  have hsuff0 : ∀ j, 0 ≤ j → j < 0 → ∀ x, l[j]? = some x →
+      (x.slt pivot) = false := by
+    intro j hsj hj
+    exact False.elim (by omega)
+  have hperm := partitionFwd_perm pivot l.length 0 0 l l' _ _
+    (Nat.zero_le _) heq
+  have hpart := partitionFwd_partitioned pivot l.length 0 0 l l' _ _
+    (Nat.zero_le _) (Nat.zero_le _) (by omega) hpref0 hsuff0 heq
+  exact ⟨l', s', evalProgFunc_vecPartition_ok F l l' pivot s' hl64
+    hF hread heq, hperm, hpart⟩

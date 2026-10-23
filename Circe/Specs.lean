@@ -2576,6 +2576,188 @@ theorem swap_perm (l : List (BitVec 32)) (i m' : Nat)
       rw [hS, eT, eD, List.append_assoc]
     exact swap_final _ _ _ _ _ _ _ _
       eL' eA eRw
+/-- Partition take-step permutation: the double swap-write is a
+    permutation, via `swap_perm` after commuting the two sets
+    (the `s = i` self-swap matches `swap_perm`'s order
+    directly). -/
+theorem partitionTake_perm (l : List (BitVec 32)) (i s : Nat)
+    (x w : BitVec 32)
+    (hilt : i < l.length) (hslt : s < l.length) (hle : s ≤ i)
+    (hx : l[i]? = some x) (hw : l[s]? = some w) :
+    List.Perm ((l.set i w).set s x) l := by
+  by_cases heq : s = i
+  · subst heq
+    exact swap_perm l s s x w hilt hilt (Nat.le_refl _) hx hw
+  · have hne : i ≠ s := fun h => heq h.symm
+    have hcomm : ((l.set i w).set s x) = ((l.set s x).set i w) :=
+      List.set_comm w x hne
+    rw [hcomm]
+    exact swap_perm l s i w x hslt hilt hle hw hx
+
+/-- Pure permutation over the partition forward model: every
+    take step swaps two positions (`partitionTake_perm`), every
+    skip step is the induction hypothesis. -/
+theorem partitionFwd_perm (pivot : BitVec 32)
+    (G i s : Nat) (l l' : List (BitVec 32)) (i' s' : Nat)
+    (hsle : s ≤ i)
+    (hfwd : partitionFwd pivot l G i s = .ok (i', s', l')) :
+    List.Perm l' l := by
+  induction G generalizing i s l with
+  | zero =>
+    have hpair : (i, s, l) = (i', s', l') := by
+      simpa [partitionFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact List.Perm.rfl
+  | succ G ih =>
+    by_cases hlt : i < l.length
+    · have hx : l[i]? = some l[i] := List.getElem?_eq_getElem hlt
+      have hslt : s < l.length := by omega
+      have hw : l[s]? = some l[s] := List.getElem?_eq_getElem hslt
+      by_cases htake : (l[i].slt pivot) = true
+      · have hfwd' : partitionFwd pivot ((l.set i l[s]).set s l[i]) G
+            (i + 1) (s + 1) = .ok (i', s', l') := by
+          have h := hfwd
+          simp only [partitionFwd, dite_eq_left hlt, hx, htake,
+            hw] at h
+          exact h
+        have hperm := ih (i + 1) (s + 1) _ (by omega) hfwd'
+        have htake_perm := partitionTake_perm l i s _ _ hlt hslt
+          hsle hx hw
+        exact hperm.trans htake_perm
+      · have hskip : (l[i].slt pivot) = false := by
+          cases h : l[i].slt pivot with
+          | true => exact absurd h htake
+          | false => rfl
+        have hfwd' : partitionFwd pivot l G (i + 1) s =
+            .ok (i', s', l') := by
+          have h := hfwd
+          simp only [partitionFwd, dite_eq_left hlt, hx, hskip] at h
+          exact h
+        exact ih (i + 1) s _ (by omega) hfwd'
+    · have hpair : (i, s, l) = (i', s', l') := by
+        simpa [partitionFwd, dite_eq_right hlt] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact List.Perm.rfl
+
+/-- Partition boundary: positions below `s` test `slt`-true,
+    positions at/above `s` test `slt`-false. -/
+def PartitionedAt (l : List (BitVec 32)) (s : Nat)
+    (pivot : BitVec 32) : Prop :=
+  (∀ j, j < s → ∀ x, l[j]? = some x → (x.slt pivot) = true) ∧
+  (∀ j, s ≤ j → j < l.length → ∀ x, l[j]? = some x →
+    (x.slt pivot) = false)
+
+/-- Partition invariant over the scan: `[0, s)` tests true,
+    `[s, i)` tests false. Take swaps `x` (true) into `s` and
+    `w` (false, or the self-swap collapse) into `i`; skip
+    extends the false suffix by `x`. -/
+theorem partitionFwd_partitioned (pivot : BitVec 32)
+    (G i s : Nat) (l l' : List (BitVec 32)) (i' s' : Nat)
+    (hle : i ≤ l.length) (hsle : s ≤ i)
+    (hG : l.length - i ≤ G)
+    (hpref : ∀ j, j < s → ∀ x, l[j]? = some x →
+      (x.slt pivot) = true)
+    (hsuff : ∀ j, s ≤ j → j < i → ∀ x, l[j]? = some x →
+      (x.slt pivot) = false)
+    (hfwd : partitionFwd pivot l G i s = .ok (i', s', l')) :
+    PartitionedAt l' s' pivot := by
+  induction G generalizing i s l with
+  | zero =>
+    have him : i = l.length := by omega
+    have hpair : (i, s, l) = (i', s', l') := by
+      simpa [partitionFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact ⟨hpref, fun j hsj hjl y hy => hsuff j hsj (by omega) y hy⟩
+  | succ G ih =>
+    by_cases hlt : i < l.length
+    · have hx : l[i]? = some l[i] := List.getElem?_eq_getElem hlt
+      have hslt : s < l.length := by omega
+      have hw : l[s]? = some l[s] := List.getElem?_eq_getElem hslt
+      have hlen : ((l.set i l[s]).set s l[i]).length = l.length := by
+        simp [List.length_set]
+      by_cases htake : (l[i].slt pivot) = true
+      · have hle' : i + 1 ≤ ((l.set i l[s]).set s l[i]).length := by
+          rw [hlen]; omega
+        have hG' : ((l.set i l[s]).set s l[i]).length - (i + 1) ≤ G := by
+          rw [hlen]; omega
+        have hpref' : ∀ j, j < s + 1 → ∀ y,
+            ((l.set i l[s]).set s l[i])[j]? = some y →
+            (y.slt pivot) = true := by
+          intro j hj y hy
+          by_cases hjs : j = s
+          · subst hjs
+            have hget : ((l.set i l[j]).set j l[i])[j]? =
+                some l[i] :=
+              List.getElem?_set_self
+                (by rw [List.length_set]; exact hslt)
+            rw [hget] at hy
+            have : l[i] = y := Option.some_inj.mp hy
+            rw [← this]; exact htake
+          · have h1 : ((l.set i l[s]).set s l[i])[j]? =
+              (l.set i l[s])[j]? := by
+              rw [List.getElem?_set_ne (show s ≠ j by omega)]
+            have h2 : (l.set i l[s])[j]? = l[j]? := by
+              rw [List.getElem?_set_ne (show i ≠ j by omega)]
+            rw [h1, h2] at hy
+            exact hpref j (by omega) y hy
+        have hsuff' : ∀ j, s + 1 ≤ j → j < i + 1 → ∀ y,
+            ((l.set i l[s]).set s l[i])[j]? = some y →
+            (y.slt pivot) = false := by
+          intro j hsj hji y hy
+          by_cases hji2 : j = i
+          · subst hji2
+            have h1 : ((l.set j l[s]).set s l[j])[j]? =
+                (l.set j l[s])[j]? := by
+              rw [List.getElem?_set_ne (show s ≠ j by omega)]
+            have h2 : (l.set j l[s])[j]? = some l[s] :=
+              List.getElem?_set_self hlt
+            rw [h1, h2] at hy
+            have : l[s] = y := Option.some_inj.mp hy
+            rw [← this]
+            by_cases hsi : s = j
+            · omega
+            · exact hsuff s (Nat.le_refl _) (by omega) _ hw
+          · have h1 : ((l.set i l[s]).set s l[i])[j]? =
+              (l.set i l[s])[j]? := by
+              rw [List.getElem?_set_ne (show s ≠ j by omega)]
+            have h2 : (l.set i l[s])[j]? = l[j]? := by
+              rw [List.getElem?_set_ne (show i ≠ j by omega)]
+            rw [h1, h2] at hy
+            exact hsuff j (by omega) (by omega) y hy
+        have hfwd' : partitionFwd pivot ((l.set i l[s]).set s l[i]) G
+            (i + 1) (s + 1) = .ok (i', s', l') := by
+          have h := hfwd
+          simp only [partitionFwd, dite_eq_left hlt, hx, htake,
+            hw] at h
+          exact h
+        exact ih (i + 1) (s + 1) _ hle' (by omega) hG' hpref'
+          hsuff' hfwd'
+      · have hskip : (l[i].slt pivot) = false := by
+          cases h : l[i].slt pivot with
+          | true => exact absurd h htake
+          | false => rfl
+        have hsuff' : ∀ j, s ≤ j → j < i + 1 → ∀ y,
+            l[j]? = some y → (y.slt pivot) = false := by
+          intro j hsj hji y hy
+          by_cases hji2 : j = i
+          · subst hji2
+            have : y = l[j] :=
+              Option.some_inj.mp (hx.symm.trans hy) |>.symm
+            rw [this]; exact hskip
+          · exact hsuff j hsj (by omega) y hy
+        have hfwd' : partitionFwd pivot l G (i + 1) s =
+            .ok (i', s', l') := by
+          have h := hfwd
+          simp only [partitionFwd, dite_eq_left hlt, hx, hskip] at h
+          exact h
+        have hG' : l.length - (i + 1) ≤ G := by omega
+        exact ih (i + 1) s _ (by omega) (by omega) hG' hpref
+          hsuff' hfwd'
+    · have him : i = l.length := by omega
+      have hpair : (i, s, l) = (i', s', l') := by
+        simpa [partitionFwd, dite_eq_right hlt] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact ⟨hpref, fun j hsj hjl y hy => hsuff j hsj (by omega) y hy⟩
 /-- Outer correctness with the sort contract: from a sorted prefix
     with everything in the prefix `≤` the suffix (positional), the
     loop returns a sorted permutation of the original input. The
