@@ -3956,6 +3956,88 @@ theorem VecMergeSort.sortCopyFwd_joint (lt : List (BitVec 32))
       · intro q _
         rw [← hll]
 
+/-- Take-window congruence from pointwise reads. -/
+theorem take_eq_of_frame (l1 l2 : List (BitVec 32)) (lo : Nat)
+    (h : ∀ q, q < lo → l1[q]? = l2[q]?) : l1.take lo = l2.take lo := by
+  apply List.ext_getElem?
+  intro p
+  rw [List.getElem?_take, List.getElem?_take]
+  by_cases hp : p < lo
+  · rw [ite_eq_left hp, ite_eq_left hp]
+    exact h p hp
+  · rw [ite_eq_right hp, ite_eq_right hp]
+
+/-- Drop congruence from pointwise reads above the cut. -/
+theorem drop_eq_of_frame (l1 l2 : List (BitVec 32)) (hi : Nat)
+    (h : ∀ q, hi ≤ q → l1[q]? = l2[q]?) : l1.drop hi = l2.drop hi := by
+  apply List.ext_getElem?
+  intro p
+  rw [List.getElem?_drop, List.getElem?_drop]
+  exact h (hi + p) (by omega)
+
+/-- Window replacement by a permutation preserves permutation. -/
+theorem perm_window_splice (la la'' : List (BitVec 32)) (lo hi : Nat)
+    (hlohi : lo ≤ hi)
+    (hwin : List.Perm ((la''.drop lo).take (hi - lo))
+      ((la.drop lo).take (hi - lo)))
+    (hframe : ∀ q, (q < lo ∨ hi ≤ q) → la''[q]? = la[q]?) :
+    List.Perm la'' la := by
+  have htake : la''.take lo = la.take lo :=
+    take_eq_of_frame _ _ _ (fun q hq => hframe q (Or.inl hq))
+  have hdrop : la''.drop hi = la.drop hi :=
+    drop_eq_of_frame _ _ _ (fun q hq => hframe q (Or.inr hq))
+  have splice : ∀ l : List (BitVec 32),
+      l = l.take lo ++ ((l.drop lo).take (hi - lo)) ++ (l.drop hi) := by
+    intro l
+    have hdd : ((l.drop lo).drop (hi - lo)) = l.drop hi := by
+      rw [List.drop_drop]
+      congr 1
+      omega
+    have htd : ((l.drop lo).take (hi - lo)) ++
+        ((l.drop lo).drop (hi - lo)) = l.drop lo :=
+      List.take_append_drop _ _
+    calc l = l.take lo ++ l.drop lo := (List.take_append_drop lo l).symm
+      _ = l.take lo ++ ((l.drop lo).take (hi - lo)) ++
+          ((l.drop lo).drop (hi - lo)) := by
+            conv => lhs; rw [← htd, ← List.append_assoc]
+      _ = l.take lo ++ ((l.drop lo).take (hi - lo)) ++ (l.drop hi) := by
+            rw [hdd]
+  rw [splice la'', splice la, htake, hdrop]
+  exact List.Perm.append (List.Perm.append (List.Perm.refl _) hwin)
+    (List.Perm.refl _)
+
+/-- Sortedness transports across pointwise-equal windows. -/
+theorem SortedSeg_congr (l1 l2 : List (BitVec 32)) (lo hi : Nat)
+    (h : ∀ p, lo ≤ p → p < hi → l1[p]? = l2[p]?)
+    (hs : SortedSeg l1 lo hi) : SortedSeg l2 lo hi := by
+  intro p q hlo_p hpq hqk a b ha hb
+  have e1 : l1[p]? = some a := by rw [h p hlo_p (by omega)]; exact ha
+  have e2 : l1[q]? = some b := by rw [h q (by omega) (by omega)]; exact hb
+  exact hs p q hlo_p hpq hqk a b e1 e2
+
+/-- Blocked-sorted: every width-`w` block below `n` is sorted. -/
+def BlockedSorted (la : List (BitVec 32)) (w n : Nat) : Prop :=
+  ∀ b, b * w < n → SortedSeg la (b * w) (Nat.min ((b + 1) * w) n)
+
+/-- Width-1 blocks are trivially sorted. -/
+theorem blockedSorted_one (la : List (BitVec 32)) (n : Nat) :
+    BlockedSorted la 1 n := by
+  intro b hb
+  intro p q hlo_p hpq hqk a b_ ha hb_
+  have hfalse : False := by
+    have hq1 : q < (b + 1) * 1 :=
+      Nat.lt_of_lt_of_le hqk (Nat.min_le_left _ _)
+    omega
+  exact hfalse.elim
+
+/-- Segment invariant: done 2w-blocks below `lo`, w-blocks from `lo`. -/
+def MergeSegInv (la : List (BitVec 32)) (w lo n : Nat) : Prop :=
+  (∃ B, lo = B * (w + w)) ∧
+  (∀ b, b * (w + w) < lo →
+    SortedSeg la (b * (w + w)) (Nat.min ((b + 1) * (w + w)) n)) ∧
+  (∀ b, lo ≤ b * w → b * w < n →
+    SortedSeg la (b * w) (Nat.min ((b + 1) * w) n))
+
 /-- Outer correctness with the sort contract: from a sorted prefix
     with everything in the prefix `≤` the suffix (positional), the
     loop returns a sorted permutation of the original input. The
