@@ -3854,14 +3854,14 @@ theorem VecMergeRuns.mergeRunsDrainJ_ge (la : List (BitVec 32))
     cursor, length, and framing outside `[lo, hi)`. -/
 theorem VecMergeSort.sortCopyFwd_joint (lt : List (BitVec 32))
     (F' t hi lo : Nat)
-    (la la' : List (BitVec 32)) (t' : Nat)
+    (la : List (BitVec 32))
     (hlo_t : lo ≤ t) (ht_hi : t ≤ hi)
     (hsorted : SortedSeg lt lo hi)
     (heq : ∀ p, lo ≤ p → p < t → la[p]? = lt[p]?)
     (hread_lt : ∀ q, t ≤ q → q < hi → ∃ y, lt[q]? = some y)
     (hread_la : ∀ p, t ≤ p → p < hi → ∃ x, la[p]? = some x)
-    (hF : hi - t ≤ F')
-    (hfwd : VecMergeSort.sortCopyFwd lt la F' t hi = .ok (la', t')) :
+    (hF : hi - t ≤ F') :
+    ∃ la' t', VecMergeSort.sortCopyFwd lt la F' t hi = .ok (la', t') ∧
     SortedSeg la' lo hi ∧
     (∀ p, lo ≤ p → p < hi → la'[p]? = lt[p]?) ∧
     t' = hi ∧ la'.length = la.length ∧
@@ -3869,36 +3869,24 @@ theorem VecMergeSort.sortCopyFwd_joint (lt : List (BitVec 32))
   induction F' generalizing t la with
   | zero =>
     have him : t = hi := by omega
-    have hpair : (la, t) = (la', t') := by
-      simpa [VecMergeSort.sortCopyFwd] using hfwd
-    have ht't : t = t' := congrArg Prod.snd hpair
-    have hll : la = la' := congrArg Prod.fst hpair
-    refine ⟨?_, ?_, by omega, ?_, ?_⟩
+    refine ⟨la, t, ?_, ?_, ?_, him, rfl, ?_⟩
+    · simp [VecMergeSort.sortCopyFwd]
     · intro p q hlo_p hpq hqk a b ha hb
-      have h1 : la[p]? = some a := by rw [hll]; exact ha
-      have h2 : la[q]? = some b := by rw [hll]; exact hb
       have e1 : lt[p]? = some a := by
-        rw [← heq p hlo_p (by omega)]; exact h1
+        rw [← heq p hlo_p (by omega)]; exact ha
       have e2 : lt[q]? = some b := by
-        rw [← heq q (by omega) (by omega)]; exact h2
+        rw [← heq q (by omega) (by omega)]; exact hb
       exact hsorted p q hlo_p hpq hqk a b e1 e2
     · intro p hlo_p hph
-      rw [← hll]
       exact heq p hlo_p (by omega)
-    · rw [hll]
     · intro q _
-      rw [← hll]
+      rfl
   | succ F' ih =>
     by_cases hT : t < hi
     · obtain ⟨x, hx⟩ := hread_lt t (Nat.le_refl _) hT
-      obtain ⟨_, hxA⟩ := hread_la t (Nat.le_refl _) hT
+      obtain ⟨xA, hxA⟩ := hread_la t (Nat.le_refl _) hT
       have hklen : t < lt.length := pos_lt_of_getElem?_some hx
       have hlenA : t < la.length := pos_lt_of_getElem?_some hxA
-      have hfwd' : VecMergeSort.sortCopyFwd lt (la.set t x) F' (t + 1) hi =
-          .ok (la', t') := by
-        have hxA' : la[t]? = some (la[t]) :=
-          List.getElem?_eq_getElem hlenA
-        simpa [VecMergeSort.sortCopyFwd, dite_eq_left hT, hx, hxA'] using hfwd
       have hsorted_la : SortedSeg la lo t := by
         intro p q hlo_p hpq hqk a b ha hb
         have e1 : lt[p]? = some a := by
@@ -3920,7 +3908,7 @@ theorem VecMergeSort.sortCopyFwd_joint (lt : List (BitVec 32))
           exact hx.symm
         · rw [List.getElem?_set_ne (show t ≠ p by omega)]
           exact heq p h1 (by omega)
-      obtain ⟨hs1, heq1', ht1, hlen1, hframe1⟩ :=
+      obtain ⟨la', t', heq_ih, hs1, heq1', ht1, hlen1, hframe1⟩ :=
         ih (t + 1) (la.set t x)
           (by omega) (by omega) heq1
           (fun q h1 h2 => hread_lt q (by omega) h2)
@@ -3929,32 +3917,29 @@ theorem VecMergeSort.sortCopyFwd_joint (lt : List (BitVec 32))
             exact ⟨z, by
               rw [List.getElem?_set_ne (show t ≠ p by omega)]
               exact hz⟩)
-          (by omega) hfwd'
-      refine ⟨hs1, heq1', ht1, ?_, ?_⟩
+          (by omega)
+      have hcur : VecMergeSort.sortCopyFwd lt la (F' + 1) t hi =
+          .ok (la', t') := by
+        simp only [VecMergeSort.sortCopyFwd, dite_eq_left hT, hx, hxA]
+        exact heq_ih
+      refine ⟨la', t', hcur, hs1, heq1', ht1, ?_, ?_⟩
       · rw [hlen1, List.length_set]
       · intro q hq
         have h1 := hframe1 q hq
         rw [h1, List.getElem?_set_ne (show t ≠ q by omega)]
     · have him : t = hi := by omega
-      have hpair : (la, t) = (la', t') := by
-        simpa [VecMergeSort.sortCopyFwd, dite_eq_right hT] using hfwd
-      have ht't : t = t' := congrArg Prod.snd hpair
-      have hll : la = la' := congrArg Prod.fst hpair
-      refine ⟨?_, ?_, by omega, ?_, ?_⟩
+      refine ⟨la, t, ?_, ?_, ?_, him, rfl, ?_⟩
+      · simp only [VecMergeSort.sortCopyFwd, dite_eq_right hT]
       · intro p q hlo_p hpq hqk a b ha hb
-        have h1 : la[p]? = some a := by rw [hll]; exact ha
-        have h2 : la[q]? = some b := by rw [hll]; exact hb
         have e1 : lt[p]? = some a := by
-          rw [← heq p hlo_p (by omega)]; exact h1
+          rw [← heq p hlo_p (by omega)]; exact ha
         have e2 : lt[q]? = some b := by
-          rw [← heq q (by omega) (by omega)]; exact h2
+          rw [← heq q (by omega) (by omega)]; exact hb
         exact hsorted p q hlo_p hpq hqk a b e1 e2
       · intro p hlo_p hph
-        rw [← hll]
         exact heq p hlo_p (by omega)
-      · rw [hll]
       · intro q _
-        rw [← hll]
+        rfl
 
 /-- Take-window congruence from pointwise reads. -/
 theorem take_eq_of_frame (l1 l2 : List (BitVec 32)) (lo : Nat)
