@@ -22,6 +22,7 @@ import Circe.Emit.VecRotate
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
+import Circe.Emit.VecQuicksort
 import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
 import Circe.Emit.VecSelectionSort
@@ -1060,6 +1061,60 @@ def matchFrag : Func → Option FragKind
         w6 == BitVec.ofNat 64 1 then
       some .vecMergeSort
     else none
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
+        ⟨"lo", .u 64, .owned⟩,
+        ⟨"hi", .u 64, .owned⟩],
+      .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+      (.if_ (.ult (.var "lo") (.var "hi"))
+        (.if_ (.ult (.lit (.u64 g0)) (.usub (.var "hi") (.var "lo")))
+          (.seq (.let_ "pivot" (.i 32)
+                  (.stdVecAt "v"
+                    (.usub (.var "hi") (.lit (.u64 p0)))))
+            (.seq (.let_ "s" (.u 64) (.var "lo"))
+              (.seq (.let_ "i" (.u 64) (.var "lo"))
+                (.seq (.while_
+                        (.ult (.var "i")
+                          (.usub (.var "hi") (.lit (.u64 w0))))
+                        (.seq (.if_
+                                (.slt (.stdVecAt "v" (.var "i"))
+                                  (.var "pivot"))
+                                (.seq (.let_ "t" (.i 32)
+                                        (.stdVecAt "v" (.var "i")))
+                                  (.seq (.vecSet "v" (.var "i")
+                                          (.stdVecAt "v" (.var "s")))
+                                    (.seq (.vecSet "v" (.var "s")
+                                            (.var "t"))
+                                      (.assign "s"
+                                        (.uadd (.var "s")
+                                          (.lit (.u64 s0)))))))
+                                .skip)
+                          (.assign "i"
+                            (.uadd (.var "i")
+                              (.lit (.u64 i0))))))
+                  (.seq (.seq (.vecSet "v"
+                                (.usub (.var "hi") (.lit (.u64 q0)))
+                                (.stdVecAt "v" (.var "s")))
+                            (.vecSet "v" (.var "s") (.var "pivot")))
+                    (.seq (.let_ "s1" (.u 64)
+                            (.uadd (.var "s") (.lit (.u64 r0))))
+                      (.seq (.callProg "v"
+                              "_Z13vec_quicksortRSt6vectorIiSaIiEEmm"
+                              ["v", "lo", "s"])
+                        (.seq (.callProg "v"
+                                "_Z13vec_quicksortRSt6vectorIiSaIiEEmm"
+                                ["v", "s1", "hi"])
+                          (.return_ (.var "v"))))))))))
+          (.return_ (.var "v")))
+        (.return_ (.var "v")))⟩ =>
+    if g0 == BitVec.ofNat 64 1 &&
+        p0 == BitVec.ofNat 64 1 &&
+        w0 == BitVec.ofNat 64 1 &&
+        s0 == BitVec.ofNat 64 1 &&
+        i0 == BitVec.ofNat 64 1 &&
+        q0 == BitVec.ofNat 64 1 &&
+        r0 == BitVec.ofNat 64 1 then
+      some .vecQuicksort
+    else none
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
@@ -1657,6 +1712,8 @@ theorem matchFrag_mergeRuns :
     matchFrag VecMergeRuns.mergeRunsFunc = some .vecMergeRuns := rfl
 theorem matchFrag_vecMergeSort :
     matchFrag VecMergeSort.vecMergeSortFunc = some .vecMergeSort := rfl
+theorem matchFrag_vecQuicksort :
+    matchFrag VecQuicksort.vecQuicksortFunc = some .vecQuicksort := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

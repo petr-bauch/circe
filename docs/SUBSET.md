@@ -97,15 +97,19 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
    never fails (no OOM path); `realloc(p, 0)` / `realloc(NULL, n)`
    spellings rejected (use `free` / `malloc` directly). Blocks
    are values + affine tokens (`Vec32.freed` / `Vec64.freed`), not addresses.
-9. DAG calls (S1): callers target admitted call-free leaves only
-   (`add`, `sum_array`); exact caller shapes (`add_caller`:
-   three `i32` + two `@add` sites; `sum_caller`: `(ptr, n)` +
-   one `@sum_array` site). Self-calls (recursion), unknown callees,
-   and misshapen callers are rejected. DAG by construction: leaves
-   exclude calls, callers only target leaves, so no cycle is
-   expressible. Semantics: `callRet dst f args` binds `dst` to the
-   callee return (`evalProgStmt` dispatches to `evalFuncFuel` at the
-   same fuel; errors propagate).
+9. DAG calls (S1) + one recursive shape (P2-M8): callers target
+   admitted call-free leaves only (`add`, `sum_array`); exact
+   caller shapes (`add_caller`: three `i32` + two `@add` sites;
+   `sum_caller`: `(ptr, n)` + one `@sum_array` site). The single
+   exception is the `vec_quicksort` recursive-caller shape (exact
+   multiset: nine mut `at()` + two self-calls; the self-calls are
+   `callProg`, which steps fuel down per call, so recursion
+   terminates by the fuel budget with exhaustion as `AssertFail`).
+   All other self-calls (recursion), mutual recursion, unknown
+   callees, and misshapen callers are rejected. Semantics:
+   `callRet dst f args` binds `dst` to the callee return
+   (`evalProgStmt` dispatches to `evalFuncFuel` at the same fuel;
+   errors propagate).
 10. Struct-by-value (S2): `translate` shape only — by-value `Point`
     + two `i32` deltas, `Point` return; `cir.get_member` reads of
     `x`/`y`, `nsw` field adds, no calls/control-flow/heap/indexing.

@@ -1943,6 +1943,38 @@ def emitVecMergeSortSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `vec_quicksort` entry. The mirror is an
+    independent fuel-threaded quicksort over the reified words
+    (duplicates of the pivot go right, matching the Lomuto place);
+    edges carry ground truth (unsorted sorts, empty/singleton are
+    no-ops, duplicates keep multiplicity). -/
+def emitVecQuicksortSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, lo, hi)` sorts `v[lo..hi)` in place (Lomuto, last-element pivot). Base body reference: fuel-threaded quicksort over the reified words (cf. emitted `{name}_fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : List (BitVec 32) :=\n"
+  ++ "  go l (l.length * l.length + 1)\n"
+  ++ "where\n"
+  ++ "  go : List (BitVec 32) → Nat → List (BitVec 32)\n"
+  ++ "  | _, 0 => []\n"
+  ++ "  | [], _ + 1 => []\n"
+  ++ "  | [x], _ + 1 => [x]\n"
+  ++ "  | p :: xs, fuel + 1 =>\n"
+  ++ "    go (xs.filter (fun x => x.slt p)) fuel ++ [p] ++ go (xs.filter (fun x => (x.slt p == false))) fuel\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: unsorted sorts, duplicates keep multiplicity, empty/singleton are no-ops. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × List (BitVec 32)) :=\n"
+  ++ "  [([3, 1, 2], [1, 2, 3]),\n"
+  ++ "   ([], []),\n"
+  ++ "   ([1], [1]),\n"
+  ++ "   ([5, 5, 5], [5, 5, 5]),\n"
+  ++ "   ([2, 1], [1, 2])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/

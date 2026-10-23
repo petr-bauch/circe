@@ -1074,6 +1074,17 @@ def emitVecMergeSortText (name : String) : String :=
   ++ s!"def {name}_fwd (la lt : List (BitVec 32)) (F : Nat) : Result Value :=\n"
   ++ "  VecMergeSort.vecMergeSortFwd la lt F\n"
 
+/-- Render the `vec_quicksort` entry forward definition: recursive
+    quicksort over the reified words (ranges shrink strictly, fuel
+    steps down per `callProg` — the rendering delegates to the
+    verified forward function like the composer forwarders). -/
+def emitVecQuicksortText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecQuicksort\n\n"
+  ++ s!"/-- Pure translation of `{name}` (recursive Lomuto quicksort over `[lo, hi)`; fuel is the call-depth budget). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (lo hi F : Nat) : Result (List (BitVec 32)) :=\n"
+  ++ "  VecQuicksort.vecQuicksortFwd l F lo hi\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

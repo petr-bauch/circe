@@ -42,6 +42,7 @@ import DiffVecTransformAdd
 import DiffVecPartition
 import DiffVecSelectionSort
 import DiffVecMergeSort
+import DiffVecQuicksort
 import DiffVecReverse
 import DiffVecSegReverse
 import DiffVecRotate
@@ -98,6 +99,7 @@ import GoldenVecTransformAdd
 import GoldenVecPartition
 import GoldenVecSelectionSort
 import GoldenVecMergeSort
+import GoldenVecQuicksort
 import GoldenVecReverse
 import GoldenVecSegReverse
 import GoldenVecRotate
@@ -358,6 +360,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/vec_partition.cpp", "tests/diff/driver_vec_partition.cpp"], bin "circe_vec_partition_native"),
    ("c++", ["tests/cpp/vec_selection_sort.cpp", "tests/diff/driver_vec_selection_sort.cpp"], bin "circe_vec_selection_sort_native"),
    ("c++", ["tests/cpp/vec_merge_sort.cpp", "tests/diff/driver_vec_merge_sort.cpp"], bin "circe_vec_merge_sort_native"),
+   ("c++", ["tests/cpp/vec_quicksort.cpp", "tests/diff/driver_vec_quicksort.cpp"], bin "circe_vec_quicksort_native"),
    ("c++", ["tests/cpp/vec_reverse.cpp", "tests/diff/driver_vec_reverse.cpp"], bin "circe_vec_reverse_native"),
    ("c++", ["tests/cpp/vec_seg_reverse.cpp", "tests/diff/driver_vec_seg_reverse.cpp"], bin "circe_vec_seg_reverse_native"),
    ("c++", ["tests/cpp/vec_seg_reverse.cpp", "tests/cpp/vec_rotate.cpp", "tests/diff/driver_vec_rotate.cpp"], bin "circe_vec_rotate_native"),
@@ -455,6 +458,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecMergeRuns_Spec.lean", "out/VecMergeRuns_Spec.lean"),
    ("tests/golden/VecMergeSort.lean", "out/VecMergeSort.lean"),
    ("tests/golden/VecMergeSort_Spec.lean", "out/VecMergeSort_Spec.lean"),
+   ("tests/golden/VecQuicksort.lean", "out/VecQuicksort.lean"),
+   ("tests/golden/VecQuicksort_Spec.lean", "out/VecQuicksort_Spec.lean"),
    ("tests/golden/VecReverse.lean", "out/VecReverse.lean"),
    ("tests/golden/VecReverse_Spec.lean", "out/VecReverse_Spec.lean"),
    ("tests/golden/VecSegReverse.lean", "out/VecSegReverse.lean"),
@@ -631,6 +636,7 @@ def emittedTypechecks : List String :=
    "out/VecSelectionSort.lean",
    "out/VecMergeRuns.lean",
    "out/VecMergeSort.lean",
+   "out/VecQuicksort.lean",
    "out/VecReverse.lean",
    "out/VecSegReverse.lean",
    "out/VecRotate.lean",
@@ -1491,6 +1497,17 @@ def contentAsserts : List (String × List (String × String)) :=
      ("tests/golden/VecMergeRuns.lean", "_Z10merge_runsRKSt6vectorIiSaIiEERS1_mmm_fwd"),
      ("out/VecMergeSort.lean", "_Z14vec_merge_sortRSt6vectorIiSaIiEES2__fwd"),
      ("tests/golden/VecMergeSort.lean", "_Z14vec_merge_sortRSt6vectorIiSaIiEES2__fwd")]),
+   ("vec-quicksort",
+    [("Circe/Emit/VecQuicksort.lean", "def vecQuicksortFunc"),
+     ("Circe/Emit/VecQuicksort.lean", "def vecQuicksortFwd"),
+     ("Circe/Emit/VecQuicksort.lean", "def qsPartFwd"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecQuicksort"),
+     ("Circe/Emit/Render.lean", "def emitVecQuicksortText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecQuicksortSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isVecQuicksortShape"),
+     ("Circe/Validator/Gate.lean", "isVecQuicksortShape raw"),
+     ("out/VecQuicksort.lean", "_Z13vec_quicksortRSt6vectorIiSaIiEEmm_fwd"),
+     ("tests/golden/VecQuicksort.lean", "_Z13vec_quicksortRSt6vectorIiSaIiEEmm_fwd")]),
    ("vec-transform-add",
     [("Circe/Emit/VecTransformAdd.lean", "def vecTransformAddFwd"),
      ("Circe/Emit/Match.lean", "theorem matchFrag_vecTransformAdd"),
@@ -1961,6 +1978,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecpartition", DiffVecPartition.main [bin "circe_vec_partition_native", trials]),
    ("diff-vecselectionsort", DiffVecSelectionSort.main [bin "circe_vec_selection_sort_native", trials]),
    ("diff-vecmergesort", DiffVecMergeSort.main [bin "circe_vec_merge_sort_native", trials]),
+   ("diff-vecquicksort", DiffVecQuicksort.main [bin "circe_vec_quicksort_native", trials]),
    ("diff-vecreverse", DiffVecReverse.main [bin "circe_vec_reverse_native", trials]),
    ("diff-vecsegreverse", DiffVecSegReverse.main [bin "circe_vec_seg_reverse_native", trials]),
    ("diff-vecrotate", DiffVecRotate.main [bin "circe_vec_rotate_native", trials]),
@@ -2018,6 +2036,7 @@ def checkSuites : List Job :=
    ("golden-vecpartition", GoldenVecPartition.main),
    ("golden-vecselectionsort", GoldenVecSelectionSort.main),
    ("golden-vecmergesort", GoldenVecMergeSort.main),
+   ("golden-vecquicksort", GoldenVecQuicksort.main),
    ("golden-vecreverse", GoldenVecReverse.main),
    ("golden-vecsegreverse", GoldenVecSegReverse.main),
    ("golden-vecrotate", GoldenVecRotate.main),

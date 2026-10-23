@@ -1851,6 +1851,44 @@ def isVecSelectionSortShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.add nsw"
   | _ => false
 
+/-- `vec_quicksort` recursive-caller shape (P2-M8): one `mutBorrow`
+    vector + two owned `u64` bounds in, `void` out, exactly eleven
+    calls (nine mut `at()` + two self-calls), one `cir.while` (the
+    Lomuto scan), three `cir.if` (two early returns + the swap
+    guard), three `cir.return`, four compares (two `u64` guards +
+    one `u64` bound + one signed element compare). The self-call is
+    admitted only here (exact multiset: nine `at()` + two self):
+    every other self-call still hits the rule-9 rejection below. -/
+def isVecQuicksortShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, lo, hi] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    !isPtrType lo.ctype && isU64 lo.ctype &&
+    !isPtrType hi.ctype && isU64 hi.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecAtMutName &&
+    !callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text raw.name &&
+    opCount raw.text ("cir.call @" ++ raw.name ++ "(") == 2 &&
+    opCount raw.text "cir.call @" == 11 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if " == 3 &&
+    opCount raw.text "cir.return" == 3 &&
+    opCount raw.text "cir.cmp " == 4 &&
+    opCount raw.text "cir.const " == 14 &&
+    opCount raw.text "cir.alloca" == 7 &&
+    opCount raw.text "cir.load " == 42 &&
+    opCount raw.text "cir.store " == 13 &&
+    opCount raw.text "cir.add" == 3 &&
+    opCount raw.text "cir.sub" == 4 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.add nsw"
+  | _ => false
+
 /-- `merge_runs` ranged-callee shape (C2): shared-borrow vector +
     mutable-borrow temp + three `u64` bounds in, `void` out, exactly
     ten calls (six const `at()` + four mut `at()`), three `cir.while`
