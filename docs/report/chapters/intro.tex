@@ -1,0 +1,35 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+Circe is a verification pipeline from C, and from STL-free C++-lite, to
+Lean~4. Source programs travel through ClangIR (CIR, the raw
+\texttt{CIRGen} output) into pure, memory-free Lean~4 definitions produced
+by a verified emitter, and functional-correctness proofs are stated as pure
+equations over those definitions. The style is Aeneas-like: instead of
+reasoning about a heap with separation logic, the pipeline translates
+programs into total-looking value functions and proves things about the
+functions~\cite{aeneas-site}.
+
+Two design bets carry the whole project. First, the common case needs no
+memory model at all: admitted programs are value programs, so their proofs
+are equations, inductions, and tactic automation rather than framing
+lemmas. Second, whatever falls outside the admitted subset is rejected
+loudly with a dedicated message. Circe never silently models memory it
+does not understand; an out-of-subset program is an error, not an
+approximation.
+
+This report is the long-term home for the ideas behind the pipeline: how
+C/C++ is interpreted and given semantics in Lean
+(Chapter~\ref{ch:semantics}), what the verification rests on
+(Chapter~\ref{ch:verification}), how the repository and harness fit
+together (Chapter~\ref{ch:technical}), where the work sits among related
+efforts (Chapter~\ref{ch:related}), and where the codebase stands
+(Chapter~\ref{ch:progress}). The Markdown documents under
+\texttt{docs/} and the Lean sources themselves remain normative; this
+report explains them and points at them rather than duplicating them.
+
+A note on freshness: only Chapter~\ref{ch:progress} tracks the moving
+codebase, and it does so through regenerated snapshots, not hand edits.
+Every other chapter describes stable designs and changes only when the
+design itself changes. The snapshot built into this copy is identified by
+the git SHA printed in Chapter~\ref{ch:progress}.

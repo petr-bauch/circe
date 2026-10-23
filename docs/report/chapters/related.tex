@@ -1,0 +1,111 @@
+\chapter{Related Work}
+\label{ch:related}
+
+\section{Functional translation: Aeneas}
+
+Aeneas is a verification toolchain for Rust built on the bet that, for
+safe code, memory is an implementation detail. Rust sources are compiled
+to MIR, lifted by Charon into LLBC (a borrow-explicit intermediate
+representation), and then translated into a pure lambda calculus with no
+heap, no addresses, and no separation logic~\cite{aeneas-charon}. Shared
+references become plain immutable values; mutable references are split
+into a forward function (lending the value out) and a backward function
+(returning the updated value), so the proof engineer reasons about an
+equivalent functional program. Backends target several theorem provers,
+including Lean, and the admitted fragment is safe, sequential
+Rust~\cite{aeneas-site}.
+
+Circe is Aeneas's closest relative and makes the same bet one level
+down: C and C++-lite instead of Rust, ClangIR text instead of MIR/LLBC.
+The differences follow from the source language. Rust brings its borrow
+checker as a trusted aliasing oracle; C brings no such thing, so Circe
+replaces it with an explicit verified gate plus text-derived noalias
+facts and a proved memory transfer. Where Aeneas inherits its subset
+from the language's safety discipline, Circe defines its subset
+document by document and rejects everything else loudly.
+
+\section{MLIR-based analysis: VAST}
+
+VAST, from Trail of Bits, is an experimental compiler pipeline that
+lifts C and C++ into a tower of MLIR dialects, one per abstraction
+level, so that each analysis can pick the representation that fits
+it~\cite{vast-blog}. It is a new compiler middle-end for Clang aimed at
+program analysis and instrumentation, not a verifier: it finds bugs, it
+does not prove programs correct.
+
+The kinship is at the input layer. Both projects meet C and C++ at MLIR
+level rather than at source syntax, and both exploit the structure the
+frontend already computed. The goals diverge from there: VAST climbs
+down the tower toward analysis-friendly abstractions, while Circe climbs
+up from CIR text~\cite{clangir} toward pure functions with proved
+equational specs.
+
+\section{Rust verifiers: Prusti and Flux}
+
+Two Rust efforts keep memory in the picture and automate around it.
+Prusti is a deductive verifier that embeds annotated Rust into Viper, an
+intermediate verification language based on implicit dynamic frames, a
+separation-logic variant; the borrow checker's assumptions become
+permissions, and verification is automatic~\cite{prusti}. Flux goes the
+other way into the type system: it extends Rust with liquid (refinement)
+types, tracks strong updates to mutable references by exact location,
+and discharges the resulting verification conditions by SMT-backed
+inference~\cite{flux}.
+
+Against both, Circe is the more radical erasure. Prusti reasons about
+permissions, Flux about refinements; Circe, for admitted shapes, reasons
+about neither, because there is no heap left to have permissions over.
+The price is the gate: where Prusti and Flux accept broad Rust and ask
+for annotations, Circe accepts narrow C/C++ and asks for nothing, since
+admission itself is the specification of what may alias what.
+
+\section{Verified compilation: CompCert}
+
+CompCert is the landmark verified C compiler: written and proved in
+Rocq (formerly Coq), it comes with a formal semantics of its source
+fragments and a proof that compilation preserves it~\cite{compcert}.
+Its theorem is about the compiler (the executable behaves like the
+source); Circe's theorems are about programs (the emitted function
+satisfies its equation). The two compose rather than compete: CompCert
+says the toolchain preserves meaning, Circe says what the meaning is
+worth. Notably, CompCert's source semantics is a memory semantics ---
+precisely the layer Circe erases for the common case.
+
+\section{SMT-backed verification: Dafny}
+
+Dafny is a verification-aware programming language: the programmer
+writes code together with specifications, and an SMT-backed pipeline
+checks them automatically~\cite{dafny}. It optimizes the edit--specify--
+verify loop for new code. Circe optimizes the opposite direction:
+existing C and C++ that cannot be rewritten, verified after the fact
+through translation rather than through a new language. Dafny's
+automation is push-button; Circe's is tactic-backed and interactive past
+the simplifier, which is the cost of meeting legacy code where it lives.
+
+\section{Separation-logic frameworks: Iris}
+
+Iris is a higher-order concurrent separation-logic framework embedded in
+Rocq, with the MoSeL proof mode as its tactic layer; it is the standard
+answer when programs need invariants, ghost state, and framing over
+shared mutable state~\cite{iris}. The project evaluated exactly this
+option in a time-boxed spike: vendoring an Iris-like framing layer over
+the memory model for the one residue class the equational story cannot
+cover (conditionally-live writers, where the branch makes footprints
+caller-dependent). The verdict was to defer --- the native cost of one
+conditional proof stayed small, Iris would not have unblocked admission
+by itself, and framing without lifetime facts has nothing to attach to.
+The revisit triggers are recorded with the milestone history: a second
+conditional shape, or lifetime evidence mature enough to ground the
+frames. Until then, everything admitted stays equational by construction.
+
+\section{The proof assistant: Lean and Mathlib}
+
+Whatever the source language or the translation style, the proofs have
+to live somewhere. In Circe they live in Lean, on top of its
+mathematical library: the elaborator, kernel, and library tactics are
+the automation substrate for every per-shape correctness proof, and
+Lean~4 with its pinned Mathlib revision is the only trusted computing
+base beyond the compiler front end~\cite{lean4,mathlib4}. That
+concentration of trust is deliberate --- it is what lets the oracle
+verdicts be a checked cache rather than an axiom, and what makes the
+transfer theorems worth stating at all.

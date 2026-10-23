@@ -1,0 +1,37 @@
+% Circe project report — LuaLaTeX entry point.
+% Build: `make pdf` (runs tools/report-status.sh, then lualatex + biber).
+\documentclass[a4paper,11pt]{report}
+
+\usepackage{fontspec}
+\usepackage{hyperref}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[backend=biber,style=numeric]{biblatex}
+\usepackage{geometry}
+\geometry{a4paper,left=20mm,right=20mm,top=20mm,bottom=20mm}
+
+\addbibresource{refs.bib}
+
+\title{\texttt{circe}: Interpreting C/C++ in Lean\\and Foundations for Verification}
+\author{Circe contributors}
+\date{\today}
+
+% Stable defaults; regenerated values override these when present.
+\providecommand{\circegitsha}{unknown}
+\providecommand{\circemodulecount}{unknown}
+\providecommand{\circeleancount}{unknown}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\input{chapters/intro}
+\input{chapters/semantics}
+\input{chapters/verification}
+\input{chapters/technical}
+\input{chapters/related}
+\input{chapters/progress}
+
+\printbibliography
+
+\end{document}
