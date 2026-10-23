@@ -1734,3 +1734,53 @@ Proof-only, no admission. Queued follow-ups: the partition
 permutation/partition-property contract and the merge-sort
 sortedness/permutation contract.
 - Acceptance: 445 jobs TEST-OK, CHECK-OK (`2150d07`).
+
+### P4 Phase 0. Iris vendoring re-check — DONE (2026-10-23, report-only)
+
+All three 2026-10-12 blockers re-checked in `/tmp` scratch (no
+repo churn, no vendored dependency yet): iris-lean now ships a
+`v4.34.0` release tag matching our toolchain exactly; the tag
+pins `Qq`/`Batteries` at the same commits as our manifest
+(zero diamond-conflict risk, zero `Qq` drift surface); full
+Iris core builds under `v4.34.0`; a MoSeL hello (`iintro`,
+`ihave`, `icases`, `isplitl`/`isplitr`, `iframe`,
+`iassumption`, `iexact`) typechecks. Stale-idiom note:
+upstream `Examples/` still uses `open Iris.BI`, which no
+longer resolves — the working idiom is `open Iris BI` per
+`IrisTest`. Verdict: GO.
+- Acceptance: report-only spike, no `validate`/Emit/transfer churn.
+
+### P4 Phase 1. MVP: `Mem` points-to + reusable frame rule — DONE (2026-10-23)
+
+Vendored iris-lean at the `v4.34.0` tag (MoSeL interface
+scope only — no program logic, no oracle/`Mem` changes;
+`lakefile.toml` + manifest, `Qq`/`Batteries` untouched). New
+`Circe/Iris/`: `PointsTo.lean` reifies `Mem` into the
+classical separation-logic state (`stateOf`, `cellAtI`/
+`cellsAtI` points-to, bridges back to `cellAt`/`cellsAt`,
+`sep_unfold`), proves `frame_memStore` once from
+`memFind_memStore_other` (a successful index-0 cell store
+updates its points-to and preserves an *arbitrary* frame),
+and recovers native facts via adequacy (`split_cellAt`,
+`star_cellAt`, `star_frame_cellAt` — the side swap rides
+union/disjoint commutativity). `CondDemo.lean` proves both
+`alias_cond` legs through the frame rule
+(`condPost_disjoint_star`: two applications + `star_intro`,
+the other cell riding the frame both times) and recovers the
+EXACT native `condPost_disjoint` conclusions
+(`condPost_disjoint_parity`); the aliased leg closes through
+the bridge alone (one cell — the case a star would
+conflate). Stretch `double_store_frame` reuses the rule
+twice (the take-branch two-store pattern, second application
+framing over the first result). Two MoSeL tactic demos over
+`HeapProp Block` (`isplitl` commutativity, `ihave`/`iapply`
+frame congruence — no hypotheses dropped, so no affinity
+instance needed). Scope notes: index-0 single-cell stores
+only; rule application across concrete states is a meta-step
+with tactics driving the entailment plumbing. Iris syntax
+lessons recorded in-file: the `∗`/`↔` tokens elaborate only
+inside `iprop(...)`, the global `∃` macro means BI-exists
+(use `Exists` for meta-level existence).
+- Acceptance: sorry-free and warning-free, `lake build`
+green, gate stays 445 jobs TEST-OK, CHECK-OK (`44a86c0`);
+no driver jobs added, no `validate`/Emit/transfer churn.

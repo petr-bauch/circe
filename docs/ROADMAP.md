@@ -19,10 +19,10 @@ vestigial-by-design, L3 roots extract-only). The C core is
 complete within the standing non-goals.
 
 Next: nothing open — the C core is complete within the
-standing non-goals (L-track closed, Iris revisit deferred with
-a limitations note; `optional::value` throw path closed,
-general `cir.try` stays out). See `DELIVERED.md` §§ M3/N1, S3,
-N6, L–L5, O1/O2, Iris.
+standing non-goals (L-track closed; `optional::value` throw
+path closed, general `cir.try` stays out). Iris policy moved
+to pillar 4 (native first, Iris on fallback). See
+`DELIVERED.md` §§ M3/N1, S3, N6, L–L5, O1/O2, Iris, P4.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
@@ -128,16 +128,21 @@ admitted shape, as always.
 
 ## Pillar 4 — Iris separation logic for low-level aspects and concurrency
 
-Verdict to date: native first, Iris deferred. The 2026-10-12
-spike evaluated `iris-lean` (MoSeL proof interface only) and
-recommended no migration — pin mismatch (`v4.21.0` vs our
-`v4.34.0`), moving `Qq`, BI tactics but not program logic, and
-it replaces neither the oracle nor the `Mem` tags
-(`DELIVERED.md` "Iris spike report"). The revisit trigger (an
-`alias_cond`-class framing admission plus lifetime evidence)
-FIRED on 2026-10-16 (N14/G3 + L1/L3 — "L5"); decision: DEFER,
-native framing keeps winning on burden (F2: two helpers + two
-theorems).
+Standing policy (locked 2026-10-23): native first, Iris
+on fallback. Every problem gets the simple no-Iris solution
+attempt first; Iris is attempted only when that solution does
+not work. History: the 2026-10-12 spike evaluated `iris-lean`
+(MoSeL proof interface only) and recommended no migration —
+pin mismatch (`v4.21.0` vs our `v4.34.0`), moving `Qq`
+(`DELIVERED.md` "Iris spike report"); the revisit trigger
+FIRED on 2026-10-16 (N14/G3 + L1/L3 — "L5") but the decision
+was DEFER (F2: two helpers + two theorems). Deferral ended
+2026-10-23 by decision: Phase 0 re-checked the blockers in a
+fresh time-boxed spike (all gone — `v4.34.0` release tag,
+identical `Qq`/`Batteries` pins; "P4 Phase 0") and Phase 1
+vendored iris (MoSeL only) with a working frame rule
+("P4 Phase 1"). It still replaces neither the oracle nor the
+`Mem` tags.
 
 Use cases encountered so far, with dispositions:
 
@@ -148,9 +153,9 @@ Use cases encountered so far, with dispositions:
   verdict-independent admission with `pinnedCell` +
   `mstore`/`mload` + 4-leg transfer (N14/G3). Native cost:
   each new conditional shape re-pays a bespoke `condPost`
-  proof. A *second* conditional shape ends the deferral
-  (re-check the vendoring blockers in a fresh time-boxed
-  spike).
+  proof. A *second* conditional shape is the first fallback
+  candidate: attempt the bespoke `condPost` natively, escalate
+  to the Iris frame rule only if that fails.
 - Sequential reborrows (two loans, one address): licensed
   gate-side (L2 ranges + F0 same-address), functionalized
   value-in/value-out — no framing logic needed (N11/F1, L4).
@@ -173,14 +178,18 @@ Use cases encountered so far, with dispositions:
   definitional (callee binds into `emptyMem`) — P3e.
 - `Mem`-level writes: delivered via `mstore`/`mload` + open
   contracts (S0–S4, N14); store equations stay hypotheses
-  under the S0 open contract instead of discharged writes. A
-  `Mem`-level write need the native path cannot meet is the
-  other line ending deferral.
+  under the S0 open contract instead of discharged writes
+  (discharging them through the Iris points-to is the
+  standing fallback candidate).
 
-What Iris (MoSeL) would buy when deferral ends: a reusable
-frame rule carrying untouched locations through for free +
-BI/separation-logic tactics, once shapes multiply past the
-bespoke-post budget.
+What Iris (MoSeL) now provides: a reusable frame rule
+carrying untouched locations through for free
+(`frame_memStore` over reified `Mem`, Phase 1 MVP) +
+BI/separation-logic tactics over our instance. First
+consumers under the fallback policy: a second conditional
+shape that resists the bespoke-`condPost` treatment, or a
+`Mem`-level write need the native path cannot meet (the S0
+store-equation hypotheses are the standing candidate).
 
 Out of scope until the platform says otherwise: concurrency
 (standing non-goal) — the one use case with no native answer.
@@ -212,7 +221,8 @@ changes stay out.
 
 - Iris spike (MoSeL evaluation, no migration) — `DELIVERED.md`
   "Iris spike report" (trigger fired 2026-10-16, revisit
-  deferred with limitations note).
+  deferred with limitations note; deferral ended 2026-10-23 —
+  "P4 Phase 0" / "P4 Phase 1", policy in pillar 4).
 - L-track extractions + consumers (L–L5) — `DELIVERED.md` "L." / "L4." / "L5.".
 - F2 native conditional framing + S0–S4/G1 dispositions —
   `DELIVERED.md` "F2." / "S0–S4 + G1 dispositions".
