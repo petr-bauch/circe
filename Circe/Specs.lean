@@ -2758,6 +2758,936 @@ theorem partitionFwd_partitioned (pivot : BitVec 32)
         simpa [partitionFwd, dite_eq_right hlt] using hfwd
       obtain ⟨rfl, rfl, rfl⟩ := hpair
       exact ⟨hpref, fun j hsj hjl y hy => hsuff j hsj (by omega) y hy⟩
+
+/-- Sorted window (M5 positional formulation for a subrange):
+    positions in `[lo, hi)` pairwise ascending under `slt`. -/
+def SortedSeg (l : List (BitVec 32)) (lo hi : Nat) : Prop :=
+  ∀ p q, lo ≤ p → p < q → q < hi → ∀ a b,
+    l[p]? = some a → l[q]? = some b → (b.slt a) = false
+
+/-- Appending above a sorted window preserves sortedness when
+    the new element tests `slt`-false against every window
+    element (the emitted-above-consumed step). -/
+theorem sortedSeg_snoc (l : List (BitVec 32)) (lo k : Nat)
+    (x : BitVec 32)
+    (hs : SortedSeg l lo k)
+    (hle : ∀ p, lo ≤ p → p < k → ∀ a, l[p]? = some a →
+      (x.slt a) = false)
+    (hk : k < l.length) :
+    SortedSeg (l.set k x) lo (k + 1) := by
+  intro p q hlo hpq hqk a b ha hb
+  by_cases hqk2 : q = k
+  · subst hqk2
+    have hbx : b = x := by
+      have hget : (l.set q x)[q]? = some x :=
+        List.getElem?_set_self hk
+      rw [hget] at hb
+      exact (Option.some_inj.mp hb).symm
+    have ha' : l[p]? = some a := by
+      have h1 : (((l.set q x)[p]? : Option (BitVec 32))) =
+          l[p]? := by
+        rw [List.getElem?_set_ne (show q ≠ p by omega)]
+      rw [h1] at ha
+      exact ha
+    rw [hbx]
+    exact hle p (by omega) (by omega) a ha'
+  · have ha' : l[p]? = some a := by
+      have h1 : (((l.set k x)[p]? : Option (BitVec 32))) =
+          l[p]? := by
+        rw [List.getElem?_set_ne (show k ≠ p by omega)]
+      rw [h1] at ha
+      exact ha
+    have hb' : l[q]? = some b := by
+      have h1 : (((l.set k x)[q]? : Option (BitVec 32))) =
+          l[q]? := by
+        rw [List.getElem?_set_ne (show k ≠ q by omega)]
+      rw [h1] at hb
+      exact hb
+    exact hs p q hlo (by omega) (by omega) a b ha' hb'
+
+/-- Take-window snoc: extending the take bound by one appends
+    the element. -/
+theorem take_snoc (l : List (BitVec 32)) (lo n : Nat)
+    (hlo : lo ≤ n) (hn : n < l.length) :
+    ((l.drop lo).take (n + 1 - lo)) =
+      ((l.drop lo).take (n - lo)) ++ [l[n]] := by
+  apply List.ext_getElem?
+  intro p
+  rw [List.getElem?_take]
+  by_cases hp : p < n + 1 - lo
+  · rw [ite_eq_left hp]
+    rw [List.getElem?_drop]
+    by_cases hp2 : p < n - lo
+    · have hlen : ((l.drop lo).take (n - lo)).length = n - lo := by
+        rw [List.length_take, List.length_drop]
+        exact Nat.min_eq_left (by omega)
+      rw [List.getElem?_append_left (by rw [hlen]; omega),
+        List.getElem?_take, ite_eq_left hp2, List.getElem?_drop]
+    · have hpeq : p = n - lo := by omega
+      have hlen : ((l.drop lo).take (n - lo)).length = n - lo := by
+        rw [List.length_take, List.length_drop]
+        exact Nat.min_eq_left (by omega)
+      rw [hpeq, List.getElem?_append_right (by rw [hlen]; omega),
+        hlen]
+      simp only [Nat.sub_self]
+      have hnn : lo + (n - lo) = n := by omega
+      rw [hnn, List.getElem?_eq_getElem (by omega : n < l.length)]
+      rfl
+  · rw [ite_eq_right hp]
+    have hlen : ((((l.drop lo).take (n - lo)) ++ [l[n]]).length) =
+        n + 1 - lo := by
+      rw [List.length_append, List.length_take, List.length_drop,
+        List.length_singleton]
+      omega
+    have hle : ((((l.drop lo).take (n - lo)) ++ [l[n]]).length) ≤
+        p := by
+      rw [hlen]
+      omega
+    rw [List.getElem?_eq_none hle]
+
+/-- Take-window snoc through a single set at the extension
+    point (the merge-emit step on the `tmp` side). -/
+theorem perm_seg_snoc (lt : List (BitVec 32)) (lo k : Nat)
+    (x : BitVec 32)
+    (hlo_k : lo ≤ k) (hk : k < lt.length) :
+    ((lt.set k x).drop lo).take (k + 1 - lo) =
+      ((lt.drop lo).take (k - lo)) ++ [x] := by
+  apply List.ext_getElem?
+  intro p
+  rw [List.getElem?_take]
+  by_cases hp : p < k + 1 - lo
+  · rw [ite_eq_left hp]
+    rw [List.getElem?_drop]
+    by_cases hp2 : p < k - lo
+    · have hlen2a : ((lt.drop lo).take (k - lo)).length = k - lo := by
+        rw [List.length_take, List.length_drop]
+        exact Nat.min_eq_left (by omega)
+      rw [List.getElem?_append_left (by rw [hlen2a]; omega),
+        List.getElem?_take, ite_eq_left hp2, List.getElem?_drop,
+        List.getElem?_set_ne (show k ≠ lo + p by omega)]
+    · have hpeq : p = k - lo := by omega
+      have hlen2 : ((lt.drop lo).take (k - lo)).length = k - lo := by
+        rw [List.length_take, List.length_drop]
+        exact Nat.min_eq_left (by omega)
+      rw [hpeq, List.getElem?_append_right (by rw [hlen2]; omega),
+        hlen2]
+      simp only [Nat.sub_self]
+      have heq : lo + (k - lo) = k := by omega
+      rw [heq]
+      exact List.getElem?_set_self hk
+  · rw [ite_eq_right hp]
+    have hlenR : ((((lt.drop lo).take (k - lo)) ++ [x]).length) =
+        k + 1 - lo := by
+      rw [List.length_append, List.length_take, List.length_drop,
+        List.length_singleton]
+      omega
+    have hleR : ((((lt.drop lo).take (k - lo)) ++ [x]).length) ≤
+        p := by
+      rw [hlenR]
+      omega
+    rw [List.getElem?_eq_none hleR]
+
+/-- Merge main-loop contract: sorted emitted prefix, cross
+    invariants against both unread runs, the consumed multiset,
+    and the exit shape (one run exhausted). Take-x uses
+    run-sortedness plus one `slt` transitivity
+    (`slt_lower_trans`); take-y is symmetric
+    (`slt_ge_trans`). -/
+theorem VecMergeRuns.mergeRunsMainFwd_sorted (la : List (BitVec 32))
+    (F' i j k mid hi lo : Nat)
+    (lt lt' : List (BitVec 32)) (i' j' k' : Nat)
+    (hlo_i : lo ≤ i) (hi_ : i ≤ mid) (hj_ : j ≤ hi)
+    (hmid_j : mid ≤ j)
+    (hlo_k : lo ≤ k) (hk : k ≤ lt.length)
+    (hla_len : hi ≤ la.length)
+    (hcount : k - lo = (i - lo) + (j - mid))
+    (hleft : SortedSeg la lo mid) (hright : SortedSeg la mid hi)
+    (hsorted : SortedSeg lt lo k)
+    (hcrossL : ∀ p, lo ≤ p → p < k → ∀ a, lt[p]? = some a →
+      ∀ q, i ≤ q → q < mid → ∀ b, la[q]? = some b →
+      (b.slt a) = false)
+    (hcrossR : ∀ p, lo ≤ p → p < k → ∀ a, lt[p]? = some a →
+      ∀ q, j ≤ q → q < hi → ∀ b, la[q]? = some b →
+      (b.slt a) = false)
+    (hperm : List.Perm ((lt.drop lo).take (k - lo))
+      ((la.drop lo).take (i - lo) ++ (la.drop mid).take (j - mid)))
+    (hF : (mid - i) + (hi - j) ≤ F')
+    (hfwd : VecMergeRuns.mergeRunsMainFwd la lt F' i j k mid hi =
+      .ok (i', j', k', lt')) :
+    SortedSeg lt' lo k' ∧
+    (∀ p, lo ≤ p → p < k' → ∀ a, lt'[p]? = some a →
+      ∀ q, i' ≤ q → q < mid → ∀ b, la[q]? = some b →
+      (b.slt a) = false) ∧
+    (∀ p, lo ≤ p → p < k' → ∀ a, lt'[p]? = some a →
+      ∀ q, j' ≤ q → q < hi → ∀ b, la[q]? = some b →
+      (b.slt a) = false) ∧
+    List.Perm ((lt'.drop lo).take (k' - lo))
+      ((la.drop lo).take (i' - lo) ++ (la.drop mid).take (j' - mid)) ∧
+    (i' = mid ∨ j' = hi) ∧
+    i' ≤ mid ∧ j' ≤ hi ∧ k' ≤ lt'.length ∧
+    k' - lo = (i' - lo) + (j' - mid) ∧ lt'.length = lt.length := by
+  induction F' generalizing lt i j k with
+  | zero =>
+    have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+      simpa [VecMergeRuns.mergeRunsMainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+    exact ⟨hsorted, hcrossL, hcrossR, hperm, by omega,
+      hi_, hj_, hk, hcount, rfl⟩
+  | succ F' ih =>
+    by_cases hI : i < mid
+    · by_cases hJ : j < hi
+      · cases hK : lt[k]? with
+        | none =>
+          simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+            dite_eq_left hJ, hK] at hfwd
+          cases hfwd
+        | some w =>
+          have hklen : k < lt.length :=
+            list_lt_of_getElem?_some lt k w hK
+          cases hAi : la[i]? with
+          | none =>
+            cases hAj : la[j]? with
+            | none =>
+              simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                dite_eq_left hJ, hK, hAi, hAj] at hfwd
+              cases hfwd
+            | some y =>
+              simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                dite_eq_left hJ, hK, hAi, hAj] at hfwd
+              cases hfwd
+          | some x =>
+            cases hAj : la[j]? with
+            | none =>
+              simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                dite_eq_left hJ, hK, hAi, hAj] at hfwd
+              cases hfwd
+            | some y =>
+              have hlen : i < la.length := by omega
+              have hlenJ : j < la.length := by omega
+              have hxi : la[i] = x := by
+                have h1 : la[i]? = some la[i] :=
+                  List.getElem?_eq_getElem hlen
+                have h2 := h1.symm.trans hAi
+                exact Option.some_inj.mp h2
+              have hyj : la[j] = y := by
+                have h1 : la[j]? = some la[j] :=
+                  List.getElem?_eq_getElem hlenJ
+                have h2 := h1.symm.trans hAj
+                exact Option.some_inj.mp h2
+              by_cases hslt : (x.slt y) = true
+              · have hfwd' : VecMergeRuns.mergeRunsMainFwd la (lt.set k x) F'
+                    (i + 1) j (k + 1) mid hi =
+                    .ok (i', j', k', lt') := by
+                  have h := hfwd
+                  simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                    dite_eq_left hJ, hK, hAi, hAj, hslt] at h
+                  exact h
+                have hsorted1 : SortedSeg (lt.set k x) lo (k + 1) :=
+                  sortedSeg_snoc _ _ _ _ hsorted
+                    (fun p hlo_p hpk a ha =>
+                      hcrossL p hlo_p hpk a ha i (Nat.le_refl _)
+                        hI x hAi)
+                    hklen
+                have hcrossL1 : ∀ p, lo ≤ p → p < k + 1 → ∀ a,
+                    ((lt.set k x)[p]? : Option (BitVec 32)) =
+                      some a →
+                    ∀ q, i + 1 ≤ q → q < mid → ∀ b,
+                      la[q]? = some b → (b.slt a) = false := by
+                  intro p hlo_p hpk a ha q hiq hqm b hb
+                  by_cases hpk2 : p = k
+                  · rw [hpk2] at ha
+                    have hget : ((lt.set k x)[k]? :
+                        Option (BitVec 32)) = some x :=
+                      List.getElem?_set_self hklen
+                    rw [hget] at ha
+                    have hax : x = a := Option.some_inj.mp ha
+                    rw [← hax]
+                    exact hleft i q (by omega) (by omega)
+                      (by omega) x b hAi hb
+                  · have ha' : lt[p]? = some a := by
+                      have h1 : (((lt.set k x)[p]? :
+                          Option (BitVec 32))) = lt[p]? := by
+                        rw [List.getElem?_set_ne
+                          (show k ≠ p by omega)]
+                      rw [h1] at ha
+                      exact ha
+                    exact hcrossL p hlo_p (by omega) a ha' q
+                      (by omega) hqm b hb
+                have hcrossR1 : ∀ p, lo ≤ p → p < k + 1 → ∀ a,
+                    ((lt.set k x)[p]? : Option (BitVec 32)) =
+                      some a →
+                    ∀ q, j ≤ q → q < hi → ∀ b, la[q]? = some b →
+                      (b.slt a) = false := by
+                  intro p hlo_p hpk a ha q hjq hqh b hb
+                  by_cases hpk2 : p = k
+                  · rw [hpk2] at ha
+                    have hget : ((lt.set k x)[k]? :
+                        Option (BitVec 32)) = some x :=
+                      List.getElem?_set_self hklen
+                    rw [hget] at ha
+                    have hax : x = a := Option.some_inj.mp ha
+                    have hby : (b.slt y) = false := by
+                      by_cases hqj : j = q
+                      · subst hqj
+                        have hbb : b = y :=
+                          Option.some_inj.mp (hb.symm.trans hAj)
+                        rw [hbb]
+                        simp [BitVec.slt]
+                      · exact hright j q (by omega) (by omega)
+                          (by omega) y b hAj hb
+                    rw [← hax]
+                    exact VecSelectionSort.slt_lower_trans hslt hby
+                  · have ha' : lt[p]? = some a := by
+                      have h1 : (((lt.set k x)[p]? :
+                          Option (BitVec 32))) = lt[p]? := by
+                        rw [List.getElem?_set_ne
+                          (show k ≠ p by omega)]
+                      rw [h1] at ha
+                      exact ha
+                    exact hcrossR p hlo_p (by omega) a ha' q hjq
+                      hqh b hb
+                have hperm1 : List.Perm
+                    ((((lt.set k x).drop lo).take (k + 1 - lo)))
+                    (((la.drop lo).take (i + 1 - lo)) ++
+                      (la.drop mid).take (j - mid)) := by
+                  have hseg : ((lt.set k x).drop lo).take
+                      (k + 1 - lo) =
+                      ((lt.drop lo).take (k - lo)) ++ [x] :=
+                    perm_seg_snoc lt lo k x (by omega) hklen
+                  have hsegL : ((la.drop lo).take (i + 1 - lo)) =
+                      ((la.drop lo).take (i - lo)) ++ [la[i]] :=
+                    take_snoc la lo i (by omega) (by omega)
+                  have key : List.Perm ((((la.drop lo).take (i - lo)) ++
+                      ((la.drop mid).take (j - mid))) ++ [x])
+                      ((((la.drop lo).take (i - lo)) ++ [x]) ++
+                        ((la.drop mid).take (j - mid))) := by
+                    rw [List.append_assoc,
+                      List.append_assoc ((la.drop lo).take (i - lo)) [x]
+                        ((la.drop mid).take (j - mid))]
+                    exact List.Perm.rfl.append
+                      List.perm_append_comm
+                  rw [hseg, hsegL, hxi]
+                  exact (hperm.append List.Perm.rfl).trans key
+                obtain ⟨hs1, hcl1, hcr1, hp1, hd1, hb1, hb2, hb3, hc1,
+                    hlen1⟩ :=
+                  ih (i + 1) j (k + 1) (lt.set k x)
+                    (by omega) (by omega) (by omega) (by omega)
+                    (by omega)
+                    (by rw [List.length_set]; omega)
+                    (by omega)
+                    hsorted1 hcrossL1 hcrossR1 hperm1
+                    (by omega) hfwd'
+                refine ⟨hs1, hcl1, hcr1, hp1, hd1, hb1, hb2, hb3, hc1, ?_⟩
+                rw [hlen1, List.length_set]
+              · have hsltF : (x.slt y) = false := by
+                  cases h : x.slt y with
+                  | true => exact absurd h hslt
+                  | false => rfl
+                have hfwd' : VecMergeRuns.mergeRunsMainFwd la (lt.set k y) F' i
+                    (j + 1) (k + 1) mid hi =
+                    .ok (i', j', k', lt') := by
+                  have h := hfwd
+                  simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                    dite_eq_left hJ, hK, hAi, hAj, hsltF] at h
+                  exact h
+                have hsorted1 : SortedSeg (lt.set k y) lo (k + 1) :=
+                  sortedSeg_snoc _ _ _ _ hsorted
+                    (fun p hlo_p hpk a ha =>
+                      hcrossR p hlo_p hpk a ha j (Nat.le_refl _)
+                        hJ y hAj)
+                    hklen
+                have hcrossL1 : ∀ p, lo ≤ p → p < k + 1 → ∀ a,
+                    ((lt.set k y)[p]? : Option (BitVec 32)) =
+                      some a →
+                    ∀ q, i ≤ q → q < mid → ∀ b, la[q]? = some b →
+                      (b.slt a) = false := by
+                  intro p hlo_p hpk a ha q hiq hqm b hb
+                  by_cases hpk2 : p = k
+                  · rw [hpk2] at ha
+                    have hget : ((lt.set k y)[k]? :
+                        Option (BitVec 32)) = some y :=
+                      List.getElem?_set_self hklen
+                    rw [hget] at ha
+                    have hay : y = a := Option.some_inj.mp ha
+                    rw [← hay]
+                    by_cases hqi : q = i
+                    · subst hqi
+                      have hbx : (x.slt y) = false := hsltF
+                      have hxb : x = b := by
+                        have h1 : la[q]? = some x := hAi
+                        rw [h1] at hb
+                        exact Option.some_inj.mp hb
+                      rw [← hxb]; exact hbx
+                    · exact VecSelectionSort.slt_ge_trans
+                        (hleft i q (by omega) (by omega)
+                          (by omega) x b hAi hb)
+                        hsltF
+                  · have ha' : lt[p]? = some a := by
+                      have h1 : (((lt.set k y)[p]? :
+                          Option (BitVec 32))) = lt[p]? := by
+                        rw [List.getElem?_set_ne
+                          (show k ≠ p by omega)]
+                      rw [h1] at ha
+                      exact ha
+                    exact hcrossL p hlo_p (by omega) a ha' q hiq
+                      hqm b hb
+                have hcrossR1 : ∀ p, lo ≤ p → p < k + 1 → ∀ a,
+                    ((lt.set k y)[p]? : Option (BitVec 32)) =
+                      some a →
+                    ∀ q, j + 1 ≤ q → q < hi → ∀ b, la[q]? = some b →
+                      (b.slt a) = false := by
+                  intro p hlo_p hpk a ha q hjq hqh b hb
+                  by_cases hpk2 : p = k
+                  · rw [hpk2] at ha
+                    have hget : ((lt.set k y)[k]? :
+                        Option (BitVec 32)) = some y :=
+                      List.getElem?_set_self hklen
+                    rw [hget] at ha
+                    have hay : y = a := Option.some_inj.mp ha
+                    rw [← hay]
+                    exact hright j q (by omega) (by omega)
+                      (by omega) y b hAj hb
+                  · have ha' : lt[p]? = some a := by
+                      have h1 : (((lt.set k y)[p]? :
+                          Option (BitVec 32))) = lt[p]? := by
+                        rw [List.getElem?_set_ne
+                          (show k ≠ p by omega)]
+                      rw [h1] at ha
+                      exact ha
+                    exact hcrossR p hlo_p (by omega) a ha' q
+                      (by omega) hqh b hb
+                have hperm1 : List.Perm
+                    ((((lt.set k y).drop lo).take (k + 1 - lo)))
+                    (((la.drop lo).take (i - lo)) ++
+                      (la.drop mid).take (j + 1 - mid)) := by
+                  have hseg : ((lt.set k y).drop lo).take
+                      (k + 1 - lo) =
+                      ((lt.drop lo).take (k - lo)) ++ [y] :=
+                    perm_seg_snoc lt lo k y (by omega) hklen
+                  have hsegR : ((la.drop mid).take (j + 1 - mid)) =
+                      ((la.drop mid).take (j - mid)) ++ [la[j]] :=
+                    take_snoc la mid j (by omega) (by omega)
+                  rw [hseg, hsegR, hyj, ← List.append_assoc]
+                  exact hperm.append List.Perm.rfl
+                obtain ⟨hs1, hcl1, hcr1, hp1, hd1, hb1, hb2, hb3, hc1,
+                    hlen1⟩ :=
+                  ih i (j + 1) (k + 1) (lt.set k y)
+                    (by omega) (by omega) (by omega) (by omega)
+                    (by omega)
+                    (by rw [List.length_set]; omega)
+                    (by omega)
+                    hsorted1 hcrossL1 hcrossR1 hperm1
+                    (by omega) hfwd'
+                refine ⟨hs1, hcl1, hcr1, hp1, hd1, hb1, hb2, hb3, hc1, ?_⟩
+                rw [hlen1, List.length_set]
+      · have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+          simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+            dite_eq_right hJ] using hfwd
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+        exact ⟨hsorted, hcrossL, hcrossR, hperm, Or.inr (by omega),
+          hi_, hj_, hk, hcount, rfl⟩
+    · have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+        simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_right hI] using hfwd
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+      exact ⟨hsorted, hcrossL, hcrossR, hperm, Or.inl (by omega),
+        hi_, hj_, hk, hcount, rfl⟩
+/-- Main-loop cursor never moves down. -/
+theorem VecMergeRuns.mergeRunsMain_mono (la : List (BitVec 32))
+    (F' i j k mid hi : Nat)
+    (lt lt' : List (BitVec 32)) (i' j' k' : Nat)
+    (hfwd : VecMergeRuns.mergeRunsMainFwd la lt F' i j k mid hi =
+      .ok (i', j', k', lt')) :
+    k ≤ k' := by
+  induction F' generalizing i j k lt with
+  | zero =>
+    have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+      simpa [VecMergeRuns.mergeRunsMainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+    omega
+  | succ F' ih =>
+    by_cases hI : i < mid
+    · by_cases hJ : j < hi
+      · cases hK : lt[k]? with
+        | none =>
+          simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+            dite_eq_left hJ, hK] at hfwd
+          cases hfwd
+        | some w =>
+          cases hAi : la[i]? with
+          | none =>
+            simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+              dite_eq_left hJ, hK, hAi] at hfwd
+            cases hfwd
+          | some x =>
+            cases hAj : la[j]? with
+            | none =>
+              simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                dite_eq_left hJ, hK, hAi, hAj] at hfwd
+              cases hfwd
+            | some y =>
+              by_cases hslt : (x.slt y) = true
+              · have hfwd' : VecMergeRuns.mergeRunsMainFwd la (lt.set k x)
+                    F' (i + 1) j (k + 1) mid hi =
+                    .ok (i', j', k', lt') := by
+                  simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                    dite_eq_left hJ, hK, hAi, hAj, hslt] using hfwd
+                have h1 := ih (i + 1) j (k + 1) (lt.set k x) hfwd'
+                omega
+              · have hsltF : (x.slt y) = false := by
+                  cases h : x.slt y with
+                  | true => exact absurd h hslt
+                  | false => rfl
+                have hfwd' : VecMergeRuns.mergeRunsMainFwd la (lt.set k y)
+                    F' i (j + 1) (k + 1) mid hi =
+                    .ok (i', j', k', lt') := by
+                  simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                    dite_eq_left hJ, hK, hAi, hAj, hsltF] using hfwd
+                have h1 := ih i (j + 1) (k + 1) (lt.set k y) hfwd'
+                omega
+      · have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+          simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+            dite_eq_right hJ] using hfwd
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+        omega
+    · have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+        simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_right hI] using hfwd
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+      omega
+
+/-- Main-loop writes stay below the final cursor: reads at or
+    above `k'` see the original list. -/
+theorem VecMergeRuns.mergeRunsMain_ge (la : List (BitVec 32))
+    (F' i j k mid hi : Nat)
+    (lt lt' : List (BitVec 32)) (i' j' k' : Nat)
+    (hfwd : VecMergeRuns.mergeRunsMainFwd la lt F' i j k mid hi =
+      .ok (i', j', k', lt')) :
+    ∀ q, k' ≤ q → lt'[q]? = lt[q]? := by
+  induction F' generalizing i j k lt with
+  | zero =>
+    have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+      simpa [VecMergeRuns.mergeRunsMainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+    intro q _
+    rfl
+  | succ F' ih =>
+    by_cases hI : i < mid
+    · by_cases hJ : j < hi
+      · cases hK : lt[k]? with
+        | none =>
+          simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+            dite_eq_left hJ, hK] at hfwd
+          cases hfwd
+        | some w =>
+          cases hAi : la[i]? with
+          | none =>
+            simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+              dite_eq_left hJ, hK, hAi] at hfwd
+            cases hfwd
+          | some x =>
+            cases hAj : la[j]? with
+            | none =>
+              simp only [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                dite_eq_left hJ, hK, hAi, hAj] at hfwd
+              cases hfwd
+            | some y =>
+              by_cases hslt : (x.slt y) = true
+              · have hfwd' : VecMergeRuns.mergeRunsMainFwd la (lt.set k x)
+                    F' (i + 1) j (k + 1) mid hi =
+                    .ok (i', j', k', lt') := by
+                  simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                    dite_eq_left hJ, hK, hAi, hAj, hslt] using hfwd
+                intro q hq
+                have hmono := VecMergeRuns.mergeRunsMain_mono la F'
+                  (i + 1) j (k + 1) mid hi (lt.set k x) lt' i' j' k' hfwd'
+                have h1 := ih (i + 1) j (k + 1) (lt.set k x) hfwd' q hq
+                rw [h1, List.getElem?_set_ne (show k ≠ q by omega)]
+              · have hsltF : (x.slt y) = false := by
+                  cases h : x.slt y with
+                  | true => exact absurd h hslt
+                  | false => rfl
+                have hfwd' : VecMergeRuns.mergeRunsMainFwd la (lt.set k y)
+                    F' i (j + 1) (k + 1) mid hi =
+                    .ok (i', j', k', lt') := by
+                  simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+                    dite_eq_left hJ, hK, hAi, hAj, hsltF] using hfwd
+                intro q hq
+                have hmono := VecMergeRuns.mergeRunsMain_mono la F'
+                  i (j + 1) (k + 1) mid hi (lt.set k y) lt' i' j' k' hfwd'
+                have h1 := ih i (j + 1) (k + 1) (lt.set k y) hfwd' q hq
+                rw [h1, List.getElem?_set_ne (show k ≠ q by omega)]
+      · have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+          simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_left hI,
+            dite_eq_right hJ] using hfwd
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+        intro q _
+        rfl
+    · have hpair : (i, j, k, lt) = (i', j', k', lt') := by
+        simpa [VecMergeRuns.mergeRunsMainFwd, dite_eq_right hI] using hfwd
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+      intro q _
+      rfl
+
+/-- Left/right segment split at `mid` (take-window form). -/
+theorem take_split_mid (la : List (BitVec 32)) (lo mid hi : Nat)
+    (hlo : lo ≤ mid) (hmid : mid ≤ hi) :
+    ((la.drop lo).take (hi - lo)) =
+      (((la.drop lo).take (mid - lo)) ++
+        ((la.drop mid).take (hi - mid))) := by
+  have h1 : hi - lo = (mid - lo) + (hi - mid) := by omega
+  have h2 : ((la.drop lo).take ((mid - lo) + (hi - mid))) =
+      (((la.drop lo).take (mid - lo)) ++
+        (((la.drop lo).drop (mid - lo)).take (hi - mid))) :=
+    List.take_add
+  rw [h1, h2]
+  congr 1
+  congr 1
+  rw [List.drop_drop]
+  congr 1
+  omega
+
+/-- Drain-`i` sorted+perm: copying the remaining left run keeps
+    the merged prefix sorted and extends the permutation. -/
+theorem VecMergeRuns.mergeRunsDrainIFwd_sorted_perm (la : List (BitVec 32))
+    (F' i k mid lo : Nat) (B : List (BitVec 32))
+    (lt lt' : List (BitVec 32)) (k' : Nat)
+    (hlo_i : lo ≤ i) (hi_ : i ≤ mid)
+    (hlo_k : lo ≤ k) (hk : k ≤ lt.length)
+    (hcount : k - lo = (i - lo) + B.length)
+    (hla : mid ≤ la.length)
+    (hleft : SortedSeg la lo mid)
+    (hsorted : SortedSeg lt lo k)
+    (hcross : ∀ p, lo ≤ p → p < k → ∀ a, lt[p]? = some a →
+      ∀ q, i ≤ q → q < mid → ∀ b, la[q]? = some b →
+      (b.slt a) = false)
+    (hperm : List.Perm ((lt.drop lo).take (k - lo))
+      ((la.drop lo).take (i - lo) ++ B))
+    (hread_la : ∀ p, i ≤ p → p < mid → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, k ≤ q → q < k + (mid - i) → ∃ y, lt[q]? = some y)
+    (hF : mid - i ≤ F')
+    (hfwd : VecMergeRuns.mergeRunsDrainIFwd la lt F' i k mid =
+      .ok (mid, k', lt')) :
+    SortedSeg lt' lo k' ∧
+    List.Perm ((lt'.drop lo).take (k' - lo))
+      (((la.drop lo).take (mid - lo)) ++ B) ∧
+    k' = k + (mid - i) ∧ lt'.length = lt.length := by
+  induction F' generalizing i k lt with
+  | zero =>
+    have him : i = mid := by omega
+    rw [him] at hfwd hperm ⊢
+    have hpair : (mid, k, lt) = (mid, k', lt') := by
+      simpa [VecMergeRuns.mergeRunsDrainIFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact ⟨hsorted, hperm, by omega, rfl⟩
+  | succ F' ih =>
+    by_cases hI : i < mid
+    · obtain ⟨x, hx⟩ := hread_la i (Nat.le_refl _) hI
+      obtain ⟨y, hy⟩ := hread_lt k (Nat.le_refl _) (by omega)
+      have hklen : k < lt.length :=
+        list_lt_of_getElem?_some lt k y hy
+      have hlenA : i < la.length := by omega
+      have hxi : la[i] = x := by
+        have h1 : la[i]? = some la[i] := List.getElem?_eq_getElem hlenA
+        have h2 := h1.symm.trans hx
+        exact Option.some_inj.mp h2
+      have hfwd' : VecMergeRuns.mergeRunsDrainIFwd la (lt.set k x) F'
+          (i + 1) (k + 1) mid = .ok (mid, k', lt') := by
+        simpa [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_left hI, hx, hy]
+          using hfwd
+      have hsorted1 : SortedSeg (lt.set k x) lo (k + 1) :=
+        sortedSeg_snoc _ _ _ _ hsorted
+          (fun p hlo_p hpk a ha =>
+            hcross p hlo_p hpk a ha i (Nat.le_refl _) hI x hx)
+          hklen
+      have hcross1 : ∀ p, lo ≤ p → p < k + 1 → ∀ a,
+          ((lt.set k x)[p]? : Option (BitVec 32)) = some a →
+          ∀ q, i + 1 ≤ q → q < mid → ∀ b, la[q]? = some b →
+            (b.slt a) = false := by
+        intro p hlo_p hpk a ha q hq1 hqm b hb
+        by_cases hpk2 : p = k
+        · rw [hpk2] at ha
+          have hget : ((lt.set k x)[k]? : Option (BitVec 32)) = some x :=
+            List.getElem?_set_self hklen
+          rw [hget] at ha
+          have hax : x = a := Option.some_inj.mp ha
+          rw [← hax]
+          exact hleft i q (by omega) (by omega) (by omega) x b hx hb
+        · have ha' : lt[p]? = some a := by
+            have h1 : (((lt.set k x)[p]? : Option (BitVec 32))) =
+                lt[p]? := by
+              rw [List.getElem?_set_ne (show k ≠ p by omega)]
+            rw [h1] at ha
+            exact ha
+          exact hcross p hlo_p (by omega) a ha' q (by omega) hqm b hb
+      have hperm1 : List.Perm ((((lt.set k x).drop lo).take (k + 1 - lo)))
+          (((la.drop lo).take (i + 1 - lo)) ++ B) := by
+        have hseg : ((lt.set k x).drop lo).take (k + 1 - lo) =
+            ((lt.drop lo).take (k - lo)) ++ [x] :=
+          perm_seg_snoc lt lo k x (by omega) hklen
+        have hsegL : ((la.drop lo).take (i + 1 - lo)) =
+            ((la.drop lo).take (i - lo)) ++ [la[i]] :=
+          take_snoc la lo i (by omega) (by omega)
+        have key : List.Perm ((((la.drop lo).take (i - lo)) ++ B) ++ [x])
+            ((((la.drop lo).take (i - lo)) ++ [x]) ++ B) := by
+          rw [List.append_assoc,
+            List.append_assoc ((la.drop lo).take (i - lo)) [x] B]
+          exact List.Perm.rfl.append List.perm_append_comm
+        rw [hseg, hsegL, hxi]
+        exact (hperm.append List.Perm.rfl).trans key
+      obtain ⟨hs1, hp1, hk1, hlen1⟩ :=
+        ih (i + 1) (k + 1) (lt.set k x)
+          (by omega) (by omega) (by omega)
+          (by rw [List.length_set]; omega) (by omega)
+          hsorted1 hcross1 hperm1
+          (fun p h1 h2 => hread_la p (by omega) h2)
+          (fun q h1 h2 => by
+            obtain ⟨z, hz⟩ := hread_lt q (by omega) (by omega)
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show k ≠ q by omega)]
+              exact hz⟩)
+          (by omega) hfwd'
+      refine ⟨hs1, hp1, by omega, ?_⟩
+      rw [hlen1, List.length_set]
+    · have him : i = mid := by omega
+      rw [him] at hfwd hperm ⊢
+      have hpair : (mid, k, lt) = (mid, k', lt') := by
+        simpa [VecMergeRuns.mergeRunsDrainIFwd, dite_eq_right hI] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact ⟨hsorted, hperm, by omega, rfl⟩
+
+/-- Drain-`j` sorted+perm: copying the remaining right run keeps
+    the merged prefix sorted and extends the permutation. -/
+theorem VecMergeRuns.mergeRunsDrainJFwd_sorted_perm (la : List (BitVec 32))
+    (F' j k mid hi lo : Nat) (P : List (BitVec 32))
+    (lt lt' : List (BitVec 32)) (k' : Nat)
+    (hmid_j : mid ≤ j) (hj_ : j ≤ hi)
+    (hlo_k : lo ≤ k) (hk : k ≤ lt.length)
+    (hcount : k - lo = P.length + (j - mid))
+    (hla : hi ≤ la.length)
+    (hright : SortedSeg la mid hi)
+    (hsorted : SortedSeg lt lo k)
+    (hcross : ∀ p, lo ≤ p → p < k → ∀ a, lt[p]? = some a →
+      ∀ q, j ≤ q → q < hi → ∀ b, la[q]? = some b →
+      (b.slt a) = false)
+    (hperm : List.Perm ((lt.drop lo).take (k - lo))
+      (P ++ (la.drop mid).take (j - mid)))
+    (hread_la : ∀ p, j ≤ p → p < hi → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, k ≤ q → q < k + (hi - j) → ∃ y, lt[q]? = some y)
+    (hF : hi - j ≤ F')
+    (hfwd : VecMergeRuns.mergeRunsDrainJFwd la lt F' j k hi =
+      .ok (hi, k', lt')) :
+    SortedSeg lt' lo k' ∧
+    List.Perm ((lt'.drop lo).take (k' - lo))
+      (P ++ (la.drop mid).take (hi - mid)) ∧
+    k' = k + (hi - j) ∧ lt'.length = lt.length := by
+  induction F' generalizing j k lt with
+  | zero =>
+    have hjm : j = hi := by omega
+    rw [hjm] at hfwd hperm ⊢
+    have hpair : (hi, k, lt) = (hi, k', lt') := by
+      simpa [VecMergeRuns.mergeRunsDrainJFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact ⟨hsorted, hperm, by omega, rfl⟩
+  | succ F' ih =>
+    by_cases hJ : j < hi
+    · obtain ⟨x, hx⟩ := hread_la j (Nat.le_refl _) hJ
+      obtain ⟨y, hy⟩ := hread_lt k (Nat.le_refl _) (by omega)
+      have hklen : k < lt.length :=
+        list_lt_of_getElem?_some lt k y hy
+      have hlenB : j < la.length := by omega
+      have hxj : la[j] = x := by
+        have h1 : la[j]? = some la[j] := List.getElem?_eq_getElem hlenB
+        have h2 := h1.symm.trans hx
+        exact Option.some_inj.mp h2
+      have hfwd' : VecMergeRuns.mergeRunsDrainJFwd la (lt.set k x) F'
+          (j + 1) (k + 1) hi = .ok (hi, k', lt') := by
+        simpa [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_left hJ, hx, hy]
+          using hfwd
+      have hsorted1 : SortedSeg (lt.set k x) lo (k + 1) :=
+        sortedSeg_snoc _ _ _ _ hsorted
+          (fun p hlo_p hpk a ha =>
+            hcross p hlo_p hpk a ha j (Nat.le_refl _) hJ x hx)
+          hklen
+      have hcross1 : ∀ p, lo ≤ p → p < k + 1 → ∀ a,
+          ((lt.set k x)[p]? : Option (BitVec 32)) = some a →
+          ∀ q, j + 1 ≤ q → q < hi → ∀ b, la[q]? = some b →
+            (b.slt a) = false := by
+        intro p hlo_p hpk a ha q hq1 hqh b hb
+        by_cases hpk2 : p = k
+        · rw [hpk2] at ha
+          have hget : ((lt.set k x)[k]? : Option (BitVec 32)) = some x :=
+            List.getElem?_set_self hklen
+          rw [hget] at ha
+          have hax : x = a := Option.some_inj.mp ha
+          rw [← hax]
+          exact hright j q (by omega) (by omega) (by omega) x b hx hb
+        · have ha' : lt[p]? = some a := by
+            have h1 : (((lt.set k x)[p]? : Option (BitVec 32))) =
+                lt[p]? := by
+              rw [List.getElem?_set_ne (show k ≠ p by omega)]
+            rw [h1] at ha
+            exact ha
+          exact hcross p hlo_p (by omega) a ha' q (by omega) hqh b hb
+      have hperm1 : List.Perm ((((lt.set k x).drop lo).take (k + 1 - lo)))
+          (P ++ ((la.drop mid).take (j + 1 - mid))) := by
+        have hseg : ((lt.set k x).drop lo).take (k + 1 - lo) =
+            ((lt.drop lo).take (k - lo)) ++ [x] :=
+          perm_seg_snoc lt lo k x (by omega) hklen
+        have hsegR : ((la.drop mid).take (j + 1 - mid)) =
+            ((la.drop mid).take (j - mid)) ++ [la[j]] :=
+          take_snoc la mid j (by omega) (by omega)
+        rw [hseg, hsegR, hxj, ← List.append_assoc]
+        exact hperm.append List.Perm.rfl
+      obtain ⟨hs1, hp1, hk1, hlen1⟩ :=
+        ih (j + 1) (k + 1) (lt.set k x)
+          (by omega) (by omega) (by omega)
+          (by rw [List.length_set]; omega) (by omega)
+          hsorted1 hcross1 hperm1
+          (fun p h1 h2 => hread_la p (by omega) h2)
+          (fun q h1 h2 => by
+            obtain ⟨z, hz⟩ := hread_lt q (by omega) (by omega)
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show k ≠ q by omega)]
+              exact hz⟩)
+          (by omega) hfwd'
+      refine ⟨hs1, hp1, by omega, ?_⟩
+      rw [hlen1, List.length_set]
+    · have hjm : j = hi := by omega
+      rw [hjm] at hfwd hperm ⊢
+      have hpair : (hi, k, lt) = (hi, k', lt') := by
+        simpa [VecMergeRuns.mergeRunsDrainJFwd, dite_eq_right hJ] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact ⟨hsorted, hperm, by omega, rfl⟩
+
+/-- Top-level merge correctness: sorted output window plus
+    permutation of the input window, length preserved. -/
+theorem VecMergeRuns.mergeRunsFwd_sorted_perm (la lt : List (BitVec 32))
+    (lo mid hi : Nat)
+    (hlo : lo ≤ mid) (hmid : mid ≤ hi)
+    (hla : hi ≤ la.length) (hlt : hi ≤ lt.length)
+    (hread_la : ∀ p, lo ≤ p → p < hi → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, lo ≤ q → q < hi → ∃ y, lt[q]? = some y)
+    (hleft : SortedSeg la lo mid) (hright : SortedSeg la mid hi) :
+    ∃ lt', VecMergeRuns.mergeRunsFwd la lt lo mid hi = .ok (.stdVecVal lt') ∧
+      SortedSeg lt' lo hi ∧
+      List.Perm ((lt'.drop lo).take (hi - lo)) ((la.drop lo).take (hi - lo)) ∧
+      lt'.length = lt.length := by
+  have hsorted0 : SortedSeg lt lo lo := by
+    intro p hlo_p hpq hqk a b ha hb
+    have hfalse : False := by omega
+    exact hfalse.elim
+  have hcrossL0 : ∀ p, lo ≤ p → p < lo → ∀ a, lt[p]? = some a →
+      ∀ q, lo ≤ q → q < mid → ∀ b, la[q]? = some b →
+      (b.slt a) = false := by
+    intro p hlo_p hpk a ha q hiq hqm b hb
+    have hfalse : False := by omega
+    exact hfalse.elim
+  have hcrossR0 : ∀ p, lo ≤ p → p < lo → ∀ a, lt[p]? = some a →
+      ∀ q, mid ≤ q → q < hi → ∀ b, la[q]? = some b →
+      (b.slt a) = false := by
+    intro p hlo_p hpk a ha q hjq hqh b hb
+    have hfalse : False := by omega
+    exact hfalse.elim
+  have hperm0 : List.Perm ((lt.drop lo).take (lo - lo))
+      ((la.drop lo).take (lo - lo) ++
+        (la.drop mid).take (mid - mid)) := by
+    have e : lo - lo = 0 := by omega
+    have e2 : mid - mid = 0 := by omega
+    rw [e, e2]
+    simp only [List.take_zero, List.append_nil]
+    exact List.Perm.refl _
+  obtain ⟨i', j', k', lt', hmain, hexit, hbi, hbj, hm_i, hm_j, _hk_eq,
+      hlen_main⟩ :=
+    VecMergeRuns.mergeRunsMainFwd_ok la lt ((mid - lo) + (hi - mid))
+      lo mid lo mid hi hlo hmid (by omega)
+      (fun p h1 h2 => hread_la p (by omega) (by omega))
+      (fun p h1 h2 => hread_la p (by omega) (by omega))
+      (fun q h1 h2 => hread_lt q (by omega) (by omega))
+  obtain ⟨hs_m, hcl_m, hcr_m, hp_m, _, _, _, hk_le, hcount_m, _⟩ :=
+    VecMergeRuns.mergeRunsMainFwd_sorted la ((mid - lo) + (hi - mid))
+      lo mid lo mid hi lo lt lt' i' j' k'
+      (Nat.le_refl _) hlo hmid (Nat.le_refl _) (Nat.le_refl _)
+      (by omega) hla (by omega)
+      hleft hright hsorted0 hcrossL0 hcrossR0 hperm0 (by omega) hmain
+  have esplit := take_split_mid la lo mid hi hlo hmid
+  rcases hexit with him | hjm
+  · rw [him] at hmain hp_m hcount_m
+    have hge := VecMergeRuns.mergeRunsMain_ge la ((mid - lo) + (hi - mid))
+      lo mid lo mid hi lt lt' mid j' k' hmain
+    have hreadJ : ∀ q, k' ≤ q → q < k' + (hi - j') →
+        ∃ y, lt'[q]? = some y := by
+      intro q h1 h2
+      have hge_q : lt'[q]? = lt[q]? := hge q h1
+      rw [hge_q]
+      exact hread_lt q (by omega) (by omega)
+    have hdi : VecMergeRuns.mergeRunsDrainIFwd la lt' (mid - mid) mid k' mid =
+        .ok (mid, k', lt') := by
+      have e0 : mid - mid = 0 := Nat.sub_self mid
+      rw [e0]
+      simp [VecMergeRuns.mergeRunsDrainIFwd]
+    obtain ⟨k'', lt'', hdj, _, _⟩ :=
+      VecMergeRuns.mergeRunsDrainJFwd_ok la lt' (hi - j') j' k' hi
+        (by omega) (by omega)
+        (fun p h1 h2 => hread_la p (by omega) (by omega))
+        hreadJ
+    have hPlen : ((la.drop lo).take (mid - lo)).length = mid - lo := by
+      rw [List.length_take, List.length_drop,
+        Nat.min_eq_left (by omega)]
+    obtain ⟨hs_j, hp_j, hk_j, hlen_j⟩ :=
+      VecMergeRuns.mergeRunsDrainJFwd_sorted_perm la (hi - j') j' k'
+        mid hi lo ((la.drop lo).take (mid - lo)) lt' lt'' k''
+        (by omega) hbj (by omega) hk_le (by omega) hla hright
+        hs_m hcr_m hp_m
+        (fun p h1 h2 => hread_la p (by omega) (by omega))
+        hreadJ
+        (by omega) hdj
+    have hkhi : k'' = hi := by omega
+    refine ⟨lt'', VecMergeRuns.mergeRunsFwd_ok la lt lo mid hi
+      mid j' k' k' k'' lt' lt' lt'' hmain hdi hdj, ?_, ?_, ?_⟩
+    · rw [hkhi] at hs_j; exact hs_j
+    · have e1 : k'' - lo = hi - lo := by omega
+      rw [e1] at hp_j
+      rw [esplit]
+      exact hp_j
+    · exact hlen_j.trans hlen_main
+  · have hge := VecMergeRuns.mergeRunsMain_ge la ((mid - lo) + (hi - mid))
+      lo mid lo mid hi lt lt' i' j' k' hmain
+    have hreadI : ∀ q, k' ≤ q → q < k' + (mid - i') →
+        ∃ y, lt'[q]? = some y := by
+      intro q h1 h2
+      have hge_q : lt'[q]? = lt[q]? := hge q h1
+      rw [hge_q]
+      exact hread_lt q (by omega) (by omega)
+    obtain ⟨k'', lt'', hdi, _, _⟩ :=
+      VecMergeRuns.mergeRunsDrainIFwd_ok la lt' (mid - i') i' k' mid
+        (by omega) (by omega)
+        (fun p h1 h2 => hread_la p (by omega) (by omega))
+        hreadI
+    have hBlen : ((la.drop mid).take (j' - mid)).length = j' - mid := by
+      rw [List.length_take, List.length_drop,
+        Nat.min_eq_left (by omega)]
+    obtain ⟨hs_i, hp_i, hk_i, hlen_i⟩ :=
+      VecMergeRuns.mergeRunsDrainIFwd_sorted_perm la (mid - i') i' k'
+        mid lo ((la.drop mid).take (j' - mid)) lt' lt'' k''
+        (by omega) hbi (by omega) hk_le (by omega) (by omega)
+        hleft hs_m hcl_m hp_m
+        (fun p h1 h2 => hread_la p (by omega) (by omega))
+        hreadI
+        (by omega) hdi
+    rw [hjm] at hmain hp_i hcount_m hBlen
+    have hdj : VecMergeRuns.mergeRunsDrainJFwd la lt'' (hi - hi) hi k'' hi =
+        .ok (hi, k'', lt'') := by
+      have e0 : hi - hi = 0 := Nat.sub_self hi
+      rw [e0]
+      simp [VecMergeRuns.mergeRunsDrainJFwd]
+    have hkhi : k'' = hi := by omega
+    refine ⟨lt'', VecMergeRuns.mergeRunsFwd_ok la lt lo mid hi
+      i' hi k' k'' k'' lt' lt'' lt'' hmain hdi hdj, ?_, ?_, ?_⟩
+    · rw [hkhi] at hs_i; exact hs_i
+    · have e1 : k'' - lo = hi - lo := by omega
+      rw [e1] at hp_i
+      rw [esplit]
+      exact hp_i
+    · exact hlen_i.trans hlen_main
 /-- Outer correctness with the sort contract: from a sorted prefix
     with everything in the prefix `≤` the suffix (positional), the
     loop returns a sorted permutation of the original input. The
