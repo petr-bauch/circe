@@ -4023,6 +4023,247 @@ def MergeSegInv (la : List (BitVec 32)) (w lo n : Nat) : Prop :=
   (∀ b, lo ≤ b * w → b * w < n →
     SortedSeg la (b * w) (Nat.min ((b + 1) * w) n))
 
+/-- Add on the left through a truncated subtraction. -/
+theorem add_lt_of_sub_lt (lo p hi : Nat) (hle : lo ≤ hi) (hp : p < hi - lo) :
+    lo + p < hi := by
+  omega
+
+/-- Segment pass joint: equation, lengths, readability,
+    permutation, and blocked-sorted output. -/
+theorem VecMergeSort.sortSegFwd_joint (la lt : List (BitVec 32))
+    (F w lo n : Nat)
+    (hw : 0 < w)
+    (hla_len : la.length = n) (hlt_len : n ≤ lt.length)
+    (hread_la : ∀ p, p < n → ∃ x, la[p]? = some x)
+    (hread_lt : ∀ q, q < n → ∃ y, lt[q]? = some y)
+    (hinv : MergeSegInv la w lo n)
+    (hF : 2 * (n - lo) + 9 ≤ F) :
+    ∃ la' lt', VecMergeSort.sortSegFwd la lt F w lo n = .ok (la', lt') ∧
+    la'.length = n ∧ n ≤ lt'.length ∧
+    (∀ p, p < n → ∃ x, la'[p]? = some x) ∧
+    (∀ q, q < n → ∃ y, lt'[q]? = some y) ∧
+    List.Perm la' la ∧
+    BlockedSorted la' (w + w) n := by
+  induction F generalizing la lt lo with
+  | zero =>
+    have hfalse : False := by omega
+    exact hfalse.elim
+  | succ F' ih =>
+    obtain ⟨hdiv, hdone, htodo⟩ := hinv
+    by_cases hL : lo < n
+    · obtain ⟨B, hB⟩ := hdiv
+      have eb : (B + B) * w = lo := by
+        have e1 : (B + B) * w = B * w + B * w := Nat.add_mul B B w
+        have e2 : B * (w + w) = B * w + B * w := Nat.mul_add B w w
+        omega
+      have eb2 : ((B + B) + 1) * w = lo + w := by
+        have eadd : ((B + B) + 1) * w = (B + B) * w + w := by
+          have e1 : ((B + B) + 1) * w = (B + B) * w + 1 * w :=
+            Nat.add_mul _ _ _
+          rw [e1, Nat.one_mul]
+        rw [eadd, eb]
+      have hT1 : SortedSeg la ((B + B) * w)
+          (Nat.min (((B + B) + 1) * w) n) :=
+        htodo (B + B) (by omega) (by omega)
+      rw [eb, eb2] at hT1
+      have step : ∀ (hleft : SortedSeg la lo (Nat.min (lo + w) n))
+          (hright : SortedSeg la (Nat.min (lo + w) n)
+            (Nat.min (lo + w + w) n)),
+          ∃ la' lt', VecMergeSort.sortSegFwd la lt (F' + 1) w lo n =
+            .ok (la', lt') ∧
+          la'.length = n ∧ n ≤ lt'.length ∧
+          (∀ p, p < n → ∃ x, la'[p]? = some x) ∧
+          (∀ q, q < n → ∃ y, lt'[q]? = some y) ∧
+          List.Perm la' la ∧
+          BlockedSorted la' (w + w) n := by
+        intro hleft hright
+        obtain ⟨ltm, hmerge, hs_m, hp_m, hlen_m⟩ :=
+          VecMergeRuns.mergeRunsFwd_sorted_perm la lt lo
+            (Nat.min (lo + w) n) (Nat.min (lo + w + w) n)
+            (Nat.le_min.mpr ⟨Nat.le_add_right _ _, Nat.le_of_lt hL⟩)
+            (Nat.le_min.mpr
+              ⟨Nat.le_trans (Nat.min_le_left _ _) (Nat.le_add_right _ _),
+                Nat.min_le_right _ _⟩)
+            (by rw [← hla_len]; exact Nat.min_le_right _ _)
+            (Nat.le_trans (Nat.min_le_right _ _) hlt_len)
+            (fun p h1 h2 => hread_la p
+              (Nat.lt_of_lt_of_le h2 (Nat.min_le_right _ _)))
+            (fun q h1 h2 => hread_lt q
+              (Nat.lt_of_lt_of_le h2 (Nat.min_le_right _ _)))
+            hleft hright
+        obtain ⟨la1, t1, hcopy, hs_c, heq_c, ht1, hlen_c, hframe_c⟩ :=
+          VecMergeSort.sortCopyFwd_joint ltm
+            (Nat.min (lo + w + w) n - lo) lo
+            (Nat.min (lo + w + w) n) lo la
+            (Nat.le_refl _)
+            (Nat.le_min.mpr ⟨by omega, Nat.le_of_lt hL⟩) hs_m
+            (fun p h1 h2 => absurd h2 (by omega))
+            (fun q h1 h2 =>
+              have hqn : q < n :=
+                Nat.lt_of_lt_of_le h2 (Nat.min_le_right _ _)
+              have hql : q < ltm.length := by omega
+              ⟨ltm[q], List.getElem?_eq_getElem hql⟩)
+            (fun p h1 h2 => hread_la p
+              (Nat.lt_of_lt_of_le h2 (Nat.min_le_right _ _)))
+            (Nat.le_refl _)
+        have hwin : List.Perm
+            ((la1.drop lo).take (Nat.min (lo + w + w) n - lo))
+            ((la.drop lo).take (Nat.min (lo + w + w) n - lo)) := by
+          have e : ((la1.drop lo).take (Nat.min (lo + w + w) n - lo)) =
+              ((ltm.drop lo).take (Nat.min (lo + w + w) n - lo)) := by
+            apply List.ext_getElem?
+            intro p
+            rw [List.getElem?_take, List.getElem?_take,
+              List.getElem?_drop, List.getElem?_drop]
+            by_cases hp : p < Nat.min (lo + w + w) n - lo
+            · rw [ite_eq_left hp, ite_eq_left hp]
+              exact heq_c (lo + p) (by omega)
+                (add_lt_of_sub_lt lo p _ (Nat.le_min.mpr
+                  ⟨by omega, Nat.le_of_lt hL⟩) hp)
+            · rw [ite_eq_right hp, ite_eq_right hp]
+          rw [e]; exact hp_m
+        have hstep_perm : List.Perm la1 la :=
+          perm_window_splice la la1 lo (Nat.min (lo + w + w) n)
+            (Nat.le_min.mpr ⟨by omega, Nat.le_of_lt hL⟩)
+            hwin (fun q hq => hframe_c q hq)
+        have hread_la1 : ∀ p, p < n → ∃ x, la1[p]? = some x := by
+          intro p hp
+          by_cases hplo : p < lo
+          · obtain ⟨x, hx⟩ := hread_la p hp
+            exact ⟨x, by rw [hframe_c p (Or.inl hplo)]; exact hx⟩
+          · by_cases hphi : Nat.min (lo + w + w) n ≤ p
+            · obtain ⟨x, hx⟩ := hread_la p hp
+              exact ⟨x, by rw [hframe_c p (Or.inr hphi)]; exact hx⟩
+            · have hql : p < la1.length := by omega
+              exact ⟨la1[p], List.getElem?_eq_getElem hql⟩
+        have hread_lt1 : ∀ q, q < n → ∃ y, ltm[q]? = some y := by
+          intro q hq
+          exact ⟨ltm[q], List.getElem?_eq_getElem (by omega)⟩
+        have hdone1 : ∀ b, b * (w + w) < lo + w + w →
+            SortedSeg la1 (b * (w + w))
+              (Nat.min ((b + 1) * (w + w)) n) := by
+          intro b hb2
+          by_cases hbB : b * (w + w) < lo
+          · have hble : (b + 1) * (w + w) ≤ lo := by
+              have hlt : b + 1 ≤ B := by
+                have h1 : b * (w + w) < B * (w + w) := by
+                  rw [← hB]; exact hbB
+                have h2 : b < B := Nat.lt_of_mul_lt_mul_right h1
+                omega
+              have hm := Nat.mul_le_mul_right (w + w) hlt
+              rw [← hB] at hm
+              exact hm
+            exact SortedSeg_congr la la1 _ _
+              (fun p h1 h2 =>
+                have hlt : p < (b + 1) * (w + w) :=
+                  Nat.lt_of_lt_of_le h2 (Nat.min_le_left _ _)
+                (hframe_c p (Or.inl (by omega))).symm)
+              (hdone b hbB)
+          · have ebb : b = B := by
+              have hgeB : B ≤ b := by
+                have h1 : lo ≤ b * (w + w) := Nat.le_of_not_lt hbB
+                have eS : (b + 1) * (w + w) =
+                    b * (w + w) + (w + w) := by
+                  have e1 : (b + 1) * (w + w) =
+                      b * (w + w) + 1 * (w + w) := Nat.add_mul _ _ _
+                  rw [e1, Nat.one_mul]
+                have h2 : B * (w + w) < (b + 1) * (w + w) := by
+                  rw [eS]; omega
+                have h3 : B < b + 1 := Nat.lt_of_mul_lt_mul_right h2
+                omega
+              have hlt2 : b * (w + w) < (B + 1) * (w + w) := by
+                have eS : (B + 1) * (w + w) =
+                    B * (w + w) + (w + w) := by
+                  have e1 : (B + 1) * (w + w) =
+                      B * (w + w) + 1 * (w + w) := Nat.add_mul _ _ _
+                  rw [e1, Nat.one_mul]
+                rw [eS]
+                omega
+              have hltB2 : b < B + 1 := Nat.lt_of_mul_lt_mul_right hlt2
+              omega
+            have eblk : b * (w + w) = lo := by rw [ebb, hB]
+            have eblk2 : (b + 1) * (w + w) = lo + w + w := by
+              have eadd : (b + 1) * (w + w) =
+                  b * (w + w) + (w + w) := by
+                have e1 : (b + 1) * (w + w) =
+                    b * (w + w) + 1 * (w + w) := Nat.add_mul _ _ _
+                rw [e1, Nat.one_mul]
+              rw [eadd, eblk, Nat.add_assoc]
+            rw [eblk, eblk2]
+            exact hs_c
+        have htodo1 : ∀ b, lo + w + w ≤ b * w → b * w < n →
+            SortedSeg la1 (b * w) (Nat.min ((b + 1) * w) n) := by
+          intro b h1 h2
+          have hold : SortedSeg la (b * w) (Nat.min ((b + 1) * w) n) :=
+            htodo b (by omega) h2
+          exact SortedSeg_congr la la1 _ _
+            (fun p hp1 hp2 =>
+              have hge : Nat.min (lo + w + w) n ≤ p :=
+                Nat.le_trans (Nat.min_le_left _ _)
+                  (Nat.le_trans h1 hp1)
+              (hframe_c p (Or.inr hge)).symm) hold
+        have hinv1 : MergeSegInv la1 w (lo + w + w) n :=
+          ⟨⟨B + 1, by
+              have e : (B + 1) * (w + w) =
+                  B * (w + w) + (w + w) := by
+                have e1 : (B + 1) * (w + w) =
+                    B * (w + w) + 1 * (w + w) := Nat.add_mul _ _ _
+                rw [e1, Nat.one_mul]
+              omega⟩, hdone1, htodo1⟩
+        obtain ⟨la', lt', heq_ih, hlen1, hltlen1, hread_la2, hread_lt2,
+            hperm_ih, hblock⟩ :=
+          ih la1 ltm (lo + w + w)
+            (by rw [hlen_c]; exact hla_len)
+            (by rw [hlen_m]; exact hlt_len)
+            hread_la1 hread_lt1 hinv1 (by omega)
+        have hcur : VecMergeSort.sortSegFwd la lt (F' + 1) w lo n =
+            .ok (la', lt') := by
+          simp only [VecMergeSort.sortSegFwd, dite_eq_left hL, hmerge, hcopy]
+          exact heq_ih
+        exact ⟨la', lt', hcur, hlen1, hltlen1, hread_la2, hread_lt2,
+          hperm_ih.trans hstep_perm, hblock⟩
+      by_cases hmid : lo + w < n
+      · have m1 : Nat.min (lo + w) n = lo + w :=
+          Nat.min_eq_left (by omega)
+        have hT2 : SortedSeg la (((B + B) + 1) * w)
+            (Nat.min (((((B + B) + 1)) + 1) * w) n) :=
+          htodo ((B + B) + 1) (by omega) (by omega)
+        have eB3 : ((((B + B) + 1)) + 1) * w = lo + w + w := by
+          have eadd : ((((B + B) + 1)) + 1) * w =
+              (((B + B) + 1)) * w + w := by
+            have e1 : ((((B + B) + 1)) + 1) * w =
+                (((B + B) + 1)) * w + 1 * w := Nat.add_mul _ _ _
+            rw [e1, Nat.one_mul]
+          rw [eadd, eb2]
+        rw [eb2, eB3] at hT2
+        have hT2' : SortedSeg la (Nat.min (lo + w) n)
+            (Nat.min (lo + w + w) n) := by
+          rw [m1]
+          exact hT2
+        exact step hT1 hT2'
+      · have m1 : Nat.min (lo + w) n = n :=
+          Nat.min_eq_right (by omega)
+        have m2 : Nat.min (lo + w + w) n = n :=
+          Nat.min_eq_right (by omega)
+        have hleft : SortedSeg la lo (Nat.min (lo + w) n) := by
+          rw [m1] at hT1 ⊢
+          exact hT1
+        have hright : SortedSeg la (Nat.min (lo + w) n)
+            (Nat.min (lo + w + w) n) := by
+          rw [m1, m2]
+          intro p q hlo_p hpq hqk a b ha hb
+          have hfalse : False := by omega
+          exact hfalse.elim
+        exact step hleft hright
+    · have hcur : VecMergeSort.sortSegFwd la lt (F' + 1) w lo n =
+        .ok (la, lt) := by
+        simp only [VecMergeSort.sortSegFwd, dite_eq_right hL]
+      have hblock0 : BlockedSorted la (w + w) n := by
+        intro b hb
+        exact hdone b (by omega)
+      exact ⟨la, lt, hcur, hla_len, hlt_len, hread_la, hread_lt,
+        List.Perm.refl _, hblock0⟩
+
 /-- Outer correctness with the sort contract: from a sorted prefix
     with everything in the prefix `≤` the suffix (positional), the
     loop returns a sorted permutation of the original input. The
