@@ -2314,3 +2314,31 @@ theorem memTransferProg_vecSelectionSort_ok (F G : Nat)
   rw [memEvalProgFunc_vecSelectionSort_ok F G l l' i' hl64 hF hG
     hread heq,
     evalProgFunc_vecSelectionSort_ok F G l l' i' hl64 hF hG hread heq]
+
+/-- M5c: closing spec — the transferred program returns a sorted
+    permutation (N9-iv shape: the bridge already carries the sort
+    contract, so this just chains the eval close). -/
+theorem evalProgFunc_vecSelectionSort_spec (F G : Nat)
+    (l : List (BitVec 32))
+    (hl64 : l.length < 2 ^ 64)
+    (hF : l.length ≤ F) (hG : l.length - 1 ≤ G)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x) :
+    ∃ s, evalProgFunc vecSelectionSortProg F vecSelectionSortFunc
+      [.stdVecVal l] = .ok (.stdVecVal s) ∧
+      s.Pairwise (fun a b => b.slt a = false) ∧ List.Perm s l := by
+  have hF' : l.length - 0 ≤ F := by simpa using hF
+  have hG' : l.length - (0 + 1) ≤ G := by simpa using hG
+  have hpref : ∀ (p q : Nat) (a b : BitVec 32), p < q → q < 0 →
+      l[p]? = some a → l[q]? = some b → (b.slt a) = false := by
+    intro p q a b hpq hq _ _
+    exact False.elim (by omega)
+  have hle_pre : ∀ (p q : Nat) (a b : BitVec 32), p < 0 → 0 ≤ q →
+      q < l.length → l[p]? = some a → l[q]? = some b →
+      (b.slt a) = false := by
+    intro p q a b hp _ _ _ _
+    exact False.elim (by omega)
+  obtain ⟨i', l', heq, hsorted, hperm⟩ :=
+    selectionSortFwd_sorted_perm l l F G 0 (Nat.zero_le _) hF' hG'
+      hread hpref hle_pre List.Perm.rfl
+  exact ⟨l', evalProgFunc_vecSelectionSort_ok F G l l' i' hl64 hF hG
+    hread heq, hsorted, hperm⟩

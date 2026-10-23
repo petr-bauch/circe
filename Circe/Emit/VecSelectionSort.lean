@@ -213,4 +213,198 @@ def vecSelectionSortFwd (l : List (BitVec 32)) :
   | .error e => .error e
   | .ok (_, l') => .ok (.stdVecVal l')
 
+/-! ## M5a: pure selection-sort model + sort contract (N9 precedent).
+
+The kernel compares with `slt` (signed), so ascending here means
+`Pairwise (fun a b => b.slt a = false)` — the N9 `ult` shape with
+the kernel's comparator. Order facts go through `toInt` + `omega`. -/
+
+/-- `slt` is irreflexive (via `toInt`). -/
+theorem slt_irrefl (x : BitVec 32) : (x.slt x) = false := by
+  rw [BitVec.slt_eq_decide]
+  simp
+
+/-- `slt` is transitive (via `toInt` + `omega`). -/
+theorem slt_trans {x y z : BitVec 32}
+    (hxy : x.slt y = true) (hyz : y.slt z = true) :
+    x.slt z = true := by
+  rw [BitVec.slt_eq_decide] at hxy hyz ⊢
+  simp only [decide_eq_true_eq] at hxy hyz ⊢
+  omega
+
+/-- `≥` is transitive (via `toInt` + `omega`): the skip-case fact. -/
+theorem slt_ge_trans {y m r : BitVec 32}
+    (h1 : (y.slt m) = false) (h2 : (m.slt r) = false) :
+    (y.slt r) = false := by
+  rw [BitVec.slt_eq_decide] at h1 h2 ⊢
+  simp only [decide_eq_false_iff_not] at h1 h2 ⊢
+  omega
+
+/-- Take-case lower bound (via `toInt` + `omega`): a new strict
+    minimum stays below every old lower bound (`x < ym ≤ x'`
+    gives `x' ≥ x`). -/
+theorem slt_lower_trans {x ym x' : BitVec 32}
+    (hlt : (x.slt ym) = true) (hge : (x'.slt ym) = false) :
+    (x'.slt x) = false := by
+  rw [BitVec.slt_eq_decide] at hlt hge ⊢
+  simp only [decide_eq_false_iff_not] at hge ⊢
+  simp only [decide_eq_true_eq] at hlt
+  omega
+
+/-- Running minimum under `slt` (seeded fold). -/
+def selMinAux (m : BitVec 32) : List (BitVec 32) → BitVec 32
+  | [] => m
+  | y :: ys => selMinAux (if y.slt m then y else m) ys
+
+/-- The running minimum is always one of the candidates. -/
+theorem selMinAux_mem (m : BitVec 32) (ys : List (BitVec 32)) :
+    selMinAux m ys ∈ m :: ys := by
+  induction ys generalizing m with
+  | nil => exact List.Mem.head _
+  | cons y ys ih =>
+    by_cases h : y.slt m
+    · simp only [selMinAux, ite_eq_left h]
+      have hmem := ih y
+      simp only [List.mem_cons] at hmem ⊢
+      rcases hmem with h | h
+      · rw [h]; exact Or.inr (Or.inl rfl)
+      · exact Or.inr (Or.inr h)
+    · simp only [selMinAux, ite_eq_right h]
+      have hmem := ih m
+      simp only [List.mem_cons] at hmem ⊢
+      rcases hmem with h | h
+      · rw [h]; exact Or.inl rfl
+      · exact Or.inr (Or.inr h)
+
+/-- The running minimum is a lower bound of the candidates. -/
+theorem selMinAux_le (m : BitVec 32) (ys : List (BitVec 32))
+    (z : BitVec 32) (hz : z ∈ m :: ys) :
+    (z.slt (selMinAux m ys)) = false := by
+  induction ys generalizing m z with
+  | nil =>
+    simp only [List.mem_cons, List.not_mem_nil,
+      or_false] at hz
+    subst hz
+    exact slt_irrefl _
+  | cons y ys ih =>
+    by_cases h : y.slt m
+    · have ht : (y.slt m) = true := h
+      simp only [selMinAux, ite_eq_left h]
+      have hle := ih y
+      simp only [List.mem_cons] at hz
+      -- NB: `rw`, not `rcases ... rfl`: `subst` would eliminate `m`.
+      rcases hz with hzm | hzy | hz
+      · rw [hzm]
+        have hyr : (y.slt (selMinAux y ys)) = false :=
+          hle _ (List.Mem.head _)
+        by_cases hm : (m.slt (selMinAux y ys)) = true
+        · exact absurd (slt_trans ht hm) (by simp [hyr])
+        · have hf : (m.slt (selMinAux y ys)) = false := by
+            cases hh : (m.slt (selMinAux y ys)) <;> simp_all
+          exact hf
+      · rw [hzy]
+        exact hle _ (List.Mem.head _)
+      · exact hle _ (List.mem_cons_of_mem _ hz)
+    · have hf : (y.slt m) = false := by
+        cases hh : (y.slt m) <;> simp_all
+      simp only [selMinAux, ite_eq_right h]
+      have hle := ih m
+      simp only [List.mem_cons] at hz
+      rcases hz with hzm | hzy | hz
+      · rw [hzm]
+        exact hle _ (List.Mem.head _)
+      · rw [hzy]
+        exact slt_ge_trans hf (hle _ (List.Mem.head _))
+      · exact hle _ (List.mem_cons_of_mem _ hz)
+
+/-- Minimum of a list (`0` default on empty; M5 only calls it on
+    nonempty suffixes). -/
+def selMin : List (BitVec 32) → BitVec 32
+  | [] => BitVec.ofNat 32 0
+  | x :: xs => selMinAux x xs
+
+/-- The minimum belongs to a nonempty list. -/
+theorem selMin_mem {x : BitVec 32} {xs : List (BitVec 32)} :
+    selMin (x :: xs) ∈ x :: xs := by
+  simp only [selMin]
+  exact selMinAux_mem x xs
+
+/-- The minimum lower-bounds a nonempty list. -/
+theorem selMin_le {x : BitVec 32} {xs : List (BitVec 32)}
+    {z : BitVec 32} (hz : z ∈ x :: xs) :
+    (z.slt (selMin (x :: xs))) = false := by
+  simp only [selMin]
+  exact selMinAux_le x xs z hz
+
+/-- Pure selection sort, fuel-indexed (house style: structural
+    on fuel, so every call site unfolds by `simp only`). -/
+def selectionSortListAux : Nat → List (BitVec 32) → List (BitVec 32)
+  | 0, _ => []
+  | _ + 1, [] => []
+  | f + 1, x :: xs =>
+    selMin (x :: xs) ::
+      selectionSortListAux f ((x :: xs).erase (selMin (x :: xs)))
+
+/-- Pure selection sort: repeatedly emit the minimum. -/
+def selectionSortList (l : List (BitVec 32)) : List (BitVec 32) :=
+  selectionSortListAux l.length l
+
+/-- Joint sort contract at bounded fuel (one induction: sortedness
+    needs the tail permutation for membership transport, so both go
+    together; N9 proves them separately only because insertion keeps
+    the tail literally in place). -/
+theorem selectionSortListAux_spec : ∀ (n : Nat) (l : List (BitVec 32)),
+    l.length ≤ n →
+    (selectionSortListAux n l).Pairwise (fun a b => b.slt a = false) ∧
+    List.Perm (selectionSortListAux n l) l := by
+  intro n
+  induction n with
+  | zero =>
+    intro l hl
+    have hempty : l = [] := List.eq_nil_of_length_eq_zero (by omega)
+    subst hempty
+    simp only [selectionSortListAux]
+    exact ⟨List.Pairwise.nil, List.Perm.rfl⟩
+  | succ n ih =>
+    intro l hl
+    cases l with
+    | nil =>
+      simp only [selectionSortListAux]
+      exact ⟨List.Pairwise.nil, List.Perm.rfl⟩
+    | cons x xs =>
+      have hmem : selMin (x :: xs) ∈ x :: xs := selMin_mem
+      have hlen : ((x :: xs).erase (selMin (x :: xs))).length ≤ n := by
+        have h := List.length_erase_of_mem hmem
+        simp only [List.length_cons] at hl h ⊢
+        omega
+      have ih' := ih _ hlen
+      have hperm : List.Perm
+          (selectionSortListAux n ((x :: xs).erase (selMin (x :: xs))))
+          ((x :: xs).erase (selMin (x :: xs))) := ih'.2
+      have hstep : selectionSortListAux (n + 1) (x :: xs) =
+          selMin (x :: xs) ::
+            selectionSortListAux n ((x :: xs).erase (selMin (x :: xs))) := by
+        simp only [selectionSortListAux]
+      have hsorted : (selectionSortListAux (n + 1) (x :: xs)).Pairwise
+          (fun a b => b.slt a = false) := by
+        rw [hstep, List.pairwise_cons]
+        refine ⟨fun z hz => ?_, ih'.1⟩
+        exact selMin_le (List.mem_of_mem_erase
+          (hperm.mem_iff.mp hz))
+      have hperm' : List.Perm (selectionSortListAux (n + 1) (x :: xs))
+          (x :: xs) := by
+        rw [hstep]
+        exact (ih'.2.cons _).trans (List.perm_cons_erase hmem).symm
+      exact ⟨hsorted, hperm'⟩
+
+/-- Pure selection sort is ascending (N9 shape). -/
+theorem selectionSortList_sorted (l : List (BitVec 32)) :
+    (selectionSortList l).Pairwise (fun a b => b.slt a = false) :=
+  (selectionSortListAux_spec l.length l (Nat.le_refl _)).1
+
+/-- Pure selection sort permutes its input (erase-then-cons). -/
+theorem selectionSortList_perm (l : List (BitVec 32)) :
+    List.Perm (selectionSortList l) l :=
+  (selectionSortListAux_spec l.length l (Nat.le_refl _)).2
+
 end VecSelectionSort

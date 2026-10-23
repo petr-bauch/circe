@@ -2280,3 +2280,532 @@ theorem selectionSortFwd_ok (l : List (BitVec 32))
       refine ⟨l.length, l, ?_⟩
       have hneg : ¬ l.length < l.length := by omega
       simp only [VecSelectionSort.selectionSortFwd, dite_eq_right hneg]
+
+/-! ## M5b: selection-sort bridge (?-world take/drop surgery).
+
+The outer loop keeps a sorted prefix with everything in the prefix
+`≤` everything in the suffix (positional form, so every step closes
+by `getElem?_set_ne` / `getElem?_set_self` + `omega`). The swap
+preserves `Perm` via an explicit take/drop middle-swap. -/
+
+/-- Split a list at a known `getElem?` position. -/
+theorem take_cons_drop (l : List (BitVec 32)) (i : Nat) (x : BitVec 32)
+    (hx : l[i]? = some x) :
+    l.take i ++ x :: l.drop (i + 1) = l := by
+  induction l generalizing i with
+  | nil => simp at hx
+  | cons y ys ih =>
+    cases i with
+    | zero =>
+      simp only [List.take_zero,
+        List.getElem?_cons_zero] at hx ⊢
+      simp only [List.nil_append, List.drop_succ_cons,
+        List.drop_zero] at ⊢
+      rw [Option.some_inj.mp hx]
+    | succ i =>
+      simp only [List.take_succ_cons, List.drop_succ_cons,
+        List.getElem?_cons_succ] at hx ⊢
+      have hih := ih i hx
+      simp only [List.cons_append]
+      rw [hih]
+
+/-- A single write splices one word into the take/drop split. -/
+theorem set_take_cons_drop (l : List (BitVec 32)) (i : Nat) (y : BitVec 32)
+    (hi : i < l.length) :
+    l.set i y = l.take i ++ y :: l.drop (i + 1) := by
+  induction l generalizing i with
+  | nil => simp at hi
+  | cons x xs ih =>
+    cases i with
+    | zero => simp
+    | succ i =>
+      simp only [List.set_cons_succ, List.take_succ_cons,
+        List.drop_succ_cons, List.length_cons] at hi ⊢
+      have hih := ih i (by omega)
+      simp only [List.cons_append] at ⊢
+      rw [hih]
+
+/-- Take through an appended cons (strict bound, so the head lands
+    inside). Proved by induction to avoid `take_append` shape risk. -/
+theorem take_append_cons (A : List (BitVec 32)) (x : BitVec 32)
+    (R : List (BitVec 32)) (m' : Nat) (hlt : A.length < m') :
+    (A ++ x :: R).take m' = A ++ x :: (R.take (m' - A.length - 1)) := by
+  induction A generalizing m' with
+  | nil =>
+    cases m' with
+    | zero => simp at hlt
+    | succ m' =>
+      simp only [List.nil_append, List.take_succ_cons,
+        List.length_nil] at ⊢
+      have harith : m' + 1 - 0 - 1 = m' := by omega
+      rw [harith]
+  | cons a As ih =>
+    cases m' with
+    | zero => simp at hlt
+    | succ m' =>
+      simp only [List.cons_append, List.take_succ_cons,
+        List.length_cons] at hlt ⊢
+      have hih := ih m' (by omega)
+      rw [hih]
+      have harith : m' + 1 - (As.length + 1) - 1 = m' - As.length - 1 := by
+        omega
+      rw [harith]
+
+/-- A write at the append boundary splices the head of the tail. -/
+theorem set_append_length (A : List (BitVec 32)) (rest : List (BitVec 32))
+    (y : BitVec 32) :
+    (A ++ rest).set A.length y = A ++ rest.set 0 y := by
+  induction A with
+  | nil => simp
+  | cons a As ih =>
+    simp only [List.cons_append, List.length_cons,
+      List.set_cons_succ, ih]
+
+/-- Positional sortedness (all earlier positions `≤` all later ones)
+    is `Pairwise`. -/
+theorem pairwise_of_positional (l : List (BitVec 32))
+    (h : ∀ (p q : Nat) (a b : BitVec 32), p < q → l[p]? = some a →
+      l[q]? = some b → (b.slt a) = false) :
+    l.Pairwise (fun (a b : BitVec 32) => b.slt a = false) := by
+  induction l with
+  | nil => exact List.Pairwise.nil
+  | cons x xs ih =>
+    rw [List.pairwise_cons]
+    refine ⟨?_, ih (fun p q a b hpq hpa hqb => ?_)⟩
+    · intro b hb
+      obtain ⟨q, hq⟩ := (List.mem_iff_getElem?).mp hb
+      have h0 : (x :: xs)[0]? = some x := by simp
+      exact h 0 (q + 1) x b (by omega) h0 (by simpa using hq)
+    · exact h (p + 1) (q + 1) a b (by omega)
+        (by simpa using hpa) (by simpa using hqb)
+
+/-- Middle-swap `Perm`: exchanging the heads across a middle block. -/
+theorem middle_swap (T : List (BitVec 32)) (x y : BitVec 32)
+    (S : List (BitVec 32)) :
+    List.Perm (x :: (T ++ (y :: S))) ((y :: T) ++ (x :: S)) := by
+  have q1 : List.Perm (T ++ (y :: S)) (y :: (T ++ S)) :=
+    List.perm_middle
+  have qx := List.Perm.cons x q1
+  have qs : List.Perm (x :: (y :: (T ++ S))) (y :: (x :: (T ++ S))) :=
+    List.Perm.symm (List.Perm.swap x y (T ++ S))
+  have qy : List.Perm (y :: (x :: (T ++ S))) ((y :: T) ++ (x :: S)) := by
+    have q := List.Perm.symm
+      (List.perm_middle (l₁ := T) (a := x) (l₂ := S))
+    exact List.Perm.cons y q
+  exact qx.trans (qs.trans qy)
+
+/-- Swap conclusion from the three splits (all opaque: only forward
+    compound rewrites + `trans`, never a bare-variable fold). -/
+theorem swap_final (A T S R : List (BitVec 32)) (x y : BitVec 32)
+    (l l' : List (BitVec 32))
+    (eL' : l' = A ++ ((y :: T) ++ (x :: S)))
+    (eA : A ++ x :: R = l)
+    (eR : T ++ y :: S = R) :
+    List.Perm l' l := by
+  rw [eL']
+  have eRperm : List.Perm (T ++ y :: S) R := by rw [eR]
+  have m : List.Perm ((y :: T) ++ (x :: S)) (x :: R) :=
+    (middle_swap T x y S).symm.trans (List.Perm.cons x eRperm)
+  have mA : List.Perm (A ++ ((y :: T) ++ (x :: S)))
+      (A ++ (x :: R)) :=
+    List.Perm.append_left A m
+  have mB : List.Perm (A ++ (x :: R)) l := by rw [eA]
+  exact mA.trans mB
+
+/-- Position in bounds from a successful `getElem?`. -/
+theorem pos_lt_of_getElem?_some {l : List (BitVec 32)} {p : Nat}
+    {x : BitVec 32} (h : l[p]? = some x) : p < l.length := by
+  by_cases hlt : p < l.length
+  · exact hlt
+  · have hc' : l.length ≤ p := Nat.le_of_not_lt hlt
+    have hnone : l[p]? = none := List.getElem?_eq_none hc'
+    rw [hnone] at h
+    cases h
+
+/-- A write at the append boundary splices the tail head
+    (induction form, no length-lemma risk). -/
+theorem set_append_cons_head (A : List (BitVec 32)) (x : BitVec 32)
+    (T : List (BitVec 32)) (y : BitVec 32) :
+    (A ++ x :: T).set A.length y = A ++ y :: T := by
+  induction A with
+  | nil => simp
+  | cons a As ih =>
+    simp only [List.cons_append, List.length_cons,
+      List.set_cons_succ, ih]
+
+/-- Redundant writes collapse (induction form). -/
+theorem set_set_same (l : List (BitVec 32)) (n : Nat) (a b : BitVec 32) :
+    (l.set n a).set n b = l.set n b := by
+  induction l generalizing n with
+  | nil => simp
+  | cons x xs ih =>
+    cases n with
+    | zero => simp
+    | succ n =>
+      simp only [List.set_cons_succ, ih]
+
+/-- The scan returns a lower bound of its range: every scanned word
+    is `≥` the running minimum (mirror of `minIndexFwd_ok` with the
+    `slt_lower_trans` step in the take-leg). -/
+theorem minIndexFwd_lower (l : List (BitVec 32))
+    (fuel j m : Nat) (ym : BitVec 32) (i₀ : Nat)
+    (hm : l[m]? = some ym) (hm_lt : m < l.length)
+    (hle : j ≤ l.length) (hi₀m : i₀ ≤ m) (hi₀j : i₀ ≤ j)
+    (hF : l.length - j ≤ fuel)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x)
+    (hmin : ∀ (p : Nat) (x : BitVec 32), i₀ ≤ p → p < j →
+      l[p]? = some x → (x.slt ym) = false) :
+    ∃ m' j' ym', VecSelectionSort.minIndexFwd l fuel j m = .ok (m', j') ∧
+      m' < l.length ∧ i₀ ≤ m' ∧ l[m']? = some ym' ∧
+      ∀ (p : Nat) (x : BitVec 32), i₀ ≤ p → p < l.length →
+        l[p]? = some x → (x.slt ym') = false := by
+  induction fuel generalizing j m ym with
+  | zero =>
+    have him : j = l.length := by omega
+    subst him
+    exact ⟨m, l.length, ym, by simp [VecSelectionSort.minIndexFwd],
+      hm_lt, hi₀m, hm,
+      fun p x hp1 hp2 hpx => hmin p x hp1 (by omega) hpx⟩
+  | succ n ih =>
+    by_cases hlt : j < l.length
+    · obtain ⟨x, hx⟩ := hread j hlt
+      have hF' : l.length - (j + 1) ≤ n := by omega
+      have hle' : j + 1 ≤ l.length := by omega
+      by_cases htake : (x.slt ym) = true
+      · have hmin' : ∀ (p : Nat) (x' : BitVec 32), i₀ ≤ p → p < j + 1 →
+          l[p]? = some x' → (x'.slt x) = false := by
+          intro p x' hp1 hp2 hpx'
+          by_cases hpj : p = j
+          · subst hpj
+            have hxx : x' = x :=
+              Option.some_inj.mp (hpx'.symm.trans hx)
+            rw [hxx]
+            exact VecSelectionSort.slt_irrefl _
+          · exact VecSelectionSort.slt_lower_trans htake
+              (hmin p x' hp1 (by omega) hpx')
+        obtain ⟨m'', j'', ym'', heq, hm'', hi₀m'', hym'', hlower''⟩ :=
+          ih (j + 1) j x hx hlt hle' hi₀j (by omega) hF' hmin'
+        refine ⟨m'', j'', ym'', ?_, hm'', hi₀m'', hym'', hlower''⟩
+        simp only [VecSelectionSort.minIndexFwd, dite_eq_left hlt,
+          hx, hm, htake]
+        exact heq
+      · have hneg : (x.slt ym) = false := by
+          cases h : x.slt ym with
+          | true => exact absurd h htake
+          | false => rfl
+        have hmin' : ∀ (p : Nat) (x' : BitVec 32), i₀ ≤ p → p < j + 1 →
+            l[p]? = some x' → (x'.slt ym) = false := by
+          intro p x' hp1 hp2 hpx'
+          by_cases hpj : p = j
+          · subst hpj
+            have hxx : x' = x :=
+              Option.some_inj.mp (hpx'.symm.trans hx)
+            rw [hxx]
+            exact hneg
+          · exact hmin p x' hp1 (by omega) hpx'
+        obtain ⟨m'', j'', ym'', heq, hm'', hi₀m'', hym'', hlower''⟩ :=
+          ih (j + 1) m ym hm hm_lt hle' hi₀m (by omega) hF' hmin'
+        refine ⟨m'', j'', ym'', ?_, hm'', hi₀m'', hym'', hlower''⟩
+        simp only [VecSelectionSort.minIndexFwd, dite_eq_left hlt,
+          hx, hm, hneg]
+        exact heq
+    · have him : j = l.length := by omega
+      subst him
+      exact ⟨m, l.length, ym, by simp [VecSelectionSort.minIndexFwd],
+        hm_lt, hi₀m, hm,
+        fun p x hp1 hp2 hpx => hmin p x hp1 (by omega) hpx⟩
+
+/-- Swapping two positions preserves `Perm`. -/
+theorem swap_perm (l : List (BitVec 32)) (i m' : Nat)
+    (x y : BitVec 32)
+    (hi : i < l.length) (hm' : m' < l.length) (hle : i ≤ m')
+    (hx : l[i]? = some x) (hy : l[m']? = some y) :
+    List.Perm ((l.set i y).set m' x) l := by
+  by_cases heq : i = m'
+  · subst heq
+    have hxy : y = x := Option.some_inj.mp (hy.symm.trans hx)
+    rw [hxy, set_set_same, set_take_cons_drop l i x hi,
+      take_cons_drop l i x hx]
+  · have hlt : i < m' := by omega
+    have eA : l.take i ++ x :: l.drop (i + 1) = l :=
+      take_cons_drop l i x hx
+    have hRk : (l.drop (i + 1))[m' - i - 1]? = some y := by
+      rw [List.getElem?_drop]
+      have hsum : i + 1 + (m' - i - 1) = m' := by omega
+      rw [hsum]
+      exact hy
+    have eRw : (l.drop (i + 1)).take (m' - i - 1) ++ y ::
+        l.drop (m' + 1) = l.drop (i + 1) := by
+      have h1 := take_cons_drop (l.drop (i + 1)) (m' - i - 1) y hRk
+      have h2 : (l.drop (i + 1)).drop (m' - i - 1 + 1) =
+          l.drop (m' + 1) := by
+        rw [List.drop_drop]
+        congr 1
+        omega
+      rwa [h2] at h1
+    -- Take through the written list.
+    have hAi : (l.take i).length < m' := by
+      rw [List.length_take, Nat.min_eq_left (Nat.le_of_lt hi)]
+      exact hlt
+    have eT : (l.set i y).take m' =
+        l.take i ++ y :: (l.drop (i + 1)).take (m' - i - 1) := by
+      rw [List.take_set]
+      have hTm : l.take m' =
+          l.take i ++ x :: (l.drop (i + 1)).take (m' - i - 1) := by
+        conv => lhs; rw [← eA]
+        rw [take_append_cons _ _ _ _ hAi]
+        have hlenA : (l.take i).length = i := by
+          rw [List.length_take, Nat.min_eq_left (Nat.le_of_lt hi)]
+        rw [hlenA]
+      rw [hTm]
+      have hlenA : (l.take i).length = i := by
+        rw [List.length_take, Nat.min_eq_left (Nat.le_of_lt hi)]
+      have hset := set_append_cons_head (l.take i) x
+        ((l.drop (i + 1)).take (m' - i - 1)) y
+      rwa [hlenA] at hset
+    -- Drop through the written list.
+    have eD : (l.set i y).drop (m' + 1) = l.drop (m' + 1) := by
+      rw [List.drop_set,
+        ite_eq_left (show i < m' + 1 by omega)]
+    -- Assemble the swapped list.
+    have eL' : ((l.set i y).set m' x) =
+        l.take i ++ ((y :: (l.drop (i + 1)).take (m' - i - 1)) ++
+          (x :: l.drop (m' + 1))) := by
+      have hS := set_take_cons_drop (l.set i y) m' x (by
+        rw [List.length_set]; exact hm')
+      rw [hS, eT, eD, List.append_assoc]
+    exact swap_final _ _ _ _ _ _ _ _
+      eL' eA eRw
+/-- Outer correctness with the sort contract: from a sorted prefix
+    with everything in the prefix `≤` the suffix (positional), the
+    loop returns a sorted permutation of the original input. The
+    step swaps in the suffix minimum (`minIndexFwd_lower` locates
+    it, `swap_perm` keeps the permutation); the `m' = i` no-op
+    case transports along the collapsed writes. -/
+theorem selectionSortFwd_sorted_perm (l l₀ : List (BitVec 32))
+    (fuel inner i : Nat)
+    (hle : i ≤ l.length) (hF : l.length - i ≤ fuel)
+    (hG : l.length - (i + 1) ≤ inner)
+    (hread : ∀ p, p < l.length → ∃ x, l[p]? = some x)
+    (hpref : ∀ (p q : Nat) (a b : BitVec 32), p < q → q < i →
+      l[p]? = some a → l[q]? = some b → (b.slt a) = false)
+    (hle_pre : ∀ (p q : Nat) (a b : BitVec 32), p < i → i ≤ q →
+      q < l.length → l[p]? = some a → l[q]? = some b →
+      (b.slt a) = false)
+    (hperm : List.Perm l l₀) :
+    ∃ i' l', VecSelectionSort.selectionSortFwd l fuel inner i = .ok (i', l') ∧
+      l'.Pairwise (fun a b => b.slt a = false) ∧ List.Perm l' l₀ := by
+  induction fuel generalizing l i with
+  | zero =>
+    have him : i = l.length := by omega
+    subst him
+    refine ⟨l.length, l, by simp [VecSelectionSort.selectionSortFwd],
+      ?_, hperm⟩
+    apply pairwise_of_positional
+    intro p q a b hpq hpa hqb
+    exact hpref p q a b hpq
+      (by have := pos_lt_of_getElem?_some hqb; omega) hpa hqb
+  | succ n ih =>
+    by_cases hlt : i < l.length
+    · obtain ⟨x, hx⟩ := hread i hlt
+      have hle' : i + 1 ≤ l.length := by omega
+      have hbase : ∀ (p : Nat) (x' : BitVec 32), i ≤ p → p < i + 1 →
+          l[p]? = some x' → (x'.slt x) = false := by
+        intro p x' hp1 hp2 hpx'
+        have hpi : p = i := by omega
+        subst hpi
+        have hxx : x' = x := Option.some_inj.mp (hpx'.symm.trans hx)
+        rw [hxx]
+        exact VecSelectionSort.slt_irrefl _
+      obtain ⟨m', j', ym', heqmin, hm', hi₀m', hym', hlower⟩ :=
+        minIndexFwd_lower l inner (i + 1) i x i hx hlt hle'
+          (Nat.le_refl _) (Nat.le_succ _) hG hread hbase
+      by_cases hmi : m' = i
+      · have hym'c := hym'
+        rw [hmi] at hym'c
+        have hxy : ym' = x :=
+          Option.some_inj.mp (hym'c.symm.trans hx)
+        have hm'x : l[m']? = some x := by
+          rw [← hxy]
+          exact hym'
+        have hl' : ((l.set i x).set i x) = l := by
+          rw [set_set_same, set_take_cons_drop l i x hlt,
+            take_cons_drop l i x hx]
+        have hlen' : ((l.set i x).set i x).length = l.length := by
+          rw [List.length_set, List.length_set]
+        have hF' : ((l.set i x).set i x).length - (i + 1) ≤ n := by omega
+        have hG' : ((l.set i x).set i x).length - (i + 1 + 1) ≤ inner := by
+          omega
+        have hle'' : i + 1 ≤ ((l.set i x).set i x).length := by omega
+        have hread' : ∀ p, p < ((l.set i x).set i x).length → ∃ z,
+            ((l.set i x).set i x)[p]? = some z := by
+          intro p hp
+          have hplen : p < l.length := by omega
+          by_cases hpi : p = i
+          · subst hpi
+            have hxx : ((l.set p x).set p x)[p]? = some x := by
+              rw [set_set_same]
+              exact List.getElem?_set_self hlt
+            exact ⟨x, hxx⟩
+          · obtain ⟨z, hz⟩ := hread p hplen
+            have hzz : ((l.set i x).set i x)[p]? = some z := by
+              rw [set_set_same,
+                List.getElem?_set_ne (show i ≠ p by omega)]
+              exact hz
+            exact ⟨z, hzz⟩
+        have hpref' : ∀ (p q : Nat) (a b : BitVec 32), p < q → q < i + 1 →
+            ((l.set i x).set i x)[p]? = some a →
+            ((l.set i x).set i x)[q]? = some b →
+            (b.slt a) = false := by
+          intro p q a b hpq hqi hpa hqb
+          rw [hl'] at hpa hqb
+          by_cases hqiq : q = i
+          · rw [hqiq] at hqb hqi
+            exact hle_pre p i a b (by omega) (Nat.le_refl _) hlt hpa hqb
+          · exact hpref p q a b hpq (by omega) hpa hqb
+        have hle_pre' : ∀ (p q : Nat) (a b : BitVec 32), p < i + 1 →
+            i + 1 ≤ q → q < ((l.set i x).set i x).length →
+            ((l.set i x).set i x)[p]? = some a →
+            ((l.set i x).set i x)[q]? = some b →
+            (b.slt a) = false := by
+          intro p q a b hpi hiq hqlen hpa hqb
+          rw [hl'] at hpa hqb hqlen
+          by_cases hpi' : p = i
+          · subst hpi'
+            have hax : a = x := Option.some_inj.mp (hpa.symm.trans hx)
+            rw [hax, ← hxy]
+            exact hlower q b (by omega) (by omega) hqb
+          · exact hle_pre p q a b (by omega) (by omega) (by omega)
+              hpa hqb
+        have hperm' : List.Perm ((l.set i x).set i x) l₀ := by
+          rw [hl']
+          exact hperm
+        obtain ⟨i'', l'', heq, hsorted, hperm''⟩ :=
+          ih ((l.set i x).set i x) (i + 1) hle'' hF' hG' hread'
+            hpref' hle_pre' hperm'
+        refine ⟨i'', l'', ?_, hsorted, hperm''⟩
+        simp only [VecSelectionSort.selectionSortFwd, dite_eq_left hlt,
+          heqmin, hx, hmi]
+        exact heq
+      · have hltm : i < m' := by omega
+        have hlen : ((l.set i ym').set m' x).length = l.length := by
+          rw [List.length_set, List.length_set]
+        have hle'' : i + 1 ≤ ((l.set i ym').set m' x).length := by omega
+        have hF'' : ((l.set i ym').set m' x).length - (i + 1) ≤ n := by
+          omega
+        have hG' : ((l.set i ym').set m' x).length - (i + 1 + 1) ≤ inner := by
+          omega
+        have hread' : ∀ p, p < ((l.set i ym').set m' x).length → ∃ z,
+            ((l.set i ym').set m' x)[p]? = some z := by
+          intro p hp
+          have hplen : p < l.length := by omega
+          by_cases hpm : p = m'
+          · subst hpm
+            have hxx : ((l.set i ym').set p x)[p]? = some x :=
+              List.getElem?_set_self
+                (by rw [List.length_set]; exact hm')
+            exact ⟨x, hxx⟩
+          · by_cases hpi : p = i
+            · subst hpi
+              have hyy : ((l.set p ym').set m' x)[p]? = some ym' := by
+                rw [List.getElem?_set_ne (show m' ≠ p by omega)]
+                exact List.getElem?_set_self hlt
+              exact ⟨ym', hyy⟩
+            · obtain ⟨z, hz⟩ := hread p hplen
+              have hzz : ((l.set i ym').set m' x)[p]? = some z := by
+                rw [List.getElem?_set_ne (show m' ≠ p by omega),
+                  List.getElem?_set_ne (show i ≠ p by omega)]
+                exact hz
+              exact ⟨z, hzz⟩
+        have hli : ((l.set i ym').set m' x)[i]? = some ym' := by
+          rw [List.getElem?_set_ne (show m' ≠ i by omega)]
+          exact List.getElem?_set_self hlt
+        have hlp : ∀ (p : Nat), p ≠ m' → p ≠ i →
+            ((l.set i ym').set m' x)[p]? = l[p]? := by
+          intro p h1 h2
+          rw [List.getElem?_set_ne (Ne.symm h1),
+            List.getElem?_set_ne (Ne.symm h2)]
+        have hlm : ((l.set i ym').set m' x)[m']? = some x :=
+          List.getElem?_set_self (by rw [List.length_set]; exact hm')
+        have hpref' : ∀ (p q : Nat) (a b : BitVec 32), p < q → q < i + 1 →
+            ((l.set i ym').set m' x)[p]? = some a →
+            ((l.set i ym').set m' x)[q]? = some b →
+            (b.slt a) = false := by
+          intro p q a b hpq hqi hpa hqb
+          by_cases hqiq : q = i
+          · subst hqiq
+            rw [hli] at hqb
+            have hby : b = ym' := (Option.some_inj.mp hqb).symm
+            rw [hby]
+            have hpa' : l[p]? = some a := by
+              have hlp' := hlp p (by omega) (by omega)
+              rw [hlp'] at hpa
+              exact hpa
+            exact hle_pre p m' a ym' (by omega) hi₀m' hm' hpa' hym'
+          · have hpa' : l[p]? = some a := by
+              have hlp' := hlp p (by omega) (by omega)
+              rw [hlp'] at hpa
+              exact hpa
+            have hqb' : l[q]? = some b := by
+              have hlp' := hlp q (by omega) (by omega)
+              rw [hlp'] at hqb
+              exact hqb
+            exact hpref p q a b hpq (by omega) hpa' hqb'
+        have hle_pre' : ∀ (p q : Nat) (a b : BitVec 32), p < i + 1 →
+            i + 1 ≤ q → q < ((l.set i ym').set m' x).length →
+            ((l.set i ym').set m' x)[p]? = some a →
+            ((l.set i ym').set m' x)[q]? = some b →
+            (b.slt a) = false := by
+          intro p q a b hpi hiq hqlen hpa hqb
+          have hqlen' : q < l.length := by omega
+          by_cases hpi' : p = i
+          · rw [hpi'] at hpa
+            rw [hli] at hpa
+            have hax : a = ym' := (Option.some_inj.mp hpa).symm
+            rw [hax]
+            by_cases hqm : q = m'
+            · subst hqm
+              rw [hlm] at hqb
+              have hbx : b = x := (Option.some_inj.mp hqb).symm
+              rw [hbx]
+              exact hlower i x (Nat.le_refl _) hlt hx
+            · have hqb' : l[q]? = some b := by
+                have hlp' := hlp q hqm (by omega)
+                rw [hlp'] at hqb
+                exact hqb
+              exact hlower q b (by omega) hqlen' hqb'
+          · have hpa' : l[p]? = some a := by
+              have hlp' := hlp p (by omega) (by omega)
+              rw [hlp'] at hpa
+              exact hpa
+            by_cases hqm : q = m'
+            · subst hqm
+              rw [hlm] at hqb
+              have hbx : b = x := (Option.some_inj.mp hqb).symm
+              rw [hbx]
+              exact hle_pre p i a x (by omega) (Nat.le_refl _) hlt
+                hpa' hx
+            · have hqb' : l[q]? = some b := by
+                have hlp' := hlp q hqm (by omega)
+                rw [hlp'] at hqb
+                exact hqb
+              exact hle_pre p q a b (by omega) (by omega) hqlen'
+                hpa' hqb'
+        have hperm' : List.Perm ((l.set i ym').set m' x) l₀ :=
+          (swap_perm l i m' x ym' hlt hm' hi₀m' hx hym').trans hperm
+        obtain ⟨i'', l'', heq, hsorted, hperm''⟩ :=
+          ih ((l.set i ym').set m' x) (i + 1) hle'' hF'' hG' hread'
+            hpref' hle_pre' hperm'
+        refine ⟨i'', l'', ?_, hsorted, hperm''⟩
+        simp only [VecSelectionSort.selectionSortFwd, dite_eq_left hlt,
+          heqmin, hx, hym']
+        exact heq
+    · have him : i = l.length := by omega
+      subst him
+      refine ⟨l.length, l, by simp [VecSelectionSort.selectionSortFwd],
+        ?_, hperm⟩
+      apply pairwise_of_positional
+      intro p q a b hpq hpa hqb
+      exact hpref p q a b hpq
+        (by have := pos_lt_of_getElem?_some hqb; omega) hpa hqb
+

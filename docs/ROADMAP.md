@@ -80,6 +80,12 @@ Proposed (toward the platform goal — for approval, in order):
 - P2-M5: vector sortedness/permutation specs (N9-tier, ported
   from array insertion sort to the partition/merge/selection
   kernels). Proof-only, no admission.
+  DONE (selection sort full contract, gate 445/445: pure
+  `selectionSortList` + sorted/perm; `minIndexFwd_lower` scan
+  minimality; `swap_perm` positional middle-swap; outer
+  sorted-prefix bridge `selectionSortFwd_sorted_perm`; closing
+  `evalProgFunc_vecSelectionSort_spec`. Partition property +
+  merge-sort contract stay queued as follow-ups).
 
 ## Pillar 3 — Human-readable/writable proofs
 
