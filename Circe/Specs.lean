@@ -4556,3 +4556,545 @@ theorem selectionSortFwd_sorted_perm (l l₀ : List (BitVec 32))
       exact hpref p q a b hpq
         (by have := pos_lt_of_getElem?_some hqb; omega) hpa hqb
 
+/-- Window multiset from a full permutation that agrees outside the
+    window (count-based; feeds the quicksort bounds). -/
+theorem VecQuicksort.window_perm_of_perm_outside
+    (l l' : List (BitVec 32)) (lo hi : Nat)
+    (hlo : lo ≤ hi)
+    (hlen : l'.length = l.length)
+    (hperm : List.Perm l' l)
+    (hout : ∀ p, p < lo ∨ hi ≤ p → l'[p]? = l[p]?) :
+    List.Perm ((l'.drop lo).take (hi - lo))
+      ((l.drop lo).take (hi - lo)) := by
+  rw [List.perm_iff_count]
+  intro a
+  have e5 : l'.take lo = l.take lo := by
+    apply List.ext_getElem?
+    intro i
+    rw [List.getElem?_take, List.getElem?_take]
+    by_cases hi2 : i < lo
+    · rw [ite_eq_left hi2, ite_eq_left hi2]; exact hout i (Or.inl hi2)
+    · rw [ite_eq_right hi2, ite_eq_right hi2]
+  have e6 : l'.drop hi = l.drop hi := by
+    apply List.ext_getElem?
+    intro i
+    rw [List.getElem?_drop, List.getElem?_drop]
+    exact hout (hi + i) (Or.inr (by omega))
+  have e1 : ∀ m : List (BitVec 32),
+      List.count a m =
+        List.count a (m.take lo) + List.count a (m.drop lo) := by
+    intro m
+    rw [← List.count_append, List.take_append_drop]
+  have e2 : ∀ m : List (BitVec 32),
+      List.count a (m.drop lo) =
+        List.count a ((m.drop lo).take (hi - lo)) +
+        List.count a ((m.drop lo).drop (hi - lo)) := by
+    intro m
+    rw [← List.count_append, List.take_append_drop]
+  have e3 : ∀ m : List (BitVec 32),
+      (m.drop lo).drop (hi - lo) = m.drop hi := by
+    intro m
+    rw [List.drop_drop]
+    congr 1
+    omega
+  have e4 : List.count a l' = List.count a l :=
+    (List.perm_iff_count.mp hperm) a
+  have c5 : List.count a (l'.take lo) = List.count a (l.take lo) := by
+    rw [e5]
+  have c6 : List.count a (l'.drop hi) = List.count a (l.drop hi) := by
+    rw [e6]
+  have g1 := e1 l'
+  have g2 := e1 l
+  have g3 := e2 l'
+  have g4 := e2 l
+  rw [e3] at g3 g4
+  omega
+
+/-- Window membership as a bounded position read. -/
+theorem VecQuicksort.mem_window_iff (l : List (BitVec 32)) (lo hi : Nat)
+    (hlo : lo ≤ hi) (x : BitVec 32) :
+    x ∈ ((l.drop lo).take (hi - lo)) ↔
+      ∃ j, lo ≤ j ∧ j < hi ∧ l[j]? = some x := by
+  constructor
+  · intro hx
+    obtain ⟨i, hi', rfl⟩ := List.getElem_of_mem hx
+    have hlen : ((l.drop lo).take (hi - lo)).length ≤ hi - lo := by
+      rw [List.length_take, List.length_drop]
+      exact Nat.min_le_left _ _
+    have h2 : i < hi - lo := by omega
+    refine ⟨lo + i, by omega, by omega, ?_⟩
+    · have e1 : ((((l.drop lo).take (hi - lo))))[i]? =
+          ((l.drop lo))[i]? := by
+        rw [List.getElem?_take, ite_eq_left h2]
+      have e2 : ((l.drop lo))[i]? = l[lo + i]? := List.getElem?_drop
+      have e3 : ((((l.drop lo).take (hi - lo))))[i]? =
+          some ((((l.drop lo).take (hi - lo))))[i] :=
+        List.getElem?_eq_getElem hi'
+      rw [← e2, ← e1]
+      exact e3
+  · rintro ⟨j, hlo_j, hhi, hx⟩
+    apply List.mem_of_getElem?
+    have e1 : ((((l.drop lo).take (hi - lo))))[j - lo]? =
+        ((l.drop lo))[j - lo]? := by
+      rw [List.getElem?_take, ite_eq_left (by omega : j - lo < hi - lo)]
+    have e2 : ((l.drop lo))[j - lo]? = l[lo + (j - lo)]? :=
+      List.getElem?_drop
+    have e3 : lo + (j - lo) = j := by omega
+    rw [e1, e2, e3]
+    exact hx
+
+/-- Sortedness transports across pointwise-equal windows. -/
+theorem VecQuicksort.sortedSeg_congr (m m' : List (BitVec 32))
+    (lo hi : Nat)
+    (h : SortedSeg m lo hi)
+    (heq : ∀ p, lo ≤ p → p < hi → m'[p]? = m[p]?) :
+    SortedSeg m' lo hi := by
+  intro p q hlo hpq hqh a b ha hb
+  rw [heq p hlo (by omega : p < hi)] at ha
+  rw [heq q (by omega : lo ≤ q) hqh] at hb
+  exact h p q hlo hpq hqh a b ha hb
+
+/-- Quicksort combine: sorted left window below the pivot plus sorted
+    right window above it gives a sorted window. -/
+theorem VecQuicksort.sort_combine (m : List (BitVec 32))
+    (lo s hi : Nat) (pivot : BitVec 32)
+    (hleft : SortedSeg m lo s) (hright : SortedSeg m (s + 1) hi)
+    (hpiv : m[s]? = some pivot)
+    (hlt : ∀ j, lo ≤ j → j < s → ∀ x, m[j]? = some x →
+      (x.slt pivot) = true)
+    (hge : ∀ j, s + 1 ≤ j → j < hi → ∀ x, m[j]? = some x →
+      (x.slt pivot) = false) :
+    SortedSeg m lo hi := by
+  intro p q hlo hpq hqh a b ha hb
+  by_cases hqs : q = s
+  · have hps : p < s := by omega
+    have hplt := hlt p hlo hps a ha
+    have hbv : b = pivot := by
+      have hb' : m[s]? = some b := hqs ▸ hb
+      exact Option.some_inj.mp (hb'.symm.trans hpiv)
+    rw [hbv]
+    have hltI : a.toInt < pivot.toInt := by
+      rw [BitVec.slt_eq_decide] at hplt
+      simpa using hplt
+    rw [BitVec.slt_eq_decide]
+    simp only [decide_eq_false_iff_not]
+    omega
+  · by_cases hps : p = s
+    · have hbv : a = pivot := by
+        have ha' : m[s]? = some a := hps ▸ ha
+        exact Option.some_inj.mp (ha'.symm.trans hpiv)
+      rw [hbv]
+      have hqs : s + 1 ≤ q := by omega
+      exact hge q hqs hqh b hb
+    · by_cases hq : s < q
+      · by_cases hps2 : s < p
+        · have hps3 : s + 1 ≤ p := by omega
+          exact hright p q hps3 hpq hqh a b ha hb
+        · have hplt := hlt p hlo (by omega) a ha
+          have hqge := hge q (by omega) hqh b hb
+          exact VecSelectionSort.slt_lower_trans hplt hqge
+      · have hpq' : p < q := hpq
+        have hqs : q < s := by omega
+        exact hleft p q hlo hpq' (by omega) a b ha hb
+/-- Partition-scan joint: the Lomuto pass preserves length and the
+    full permutation, touches nothing outside `[lo, hi - 1]`, and
+    splits the scanned prefix below / above the pivot. The bounds
+    `hlt`/`hge` are the loop invariant threaded through the fuel
+    induction. -/
+theorem VecQuicksort.qsPartFwd_joint (pivot : BitVec 32)
+    (l : List (BitVec 32)) (F hi i s : Nat) (lo : Nat)
+    (hlo_s : lo ≤ s) (hs_i : s ≤ i) (hi_le : i ≤ hi - 1)
+    (hhi_le : hi ≤ l.length)
+    (hlt : ∀ j, lo ≤ j → j < s → ∀ x, l[j]? = some x →
+      (x.slt pivot) = true)
+    (hge : ∀ j, s ≤ j → j < i → ∀ x, l[j]? = some x →
+      (x.slt pivot) = false)
+    (s' : Nat) (l' : List (BitVec 32))
+    (h : VecQuicksort.qsPartFwd pivot l F hi i s = .ok (s', l')) :
+    l'.length = l.length ∧
+    (∀ p, p < lo ∨ hi - 1 ≤ p → l'[p]? = l[p]?) ∧
+    List.Perm l' l ∧
+    lo ≤ s' ∧ s' ≤ hi - 1 ∧
+    (∀ j, lo ≤ j → j < s' → ∀ x, l'[j]? = some x →
+      (x.slt pivot) = true) ∧
+    (∀ j, s' ≤ j → j < hi - 1 → ∀ x, l'[j]? = some x →
+      (x.slt pivot) = false) := by
+  induction F generalizing l i s s' l' with
+  | zero =>
+    simp only [VecQuicksort.qsPartFwd] at h
+    by_cases hg : i + 1 < hi
+    · rw [ite_eq_left hg] at h
+      cases h
+    · rw [ite_eq_right hg] at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      have hge0 : ∀ j, s ≤ j → j < hi - 1 → ∀ y,
+          l[j]? = some y → (y.slt pivot) = false := by
+        intro j hsj hjm y hy
+        exact hge j hsj (by omega) y hy
+      exact ⟨rfl, fun p _ => rfl, List.Perm.rfl, hlo_s, by omega,
+        hlt, hge0⟩
+  | succ F ih =>
+    simp only [VecQuicksort.qsPartFwd] at h
+    by_cases hg : i + 1 < hi
+    · rw [ite_eq_left hg] at h
+      have hilt : i < l.length := by omega
+      have hslt : s < l.length := by omega
+      cases hxi : l[i]? with
+      | none =>
+        have hsome : l[i]? = some l[i] :=
+          List.getElem?_eq_getElem hilt
+        rw [hsome] at hxi
+        cases hxi
+      | some x =>
+        cases hsj : l[s]? with
+        | none =>
+          have hsome : l[s]? = some l[s] :=
+            List.getElem?_eq_getElem hslt
+          rw [hsome] at hsj
+          cases hsj
+        | some w =>
+          simp only [hxi, hsj] at h
+          by_cases hsltB : x.slt pivot
+          · have htake : (x.slt pivot) = true := hsltB
+            rw [ite_eq_left hsltB] at h
+            match hr : VecQuicksort.qsPartFwd pivot
+                ((l.set i w).set s x) F hi (i + 1) (s + 1) with
+            | .error e => simp only [hr] at h; cases h
+            | .ok (s'', l'') =>
+              simp only [hr, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl⟩ := h
+              have hlen1 : (((l.set i w).set s x)).length =
+                  l.length := by
+                simp [List.length_set]
+              have hhi_le' : hi ≤ (((l.set i w).set s x)).length := by
+                rw [hlen1]; exact hhi_le
+              have hlt' : ∀ j, lo ≤ j → j < s + 1 → ∀ y,
+                  ((((l.set i w).set s x)))[j]? = some y →
+                  (y.slt pivot) = true := by
+                intro j hlo_j hjs y hy
+                by_cases hjs2 : j = s
+                · have ejs : ((((l.set i w).set s x)))[j]? =
+                      ((((l.set i w).set s x)))[s]? := by
+                    rw [hjs2]
+                  rw [ejs] at hy
+                  have e1 : ((((l.set i w).set s x)))[s]? =
+                      some x :=
+                    List.getElem?_set_self (by
+                      rw [List.length_set]; exact hslt)
+                  rw [e1] at hy
+                  have hxy : y = x := Option.some_inj.mp hy.symm
+                  rw [hxy]
+                  exact htake
+                · have hjs' : j < s := by omega
+                  have e1 : ((((l.set i w).set s x)))[j]? =
+                      ((l.set i w))[j]? :=
+                    List.getElem?_set_ne (show s ≠ j by omega)
+                  have e2 : ((l.set i w))[j]? = l[j]? :=
+                    List.getElem?_set_ne (show i ≠ j by omega)
+                  rw [e1, e2] at hy
+                  exact hlt j hlo_j hjs' y hy
+              have hge' : ∀ j, s + 1 ≤ j → j < i + 1 → ∀ y,
+                  ((((l.set i w).set s x)))[j]? = some y →
+                  (y.slt pivot) = false := by
+                intro j hsjj hji y hy
+                by_cases hji2 : j = i
+                · have eji : ((((l.set i w).set s x)))[j]? =
+                      ((((l.set i w).set s x)))[i]? := by
+                    rw [hji2]
+                  rw [eji] at hy
+                  by_cases hsi : s = i
+                  · omega
+                  · have e1 : ((((l.set i w).set s x)))[i]? =
+                        ((l.set i w))[i]? :=
+                      List.getElem?_set_ne
+                        (show s ≠ i from hsi)
+                    have e2 : ((l.set i w))[i]? = some w :=
+                      List.getElem?_set_self hilt
+                    rw [e1, e2] at hy
+                    have hwy : y = w := Option.some_inj.mp hy.symm
+                    rw [hwy]
+                    exact hge s (by omega) (by omega) w hsj
+                · have hji' : j < i := by omega
+                  have e1n : ((((l.set i w).set s x)))[j]? =
+                      ((l.set i w))[j]? :=
+                    List.getElem?_set_ne (show s ≠ j by omega)
+                  have e2n : ((l.set i w))[j]? = l[j]? :=
+                    List.getElem?_set_ne (show i ≠ j by omega)
+                  rw [e1n, e2n] at hy
+                  exact hge j (by omega) hji' y hy
+              have hperm1 : List.Perm (((l.set i w).set s x)) l :=
+                partitionTake_perm l i s x w hilt hslt
+                  (by omega) hxi hsj
+              have hout1 : ∀ p, p < lo ∨ hi - 1 ≤ p →
+                  ((((l.set i w).set s x)))[p]? = l[p]? := by
+                intro p hp
+                rw [List.getElem?_set_ne (show s ≠ p by omega),
+                  List.getElem?_set_ne (show i ≠ p by omega)]
+              have hcomb := ih (((l.set i w).set s x)) (i + 1)
+                (s + 1) (by omega) (by omega) (by omega)
+                hhi_le' hlt' hge' s'' l'' hr
+              obtain ⟨hlenI, houtI, hpermI, hloI, hhiI, hltI,
+                hgeI⟩ := hcomb
+              exact ⟨hlenI.trans hlen1,
+                fun p hp => (houtI p hp).trans (hout1 p hp),
+                hpermI.trans hperm1, hloI, hhiI, hltI, hgeI⟩
+          · have hskip : (x.slt pivot) = false := by simp [hsltB]
+            rw [ite_eq_right hsltB] at h
+            match hr : VecQuicksort.qsPartFwd pivot l F hi (i + 1) s with
+            | .error e => simp only [hr] at h; cases h
+            | .ok (s'', l'') =>
+              simp only [hr, Except.ok.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl⟩ := h
+              have hge' : ∀ j, s ≤ j → j < i + 1 → ∀ y,
+                  l[j]? = some y → (y.slt pivot) = false := by
+                intro j hsj hji y hy
+                by_cases hji2 : j = i
+                · subst hji2
+                  have hxy : x = y :=
+                    Option.some_inj.mp (hxi.symm.trans hy)
+                  exact hxy ▸ hskip
+                · exact hge j hsj (by omega) y hy
+              exact ih l (i + 1) s hlo_s (by omega)
+                (by omega) hhi_le hlt hge' s'' l'' hr
+    · rw [ite_eq_right hg] at h
+      simp only [Except.ok.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      have hge0 : ∀ j, s ≤ j → j < hi - 1 → ∀ y,
+          l[j]? = some y → (y.slt pivot) = false := by
+        intro j hsjj hjm y hy
+        exact hge j hsjj (by omega) y hy
+      exact ⟨rfl, fun p _ => rfl, List.Perm.rfl, hlo_s, by omega,
+        hlt, hge0⟩
+/-- Quicksort whole-sort joint: a successful forward run preserves
+    length, touches nothing outside `[lo, hi)`, is a permutation, and
+    leaves the window sorted. By fuel induction mirroring the evaluator
+    bridge: the scan reuses `qsPartFwd_joint`, the place is a single
+    transposition (`swap_perm`), and the two recursive windows combine
+    via `sort_combine` with cross-bounds transported through window
+    permutations. -/
+theorem VecQuicksort.vecQuicksortFwd_joint (l : List (BitVec 32)) (F : Nat)
+    (lo hi : Nat) (hlo : lo ≤ hi) (hlen : hi ≤ l.length)
+    (l' : List (BitVec 32))
+    (h : vecQuicksortFwd l F lo hi = .ok l') :
+    l'.length = l.length ∧
+    (∀ p, p < lo ∨ hi ≤ p → l'[p]? = l[p]?) ∧
+    List.Perm l' l ∧
+    SortedSeg l' lo hi := by
+  induction F generalizing l lo hi l' with
+  | zero =>
+    simp only [vecQuicksortFwd] at h
+    by_cases h1 : lo < hi
+    · rw [ite_eq_left h1] at h
+      by_cases h2 : 1 < hi - lo
+      · rw [ite_eq_left h2] at h
+        cases h
+      · rw [ite_eq_right h2] at h
+        simp only [Except.ok.injEq] at h
+        obtain rfl := h
+        refine ⟨rfl, fun p _ => rfl, List.Perm.rfl, ?_⟩
+        intro p q hlo_p hpq hq a b ha hb
+        omega
+    · rw [ite_eq_right h1] at h
+      simp only [Except.ok.injEq] at h
+      obtain rfl := h
+      refine ⟨rfl, fun p _ => rfl, List.Perm.rfl, ?_⟩
+      intro p q hlo_p hpq hq a b ha hb
+      omega
+  | succ F ih =>
+    simp only [vecQuicksortFwd] at h
+    by_cases h1 : lo < hi
+    · rw [ite_eq_left h1] at h
+      by_cases h2 : 1 < hi - lo
+      · rw [ite_eq_left h2] at h
+        match hpivM : l[hi - 1]? with
+        | none => simp only [hpivM] at h; cases h
+        | some pivot =>
+          simp only [hpivM] at h
+          match hpart : qsPartFwd pivot l (F + 1) hi lo lo with
+          | .error e => simp only [hpart] at h; cases h
+          | .ok (s, l1) =>
+            simp only [hpart] at h
+            match hwM : l1[s]? with
+            | none => simp only [hwM] at h; cases h
+            | some w =>
+              simp only [hwM] at h
+              match hpM : l1[hi - 1]? with
+              | none => simp only [hpM] at h; cases h
+              | some _ =>
+                simp only [hpM] at h
+                match hleft : vecQuicksortFwd
+                    ((l1.set (hi - 1) w).set s pivot) F lo s with
+                | .error e => simp only [hleft] at h; cases h
+                | .ok l2 =>
+                  simp only [hleft] at h
+                  match hright : vecQuicksortFwd l2 F (s + 1) hi with
+                  | .error e => simp only [hright] at h; cases h
+                  | .ok l3 =>
+                    simp only [hright, Except.ok.injEq] at h
+                    obtain rfl := h
+                    have hscan := qsPartFwd_joint pivot l (F + 1)
+                      hi lo lo lo (by omega) (by omega) (by omega) hlen
+                      (by intro j hj1 hj2 x hx; omega)
+                      (by intro j hj1 hj2 x hx; omega)
+                      s l1 hpart
+                    obtain ⟨hlen1, hout1, hperm1, hlo_s, hhi_s, hlt1,
+                      hge1⟩ := hscan
+                    have hpiv1 : l1[hi - 1]? = some pivot :=
+                      (hout1 (hi - 1) (Or.inr (by omega))).trans hpivM
+                    have hlen1' : (((l1.set (hi - 1) w).set s pivot)).length =
+                        l.length := by
+                      simp [List.length_set, hlen1]
+                    have hplace_perm : List.Perm
+                        (((l1.set (hi - 1) w).set s pivot)) l1 := by
+                      by_cases heq : s = hi - 1
+                      · subst heq
+                        have h1lt : hi - 1 < l1.length := by omega
+                        rw [show pivot = w from Option.some_inj.mp
+                          (hpiv1.symm.trans hwM)]
+                        exact swap_perm l1 (hi - 1) (hi - 1) w w
+                          h1lt h1lt (by omega) hwM hwM
+                      · have hne : hi - 1 ≠ s :=
+                          fun hh => heq hh.symm
+                        have hcomm : (((l1.set (hi - 1) w).set s pivot)) =
+                            (((l1.set s pivot).set (hi - 1) w)) :=
+                          List.set_comm _ _ hne
+                        rw [hcomm]
+                        exact swap_perm l1 s (hi - 1) w pivot
+                          (by omega) (by omega) hhi_s hwM hpiv1
+                    have hplace_self : (((l1.set (hi - 1) w).set s pivot))[s]? =
+                        some pivot :=
+                      List.getElem?_set_self (by
+                        rw [List.length_set]; omega)
+                    have hplace_out : ∀ p, p < lo ∨ hi ≤ p →
+                        (((l1.set (hi - 1) w).set s pivot))[p]? =
+                          l1[p]? := by
+                      intro p hp
+                      rw [List.getElem?_set_ne (show s ≠ p by omega),
+                        List.getElem?_set_ne (show hi - 1 ≠ p by omega)]
+                    have ihL := ih ((l1.set (hi - 1) w).set s pivot)
+                      lo s hlo_s (by omega) l2 hleft
+                    obtain ⟨hlen2, hout2, hperm2, hsort2⟩ := ihL
+                    have ihR := ih l2 (s + 1) hi (by omega) (by omega)
+                      l3 hright
+                    obtain ⟨hlenR, houtR, hpermR, hsortR⟩ := ihR
+                    have hsortL : SortedSeg l3 lo s :=
+                      sortedSeg_congr l2 l3 lo s hsort2
+                        (fun p hlo_p hps =>
+                          houtR p (Or.inl (by omega : p < s + 1)))
+                    have hpiv3 : l3[s]? = some pivot :=
+                      ((houtR s (Or.inl (Nat.lt_succ_self s))).trans
+                        (hout2 s (Or.inr (by omega : s ≤ s)))).trans
+                        hplace_self
+                    have hlt3 : ∀ j, lo ≤ j → j < s → ∀ x,
+                        l3[j]? = some x → (x.slt pivot) = true := by
+                      intro j hlo_j hjs x hx
+                      have e2 : l2[j]? = some x :=
+                        (houtR j (Or.inl (by omega : j < s + 1))).symm.trans
+                          hx
+                      have hmem2 : x ∈ ((l2.drop lo).take (s - lo)) :=
+                        (mem_window_iff l2 lo s hlo_s x).mpr
+                          ⟨j, hlo_j, hjs, e2⟩
+                      have hwpL : List.Perm ((l2.drop lo).take (s - lo))
+                          ((((l1.set (hi - 1) w).set s pivot).drop lo).take
+                            (s - lo)) :=
+                        window_perm_of_perm_outside _ _ lo s hlo_s
+                          hlen2 hperm2 hout2
+                      have hmem1 : x ∈ ((((l1.set (hi - 1) w).set s pivot).drop
+                          lo).take (s - lo)) := hwpL.mem_iff.mp hmem2
+                      obtain ⟨j', hlo_j', hjs', hx'⟩ :=
+                        (mem_window_iff _ lo s hlo_s x).mp hmem1
+                      have ee : (((l1.set (hi - 1) w).set s pivot))[j']? =
+                          l1[j']? := by
+                        rw [List.getElem?_set_ne (show s ≠ j' by omega),
+                          List.getElem?_set_ne (show hi - 1 ≠ j' by omega)]
+                      exact hlt1 j' hlo_j' hjs' x (ee.symm.trans hx')
+                    have hge3 : ∀ j, s + 1 ≤ j → j < hi → ∀ x,
+                        l3[j]? = some x → (x.slt pivot) = false := by
+                      intro j hlo_j hjs x hx
+                      have hs1hi : s + 1 ≤ hi := by omega
+                      have hmem3 : x ∈ ((l3.drop (s + 1)).take
+                          (hi - (s + 1))) :=
+                        (mem_window_iff l3 (s + 1) hi hs1hi x).mpr
+                          ⟨j, hlo_j, hjs, hx⟩
+                      have hwpR : List.Perm
+                          ((l3.drop (s + 1)).take (hi - (s + 1)))
+                          ((l2.drop (s + 1)).take (hi - (s + 1))) :=
+                        window_perm_of_perm_outside _ _ (s + 1) hi hs1hi
+                          hlenR hpermR houtR
+                      have hmem2 : x ∈ ((l2.drop (s + 1)).take
+                          (hi - (s + 1))) := hwpR.mem_iff.mp hmem3
+                      obtain ⟨j', hlo_j', hjs', hx'⟩ :=
+                        (mem_window_iff l2 (s + 1) hi hs1hi x).mp hmem2
+                      have e1' : (((l1.set (hi - 1) w).set s pivot))[j']? =
+                          some x :=
+                        (hout2 j' (Or.inr (by omega : s ≤ j'))).symm.trans
+                          hx'
+                      by_cases hje : j' = hi - 1
+                      · have ep : (((l1.set (hi - 1) w).set s pivot))[j']? =
+                          some w := by
+                          rw [hje,
+                            List.getElem?_set_ne (show s ≠ hi - 1 by omega),
+                            List.getElem?_set_self (by omega)]
+                        have hxw : x = w :=
+                          Option.some_inj.mp (e1'.symm.trans ep)
+                        rw [hxw]
+                        exact hge1 s (by omega) (by omega) w hwM
+                      · have ee : (((l1.set (hi - 1) w).set s pivot))[j']? =
+                          l1[j']? := by
+                          rw [List.getElem?_set_ne (show s ≠ j' by omega),
+                            List.getElem?_set_ne
+                              (show hi - 1 ≠ j' by omega)]
+                        exact hge1 j' (by omega) (by omega) x
+                          (ee.symm.trans e1')
+                    exact ⟨hlenR.trans (hlen2.trans hlen1'),
+                      fun p hp => ((houtR p (by omega)).trans
+                        (hout2 p (by omega))).trans
+                        ((hplace_out p hp).trans (hout1 p (by omega))),
+                      hpermR.trans
+                        (hperm2.trans (hplace_perm.trans hperm1)),
+                      sort_combine l3 lo s hi pivot hsortL hsortR hpiv3
+                        hlt3 hge3⟩
+      · rw [ite_eq_right h2] at h
+        simp only [Except.ok.injEq] at h
+        obtain rfl := h
+        refine ⟨rfl, fun p _ => rfl, List.Perm.rfl, ?_⟩
+        intro p q hlo_p hpq hq a b ha hb
+        omega
+    · rw [ite_eq_right h1] at h
+      simp only [Except.ok.injEq] at h
+      obtain rfl := h
+      refine ⟨rfl, fun p _ => rfl, List.Perm.rfl, ?_⟩
+      intro p q hlo_p hpq hq a b ha hb
+      omega
+/-- Quicksort closing spec (value level): a successful evaluator run
+    returns a sorted permutation of the input window. The error twin
+    rules out model failure (an evaluator success contradicts the
+    reflected model error), the ok twin reifies the forward result,
+    and `vecQuicksortFwd_joint` supplies length, confinement,
+    permutation, and sortedness. -/
+theorem VecQuicksort.vecQuicksort_spec (F : Nat)
+    (l : List (BitVec 32)) (lo hi : Nat) (loB hiB : BitVec 64)
+    (hloN : loB.toNat = lo) (hhiN : hiB.toNat = hi)
+    (hl64 : l.length < 2 ^ 64)
+    (hlo_le : lo ≤ hi) (hhi_le : hi ≤ l.length)
+    (ret : Value)
+    (h : evalProgFunc vecQuicksortProg F vecQuicksortFunc
+      [.stdVecVal l, .u64 loB, .u64 hiB] = .ok ret) :
+    ∃ l', ret = .stdVecVal l' ∧ l'.length = l.length ∧
+      (∀ p, p < lo ∨ hi ≤ p → l'[p]? = l[p]?) ∧
+      List.Perm l' l ∧ SortedSeg l' lo hi := by
+  match hfwd : vecQuicksortFwd l F lo hi with
+  | .error e =>
+    have heval := evalProgFunc_vecQuicksort_err F l lo hi loB hiB e
+      hloN hhiN hl64 hlo_le hhi_le hfwd
+    rw [heval] at h
+    cases h
+  | .ok l' =>
+    have heval := evalProgFunc_vecQuicksort_ok F l lo hi loB hiB
+      hloN hhiN hl64 hlo_le hhi_le l' hfwd
+    obtain ⟨ret', hev, hret'⟩ := heval
+    rw [h] at hev
+    cases hev
+    have hjoint := vecQuicksortFwd_joint l F lo hi hlo_le hhi_le l' hfwd
+    exact ⟨l', hret', hjoint.1, hjoint.2.1, hjoint.2.2.1, hjoint.2.2.2⟩
