@@ -6,7 +6,8 @@
 End to end, C sources become CIR goldens through a pinned CIR-enabled
 Clang invocation; the Lean driver regenerates emitted files from a single
 source of truth, typechecks them, diffs goldens, fuzzes emitted code
-against native binaries, and runs the rejection suites --- one entry
+against native binaries, checks kernels against published known-answer
+vectors where they exist, and runs the rejection suites --- one entry
 point, parallel tasks, every failure printed, nonzero exit at the end.
 Because the build tool does not track all of the generator's inputs,
 drift checks are enforced by diffing rather than by rebuild avoidance.
@@ -18,8 +19,11 @@ following the same standing convention.
 
 Translations live next to their proofs in per-family homes, with the
 evaluator vocabulary, memory model, transfer chain, validator,
-tactics, and user specs as separate libraries composed by one
-re-export. Tests mirror the pipeline stages: native C corpus, captured
+parser, oracle, tactics, and user specs as separate libraries
+composed by one re-export. The parser extracts signatures and
+operations from CIR text and the oracle carries aliasing verdicts in;
+neither is trusted by the proofs --- both feed the validator, which
+decides admission. Tests mirror the pipeline stages: native C corpus, captured
 CIR, golden pins, differential fuzzers, and the driver roster. Anything
 finer than this paragraph --- file counts, module lists --- belongs to
 Chapter~\ref{ch:progress}, which regenerates it, not to this chapter.

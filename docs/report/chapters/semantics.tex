@@ -43,8 +43,10 @@ in \texttt{docs/SUBSET.md}.
 
 For our example, the compiler produces five functions, and the gate
 reads them the way a bouncer reads IDs --- markers first, details
-second. Eliding allocas, loads, stores, attributes, and location noise,
-the entry says:
+second. Trap and cleanup regions are rejected outright everywhere else
+in the gate; this entry shape carries the explicit exemption, which is
+why the scope below survives into \texttt{CoreIR}. Eliding allocas,
+loads, stores, attributes, and location noise, the entry says:
 
 \begin{verbatim}
 cir.func ... @_Z7acc_twoii(%arg0: !s32i, %arg1: !s32i) -> !s32i {
@@ -99,7 +101,19 @@ explicit sequencing:
 Methods have become functions over an explicit state word
 (\texttt{s0} through \texttt{s3}); the object never appears. That
 erasure, performed once per shape at admission time, is what makes the
-next section possible.
+next section possible. Two smaller erasures of the same kind predate
+it and persist underneath: call composition is a program-level
+\texttt{callRet} step over a DAG of call-free leaves (callers
+evaluate by delegating to whole-function semantics, with errors
+propagating past every later call); growth routines compose a level
+higher, with composers calling proved composers through the depth-n
+program step over frozen leaves, never by inlining; recursion bottoms
+out in fuel too, with the single admitted recursive shape re-entering
+itself on strictly smaller ranges through the same step and exhaustion
+loud; and struct-by-value is a pair of
+pure expressions --- field projection fusing member access with its
+load, and point construction fusing field stores with the return ---
+so neither callers nor small structs need memory to be stated.
 
 \section{Value semantics}
 
@@ -111,9 +125,20 @@ explicit through a \texttt{Result} monad whose errors name the cause
 uninitialized use). Loops are fuel-bounded, with fuel exhaustion reported
 as an assertion failure --- a deliberate incompleteness that can never
 become unsoundness, since the gate admits only loops paired with a length
-bound the fuel covers. This evaluator is the specification against which
-every emitted definition is proved correct, one canonical function at a
-time.
+bound the fuel covers. Loop bodies may exit early --- loop-scoped
+\texttt{break} and \texttt{continue} with escape reported loudly,
+plus early \texttt{return} short-circuiting the sequence ---
+and switches arrive lowered to if-chains over exact constant pins.
+Arithmetic is width-polymorphic over 32- and 64-bit words, with mixed
+widths rejected loudly; sub-32-bit arithmetic is rejected too, because
+the frontend already promotes it through 32-bit casts, so there is no
+native small-width operation left to model. The value story has grown
+past readers: a sequential writer to one address is admitted by
+functionalization --- value in, updated value out --- and a disjoint
+writer pair returns both updated words as a single pair value, the
+writes commuting without sequencing. This evaluator is the
+specification against which every emitted definition is proved correct,
+one canonical function at a time.
 
 Our accumulator's meaning is a three-line definition: start from zero,
 thread two checked additions, read out the result. The constructor,
@@ -152,11 +177,19 @@ disjoint allocation results, length-paired access), and nothing more.
 Per-shape footprint proofs plus a transfer theorem --- memory evaluation
 coincides with value evaluation on admitted functions --- demote the
 oracle verdicts from a soundness argument to a checked cache: CI asserts
-agreement, but the proofs do not depend on belief. Shapes whose
-footprints depend on the caller (conditionally-live writers) are the
-known residue of the purely equational story; they were prototyped
-natively over the memory model and kept out of admission until framing
-is properly supported.
+agreement, but the proofs do not depend on belief. The recursive sort
+is the exception that proves the pattern: its whole-function value
+bridge closes the spec, so it ships no transfer file. The free
+discipline follows the same incompleteness-over-unsoundness rule: a missing free
+is tolerated as a leak, while a double free fails loudly through the
+affine token and the gate. Call composition has a memory twin as well:
+the program layer evaluates callers under the same fuel in both models,
+so the transfer covers entries, not just leaves. Shapes whose
+footprints depend on the caller (conditionally-live writers) were the
+known residue of the purely equational story, prototyped natively over
+the memory model; they are now admitted through an explicit framing
+contract --- scalar stores land on pinned cells under the open contract,
+and the transfer case-splits on the addresses.
 
 Run the accumulator a third time, now with addresses switched on, and
 watch nothing change. Each \texttt{this} pointer resolves through the

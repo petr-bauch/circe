@@ -5,9 +5,13 @@
 
 For every admitted function shape, a correctness theorem states that
 running the emitted Lean definition agrees with evaluating the
-\texttt{CoreIR} function: semantics in, same semantics out. These proofs
+\texttt{CoreIR} function: semantics in, same semantics out, on both
+the ok and the error paths (each shape ships ok- and error-path
+corollaries alongside the main agreement). These proofs
 go by structural or fuel induction, and each new operation earns its
-per-operation lemmas before the gate admits it. The result is that trust
+per-operation lemmas before the gate admits it. Closed entries take a
+shorter path: both sides are closed terms, so kernel-checked evaluation
+decides them, replacing hand-written evaluation proofs. The result is that trust
 in any emitted program reduces to trust in the evaluator plus the
 per-shape proof --- never to the output text itself, which is additionally
 pinned byte-for-byte by golden files.
@@ -20,8 +24,8 @@ actionable code (aliasing, escape, possible out-of-bounds, out-of-subset).
 Around it sit the small disciplines that keep the common case pure:
 verified noalias derivation from CIR text, a read-only sharing discipline
 for recovered readers, and extracted scope/alloca lifetime evidence that
-currently informs admission messages and waits for its first real
-consumer. Each discipline follows the same rule as everything else: admit
+informs admission messages, pins residue reports, and feeds admission
+pins. Each discipline follows the same rule as everything else: admit
 exactly what is understood, reject the rest loudly.
 
 \section{Specifications and tactics}
@@ -29,11 +33,16 @@ exactly what is understood, reject the rest loudly.
 Users prove properties as pure equations over emitted code, in the style
 of the gallery checked into \texttt{Circe.Specs}: sortedness of a fill
 loop, first-match minimality of a search, prefix preservation of a
-reallocation. Proof ergonomics come from a small tactic family. One
+reallocation. The sorting case studies carry the full contracts: each
+admitted sort returns a sorted permutation of its input. Proof
+ergonomics come from a small tactic family. One
 simplifier set bundles checked-operation unfoldings, range bridges, and
 whole-program equations; fuel automation discharges the arithmetic that
 loop proofs otherwise repeat; a selector tactic closes the borrow-return
-lens laws. The emitter also scaffolds unverified spec stubs next to each
+lens laws; a registered step cascade discharges program-evaluation
+steps, with composer fuel splits packed into a single obtain; and a
+fold-end tactic closes the fold-termination script shared across all
+bounded folds. The emitter also scaffolds unverified spec stubs next to each
 generated file --- signature, body reference, edge cases, and a
 property-test entry --- so new programs arrive with their proof
 obligations already sketched. The standing audit result is that everyday
@@ -52,7 +61,8 @@ value, among others. Correctness is total over \texttt{.ok} only:
 failure is excluded by construction, and every way a program could fail
 (overflow, a failed store, a missed guard) is discharged as an explicit
 hypothesis instead --- debt in the open, matching the transfer style,
-never an axiom.
+never an axiom. A program-level twin covers loop bodies with calls,
+which the call-free triple cannot see.
 
 Fuel deserves one honest paragraph, because the loop rule turns on it.
 The evaluator is fuel-bounded, so loop invariants are indexed by fuel:
@@ -71,7 +81,9 @@ evaluator equations, one per statement shape: skip, sequencing with the
 mid-outcome pinned to falling through, consequence for strengthening
 pre-conditions and weakening post-conditions, both conditional branches
 over plain boolean guards, return with its value as the outcome, and
-let/assign for environment extension and update. Storage gets the
+let/assign for environment extension and update. At program level, call
+rules reduce the caller to the callee run, carrying caller memory
+across definitionally. Storage gets the
 interesting rule: a store produces the stored-cell fact and preserves
 one framed cell across the write --- the untouched cell carried through
 as an explicit conjunct. The store index is pinned to zero, which is
