@@ -962,11 +962,24 @@ vs `0x6f75756f`). `DiffChacha20Encrypt` (pipeline + KAT +
 zero/short/long/OOB edges + fuzz vs the corpus-linked native
 driver) + `GoldenChacha20Encrypt` (pipeline-vs-golden
 byte-identical + `_Spec.lean`, `spec_check=true`) ride the driver
-roster. Limitation (K6c): input-OOB proof twins are
-runtime-covered only; the eval model errors exactly where
-setup/xor runs, while the list model rejects short keys up
-front, so they diverge on `(short key, nwords = 0)` (eval returns,
-list says OOB) — the ok-theorem carries `hk8`/`hn3` for agreement.
+roster. K6c (2026-10-24): input-OOB proof twins proved —
+short key (`evalProgFunc_chacha20Encrypt_key_oob`: `setupRest`
+fold induction over the 16 stores, constants peel, first
+missing key word fails; two-path whole-function assembly),
+short nonce (same induction with long-key/counter prefix,
+`setupRest_nonce_oob`), short message
+(`xorLoopMsgFirst_oob`/`xorLoopSFirst_oob` xor-loop inductions
+for the message-read-first and keystream-read-first regimes,
+`tailFrag_msg_oob` shared tail assembly,
+`outerWhile_msg_oob` loop-err/exit-ok sum induction,
+`outerSkipped_msg_oob` loop-skipped path). The documented
+divergence stands and is now fenced: `(short key, nwords = 0)`
+returns without touching the key (empty-message early return),
+so the key/nonce twins carry `nwords ≠ 0`; the message twin
+needs no such side condition (`msg.length < nwords.toNat`
+already excludes `nwords = 0`). Bounds: message within the
+4096-word buffer, fuel covers the remaining words plus the
+block-call depth.
 - Acceptance: 456 jobs TEST-OK, CHECK-OK.
 
 ### N11. First writer admission: sequential reborrows (F1) — DONE (2026-10-12)

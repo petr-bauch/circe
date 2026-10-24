@@ -2509,3 +2509,2244 @@ theorem kat_chacha20_eval :
   rw [hlist] at hkat
   cases hkat
   exact heval
+
+/-! ### K6c: input-OOB legs -/
+
+/-- The 16 setup stores as data: `(store-index, value-expr)`. -/
+def setupStores : List (Nat × CExpr) :=
+  [(0, u32lit 0x61707865), (1, u32lit 0x3320646e),
+   (2, u32lit 0x79622d32), (3, u32lit 0x6b206574),
+   (4, keyAt 0), (5, keyAt 1), (6, keyAt 2), (7, keyAt 3),
+   (8, keyAt 4), (9, keyAt 5), (10, keyAt 6), (11, keyAt 7),
+   (12, .uadd (.var "counter") (.var "b")),
+   (13, nonceAt 0), (14, nonceAt 1), (15, nonceAt 2)]
+
+/-- Right-nested seq of a store list (single store bare, matching
+    `setupFrag`'s shape). -/
+def setupRest : List (Nat × CExpr) → CStmt
+  | [] => .skip
+  | [(i, v)] => stSet i v
+  | (i, v) :: rest => .seq (stSet i v) (setupRest rest)
+
+/-- `setupFrag` is the full store list. -/
+theorem setupFrag_eq_rest : setupFrag = setupRest setupStores := by rfl
+
+/-- Peel one store off a non-empty suffix. -/
+theorem setupRest_cons (i : Nat) (v : CExpr) (rest : List (Nat × CExpr))
+    (hne : rest ≠ []) :
+    setupRest ((i, v) :: rest) = .seq (stSet i v) (setupRest rest) := by
+  cases rest with
+  | nil => exact absurd rfl hne
+  | cons hd tl => rfl
+
+/-- Drop yields head-plus-tail below the length. -/
+theorem drop_cons_of_lt {α : Type} (l : List α) (j : Nat)
+    (hj : j < l.length) :
+    ∃ x, l.drop j = x :: l.drop (j + 1) ∧ l[j]? = some x := by
+  induction l generalizing j with
+  | nil => simp at hj
+  | cons x xs ih =>
+    cases j with
+    | zero => exact ⟨x, by simp, by simp⟩
+    | succ j =>
+      have hj' : j < xs.length := by
+        simp only [List.length_cons] at hj ⊢
+        omega
+      obtain ⟨y, hy, hsome⟩ := ih j hj'
+      exact ⟨y, by simpa using hy, by simpa using hsome⟩
+
+/-- Suffixes below the length are non-empty. -/
+theorem setupDrop_ne_nil (j : Nat) (hj : j < 16) :
+    setupStores.drop j ≠ [] := by
+  intro hnil
+  have hlen := congrArg List.length hnil
+  have h16 : setupStores.length = 16 := by decide
+  simp only [List.length_drop, h16, List.length_nil] at hlen
+  omega
+
+/-- Store descriptors in the constant region. -/
+theorem setupStores_get_const (j : Nat) (hj : j < 4) :
+    ∃ c : Nat, setupStores[j]? = some (j, u32lit c) := by
+  have h4 : j = 0 ∨ j = 1 ∨ j = 2 ∨ j = 3 := by omega
+  rcases h4 with rfl|rfl|rfl|rfl <;> exact ⟨_, rfl⟩
+
+/-- Store descriptors in the key region. -/
+theorem setupStores_get_key (j : Nat) (h4 : 4 ≤ j) (h11 : j ≤ 11) :
+    setupStores[j]? = some (j, keyAt (j - 4)) := by
+  have h8 : j = 4 ∨ j = 5 ∨ j = 6 ∨ j = 7 ∨ j = 8 ∨ j = 9 ∨ j = 10 ∨
+      j = 11 := by omega
+  rcases h8 with rfl|rfl|rfl|rfl|rfl|rfl|rfl|rfl <;> rfl
+
+/-- The counter store descriptor. -/
+theorem setupStores_get_counter :
+    setupStores[12]? =
+      some (12, .uadd (.var "counter") (.var "b")) := rfl
+
+/-- Store descriptors in the nonce region. -/
+theorem setupStores_get_nonce (j : Nat) (h13 : 13 ≤ j) (h15 : j ≤ 15) :
+    setupStores[j]? = some (j, nonceAt (j - 13)) := by
+  have h3 : j = 13 ∨ j = 14 ∨ j = 15 := by omega
+  rcases h3 with rfl|rfl|rfl <;> rfl
+
+/-- `arrSet` success through the `stSet` wrapper (program level). -/
+theorem encStSet (prog : Prog) (F : Nat) (k : Nat) (v : CExpr)
+    (ρ : Env) (xv : BitVec 32) (l : List (BitVec 32)) (w : BitVec 32)
+    (ρ' : Env)
+    (hi : evalExpr (u64lit k) ρ = .ok (.u64 (BitVec.ofNat 64 k)))
+    (hv : evalExpr v ρ = .ok (.u32 xv))
+    (harr : envLookup ρ "st" = some (.arr32 l))
+    (hget : l[(BitVec.ofNat 64 k).toNat]? = some w)
+    (hu : envUpdate ρ "st" (.arr32 (l.set (BitVec.ofNat 64 k).toNat xv)) =
+      some ρ') :
+    evalProgStmt prog F (stSet k v) ρ = .ok (ρ', .fellThrough) := by
+  rw [stSet_eq]
+  exact encArrSet prog F "st" (u64lit k) v ρ (BitVec.ofNat 64 k) xv l w ρ'
+    hi hv harr hget hu
+
+/-- `arrSet` value errors propagate through `stSet` (program level). -/
+theorem encStSet_err (prog : Prog) (F : Nat) (k : Nat) (v : CExpr)
+    (ρ : Env) (e : Panic)
+    (hi : evalExpr (u64lit k) ρ = .ok (.u64 (BitVec.ofNat 64 k)))
+    (hv : evalExpr v ρ = .error e) :
+    evalProgStmt prog F (stSet k v) ρ = .error e := by
+  rw [stSet_eq]
+  simp only [evalProgStmt]
+  exact evalStmtFuel_arrSet_err F "st" _ _ _ _ _ hi hv
+
+/-- One setup store succeeds (uniform step: value eval + `st` bookkeeping). -/
+theorem setupStore_ok (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (k : Nat) (v : CExpr) (xv : BitVec 32)
+    (hk16 : k < 16)
+    (htoNat : (BitVec.ofNat 64 k).toNat = k)
+    (hv : evalExpr v (pre ++ mkEncEnv key counter bB nonce msg nwords bN
+      offN iB stCur) = .ok (.u32 xv))
+    (hst16 : stCur.length = 16) :
+    evalProgStmt prog F (stSet k v)
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+        (stCur.set (BitVec.ofNat 64 k).toNat xv), .fellThrough) := by
+  have hi : evalExpr (u64lit k)
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok (.u64 (BitVec.ofNat 64 k)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have ha := chainLookup pre _ "st" _ hpre (by decide)
+    (mkEncEnv_st key counter bB nonce msg nwords bN offN iB stCur)
+  have hlt : k < stCur.length := by omega
+  have hget : stCur[(BitVec.ofNat 64 k).toNat]? = some stCur[k] := by
+    have hg : stCur[k]? = some stCur[k] := List.getElem?_eq_getElem hlt
+    rw [htoNat]
+    exact hg
+  have hu := chainUpdate pre _ "st" _ _ hpre (by decide)
+    (mkEncEnv_update_st key counter bB nonce msg nwords bN offN iB stCur
+      (stCur.set (BitVec.ofNat 64 k).toNat xv))
+  exact encStSet prog F k v _ xv _ _ _ hi hv ha hget hu
+
+/-- Setup suffix errors on a short key: constants peel, present keys
+    peel, the first missing key fails. -/
+theorem setupRest_key_oob (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (n : Nat) (j : Nat) (hn : 12 - j = n) (hj : j ≤ 11)
+    (hinv : j < 4 ∨ j - 4 ≤ key.length)
+    (hk : key.length < 8)
+    (hst16 : stCur.length = 16) :
+    evalProgStmt prog F (setupRest (setupStores.drop j))
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  induction n generalizing j stCur with
+  | zero => omega
+  | succ n ih =>
+    have hjlt : j < setupStores.length := by
+      have h16 : setupStores.length = 16 := by decide
+      omega
+    obtain ⟨x, hdrop, hsome⟩ := drop_cons_of_lt setupStores j hjlt
+    by_cases hj4 : j < 4
+    · -- Constant store: identify and peel.
+      obtain ⟨c, hget⟩ := setupStores_get_const j hj4
+      rw [hget] at hsome
+      cases hsome
+      have hne := setupDrop_ne_nil (j + 1) (by omega)
+      rw [hdrop, setupRest_cons _ _ _ hne]
+      have hv : evalExpr (u32lit c)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+            stCur) =
+          .ok (.u32 (BitVec.ofNat 32 c)) := by
+        simp only [u32lit, evalExpr_lit, litVal]
+      have hstep := setupStore_ok prog F key counter bB nonce msg nwords
+        bN offN iB stCur pre hpre j (u32lit c) (BitVec.ofNat 32 c)
+        (by omega) (ofNat64_toNat j (by omega)) hv hst16
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep]
+      exact ih
+        (stCur.set (BitVec.ofNat 64 j).toNat (BitVec.ofNat 32 c)) (j + 1)
+        (by omega) (by omega) (by omega)
+        (by rw [List.length_set]; exact hst16)
+    · -- Key region.
+      have h4 : 4 ≤ j := by omega
+      have hget := setupStores_get_key j h4 hj
+      rw [hget] at hsome
+      cases hsome
+      by_cases hhit : j - 4 < key.length
+      · -- Key present: peel and continue.
+        have hkj64 : (BitVec.ofNat 64 (j - 4)).toNat = j - 4 :=
+          ofNat64_toNat _ (by omega)
+        have hgetK : key[j - 4]? = some key[j - 4] :=
+          List.getElem?_eq_getElem hhit
+        have hkey := chainLookup pre _ "key" _ hpre (by decide)
+          (mkEncEnv_key key counter bB nonce msg nwords bN offN iB stCur)
+        have hv : evalExpr (keyAt (j - 4))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.u32 key[j - 4]) := by
+          simp only [evalExpr, keyAt, u64lit, litVal, hkey, hkj64, hgetK]
+        have hstep := setupStore_ok prog F key counter bB nonce msg nwords
+          bN offN iB stCur pre hpre j (keyAt (j - 4)) key[j - 4]
+          (by omega) (ofNat64_toNat j (by omega)) hv hst16
+        have hne := setupDrop_ne_nil (j + 1) (by omega)
+        rw [hdrop, setupRest_cons _ _ _ hne]
+        rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep]
+        exact ih
+          (stCur.set (BitVec.ofNat 64 j).toNat key[j - 4]) (j + 1)
+          (by omega) (by omega) (by omega)
+          (by rw [List.length_set]; exact hst16)
+      · -- First missing key: this store fails.
+        have hmiss : j - 4 = key.length := by omega
+        have hi : evalExpr (u64lit j)
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.u64 (BitVec.ofNat 64 j)) := by
+          simp only [u64lit, evalExpr_lit, litVal]
+        have hkj64 : (BitVec.ofNat 64 (j - 4)).toNat = j - 4 :=
+          ofNat64_toNat _ (by omega)
+        have hgetK : key[j - 4]? = none :=
+          List.getElem?_eq_none (by omega)
+        have hkey := chainLookup pre _ "key" _ hpre (by decide)
+          (mkEncEnv_key key counter bB nonce msg nwords bN offN iB stCur)
+        have hv : evalExpr (keyAt (j - 4))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .error .OOB := by
+          simp only [evalExpr, keyAt, u64lit, litVal, hkey, hkj64, hgetK]
+        have herr := encStSet_err prog F j (keyAt (j - 4)) _ .OOB hi hv
+        have hne := setupDrop_ne_nil (j + 1) (by omega)
+        rw [hdrop, setupRest_cons _ _ _ hne,
+          evalProgStmt_seq_err _ _ _ _ _ _ herr]
+
+/-- Setup fails on a short key (setup-level twin). -/
+theorem setupFrag_oob_key (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hk : key.length < 8)
+    (hst16 : stCur.length = 16) :
+    evalProgStmt prog F setupFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  rw [setupFrag_eq_rest]
+  exact setupRest_key_oob prog F key counter bB nonce msg nwords bN offN iB
+    stCur pre hpre 12 0 rfl (by omega) (Or.inl (by omega)) hk hst16
+
+/-- `i := 0` prefix shared by full iterations and the tail (chain form). -/
+theorem encAssignI0_ok (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail") :
+    evalProgStmt prog F (.assign "i" (u64lit 0))
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) stCur, .fellThrough) := by
+  have hi0eval : evalExpr (u64lit 0)
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok (.u64 (BitVec.ofNat 64 0)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  exact evalProgStmt_assign_ok prog F "i" (u64lit 0) _ _ _ hi0eval
+    (chainUpdate pre _ "i" _ _ hpre (by decide)
+      (mkEncEnv_update_i key counter bB nonce msg nwords bN offN iB
+        (BitVec.ofNat 64 0) stCur))
+
+/-- Function-entry `b := 0` (all three OOB twins). -/
+theorem chacha20EncryptLetB_ok (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64) :
+    evalProgStmt prog F (.let_ "b" (.u 32) (u32lit 0))
+      [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)] =
+      .ok (envExtend [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)] "b" (.u32 (BitVec.ofNat 32 0)),
+        .fellThrough) :=
+  evalProgStmt_let_ok prog F "b" (.u 32) (u32lit 0) _ _
+    (by simp only [u32lit, evalExpr_lit, litVal])
+
+/-- Function-entry `off := 0` (all three OOB twins). -/
+theorem chacha20EncryptLetOff_ok (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64) :
+    evalProgStmt prog F (.let_ "off" (.u 64) (u64lit 0))
+      (envExtend [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)] "b" (.u32 (BitVec.ofNat 32 0))) =
+      .ok (envExtend (envExtend [("key", .arr32 key),
+        ("counter", .u32 counter), ("nonce", .arr32 nonce),
+        ("msg", .arr32 msg), ("nwords", .u64 nwords)]
+        "b" (.u32 (BitVec.ofNat 32 0)))
+        "off" (.u64 (BitVec.ofNat 64 0)), .fellThrough) :=
+  evalProgStmt_let_ok prog F "off" (.u 64) (u64lit 0) _ _
+    (by simp only [u64lit, evalExpr_lit, litVal])
+
+/-- Function-entry `i := 0` (all three OOB twins). -/
+theorem chacha20EncryptLetI_ok (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64) :
+    evalProgStmt prog F (.let_ "i" (.u 64) (u64lit 0))
+      (envExtend (envExtend [("key", .arr32 key),
+        ("counter", .u32 counter), ("nonce", .arr32 nonce),
+        ("msg", .arr32 msg), ("nwords", .u64 nwords)]
+        "b" (.u32 (BitVec.ofNat 32 0)))
+        "off" (.u64 (BitVec.ofNat 64 0))) =
+      .ok (envExtend (envExtend (envExtend [("key", .arr32 key),
+        ("counter", .u32 counter), ("nonce", .arr32 nonce),
+        ("msg", .arr32 msg), ("nwords", .u64 nwords)]
+        "b" (.u32 (BitVec.ofNat 32 0)))
+        "off" (.u64 (BitVec.ofNat 64 0)))
+        "i" (.u64 (BitVec.ofNat 64 0)), .fellThrough) :=
+  evalProgStmt_let_ok prog F "i" (.u 64) (u64lit 0) _ _
+    (by simp only [u64lit, evalExpr_lit, litVal])
+
+/-- Function-entry `st := replicate 16 0` (all three OOB twins). -/
+theorem chacha20EncryptLetSt_ok (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64) :
+    evalProgStmt prog F
+      (.let_ "st" (.array (.u 32) 16) (.lit (.arr32 (List.replicate 16 0))))
+      (envExtend (envExtend (envExtend [("key", .arr32 key),
+        ("counter", .u32 counter), ("nonce", .arr32 nonce),
+        ("msg", .arr32 msg), ("nwords", .u64 nwords)]
+        "b" (.u32 (BitVec.ofNat 32 0)))
+        "off" (.u64 (BitVec.ofNat 64 0)))
+        "i" (.u64 (BitVec.ofNat 64 0))) =
+      .ok (envExtend (envExtend (envExtend (envExtend [("key", .arr32 key),
+        ("counter", .u32 counter), ("nonce", .arr32 nonce),
+        ("msg", .arr32 msg), ("nwords", .u64 nwords)]
+        "b" (.u32 (BitVec.ofNat 32 0)))
+        "off" (.u64 (BitVec.ofNat 64 0)))
+        "i" (.u64 (BitVec.ofNat 64 0)))
+        "st" (.arr32 (List.replicate 16 0)), .fellThrough) :=
+  evalProgStmt_let_ok prog F "st" (.array (.u 32) 16)
+    (.lit (.arr32 (List.replicate 16 0))) _ _
+    (by simp only [evalExpr_lit, litVal])
+
+/-- Whole-function twin: a short key fails with `OOB` (nonzero `nwords`;
+    the empty-message case returns early without touching the key). -/
+theorem evalProgFunc_chacha20Encrypt_key_oob (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (hk : key.length < 8) (hnz : nwords ≠ 0) :
+    evalProgFunc chacha20EncryptProg (F + 1) chacha20EncryptFunc
+      [.arr32 key, .u32 counter, .arr32 nonce, .arr32 msg, .u64 nwords] =
+      .error .OOB := by
+  have hbind : bindArgs chacha20EncryptFunc.args
+      [.arr32 key, .u32 counter, .arr32 nonce, .arr32 msg, .u64 nwords] =
+      some [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)] := rfl
+  have hbody : chacha20EncryptFunc.body =
+      (.seq (.let_ "b" (.u 32) (u32lit 0))
+      (.seq (.let_ "off" (.u 64) (u64lit 0))
+      (.seq (.let_ "i" (.u 64) (u64lit 0))
+      (.seq (.let_ "st" (.array (.u 32) 16)
+                (.lit (.arr32 (List.replicate 16 0))))
+      (.seq outerWhileFrag
+      (.seq (.let_ "ntail" (.u 64)
+                (.usub (.var "nwords") (.var "off")))
+      (.seq (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+            (.return_ (.var "msg"))))))))) := rfl
+  have hletb := chacha20EncryptLetB_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hletoff := chacha20EncryptLetOff_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hleti := chacha20EncryptLetI_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hletst := chacha20EncryptLetSt_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hE4 : (envExtend (envExtend (envExtend (envExtend
+      [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)]
+      "b" (.u32 (BitVec.ofNat 32 0)))
+      "off" (.u64 (BitVec.ofNat 64 0)))
+      "i" (.u64 (BitVec.ofNat 64 0)))
+      "st" (.arr32 (List.replicate 16 0))) =
+      [] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0) := rfl
+  have hst16 : (List.replicate 16 0).length = 16 := List.length_replicate
+  have hnVoff : evalExpr (.var "off")
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 0)) :=
+    evalExpr_var_hit _ _ _
+      (chainLookup [] _ "off" _ (by simp) (by decide)
+        (mkEncEnv_off key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)))
+  have h16v : evalExpr (u64lit 16)
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 16)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have huoff : evalExpr (.uadd (.var "off") (u64lit 16))
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 0 + BitVec.ofNat 64 16)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hnVoff h16v
+  have hnVn : evalExpr (.var "nwords")
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 nwords) :=
+    evalExpr_var_hit _ _ _
+      (chainLookup [] _ "nwords" _ (by simp) (by decide)
+        (mkEncEnv_nwords key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)))
+  have h1v : evalExpr (u64lit 1)
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 1)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have hun : evalExpr (.uadd (.var "nwords") (u64lit 1))
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (nwords + BitVec.ofNat 64 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hnVn h1v
+  have hoff16 : BitVec.ofNat 64 0 + BitVec.ofNat 64 16 =
+      BitVec.ofNat 64 16 := by decide
+  by_cases hguard : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) =
+      true
+  · -- Loop entered: the first full iteration fails in setup.
+    have hguardT : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b true) := by
+      have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+      rwa [hoff16, hguard] at h
+    have hfullA : evalProgStmt chacha20EncryptProg F fullIterFrag
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      have hiter : fullIterFrag =
+          (.seq (.assign "i" (u64lit 0))
+          (.seq setupFrag
+          (.seq blockCallFrag
+          (.seq xorFullFrag
+          (.seq (.assign "b" (.uadd (.var "b") (u32lit 1)))
+            (.assign "off" (.uadd (.var "off")
+              (u64lit 16)))))))) := rfl
+      have hassi0 := encAssignI0_ok chacha20EncryptProg F key counter
+        (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+        (List.replicate 16 0) [] (by simp)
+      have hsetupF := setupFrag_oob_key chacha20EncryptProg F key counter
+        (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+        (List.replicate 16 0) [] (by simp) hk hst16
+      rw [hiter,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+        evalProgStmt_seq_err _ _ _ _ _ _ hsetupF]
+    have hwhileA : evalProgStmt chacha20EncryptProg (F + 1) outerWhileFrag
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      rw [outerWhileFrag, evalProgStmt_while_true _ _ _ _ _ hguardT, hfullA]
+    have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+        chacha20EncryptFunc.body
+        [("key", .arr32 key), ("counter", .u32 counter),
+          ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+          ("nwords", .u64 nwords)] =
+        .error .OOB := by
+      rw [hbody,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4]
+      exact evalProgStmt_seq_err _ _ _ _ _ _ hwhileA
+    simp only [evalProgFunc, hbind, hstmt]
+  · -- Loop skipped: the tail fails in setup (`nwords ≠ 0`).
+    have hfalse : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) =
+        false := by
+      cases e : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) with
+      | true => simp_all
+      | false => rfl
+    have hguardF : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b false) := by
+      have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+      rwa [hoff16, hfalse] at h
+    have hwhileF : evalProgStmt chacha20EncryptProg (F + 1) outerWhileFrag
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg
+          nwords 0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)),
+          .fellThrough) := by
+      rw [outerWhileFrag, evalProgStmt_while_false _ _ _ _ _ hguardF]
+    have hnt := (tailNtail_ok chacha20EncryptProg (F + 1) key counter
+      (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+      (List.replicate 16 0) [] (by simp) (Nat.zero_le _)).1
+    have hne : nwords - BitVec.ofNat 64 0 ≠ BitVec.ofNat 64 0 := by
+      have hsub0 : nwords - BitVec.ofNat 64 0 = nwords := by simp
+      rwa [hsub0]
+    have hbb : (nwords - BitVec.ofNat 64 0 != BitVec.ofNat 64 0) = true :=
+      (bne_iff_ne).mpr hne
+    have hlk : envLookup
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) "ntail" =
+        some (.u64 (nwords - BitVec.ofNat 64 0)) := by
+      simp [List.cons_append, envLookup]
+    have h0 : evalExpr (u64lit 0)
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.u64 (BitVec.ofNat 64 0)) := by
+      simp only [u64lit, evalExpr_lit, litVal]
+    have hgT : evalExpr (.une (.var "ntail") (u64lit 0))
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b true) := by
+      have h := evalExpr_une_u64 (.var "ntail") (u64lit 0) _ _ _
+        (evalExpr_var_hit _ _ _ hlk) h0
+      rwa [hbb] at h
+    have htail : evalProgStmt chacha20EncryptProg (F + 1) tailFrag
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      have htf : tailFrag =
+          (.seq (.assign "i" (u64lit 0))
+          (.seq setupFrag
+          (.seq blockCallFrag xorTailFrag))) := rfl
+      have hpreN : ∀ p ∈ ([("ntail",
+          .u64 (nwords - BitVec.ofNat 64 0))] : Env),
+          p.1 = "s" ∨ p.1 = "ntail" := by
+        intro p hp
+        simp only [List.mem_singleton] at hp
+        rw [hp]; right; rfl
+      have hassi0 := encAssignI0_ok chacha20EncryptProg (F + 1) key counter
+        (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+        (List.replicate 16 0) [("ntail",
+          .u64 (nwords - BitVec.ofNat 64 0))] hpreN
+      have hsetup := setupFrag_oob_key chacha20EncryptProg (F + 1) key
+        counter (BitVec.ofNat 32 0) nonce msg nwords 0 0
+        (BitVec.ofNat 64 0) (List.replicate 16 0) [("ntail",
+          .u64 (nwords - BitVec.ofNat 64 0))] hpreN hk hst16
+      rw [htf,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+        evalProgStmt_seq_err _ _ _ _ _ _ hsetup]
+    have hifT : evalProgStmt chacha20EncryptProg (F + 1)
+        (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      rw [evalProgStmt_if_true _ _ _ _ _ _ hgT]
+      exact htail
+    have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+        chacha20EncryptFunc.body
+        [("key", .arr32 key), ("counter", .u32 counter),
+          ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+          ("nwords", .u64 nwords)] =
+        .error .OOB := by
+      rw [hbody,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hwhileF,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hnt,
+        evalProgStmt_seq_err _ _ _ _ _ _ hifT]
+    simp only [evalProgFunc, hbind, hstmt]
+
+/-- Setup suffix errors on a short nonce: constants, keys (long key),
+    and counter peel; the first missing nonce word fails. -/
+theorem setupRest_nonce_oob (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (n : Nat) (j : Nat) (hn : 16 - j = n) (hj : j ≤ 15)
+    (hinv : j < 13 ∨ j - 13 ≤ nonce.length)
+    (hk8 : 8 ≤ key.length)
+    (hm : nonce.length < 3)
+    (hst16 : stCur.length = 16) :
+    evalProgStmt prog F (setupRest (setupStores.drop j))
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  induction n generalizing j stCur with
+  | zero => omega
+  | succ n ih =>
+    have hjlt : j < setupStores.length := by
+      have h16 : setupStores.length = 16 := by decide
+      omega
+    obtain ⟨x, hdrop, hsome⟩ := drop_cons_of_lt setupStores j hjlt
+    by_cases hj4 : j < 4
+    · -- Constant store: identify and peel.
+      obtain ⟨c, hget⟩ := setupStores_get_const j hj4
+      rw [hget] at hsome
+      cases hsome
+      have hne := setupDrop_ne_nil (j + 1) (by omega)
+      rw [hdrop, setupRest_cons _ _ _ hne]
+      have hv : evalExpr (u32lit c)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+            stCur) =
+          .ok (.u32 (BitVec.ofNat 32 c)) := by
+        simp only [u32lit, evalExpr_lit, litVal]
+      have hstep := setupStore_ok prog F key counter bB nonce msg nwords
+        bN offN iB stCur pre hpre j (u32lit c) (BitVec.ofNat 32 c)
+        (by omega) (ofNat64_toNat j (by omega)) hv hst16
+      rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep]
+      exact ih
+        (stCur.set (BitVec.ofNat 64 j).toNat (BitVec.ofNat 32 c)) (j + 1)
+        (by omega) (by omega) (by omega)
+        (by rw [List.length_set]; exact hst16)
+    · by_cases hj12 : j < 12
+      · -- Key word: present by the long-key hypothesis.
+        have h4 : 4 ≤ j := by omega
+        have hget := setupStores_get_key j h4 (by omega)
+        rw [hget] at hsome
+        cases hsome
+        have hhit : j - 4 < key.length := by omega
+        have hkj64 : (BitVec.ofNat 64 (j - 4)).toNat = j - 4 :=
+          ofNat64_toNat _ (by omega)
+        have hgetK : key[j - 4]? = some key[j - 4] :=
+          List.getElem?_eq_getElem hhit
+        have hkey := chainLookup pre _ "key" _ hpre (by decide)
+          (mkEncEnv_key key counter bB nonce msg nwords bN offN iB stCur)
+        have hv : evalExpr (keyAt (j - 4))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.u32 key[j - 4]) := by
+          simp only [evalExpr, keyAt, u64lit, litVal, hkey, hkj64, hgetK]
+        have hstep := setupStore_ok prog F key counter bB nonce msg nwords
+          bN offN iB stCur pre hpre j (keyAt (j - 4)) key[j - 4]
+          (by omega) (ofNat64_toNat j (by omega)) hv hst16
+        have hne := setupDrop_ne_nil (j + 1) (by omega)
+        rw [hdrop, setupRest_cons _ _ _ hne]
+        rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep]
+        exact ih
+          (stCur.set (BitVec.ofNat 64 j).toNat key[j - 4]) (j + 1)
+          (by omega) (by omega) (by omega)
+          (by rw [List.length_set]; exact hst16)
+      · by_cases hj13 : j < 13
+        · -- Counter word: `counter + b` always evaluates.
+          have hj12 : j = 12 := by omega
+          subst hj12
+          have hget := setupStores_get_counter
+          rw [hget] at hsome
+          cases hsome
+          have hcounter := chainLookup pre _ "counter" _ hpre (by decide)
+            (mkEncEnv_counter key counter bB nonce msg nwords bN offN iB
+              stCur)
+          have hb := chainLookup pre _ "b" _ hpre (by decide)
+            (mkEncEnv_b key counter bB nonce msg nwords bN offN iB stCur)
+          have hv : evalExpr (.uadd (.var "counter") (.var "b"))
+              (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+                stCur) =
+              .ok (.u32 (counter + bB)) := by
+            simp only [evalExpr, hcounter, hb]
+          have hstep := setupStore_ok prog F key counter bB nonce msg
+            nwords bN offN iB stCur pre hpre 12
+            (.uadd (.var "counter") (.var "b")) (counter + bB)
+            (by omega) (ofNat64_toNat 12 (by omega)) hv hst16
+          have hne := setupDrop_ne_nil (12 + 1) (by omega)
+          rw [hdrop, setupRest_cons _ _ _ hne]
+          rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep]
+          exact ih
+            (stCur.set (BitVec.ofNat 64 12).toNat (counter + bB)) (12 + 1)
+            (by omega) (by omega) (by omega)
+            (by rw [List.length_set]; exact hst16)
+        · -- Nonce region.
+          have h13 : 13 ≤ j := by omega
+          have hget := setupStores_get_nonce j h13 hj
+          rw [hget] at hsome
+          cases hsome
+          by_cases hhit : j - 13 < nonce.length
+          · -- Nonce word present: peel and continue.
+            have hnj64 : (BitVec.ofNat 64 (j - 13)).toNat = j - 13 :=
+              ofNat64_toNat _ (by omega)
+            have hgetN : nonce[j - 13]? = some nonce[j - 13] :=
+              List.getElem?_eq_getElem hhit
+            have hnonce := chainLookup pre _ "nonce" _ hpre (by decide)
+              (mkEncEnv_nonce key counter bB nonce msg nwords bN offN iB
+                stCur)
+            have hv : evalExpr (nonceAt (j - 13))
+                (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+                  iB stCur) =
+                .ok (.u32 nonce[j - 13]) := by
+              simp only [evalExpr, nonceAt, u64lit, litVal, hnonce, hnj64,
+                hgetN]
+            have hstep := setupStore_ok prog F key counter bB nonce msg
+              nwords bN offN iB stCur pre hpre j (nonceAt (j - 13))
+              nonce[j - 13] (by omega) (ofNat64_toNat j (by omega)) hv
+              hst16
+            have hne := setupDrop_ne_nil (j + 1) (by omega)
+            rw [hdrop, setupRest_cons _ _ _ hne]
+            rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hstep]
+            exact ih
+              (stCur.set (BitVec.ofNat 64 j).toNat nonce[j - 13]) (j + 1)
+              (by omega) (by omega) (by omega)
+              (by rw [List.length_set]; exact hst16)
+          · -- First missing nonce word: this store fails.
+            have hmiss : j - 13 = nonce.length := by omega
+            have hi : evalExpr (u64lit j)
+                (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+                  iB stCur) =
+                .ok (.u64 (BitVec.ofNat 64 j)) := by
+              simp only [u64lit, evalExpr_lit, litVal]
+            have hnj64 : (BitVec.ofNat 64 (j - 13)).toNat = j - 13 :=
+              ofNat64_toNat _ (by omega)
+            have hgetN : nonce[j - 13]? = none :=
+              List.getElem?_eq_none (by omega)
+            have hnonce := chainLookup pre _ "nonce" _ hpre (by decide)
+              (mkEncEnv_nonce key counter bB nonce msg nwords bN offN iB
+                stCur)
+            have hv : evalExpr (nonceAt (j - 13))
+                (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+                  iB stCur) =
+                .error .OOB := by
+              simp only [evalExpr, nonceAt, u64lit, litVal, hnonce, hnj64,
+                hgetN]
+            have herr := encStSet_err prog F j (nonceAt (j - 13)) _ .OOB
+              hi hv
+            by_cases hj15 : j + 1 < 16
+            · have hne := setupDrop_ne_nil (j + 1) hj15
+              rw [hdrop, setupRest_cons _ _ _ hne,
+                evalProgStmt_seq_err _ _ _ _ _ _ herr]
+            · have hj15eq : j = 15 := by omega
+              have hdrop16 : setupStores.drop (j + 1) = [] := by
+                rw [hj15eq]; rfl
+              rw [hdrop, hdrop16]
+              exact herr
+
+
+/-- Setup fails on a short nonce (setup-level twin). -/
+theorem setupFrag_oob_nonce (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hk8 : 8 ≤ key.length)
+    (hm : nonce.length < 3)
+    (hst16 : stCur.length = 16) :
+    evalProgStmt prog F setupFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  rw [setupFrag_eq_rest]
+  exact setupRest_nonce_oob prog F key counter bB nonce msg nwords bN offN
+    iB stCur pre hpre 16 0 rfl (by omega) (Or.inl (by omega)) hk8 hm hst16
+
+
+/-- Whole-function twin: a short nonce fails with `OOB` (nonzero `nwords`;
+    the empty-message case returns early without touching the nonce). -/
+
+theorem evalProgFunc_chacha20Encrypt_nonce_oob (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (hk8 : 8 ≤ key.length) (hm : nonce.length < 3) (hnz : nwords ≠ 0) :
+    evalProgFunc chacha20EncryptProg (F + 1) chacha20EncryptFunc
+      [.arr32 key, .u32 counter, .arr32 nonce, .arr32 msg, .u64 nwords] =
+      .error .OOB := by
+  have hbind : bindArgs chacha20EncryptFunc.args
+      [.arr32 key, .u32 counter, .arr32 nonce, .arr32 msg, .u64 nwords] =
+      some [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)] := rfl
+  have hbody : chacha20EncryptFunc.body =
+      (.seq (.let_ "b" (.u 32) (u32lit 0))
+      (.seq (.let_ "off" (.u 64) (u64lit 0))
+      (.seq (.let_ "i" (.u 64) (u64lit 0))
+      (.seq (.let_ "st" (.array (.u 32) 16)
+                (.lit (.arr32 (List.replicate 16 0))))
+      (.seq outerWhileFrag
+      (.seq (.let_ "ntail" (.u 64)
+                (.usub (.var "nwords") (.var "off")))
+      (.seq (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+            (.return_ (.var "msg"))))))))) := rfl
+  have hletb := chacha20EncryptLetB_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hletoff := chacha20EncryptLetOff_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hleti := chacha20EncryptLetI_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hletst := chacha20EncryptLetSt_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hE4 : (envExtend (envExtend (envExtend (envExtend
+      [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)]
+      "b" (.u32 (BitVec.ofNat 32 0)))
+      "off" (.u64 (BitVec.ofNat 64 0)))
+      "i" (.u64 (BitVec.ofNat 64 0)))
+      "st" (.arr32 (List.replicate 16 0))) =
+      [] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0) := rfl
+  have hst16 : (List.replicate 16 0).length = 16 := List.length_replicate
+  have hnVoff : evalExpr (.var "off")
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 0)) :=
+    evalExpr_var_hit _ _ _
+      (chainLookup [] _ "off" _ (by simp) (by decide)
+        (mkEncEnv_off key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)))
+  have h16v : evalExpr (u64lit 16)
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 16)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have huoff : evalExpr (.uadd (.var "off") (u64lit 16))
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 0 + BitVec.ofNat 64 16)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hnVoff h16v
+  have hnVn : evalExpr (.var "nwords")
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 nwords) :=
+    evalExpr_var_hit _ _ _
+      (chainLookup [] _ "nwords" _ (by simp) (by decide)
+        (mkEncEnv_nwords key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)))
+  have h1v : evalExpr (u64lit 1)
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 1)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have hun : evalExpr (.uadd (.var "nwords") (u64lit 1))
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (nwords + BitVec.ofNat 64 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hnVn h1v
+  have hoff16 : BitVec.ofNat 64 0 + BitVec.ofNat 64 16 =
+      BitVec.ofNat 64 16 := by decide
+  by_cases hguard : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) =
+      true
+  · -- Loop entered: the first full iteration fails in setup.
+    have hguardT : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b true) := by
+      have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+      rwa [hoff16, hguard] at h
+    have hfullA : evalProgStmt chacha20EncryptProg F fullIterFrag
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      have hiter : fullIterFrag =
+          (.seq (.assign "i" (u64lit 0))
+          (.seq setupFrag
+          (.seq blockCallFrag
+          (.seq xorFullFrag
+          (.seq (.assign "b" (.uadd (.var "b") (u32lit 1)))
+            (.assign "off" (.uadd (.var "off")
+              (u64lit 16)))))))) := rfl
+      have hassi0 := encAssignI0_ok chacha20EncryptProg F key counter
+        (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+        (List.replicate 16 0) [] (by simp)
+      have hsetupF := setupFrag_oob_nonce chacha20EncryptProg F key counter
+        (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+        (List.replicate 16 0) [] (by simp) hk8 hm hst16
+      rw [hiter,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+        evalProgStmt_seq_err _ _ _ _ _ _ hsetupF]
+    have hwhileA : evalProgStmt chacha20EncryptProg (F + 1) outerWhileFrag
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      rw [outerWhileFrag, evalProgStmt_while_true _ _ _ _ _ hguardT, hfullA]
+    have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+        chacha20EncryptFunc.body
+        [("key", .arr32 key), ("counter", .u32 counter),
+          ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+          ("nwords", .u64 nwords)] =
+        .error .OOB := by
+      rw [hbody,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4]
+      exact evalProgStmt_seq_err _ _ _ _ _ _ hwhileA
+    simp only [evalProgFunc, hbind, hstmt]
+  · -- Loop skipped: the tail fails in setup (`nwords ≠ 0`).
+    have hfalse : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) =
+        false := by
+      cases e : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) with
+      | true => simp_all
+      | false => rfl
+    have hguardF : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b false) := by
+      have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+      rwa [hoff16, hfalse] at h
+    have hwhileF : evalProgStmt chacha20EncryptProg (F + 1) outerWhileFrag
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg
+          nwords 0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)),
+          .fellThrough) := by
+      rw [outerWhileFrag, evalProgStmt_while_false _ _ _ _ _ hguardF]
+    have hnt := (tailNtail_ok chacha20EncryptProg (F + 1) key counter
+      (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+      (List.replicate 16 0) [] (by simp) (Nat.zero_le _)).1
+    have hne : nwords - BitVec.ofNat 64 0 ≠ BitVec.ofNat 64 0 := by
+      have hsub0 : nwords - BitVec.ofNat 64 0 = nwords := by simp
+      rwa [hsub0]
+    have hbb : (nwords - BitVec.ofNat 64 0 != BitVec.ofNat 64 0) = true :=
+      (bne_iff_ne).mpr hne
+    have hlk : envLookup
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) "ntail" =
+        some (.u64 (nwords - BitVec.ofNat 64 0)) := by
+      simp [List.cons_append, envLookup]
+    have h0 : evalExpr (u64lit 0)
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.u64 (BitVec.ofNat 64 0)) := by
+      simp only [u64lit, evalExpr_lit, litVal]
+    have hgT : evalExpr (.une (.var "ntail") (u64lit 0))
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b true) := by
+      have h := evalExpr_une_u64 (.var "ntail") (u64lit 0) _ _ _
+        (evalExpr_var_hit _ _ _ hlk) h0
+      rwa [hbb] at h
+    have htail : evalProgStmt chacha20EncryptProg (F + 1) tailFrag
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      have htf : tailFrag =
+          (.seq (.assign "i" (u64lit 0))
+          (.seq setupFrag
+          (.seq blockCallFrag xorTailFrag))) := rfl
+      have hpreN : ∀ p ∈ ([("ntail",
+          .u64 (nwords - BitVec.ofNat 64 0))] : Env),
+          p.1 = "s" ∨ p.1 = "ntail" := by
+        intro p hp
+        simp only [List.mem_singleton] at hp
+        rw [hp]; right; rfl
+      have hassi0 := encAssignI0_ok chacha20EncryptProg (F + 1) key counter
+        (BitVec.ofNat 32 0) nonce msg nwords 0 0 (BitVec.ofNat 64 0)
+        (List.replicate 16 0) [("ntail",
+          .u64 (nwords - BitVec.ofNat 64 0))] hpreN
+      have hsetup := setupFrag_oob_nonce chacha20EncryptProg (F + 1) key
+        counter (BitVec.ofNat 32 0) nonce msg nwords 0 0
+        (BitVec.ofNat 64 0) (List.replicate 16 0) [("ntail",
+          .u64 (nwords - BitVec.ofNat 64 0))] hpreN hk8 hm hst16
+      rw [htf,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+        evalProgStmt_seq_err _ _ _ _ _ _ hsetup]
+    have hifT : evalProgStmt chacha20EncryptProg (F + 1)
+        (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+        ((("ntail", .u64 (nwords - BitVec.ofNat 64 0)) :: []) ++
+          mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+            0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .error .OOB := by
+      rw [evalProgStmt_if_true _ _ _ _ _ _ hgT]
+      exact htail
+    have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+        chacha20EncryptFunc.body
+        [("key", .arr32 key), ("counter", .u32 counter),
+          ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+          ("nwords", .u64 nwords)] =
+        .error .OOB := by
+      rw [hbody,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hwhileF,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hnt,
+        evalProgStmt_seq_err _ _ _ _ _ _ hifT]
+    simp only [evalProgFunc, hbind, hstmt]
+/-- `bxor` propagates a left error. -/
+theorem evalExpr_bxor_err_l (a b : CExpr) (ρ : Env) (e : Panic)
+    (ha : evalExpr a ρ = .error e) :
+    evalExpr (.bxor a b) ρ = .error e := by
+  simp [evalExpr, ha]
+
+/-- `bxor` propagates a right error past an ok left value. -/
+theorem evalExpr_bxor_err_r (a b : CExpr) (ρ : Env) (x : BitVec 32)
+    (e : Panic)
+    (ha : evalExpr a ρ = .ok (.u32 x))
+    (hb : evalExpr b ρ = .error e) :
+    evalExpr (.bxor a b) ρ = .error e := by
+  simp [evalExpr, ha, hb]
+
+/-- The xor loop errors at the first out-of-bounds message read: prefix
+    iterations succeed while `off + i` stays in bounds; the read at
+    `msg.length` fails. Fuel covers one iteration per remaining word. -/
+theorem xorLoopMsgFirst_oob (prog : Prog) (F : Nat)
+    (s : List (BitVec 32)) (key : List (BitVec 32))
+    (counter bB : BitVec 32) (nonce msg : List (BitVec 32))
+    (nwords : BitVec 64) (bN offN : Nat) (iB : BitVec 64)
+    (i N : Nat) (hi : iB.toNat = i)
+    (st : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hsV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "s" = some (.arr32 s))
+    (bnd : CExpr) (loop : CStmt)
+    (hloop : loop = .while_ (.ult (.var "i") bnd) xorBodyFrag)
+    (hbnd : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      evalExpr bnd
+        (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st) =
+        .ok (.u64 (BitVec.ofNat 64 N)))
+    (hN64 : N < 2 ^ 64)
+    (n : Nat) (hn : msg.length - offN = i + n)
+    (hle : offN ≤ msg.length)
+    (hiN : i < N)
+    (hoob : msg.length < offN + N)
+    (hbound16 : msg.length ≤ offN + 16)
+    (hslen : s.length = 16)
+    (hfit : offN + N < 2 ^ 64)
+    (hF : n + 1 ≤ F) :
+    evalProgStmt prog F loop
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+      .error .OOB := by
+  induction n generalizing iB msg i F with
+  | zero =>
+    cases F with
+    | zero => omega
+    | succ F' =>
+      have hiV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "i" =
+          some (.u64 iB) :=
+        chainLookup pre _ "i" _ hpre (by decide)
+          (mkEncEnv_i key counter bB nonce msg nwords bN offN iB st)
+      have hivar : evalExpr (.var "i")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 iB) :=
+        evalExpr_var_hit _ _ _ hiV
+      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
+      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
+        rw [BitVec.ult_eq_decide, hi, hN]
+        exact decide_eq_true (by omega)
+      have hguardT : evalExpr (.ult (.var "i") bnd)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.b true) := by
+        have h := evalExpr_ult_u64 (.var "i") bnd
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
+        rwa [htrue] at h
+      have hoffV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "off" =
+          some (.u64 (BitVec.ofNat 64 offN)) :=
+        chainLookup pre _ "off" _ hpre (by decide)
+          (mkEncEnv_off key counter bB nonce msg nwords bN offN iB st)
+      have hovar : evalExpr (.var "off")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 (BitVec.ofNat 64 offN)) :=
+        evalExpr_var_hit _ _ _ hoffV
+      have hmsgV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "msg" =
+          some (.arr32 msg) :=
+        chainLookup pre _ "msg" _ hpre (by decide)
+          (mkEncEnv_msg key counter bB nonce msg nwords bN offN iB st)
+      have hoffN : (BitVec.ofNat 64 offN).toNat = offN :=
+        ofNat64_toNat offN (by omega)
+      have haddN : (BitVec.ofNat 64 offN + iB).toNat = offN + i := by
+        rw [u64add_toNat_exact _ _ (by rw [hoffN, hi]; omega), hoffN, hi]
+      have hidx : evalExpr (.uadd (.var "off") (.var "i"))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 (BitVec.ofNat 64 offN + iB)) :=
+        evalExpr_uadd_u64 _ _ _ _ _ hovar hivar
+      have hlen : offN + i = msg.length := by omega
+      have hget : msg[(BitVec.ofNat 64 offN + iB).toNat]? = none := by
+        rw [haddN, hlen]
+        exact List.getElem?_eq_none (by omega)
+      have hmv : evalExpr
+          (.idxu "msg" (.uadd (.var "off") (.var "i")))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB := by
+        simp only [evalExpr, hoffV, hiV, hmsgV, hget]
+      have hxv : evalExpr
+          (.bxor (.idxu "msg" (.uadd (.var "off") (.var "i")))
+            (.idxu "s" (.var "i")))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB :=
+        evalExpr_bxor_err_l _ _ _ _ hmv
+      have harr : evalProgStmt prog F'
+          (.arrSet "msg" (.uadd (.var "off") (.var "i"))
+            (.bxor (.idxu "msg" (.uadd (.var "off") (.var "i")))
+              (.idxu "s" (.var "i"))))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB := by
+        simp only [evalProgStmt]
+        exact evalStmtFuel_arrSet_err F' "msg" _ _ _ _ _ hidx hxv
+      have hbody : xorBodyFrag =
+          (.seq (.arrSet "msg" (.uadd (.var "off") (.var "i"))
+            (.bxor (.idxu "msg" (.uadd (.var "off") (.var "i")))
+              (.idxu "s" (.var "i"))))
+            (.assign "i" (.uadd (.var "i") (u64lit 1)))) := rfl
+      have herr : evalProgStmt prog F' xorBodyFrag
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB := by
+        rw [hbody, evalProgStmt_seq_err _ _ _ _ _ _ harr]
+      rw [hloop, evalProgStmt_while_true _ _ _ _ _ hguardT, herr]
+  | succ n ih =>
+    cases F with
+    | zero => omega
+    | succ F' =>
+      have hiV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "i" =
+          some (.u64 iB) :=
+        chainLookup pre _ "i" _ hpre (by decide)
+          (mkEncEnv_i key counter bB nonce msg nwords bN offN iB st)
+      have hivar : evalExpr (.var "i")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 iB) :=
+        evalExpr_var_hit _ _ _ hiV
+      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
+      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
+        rw [BitVec.ult_eq_decide, hi, hN]
+        exact decide_eq_true (by omega)
+      have hguardT : evalExpr (.ult (.var "i") bnd)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.b true) := by
+        have h := evalExpr_ult_u64 (.var "i") bnd
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
+        rwa [htrue] at h
+      have hhit : offN + i < msg.length := by omega
+      obtain ⟨w, hgetm⟩ : ∃ w, msg[offN + i]? = some w :=
+        ⟨_, List.getElem?_eq_getElem (by omega)⟩
+      obtain ⟨k, hgets⟩ : ∃ k, s[i]? = some k :=
+        ⟨_, List.getElem?_eq_getElem (by omega)⟩
+      have hadd : offN + i < 2 ^ 64 := by omega
+      have hbody := xorBodyFrag_correct prog F' s key counter bB nonce msg
+        nwords bN offN iB i hi st w k hgetm hgets hadd pre hpre hsV
+      have hwhile : evalProgStmt prog (F' + 1) loop
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          evalProgStmt prog F' loop
+            (pre ++ mkEncEnv key counter bB nonce
+              (msg.set (offN + i) (w ^^^ k)) nwords bN offN
+              (iB + BitVec.ofNat 64 1) st) := by
+        simp only [hloop,
+          evalProgStmt_while_true prog F' _ _ _ hguardT, hbody]
+      rw [hwhile]
+      have hi1 : (BitVec.ofNat 64 1).toNat = 1 :=
+        ofNat64_toNat 1 (by decide)
+      have hiB1 : (iB + BitVec.ofNat 64 1).toNat = i + 1 := by
+        have hb : iB.toNat + (BitVec.ofNat 64 1).toNat < 2 ^ 64 := by
+          rw [hi, hi1]; omega
+        rw [u64add_toNat_exact _ _ hb, hi, hi1]
+      exact ih (iB := iB + BitVec.ofNat 64 1)
+        (msg := msg.set (offN + i) (w ^^^ k)) (i := i + 1) (F := F')
+        (hn := by rw [List.length_set]; omega)
+        (hle := by rw [List.length_set]; omega)
+        (hi := hiB1) (hiN := by omega)
+        (hoob := by rw [List.length_set]; omega)
+        (hbound16 := by rw [List.length_set]; omega)
+        (hF := by omega)
+
+/-- The xor loop errors at the first out-of-bounds keystream read: with a
+    long message but a short bound the read `s[16]` fails. Fuel covers
+    one iteration per remaining word. -/
+theorem xorLoopSFirst_oob (prog : Prog) (F : Nat)
+    (s : List (BitVec 32)) (key : List (BitVec 32))
+    (counter bB : BitVec 32) (nonce msg : List (BitVec 32))
+    (nwords : BitVec 64) (bN offN : Nat) (iB : BitVec 64)
+    (i N : Nat) (hi : iB.toNat = i)
+    (st : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hsV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "s" = some (.arr32 s))
+    (bnd : CExpr) (loop : CStmt)
+    (hloop : loop = .while_ (.ult (.var "i") bnd) xorBodyFrag)
+    (hbnd : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      evalExpr bnd
+        (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st) =
+        .ok (.u64 (BitVec.ofNat 64 N)))
+    (hN64 : N < 2 ^ 64)
+    (n : Nat) (hn : 16 - i = n)
+    (hiN : i < N)
+    (hmsg16 : offN + 16 < msg.length)
+    (hi16le : i ≤ 16)
+    (h16N : 16 < N)
+    (hslen : s.length = 16)
+    (hfit : offN + N < 2 ^ 64)
+    (hF : n + 1 ≤ F) :
+    evalProgStmt prog F loop
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+      .error .OOB := by
+  induction n generalizing iB msg i F with
+  | zero =>
+    cases F with
+    | zero => omega
+    | succ F' =>
+      have hiV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "i" =
+          some (.u64 iB) :=
+        chainLookup pre _ "i" _ hpre (by decide)
+          (mkEncEnv_i key counter bB nonce msg nwords bN offN iB st)
+      have hivar : evalExpr (.var "i")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 iB) :=
+        evalExpr_var_hit _ _ _ hiV
+      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
+      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
+        rw [BitVec.ult_eq_decide, hi, hN]
+        exact decide_eq_true (by omega)
+      have hguardT : evalExpr (.ult (.var "i") bnd)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.b true) := by
+        have h := evalExpr_ult_u64 (.var "i") bnd
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
+        rwa [htrue] at h
+      have hi16 : i = 16 := by omega
+      have hoffV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "off" =
+          some (.u64 (BitVec.ofNat 64 offN)) :=
+        chainLookup pre _ "off" _ hpre (by decide)
+          (mkEncEnv_off key counter bB nonce msg nwords bN offN iB st)
+      have hmsgV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "msg" =
+          some (.arr32 msg) :=
+        chainLookup pre _ "msg" _ hpre (by decide)
+          (mkEncEnv_msg key counter bB nonce msg nwords bN offN iB st)
+      have hsVuse : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "s" =
+          some (.arr32 s) := hsV msg iB
+      have hoffN : (BitVec.ofNat 64 offN).toNat = offN :=
+        ofNat64_toNat offN (by omega)
+      have haddN : (BitVec.ofNat 64 offN + iB).toNat = offN + i := by
+        rw [u64add_toNat_exact _ _ (by rw [hoffN, hi]; omega), hoffN, hi]
+      have hidx : evalExpr (.uadd (.var "off") (.var "i"))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 (BitVec.ofNat 64 offN + iB)) :=
+        evalExpr_uadd_u64 _ _ _ _ _
+          (evalExpr_var_hit _ _ _ hoffV) hivar
+      have hgetM : msg[(BitVec.ofNat 64 offN + iB).toNat]? =
+          some msg[(BitVec.ofNat 64 offN + iB).toNat] :=
+        List.getElem?_eq_getElem (by rw [haddN]; omega)
+      have hmv : evalExpr
+          (.idxu "msg" (.uadd (.var "off") (.var "i")))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u32 msg[(BitVec.ofNat 64 offN + iB).toNat]) :=
+        evalExpr_idxu_ok _ _ _ _ _ _ hmsgV hidx hgetM
+      have hgetS : s[iB.toNat]? = none := by
+        rw [hi, hi16]
+        exact List.getElem?_eq_none (by omega)
+      have hsv : evalExpr (.idxu "s" (.var "i"))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB := by
+        simp only [evalExpr, hsVuse, hiV, hgetS]
+      have hxv : evalExpr
+          (.bxor (.idxu "msg" (.uadd (.var "off") (.var "i")))
+            (.idxu "s" (.var "i")))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB :=
+        evalExpr_bxor_err_r _ _ _ _ _ hmv hsv
+      have harr : evalProgStmt prog F'
+          (.arrSet "msg" (.uadd (.var "off") (.var "i"))
+            (.bxor (.idxu "msg" (.uadd (.var "off") (.var "i")))
+              (.idxu "s" (.var "i"))))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB := by
+        simp only [evalProgStmt]
+        exact evalStmtFuel_arrSet_err F' "msg" _ _ _ _ _ hidx hxv
+      have hbody : xorBodyFrag =
+          (.seq (.arrSet "msg" (.uadd (.var "off") (.var "i"))
+            (.bxor (.idxu "msg" (.uadd (.var "off") (.var "i")))
+              (.idxu "s" (.var "i"))))
+            (.assign "i" (.uadd (.var "i") (u64lit 1)))) := rfl
+      have herr : evalProgStmt prog F' xorBodyFrag
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .error .OOB := by
+        rw [hbody, evalProgStmt_seq_err _ _ _ _ _ _ harr]
+      rw [hloop, evalProgStmt_while_true _ _ _ _ _ hguardT, herr]
+  | succ n ih =>
+    cases F with
+    | zero => omega
+    | succ F' =>
+      have hiV : envLookup
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          "i" =
+          some (.u64 iB) :=
+        chainLookup pre _ "i" _ hpre (by decide)
+          (mkEncEnv_i key counter bB nonce msg nwords bN offN iB st)
+      have hivar : evalExpr (.var "i")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.u64 iB) :=
+        evalExpr_var_hit _ _ _ hiV
+      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
+      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
+        rw [BitVec.ult_eq_decide, hi, hN]
+        exact decide_eq_true (by omega)
+      have hguardT : evalExpr (.ult (.var "i") bnd)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          .ok (.b true) := by
+        have h := evalExpr_ult_u64 (.var "i") bnd
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
+          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
+        rwa [htrue] at h
+      obtain ⟨w, hgetm⟩ : ∃ w, msg[offN + i]? = some w :=
+        ⟨_, List.getElem?_eq_getElem (by omega)⟩
+      obtain ⟨k, hgets⟩ : ∃ k, s[i]? = some k :=
+        ⟨_, List.getElem?_eq_getElem (by omega)⟩
+      have hadd : offN + i < 2 ^ 64 := by omega
+      have hbody := xorBodyFrag_correct prog F' s key counter bB nonce msg
+        nwords bN offN iB i hi st w k hgetm hgets hadd pre hpre hsV
+      have hwhile : evalProgStmt prog (F' + 1) loop
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
+          evalProgStmt prog F' loop
+            (pre ++ mkEncEnv key counter bB nonce
+              (msg.set (offN + i) (w ^^^ k)) nwords bN offN
+              (iB + BitVec.ofNat 64 1) st) := by
+        simp only [hloop,
+          evalProgStmt_while_true prog F' _ _ _ hguardT, hbody]
+      rw [hwhile]
+      have hi1 : (BitVec.ofNat 64 1).toNat = 1 :=
+        ofNat64_toNat 1 (by decide)
+      have hiB1 : (iB + BitVec.ofNat 64 1).toNat = i + 1 := by
+        have hb : iB.toNat + (BitVec.ofNat 64 1).toNat < 2 ^ 64 := by
+          rw [hi, hi1]; omega
+        rw [u64add_toNat_exact _ _ hb, hi, hi1]
+      exact ih (iB := iB + BitVec.ofNat 64 1)
+        (msg := msg.set (offN + i) (w ^^^ k)) (i := i + 1) (F := F')
+        (hn := by omega) (hi := hiB1) (hiN := by omega)
+        (hmsg16 := by rw [List.length_set]; exact hmsg16)
+        (hi16le := by omega) (hF := by omega)
+
+/-- Full-block xor loop errors on a short message. -/
+theorem xorFullMsgFirst_oob (prog : Prog) (F : Nat)
+    (s : List (BitVec 32)) (key : List (BitVec 32))
+    (counter bB : BitVec 32) (nonce msg : List (BitVec 32))
+    (nwords : BitVec 64) (bN offN : Nat)
+    (st : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hsV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "s" = some (.arr32 s))
+    (hslen : s.length = 16)
+    (hle : offN ≤ msg.length)
+    (hoob : msg.length < offN + 16)
+    (hbound16 : msg.length ≤ offN + 16)
+    (hfit : offN + 16 < 2 ^ 64)
+    (hF : msg.length - offN + 1 ≤ F) :
+    evalProgStmt prog F xorFullFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) st) =
+      .error .OOB := by
+  have hFull : xorFullFrag =
+      .while_ (.ult (.var "i") (u64lit 16)) xorBodyFrag := rfl
+  exact xorLoopMsgFirst_oob (prog := prog) (F := F) (s := s) (key := key)
+    (counter := counter) (bB := bB) (nonce := nonce) (msg := msg)
+    (nwords := nwords) (bN := bN) (offN := offN)
+    (iB := BitVec.ofNat 64 0) (i := 0) (N := 16)
+    (hi := ofNat64_toNat 0 (by decide)) (st := st)
+    (pre := pre) (hpre := hpre) (hsV := hsV) (bnd := u64lit 16)
+    (loop := xorFullFrag) (hloop := hFull)
+    (hbnd := fun msg' i' => by simp only [u64lit, evalExpr_lit, litVal])
+    (hN64 := by decide) (n := msg.length - offN)
+    (hn := by omega) (hle := hle) (hiN := by omega)
+    (hoob := hoob) (hbound16 := hbound16) (hslen := hslen)
+    (hfit := hfit) (hF := hF)
+
+/-- Tail xor loop errors on a short message (message read fails first). -/
+theorem xorTailMsgFirst_oob (prog : Prog) (F : Nat)
+    (s : List (BitVec 32)) (key : List (BitVec 32))
+    (counter bB : BitVec 32) (nonce msg : List (BitVec 32))
+    (nwords : BitVec 64) (bN offN : Nat)
+    (st : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hsV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "s" = some (.arr32 s))
+    (hntail : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "ntail" = some (.u64 (nwords - BitVec.ofNat 64 offN)))
+    (hslen : s.length = 16)
+    (hle : offN ≤ msg.length)
+    (hoob : msg.length < offN + (nwords - BitVec.ofNat 64 offN).toNat)
+    (hbound16 : msg.length ≤ offN + 16)
+    (hfit : offN + (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64)
+    (hN64 : (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64)
+    (hiN : 0 < (nwords - BitVec.ofNat 64 offN).toNat)
+    (hF : msg.length - offN + 1 ≤ F) :
+    evalProgStmt prog F xorTailFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) st) =
+      .error .OOB := by
+  have hTail : xorTailFrag =
+      .while_ (.ult (.var "i") (.var "ntail")) xorBodyFrag := rfl
+  exact xorLoopMsgFirst_oob (prog := prog) (F := F) (s := s) (key := key)
+    (counter := counter) (bB := bB) (nonce := nonce) (msg := msg)
+    (nwords := nwords) (bN := bN) (offN := offN)
+    (iB := BitVec.ofNat 64 0) (i := 0)
+    (N := (nwords - BitVec.ofNat 64 offN).toNat)
+    (hi := ofNat64_toNat 0 (by decide)) (st := st)
+    (pre := pre) (hpre := hpre) (hsV := hsV) (bnd := .var "ntail")
+    (loop := xorTailFrag) (hloop := hTail)
+    (hbnd := fun msg' i' => by
+      have hlkT := hntail msg' i'
+      calc evalExpr (.var "ntail")
+              (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+          = .ok (.u64 (nwords - BitVec.ofNat 64 offN)) :=
+            evalExpr_var_hit _ _ _ hlkT
+        _ = .ok (.u64 (BitVec.ofNat 64
+              ((nwords - BitVec.ofNat 64 offN).toNat))) := by
+            have heq : (nwords - BitVec.ofNat 64 offN) =
+                BitVec.ofNat 64 ((nwords - BitVec.ofNat 64 offN).toNat) := by
+              apply BitVec.eq_of_toNat_eq
+              rw [BitVec.toNat_ofNat]
+              exact (Nat.mod_eq_of_lt
+                (nwords - BitVec.ofNat 64 offN).isLt).symm
+            exact congrArg (fun w : BitVec 64 => Except.ok (Value.u64 w)) heq)
+    (hN64 := hN64) (n := msg.length - offN)
+    (hn := by omega) (hle := hle) (hiN := hiN)
+    (hoob := hoob) (hbound16 := hbound16) (hslen := hslen)
+    (hfit := hfit) (hF := hF)
+
+/-- Tail xor loop errors on the keystream read (long message, huge tail). -/
+theorem xorTailSFirst_oob (prog : Prog) (F : Nat)
+    (s : List (BitVec 32)) (key : List (BitVec 32))
+    (counter bB : BitVec 32) (nonce msg : List (BitVec 32))
+    (nwords : BitVec 64) (bN offN : Nat)
+    (st : List (BitVec 32))
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hsV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "s" = some (.arr32 s))
+    (hntail : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+        "ntail" = some (.u64 (nwords - BitVec.ofNat 64 offN)))
+    (hslen : s.length = 16)
+    (hmsg16 : offN + 16 < msg.length)
+    (h16N : 16 < (nwords - BitVec.ofNat 64 offN).toNat)
+    (hfit : offN + (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64)
+    (hN64 : (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64)
+    (hF : 17 ≤ F) :
+    evalProgStmt prog F xorTailFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) st) =
+      .error .OOB := by
+  have hTail : xorTailFrag =
+      .while_ (.ult (.var "i") (.var "ntail")) xorBodyFrag := rfl
+  exact xorLoopSFirst_oob (prog := prog) (F := F) (s := s) (key := key)
+    (counter := counter) (bB := bB) (nonce := nonce) (msg := msg)
+    (nwords := nwords) (bN := bN) (offN := offN)
+    (iB := BitVec.ofNat 64 0) (i := 0)
+    (N := (nwords - BitVec.ofNat 64 offN).toNat)
+    (hi := ofNat64_toNat 0 (by decide)) (st := st)
+    (pre := pre) (hpre := hpre) (hsV := hsV) (bnd := .var "ntail")
+    (loop := xorTailFrag) (hloop := hTail)
+    (hbnd := fun msg' i' => by
+      have hlkT := hntail msg' i'
+      calc evalExpr (.var "ntail")
+              (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st)
+          = .ok (.u64 (nwords - BitVec.ofNat 64 offN)) :=
+            evalExpr_var_hit _ _ _ hlkT
+        _ = .ok (.u64 (BitVec.ofNat 64
+              ((nwords - BitVec.ofNat 64 offN).toNat))) := by
+            have heq : (nwords - BitVec.ofNat 64 offN) =
+                BitVec.ofNat 64 ((nwords - BitVec.ofNat 64 offN).toNat) := by
+              apply BitVec.eq_of_toNat_eq
+              rw [BitVec.toNat_ofNat]
+              exact (Nat.mod_eq_of_lt
+                (nwords - BitVec.ofNat 64 offN).isLt).symm
+            exact congrArg (fun w : BitVec 64 => Except.ok (Value.u64 w)) heq)
+    (hN64 := hN64) (n := 16)
+    (hn := by omega) (hiN := by omega)
+    (hmsg16 := hmsg16) (hi16le := by omega) (h16N := h16N)
+    (hslen := hslen) (hfit := hfit) (hF := hF)
+
+/-- The tail fails on a short message: setup and block call succeed, the
+    xor loop hits the short read. Shared by the outer induction exit and
+    the whole-function loop-skipped path. -/
+theorem tailFrag_msg_oob (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (b : Nat) (hbN : bB.toNat = b)
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hk8 : 8 ≤ key.length) (hn3 : 3 ≤ nonce.length)
+    (hfind : findFunc prog "chacha20_block" = some chachaBlockFunc)
+    (hst16 : stCur.length = 16)
+    (hntailV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64)
+      (st' : List (BitVec 32)),
+      envLookup (pre ++ mkEncEnv key counter bB nonce msg' nwords bN offN i' st')
+        "ntail" = some (.u64 (nwords - BitVec.ofNat 64 offN)))
+    (hmsg : msg.length < nwords.toNat)
+    (hle : offN ≤ msg.length)
+    (hcap : msg.length ≤ 4096)
+    (h32 : b + (msg.length - offN) / 16 + 1 < 2 ^ 32)
+    (hF : msg.length - offN + 17 ≤ F) :
+    evalProgStmt prog F tailFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  have htf : tailFrag =
+      (.seq (.assign "i" (u64lit 0))
+      (.seq setupFrag
+      (.seq blockCallFrag xorTailFrag))) := rfl
+  have hassi0 := encAssignI0_ok prog F key counter bB nonce msg nwords
+    bN offN iB stCur pre hpre
+  have hsetup := setupFrag_correct prog F key counter bB b hbN nonce msg
+    nwords bN offN (BitVec.ofNat 64 0) stCur pre hpre hk8 hn3 hst16
+  obtain ⟨ρsetup, hsetupE, rfl⟩ := hsetup
+  have hstlookup : envLookup
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) (encSetup key counter b nonce)) "st" =
+      some (.arr32 (encSetup key counter b nonce)) :=
+    chainLookup pre _ "st" _ hpre (by decide)
+      (mkEncEnv_st key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) (encSetup key counter b nonce))
+  have h16 : 16 ≤ (encSetup key counter b nonce).length := by
+    have hl : (encSetup key counter b nonce).length = 16 :=
+      encSetup_length key counter b nonce hk8 hn3
+    omega
+  have hF16 : 16 ≤ F := by omega
+  have hcall := blockCallFrag_correct prog F
+    (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+      (BitVec.ofNat 64 0) (encSetup key counter b nonce))
+    (encSetup key counter b nonce) hstlookup h16 hfind hF16
+  have hpreS : ∀ p ∈ ("s", .arr32
+      (addBackList (encSetup key counter b nonce)
+        (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre,
+      p.1 = "s" ∨ p.1 = "ntail" := by
+    intro p hp
+    simp only [List.mem_cons] at hp
+    rcases hp with rfl | hp
+    · left; rfl
+    · exact hpre p hp
+  have hcallS : evalProgStmt prog F blockCallFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+        (BitVec.ofNat 64 0) (encSetup key counter b nonce)) =
+      .ok (((("s", .arr32
+        (addBackList (encSetup key counter b nonce)
+          (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre) ++
+        mkEncEnv key counter bB nonce msg nwords bN offN
+          (BitVec.ofNat 64 0) (encSetup key counter b nonce)),
+        .fellThrough) :=
+    hcall
+  have hsV2 : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup ((("s", .arr32
+        (addBackList (encSetup key counter b nonce)
+          (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre) ++
+        mkEncEnv key counter bB nonce msg' nwords bN offN i'
+        (encSetup key counter b nonce)) "s" =
+        some (.arr32
+          (addBackList (encSetup key counter b nonce)
+            (chachaRounds 10 (encSetup key counter b nonce)) 16)) := by
+    intro msg' i'
+    simp [List.cons_append, envLookup]
+  have hslen : (addBackList (encSetup key counter b nonce)
+      (chachaRounds 10 (encSetup key counter b nonce)) 16).length = 16 := by
+    rw [addBackList_length, encSetup_length key counter b nonce hk8 hn3]
+  have hntail : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+      envLookup ((("s", .arr32
+        (addBackList (encSetup key counter b nonce)
+          (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre) ++
+        mkEncEnv key counter bB nonce msg' nwords bN offN i'
+        (encSetup key counter b nonce)) "ntail" =
+        some (.u64 (nwords - BitVec.ofNat 64 offN)) := by
+    intro msg' i'
+    simp [List.cons_append, envLookup, hntailV msg' i'
+      (encSetup key counter b nonce)]
+  have hoff64 : offN < 2 ^ 64 := by have h := nwords.isLt; omega
+  have hoffNat : (BitVec.ofNat 64 offN).toNat = offN :=
+    ofNat64_toNat offN hoff64
+  have hleB : BitVec.ofNat 64 offN ≤ nwords := by
+    rw [BitVec.le_def, hoffNat]
+    have hleN : offN ≤ nwords.toNat := by omega
+    exact hleN
+  have hnN : (nwords - BitVec.ofNat 64 offN).toNat = nwords.toNat - offN := by
+    rw [BitVec.toNat_sub_of_le hleB, hoffNat]
+  have hN64 : (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64 :=
+    (nwords - BitVec.ofNat 64 offN).isLt
+  by_cases h16 : msg.length ≤ offN + 16
+  · have hoob : msg.length < offN + (nwords - BitVec.ofNat 64 offN).toNat := by
+      rw [hnN]; omega
+    have hiN : 0 < (nwords - BitVec.ofNat 64 offN).toNat := by
+      rw [hnN]; omega
+    have hfit : offN + (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64 := by
+      rw [hnN]
+      have h := nwords.isLt
+      omega
+    have hxor := xorTailMsgFirst_oob prog F
+      (addBackList (encSetup key counter b nonce)
+        (chachaRounds 10 (encSetup key counter b nonce)) 16)
+      key counter bB nonce msg nwords bN offN
+      (encSetup key counter b nonce)
+      ((("s", .arr32
+        (addBackList (encSetup key counter b nonce)
+          (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre))
+      hpreS hsV2 hntail hslen hle hoob h16 hfit hN64 hiN (by omega)
+    rw [htf,
+      evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+      evalProgStmt_seq_fallthrough _ _ _ _ _ _ hsetupE,
+      evalProgStmt_seq_fallthrough _ _ _ _ _ _ hcallS]
+    exact hxor
+  · have hmsg16 : offN + 16 < msg.length := by omega
+    have h16N : 16 < (nwords - BitVec.ofNat 64 offN).toNat := by
+      rw [hnN]; omega
+    have hfit : offN + (nwords - BitVec.ofNat 64 offN).toNat < 2 ^ 64 := by
+      rw [hnN]
+      have h := nwords.isLt
+      omega
+    have hxor := xorTailSFirst_oob prog F
+      (addBackList (encSetup key counter b nonce)
+        (chachaRounds 10 (encSetup key counter b nonce)) 16)
+      key counter bB nonce msg nwords bN offN
+      (encSetup key counter b nonce)
+      ((("s", .arr32
+        (addBackList (encSetup key counter b nonce)
+          (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre))
+      hpreS hsV2 hntail hslen hmsg16 h16N hfit hN64 (by omega)
+    rw [htf,
+      evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+      evalProgStmt_seq_fallthrough _ _ _ _ _ _ hsetupE,
+      evalProgStmt_seq_fallthrough _ _ _ _ _ _ hcallS]
+    exact hxor
+
+/-- Outer loop skipped on a short message: exit then the tail fails.
+    Shared by the outer induction exit case and the whole-function
+    loop-skipped path. -/
+theorem tailSeq_msg_oob (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (b : Nat) (hbN : bB.toNat = b)
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hk8 : 8 ≤ key.length) (hn3 : 3 ≤ nonce.length)
+    (hfind : findFunc prog "chacha20_block" = some chachaBlockFunc)
+    (hst16 : stCur.length = 16)
+    (hmsg : msg.length < nwords.toNat)
+    (hle : offN ≤ msg.length)
+    (hcap : msg.length ≤ 4096)
+    (h32 : b + (msg.length - offN) / 16 + 1 < 2 ^ 32)
+    (hF : msg.length - offN + 17 ≤ F) :
+    evalProgStmt prog F
+      (.seq (.let_ "ntail" (.u 64) (.usub (.var "nwords") (.var "off")))
+        (.seq (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+          (.return_ (.var "msg"))))
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  have hleN : offN ≤ nwords.toNat := by omega
+  have hnt := (tailNtail_ok prog F key counter bB nonce msg nwords bN offN
+    iB stCur pre hpre hleN).1
+  have hne : nwords - BitVec.ofNat 64 offN ≠ BitVec.ofNat 64 0 := by
+    intro hcon
+    have hoff64 : offN < 2 ^ 64 := by have h := nwords.isLt; omega
+    have hoffNat : (BitVec.ofNat 64 offN).toNat = offN :=
+      ofNat64_toNat offN hoff64
+    have hleB : BitVec.ofNat 64 offN ≤ nwords := by
+      rw [BitVec.le_def, hoffNat]; exact hleN
+    have hnN : (nwords - BitVec.ofNat 64 offN).toNat =
+        nwords.toNat - offN := by
+      rw [BitVec.toNat_sub_of_le hleB, hoffNat]
+    have hconT := congrArg BitVec.toNat hcon
+    rw [hnN] at hconT
+    have hz : (BitVec.ofNat 64 0).toNat = 0 :=
+      ofNat64_toNat 0 (by decide)
+    rw [hz] at hconT
+    omega
+  have hbb : (nwords - BitVec.ofNat 64 offN != BitVec.ofNat 64 0) = true :=
+    (bne_iff_ne).mpr hne
+  have hlk : envLookup
+      ((("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre) ++
+        mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) "ntail" =
+      some (.u64 (nwords - BitVec.ofNat 64 offN)) := by
+    simp [List.cons_append, envLookup]
+  have h0 : evalExpr (u64lit 0)
+      ((("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre) ++
+        mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok (.u64 (BitVec.ofNat 64 0)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have hgT : evalExpr (.une (.var "ntail") (u64lit 0))
+      ((("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre) ++
+        mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok (.b true) := by
+    have h := evalExpr_une_u64 (.var "ntail") (u64lit 0) _ _ _
+      (evalExpr_var_hit _ _ _ hlk) h0
+    rwa [hbb] at h
+  have hpreN : ∀ p ∈ ("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre,
+      p.1 = "s" ∨ p.1 = "ntail" := by
+    intro p hp
+    simp only [List.mem_cons] at hp
+    rcases hp with rfl | hp
+    · right; rfl
+    · exact hpre p hp
+  have hntailV : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64)
+      (st' : List (BitVec 32)),
+      envLookup ((("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre) ++
+        mkEncEnv key counter bB nonce msg' nwords bN offN i' st')
+        "ntail" = some (.u64 (nwords - BitVec.ofNat 64 offN)) := by
+    intro msg' i' st'
+    simp [List.cons_append, envLookup]
+  have htail := tailFrag_msg_oob prog F key counter bB nonce msg nwords
+    bN offN iB stCur b hbN
+    (("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre) hpreN
+    hk8 hn3 hfind hst16 hntailV hmsg hle hcap h32 hF
+  have hifT : evalProgStmt prog F
+      (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+      ((("ntail", .u64 (nwords - BitVec.ofNat 64 offN)) :: pre) ++
+        mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+    rw [evalProgStmt_if_true _ _ _ _ _ _ hgT]
+    exact htail
+  rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hnt,
+    evalProgStmt_seq_err _ _ _ _ _ _ hifT]
+
+
+theorem outerSkipped_msg_oob (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (b : Nat) (hbN : bB.toNat = b)
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hk8 : 8 ≤ key.length) (hn3 : 3 ≤ nonce.length)
+    (hfind : findFunc prog "chacha20_block" = some chachaBlockFunc)
+    (hst16 : stCur.length = 16)
+    (hmsg : msg.length < nwords.toNat)
+    (hle : offN ≤ msg.length)
+    (hcap : msg.length ≤ 4096)
+    (h32 : b + (msg.length - offN) / 16 + 1 < 2 ^ 32)
+    (hguardF : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+        .ok (.b false))
+    (hF : msg.length - offN + 17 ≤ F) :
+    evalProgStmt prog F
+      (.seq outerWhileFrag
+        (.seq (.let_ "ntail" (.u 64) (.usub (.var "nwords") (.var "off")))
+          (.seq (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+            (.return_ (.var "msg")))))
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB := by
+  have hwhileF : evalProgStmt prog F outerWhileFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .ok ((pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+        stCur), .fellThrough) := by
+    rw [outerWhileFrag, evalProgStmt_while_false _ _ _ _ _ hguardF]
+  have htail := tailSeq_msg_oob (prog := prog) (F := F) (key := key)
+    (counter := counter) (bB := bB) (nonce := nonce) (msg := msg)
+    (nwords := nwords) (bN := bN) (offN := offN) (iB := iB)
+    (stCur := stCur) (b := b) (hbN := hbN) (pre := pre) (hpre := hpre)
+    (hk8 := hk8) (hn3 := hn3) (hfind := hfind) (hst16 := hst16)
+    (hmsg := hmsg) (hle := hle) (hcap := hcap) (h32 := h32) (hF := hF)
+  rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hwhileF]
+  exact htail
+
+/-- Outer loop on a short message: either the loop itself errors, or it
+    exits with the short-message facts preserved for the tail. -/
+theorem outerWhile_msg_oob (prog : Prog) (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (bN offN : Nat) (iB : BitVec 64) (stCur : List (BitVec 32))
+    (b : Nat) (hbN : bB.toNat = b)
+    (pre : Env) (hpre : ∀ p ∈ pre, p.1 = "s" ∨ p.1 = "ntail")
+    (hk8 : 8 ≤ key.length) (hn3 : 3 ≤ nonce.length)
+    (hfind : findFunc prog "chacha20_block" = some chachaBlockFunc)
+    (hst16 : stCur.length = 16)
+    (hmsg : msg.length < nwords.toNat)
+    (hle : offN ≤ msg.length)
+    (hcap : msg.length ≤ 4096)
+    (n : Nat) (hn : (msg.length - offN) / 16 = n)
+    (h32 : b + (msg.length - offN) / 16 + 1 < 2 ^ 32)
+    (hF : msg.length - offN + 17 ≤ F) :
+    evalProgStmt prog F outerWhileFrag
+      (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+      .error .OOB ∨
+    ∃ (preW : Env) (bW : BitVec 32) (bWN : Nat) (offW : Nat)
+      (msgW : List (BitVec 32)) (iW : BitVec 64) (stW : List (BitVec 32)),
+      bW.toNat = bWN ∧ (∀ p ∈ preW, p.1 = "s" ∨ p.1 = "ntail") ∧
+      stW.length = 16 ∧ msgW.length < nwords.toNat ∧ offW ≤ msgW.length ∧
+      msgW.length ≤ 4096 ∧ bWN + (msgW.length - offW) / 16 + 1 < 2 ^ 32 ∧
+      msgW.length - offW + 17 ≤ F ∧
+      evalProgStmt prog F outerWhileFrag
+        (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+        .ok (preW ++ mkEncEnv key counter bW nonce msgW nwords bN offW iW
+          stW, .fellThrough) := by
+  induction n generalizing b bB offN msg pre iB stCur F with
+  | zero =>
+    cases F with
+    | zero => omega
+    | succ F' =>
+      have hnVoff : evalExpr (.var "off")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 offN)) :=
+        evalExpr_var_hit _ _ _
+          (chainLookup pre _ "off" _ hpre (by decide)
+            (mkEncEnv_off key counter bB nonce msg nwords bN offN iB stCur))
+      have h16v : evalExpr (u64lit 16)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 16)) := by
+        simp only [u64lit, evalExpr_lit, litVal]
+      have huoff : evalExpr (.uadd (.var "off") (u64lit 16))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 offN + BitVec.ofNat 64 16)) :=
+        evalExpr_uadd_u64 _ _ _ _ _ hnVoff h16v
+      have hnVn : evalExpr (.var "nwords")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 nwords) :=
+        evalExpr_var_hit _ _ _
+          (chainLookup pre _ "nwords" _ hpre (by decide)
+            (mkEncEnv_nwords key counter bB nonce msg nwords bN offN iB
+              stCur))
+      have h1v : evalExpr (u64lit 1)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 1)) := by
+        simp only [u64lit, evalExpr_lit, litVal]
+      have hun : evalExpr (.uadd (.var "nwords") (u64lit 1))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (nwords + BitVec.ofNat 64 1)) :=
+        evalExpr_uadd_u64 _ _ _ _ _ hnVn h1v
+      by_cases hguard : (BitVec.ofNat 64 offN + BitVec.ofNat 64 16).ult
+          (nwords + BitVec.ofNat 64 1) = true
+      · have hguardT : evalExpr
+            (.ult (.uadd (.var "off") (u64lit 16))
+              (.uadd (.var "nwords") (u64lit 1)))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.b true) := by
+          have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+          rwa [hguard] at h
+        have hiter : fullIterFrag =
+            (.seq (.assign "i" (u64lit 0))
+            (.seq setupFrag
+            (.seq blockCallFrag
+            (.seq xorFullFrag
+            (.seq (.assign "b" (.uadd (.var "b") (u32lit 1)))
+              (.assign "off" (.uadd (.var "off")
+                (u64lit 16)))))))) := rfl
+        have hassi0 := encAssignI0_ok prog F' key counter bB nonce msg
+          nwords bN offN iB stCur pre hpre
+        have hsetup := setupFrag_correct prog F' key counter bB b hbN
+          nonce msg nwords bN offN (BitVec.ofNat 64 0) stCur pre hpre hk8
+          hn3 hst16
+        obtain ⟨ρsetup, hsetupE, rfl⟩ := hsetup
+        have hstlookup : envLookup
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+              (BitVec.ofNat 64 0) (encSetup key counter b nonce)) "st" =
+            some (.arr32 (encSetup key counter b nonce)) :=
+          chainLookup pre _ "st" _ hpre (by decide)
+            (mkEncEnv_st key counter bB nonce msg nwords bN offN
+              (BitVec.ofNat 64 0) (encSetup key counter b nonce))
+        have h16 : 16 ≤ (encSetup key counter b nonce).length := by
+          have hl : (encSetup key counter b nonce).length = 16 :=
+            encSetup_length key counter b nonce hk8 hn3
+          omega
+        have hcall := blockCallFrag_correct prog F'
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+            (BitVec.ofNat 64 0) (encSetup key counter b nonce))
+          (encSetup key counter b nonce) hstlookup h16 hfind (by omega)
+        have hpreS : ∀ p ∈ ("s", .arr32
+            (addBackList (encSetup key counter b nonce)
+              (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre,
+            p.1 = "s" ∨ p.1 = "ntail" := by
+          intro p hp
+          simp only [List.mem_cons] at hp
+          rcases hp with rfl | hp
+          · left; rfl
+          · exact hpre p hp
+        have hcallS : evalProgStmt prog F' blockCallFrag
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+              (BitVec.ofNat 64 0) (encSetup key counter b nonce)) =
+            .ok (((("s", .arr32
+              (addBackList (encSetup key counter b nonce)
+                (chachaRounds 10 (encSetup key counter b nonce)) 16)) ::
+              pre) ++
+              mkEncEnv key counter bB nonce msg nwords bN offN
+                (BitVec.ofNat 64 0) (encSetup key counter b nonce)),
+              .fellThrough) :=
+          hcall
+        have hsV2 : ∀ (msg' : List (BitVec 32)) (i' : BitVec 64),
+            envLookup ((("s", .arr32
+              (addBackList (encSetup key counter b nonce)
+                (chachaRounds 10 (encSetup key counter b nonce)) 16)) ::
+              pre) ++
+              mkEncEnv key counter bB nonce msg' nwords bN offN i'
+              (encSetup key counter b nonce)) "s" =
+              some (.arr32
+                (addBackList (encSetup key counter b nonce)
+                  (chachaRounds 10 (encSetup key counter b nonce)) 16)) := by
+          intro msg' i'
+          simp [List.cons_append, envLookup]
+        have hslen : (addBackList (encSetup key counter b nonce)
+            (chachaRounds 10 (encSetup key counter b nonce)) 16).length = 16 := by
+          rw [addBackList_length,
+            encSetup_length key counter b nonce hk8 hn3]
+        have hbound16 : msg.length ≤ offN + 16 := by omega
+        have hoob : msg.length < offN + 16 := by omega
+        have hfit : offN + 16 < 2 ^ 64 := by omega
+        have hxor := xorFullMsgFirst_oob prog F'
+          (addBackList (encSetup key counter b nonce)
+            (chachaRounds 10 (encSetup key counter b nonce)) 16)
+          key counter bB nonce msg nwords bN offN
+          (encSetup key counter b nonce)
+          ((("s", .arr32
+            (addBackList (encSetup key counter b nonce)
+              (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre))
+          hpreS hsV2 hslen hle hoob hbound16 hfit (by omega)
+        have hfullA : evalProgStmt prog F' fullIterFrag
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .error .OOB := by
+          rw [hiter,
+            evalProgStmt_seq_fallthrough _ _ _ _ _ _ hassi0,
+            evalProgStmt_seq_fallthrough _ _ _ _ _ _ hsetupE,
+            evalProgStmt_seq_fallthrough _ _ _ _ _ _ hcallS,
+            evalProgStmt_seq_err _ _ _ _ _ _ hxor]
+        have hwhileA : evalProgStmt prog (F' + 1) outerWhileFrag
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .error .OOB := by
+          rw [outerWhileFrag, evalProgStmt_while_true _ _ _ _ _ hguardT,
+            hfullA]
+        exact Or.inl hwhileA
+      · have hfalse : (BitVec.ofNat 64 offN + BitVec.ofNat 64 16).ult
+            (nwords + BitVec.ofNat 64 1) = false := by
+          cases e : (BitVec.ofNat 64 offN + BitVec.ofNat 64 16).ult
+              (nwords + BitVec.ofNat 64 1) with
+          | true => simp_all
+          | false => rfl
+        have hguardF : evalExpr
+            (.ult (.uadd (.var "off") (u64lit 16))
+              (.uadd (.var "nwords") (u64lit 1)))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.b false) := by
+          have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+          rwa [hfalse] at h
+        have hwhileF : evalProgStmt prog (F' + 1) outerWhileFrag
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok ((pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+              iB stCur), .fellThrough) := by
+          rw [outerWhileFrag, evalProgStmt_while_false _ _ _ _ _ hguardF]
+        exact Or.inr ⟨pre, bB, b, offN, msg, iB, stCur,
+          hbN, hpre, hst16, hmsg, hle, hcap, h32, hF, hwhileF⟩
+  | succ n ih =>
+    cases F with
+    | zero => omega
+    | succ F' =>
+      have hnVoff : evalExpr (.var "off")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 offN)) :=
+        evalExpr_var_hit _ _ _
+          (chainLookup pre _ "off" _ hpre (by decide)
+            (mkEncEnv_off key counter bB nonce msg nwords bN offN iB stCur))
+      have h16v : evalExpr (u64lit 16)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 16)) := by
+        simp only [u64lit, evalExpr_lit, litVal]
+      have huoff : evalExpr (.uadd (.var "off") (u64lit 16))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 offN + BitVec.ofNat 64 16)) :=
+        evalExpr_uadd_u64 _ _ _ _ _ hnVoff h16v
+      have hnVn : evalExpr (.var "nwords")
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 nwords) :=
+        evalExpr_var_hit _ _ _
+          (chainLookup pre _ "nwords" _ hpre (by decide)
+            (mkEncEnv_nwords key counter bB nonce msg nwords bN offN iB
+              stCur))
+      have h1v : evalExpr (u64lit 1)
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (BitVec.ofNat 64 1)) := by
+        simp only [u64lit, evalExpr_lit, litVal]
+      have hun : evalExpr (.uadd (.var "nwords") (u64lit 1))
+          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB stCur) =
+          .ok (.u64 (nwords + BitVec.ofNat 64 1)) :=
+        evalExpr_uadd_u64 _ _ _ _ _ hnVn h1v
+      by_cases hguard : (BitVec.ofNat 64 offN + BitVec.ofNat 64 16).ult
+          (nwords + BitVec.ofNat 64 1) = true
+      · have hguardT : evalExpr
+            (.ult (.uadd (.var "off") (u64lit 16))
+              (.uadd (.var "nwords") (u64lit 1)))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.b true) := by
+          have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+          rwa [hguard] at h
+        have hmsglen : offN + 16 ≤ msg.length := by omega
+        have hfit : offN + 16 < 2 ^ 64 := by omega
+        have hF16 : 16 ≤ F' := by omega
+        have hfull := fullIterFrag_correct prog F' key counter bB nonce msg
+          nwords bN offN iB stCur b hbN pre hpre hk8 hn3 hst16 hfind hmsglen
+          hfit hF16
+        have hwhileC : evalProgStmt prog (F' + 1) outerWhileFrag
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            evalProgStmt prog F' outerWhileFrag
+              ((("s", .arr32
+                (addBackList (encSetup key counter b nonce)
+                  (chachaRounds 10 (encSetup key counter b nonce)) 16)) ::
+                pre) ++
+                mkEncEnv key counter (bB + BitVec.ofNat 32 1) nonce
+                  (encXor msg offN
+                    (addBackList (encSetup key counter b nonce)
+                      (chachaRounds 10 (encSetup key counter b nonce)) 16)
+                    16)
+                  nwords bN (offN + 16) (BitVec.ofNat 64 16)
+                  (encSetup key counter b nonce)) := by
+          simp only [outerWhileFrag,
+            evalProgStmt_while_true prog F' _ _ _ hguardT, hfull]
+        have hbB : bB = BitVec.ofNat 32 b :=
+          BitVec.eq_of_toNat_eq (by rw [hbN, ofNat32_toNat b (by omega)])
+        have hbB1 : bB + BitVec.ofNat 32 1 = BitVec.ofNat 32 (b + 1) := by
+          rw [hbB, ofNat32_add_one]
+        have hbN' : (bB + BitVec.ofNat 32 1).toNat = b + 1 := by
+          rw [hbB1, ofNat32_toNat _ (by omega)]
+        have hpreS : ∀ p ∈ ("s", .arr32
+            (addBackList (encSetup key counter b nonce)
+              (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre,
+            p.1 = "s" ∨ p.1 = "ntail" := by
+          intro p hp
+          simp only [List.mem_cons] at hp
+          rcases hp with rfl | hp
+          · left; rfl
+          · exact hpre p hp
+        have hst16' : (encSetup key counter b nonce).length = 16 :=
+          encSetup_length key counter b nonce hk8 hn3
+        obtain hor := ih (b := b + 1) (bB := bB + BitVec.ofNat 32 1)
+          (offN := offN + 16)
+          (msg := encXor msg offN
+            (addBackList (encSetup key counter b nonce)
+              (chachaRounds 10 (encSetup key counter b nonce)) 16) 16)
+          (pre := ("s", .arr32
+            (addBackList (encSetup key counter b nonce)
+              (chachaRounds 10 (encSetup key counter b nonce)) 16)) :: pre)
+          (iB := BitVec.ofNat 64 16)
+          (stCur := encSetup key counter b nonce) (F := F')
+          (hn := by rw [encXor_length]; omega)
+          (hbN := hbN') (hle := by rw [encXor_length]; omega)
+          (hmsg := by rw [encXor_length]; exact hmsg)
+          (hcap := by rw [encXor_length]; exact hcap)
+          (hst16 := hst16') (hpre := hpreS)
+          (h32 := by rw [encXor_length]; omega)
+          (hF := by rw [encXor_length]; omega)
+        rcases hor with herr | ⟨preW, bW, bWN, offW, msgW, iW, stW,
+            hbW, hpreW, hstW, hmsgW, hleW, hcapW, h32W, hFW, hevalW⟩
+        · exact Or.inl (by rw [hwhileC]; exact herr)
+        · refine Or.inr ⟨preW, bW, bWN, offW, msgW, iW, stW, hbW, hpreW, hstW,
+            hmsgW, hleW, hcapW, h32W, by omega, by rw [hwhileC]; exact hevalW⟩
+      · have hfalse : (BitVec.ofNat 64 offN + BitVec.ofNat 64 16).ult
+            (nwords + BitVec.ofNat 64 1) = false := by
+          cases e : (BitVec.ofNat 64 offN + BitVec.ofNat 64 16).ult
+              (nwords + BitVec.ofNat 64 1) with
+          | true => simp_all
+          | false => rfl
+        have hguardF : evalExpr
+            (.ult (.uadd (.var "off") (u64lit 16))
+              (.uadd (.var "nwords") (u64lit 1)))
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok (.b false) := by
+          have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+          rwa [hfalse] at h
+        have hwhileF : evalProgStmt prog (F' + 1) outerWhileFrag
+            (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB
+              stCur) =
+            .ok ((pre ++ mkEncEnv key counter bB nonce msg nwords bN offN
+              iB stCur), .fellThrough) := by
+          rw [outerWhileFrag, evalProgStmt_while_false _ _ _ _ _ hguardF]
+        exact Or.inr ⟨pre, bB, b, offN, msg, iB, stCur,
+          hbN, hpre, hst16, hmsg, hle, hcap, h32, hF, hwhileF⟩
+
+/-- Whole-function twin: a short message fails with `OOB` (message within
+    the 4096-word buffer, sufficient fuel). No nonzero-`nwords` side
+    condition: `msg.length < nwords.toNat` already excludes `nwords = 0`. -/
+theorem evalProgFunc_chacha20Encrypt_msg_oob (F : Nat)
+    (key : List (BitVec 32)) (counter : BitVec 32)
+    (nonce msg : List (BitVec 32)) (nwords : BitVec 64)
+    (hk8 : 8 ≤ key.length) (hn3 : 3 ≤ nonce.length)
+    (hmsg : msg.length < nwords.toNat)
+    (hcap : msg.length ≤ 4096)
+    (hF : msg.length + 17 ≤ F) :
+    evalProgFunc chacha20EncryptProg (F + 1) chacha20EncryptFunc
+      [.arr32 key, .u32 counter, .arr32 nonce, .arr32 msg, .u64 nwords] =
+      .error .OOB := by
+  have hbind : bindArgs chacha20EncryptFunc.args
+      [.arr32 key, .u32 counter, .arr32 nonce, .arr32 msg, .u64 nwords] =
+      some [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)] := rfl
+  have hbody : chacha20EncryptFunc.body =
+      (.seq (.let_ "b" (.u 32) (u32lit 0))
+      (.seq (.let_ "off" (.u 64) (u64lit 0))
+      (.seq (.let_ "i" (.u 64) (u64lit 0))
+      (.seq (.let_ "st" (.array (.u 32) 16)
+                (.lit (.arr32 (List.replicate 16 0))))
+      (.seq outerWhileFrag
+      (.seq (.let_ "ntail" (.u 64)
+                (.usub (.var "nwords") (.var "off")))
+      (.seq (.if_ (.une (.var "ntail") (u64lit 0)) tailFrag .skip)
+            (.return_ (.var "msg"))))))))) := rfl
+  have hletb := chacha20EncryptLetB_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hletoff := chacha20EncryptLetOff_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hleti := chacha20EncryptLetI_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hletst := chacha20EncryptLetSt_ok chacha20EncryptProg (F + 1) key
+    counter nonce msg nwords
+  have hE4 : (envExtend (envExtend (envExtend (envExtend
+      [("key", .arr32 key), ("counter", .u32 counter),
+        ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+        ("nwords", .u64 nwords)]
+      "b" (.u32 (BitVec.ofNat 32 0)))
+      "off" (.u64 (BitVec.ofNat 64 0)))
+      "i" (.u64 (BitVec.ofNat 64 0)))
+      "st" (.arr32 (List.replicate 16 0))) =
+      [] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0) := rfl
+  have hst16 : (List.replicate 16 0).length = 16 := List.length_replicate
+  have hfind : findFunc chacha20EncryptProg "chacha20_block" =
+      some chachaBlockFunc := rfl
+  have hbN : (BitVec.ofNat 32 0).toNat = 0 :=
+    ofNat32_toNat 0 (by decide)
+  have hnVoff : evalExpr (.var "off")
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 0)) :=
+    evalExpr_var_hit _ _ _
+      (chainLookup [] _ "off" _ (by simp) (by decide)
+        (mkEncEnv_off key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)))
+  have h16v : evalExpr (u64lit 16)
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 16)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have huoff : evalExpr (.uadd (.var "off") (u64lit 16))
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 0 + BitVec.ofNat 64 16)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hnVoff h16v
+  have hnVn : evalExpr (.var "nwords")
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 nwords) :=
+    evalExpr_var_hit _ _ _
+      (chainLookup [] _ "nwords" _ (by simp) (by decide)
+        (mkEncEnv_nwords key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)))
+  have h1v : evalExpr (u64lit 1)
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (BitVec.ofNat 64 1)) := by
+    simp only [u64lit, evalExpr_lit, litVal]
+  have hun : evalExpr (.uadd (.var "nwords") (u64lit 1))
+      ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+        0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+      .ok (.u64 (nwords + BitVec.ofNat 64 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _ hnVn h1v
+  have hoff16 : BitVec.ofNat 64 0 + BitVec.ofNat 64 16 =
+      BitVec.ofNat 64 16 := by decide
+  by_cases hguard : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) =
+      true
+  · have hguardT : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b true) := by
+      have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+      rwa [hoff16, hguard] at h
+    have houter := outerWhile_msg_oob chacha20EncryptProg (F + 1) key
+      counter (BitVec.ofNat 32 0) nonce msg nwords 0 0
+      (BitVec.ofNat 64 0) (List.replicate 16 0) 0 hbN [] (by simp) hk8 hn3
+      hfind hst16 hmsg (Nat.zero_le _) hcap ((msg.length - 0) / 16) rfl
+      (by omega) (by omega)
+    rcases houter with herr | ⟨preW, bW, bWN, offW, msgW, iW, stW,
+        hbW, hpreW, hstW, hmsgW, hleW, hcapW, h32W, hFW, hevalW⟩
+    · have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+          chacha20EncryptFunc.body
+          [("key", .arr32 key), ("counter", .u32 counter),
+            ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+            ("nwords", .u64 nwords)] =
+          .error .OOB := by
+        rw [hbody,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4]
+        exact evalProgStmt_seq_err _ _ _ _ _ _ herr
+      simp only [evalProgFunc, hbind, hstmt]
+    · have htail := tailSeq_msg_oob chacha20EncryptProg (F + 1) key counter
+        bW nonce msgW nwords 0 offW iW stW bWN hbW preW hpreW hk8 hn3
+        hfind hstW hmsgW hleW hcapW h32W hFW
+      have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+          chacha20EncryptFunc.body
+          [("key", .arr32 key), ("counter", .u32 counter),
+            ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+            ("nwords", .u64 nwords)] =
+          .error .OOB := by
+        rw [hbody,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+          evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4]
+        rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hevalW]
+        exact htail
+      simp only [evalProgFunc, hbind, hstmt]
+  · have hfalse : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) =
+        false := by
+      cases e : (BitVec.ofNat 64 16).ult (nwords + BitVec.ofNat 64 1) with
+      | true => simp_all
+      | false => rfl
+    have hguardF : evalExpr
+        (.ult (.uadd (.var "off") (u64lit 16))
+          (.uadd (.var "nwords") (u64lit 1)))
+        ([] ++ mkEncEnv key counter (BitVec.ofNat 32 0) nonce msg nwords
+          0 0 (BitVec.ofNat 64 0) (List.replicate 16 0)) =
+        .ok (.b false) := by
+      have h := evalExpr_ult_u64 _ _ _ _ _ huoff hun
+      rwa [hoff16, hfalse] at h
+    have hskipped := outerSkipped_msg_oob chacha20EncryptProg (F + 1) key
+      counter (BitVec.ofNat 32 0) nonce msg nwords 0 0
+      (BitVec.ofNat 64 0) (List.replicate 16 0) 0 hbN [] (by simp) hk8 hn3
+      hfind hst16 hmsg (Nat.zero_le _) hcap (by omega) hguardF (by omega)
+    have hstmt : evalProgStmt chacha20EncryptProg (F + 1)
+        chacha20EncryptFunc.body
+        [("key", .arr32 key), ("counter", .u32 counter),
+          ("nonce", .arr32 nonce), ("msg", .arr32 msg),
+          ("nwords", .u64 nwords)] =
+        .error .OOB := by
+      rw [hbody,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletb,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletoff,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hleti,
+        evalProgStmt_seq_fallthrough _ _ _ _ _ _ hletst, hE4]
+      exact hskipped
+    simp only [evalProgFunc, hbind, hstmt]
