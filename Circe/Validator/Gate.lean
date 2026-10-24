@@ -33,6 +33,7 @@ import Circe.Emit.AliasCond
 import Circe.Emit.VecCompose
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
+import Circe.Crypto.Stream
 import Circe.Validator.GrowLeaves
 
 /-! ## S1: caller shapes (DAG calls into admitted leaves) -/
@@ -502,6 +503,59 @@ def isSha256Shape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.dec" &&
     !containsSubstr raw.text "cir.mul" &&
     !containsSubstr raw.text "cir.div"
+  | _ => false
+
+/-- `chacha20_encrypt`: three `__restrict__` u32 buffers (const key,
+    const nonce, mut msg) + u32 counter + u32 word length, void return, no div/mul (offsets advance by adds, the tail is a
+    subtraction), one outer `cir.while` (setup +
+    one `chacha20_block` call + 16-word xor loop per block), one
+    `cir.if` tail guard (second block call + tail xor loop). Both call
+    sites pin to the admitted K4 leaf (`cir.call @chacha20_block(`);
+    total `cir.call @` == 2 rules out any other callee. First admitted
+    call-in-loop shape (G1): the callee is call-free, the loop body
+    holds exactly one call site. Counts read off the captured CIR. -/
+def isChacha20EncryptShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [key, counter, nonce, msg, nwords] =>
+    noBreakContinueSwitch raw.text &&
+    isU32PtrNoalias key && isU32 counter.ctype &&
+    isU32PtrNoalias nonce && isU32PtrNoalias msg &&
+    isU32 nwords.ctype && raw.ret == "" &&
+    callsFunc raw.text "chacha20_block" &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.call @chacha20_block(" == 2 &&
+    opCount raw.text "cir.call @" == 2 &&
+    opCount raw.text "cir.for" == 2 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.alloca" == 10 &&
+    opCount raw.text "cir.load" == 72 &&
+    opCount raw.text "cir.store" == 48 &&
+    opCount raw.text "cir.add" == 7 &&
+    opCount raw.text "cir.sub" == 1 &&
+    opCount raw.text "cir.xor " == 2 &&
+    opCount raw.text "cir.cmp" == 4 &&
+    opCount raw.text "cir.const" == 131 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.scope" == 5 &&
+    opCount raw.text "cir.yield" == 5 &&
+    opCount raw.text "cir.condition" == 3 &&
+    opCount raw.text "cir.cast" == 14 &&
+    opCount raw.text "cir.ptr_stride" == 24 &&
+    opCount raw.text "cir.get_element" == 34 &&
+    opCount raw.text "cir.inc" == 2 &&
+    opCount raw.text "llvm.noalias" == 3 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.dec" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.div" &&
+    !containsSubstr raw.text "cir.rem " &&
+    !containsSubstr raw.text "cir.and " &&
+    !containsSubstr raw.text "cir.or " &&
+    !containsSubstr raw.text "cir.shift"
   | _ => false
 
 /-- Small-width promotion: 8/16-bit integers appear only via `cir.cast`
@@ -1634,10 +1688,11 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           s!"alias-reject: function '{raw.name}': oracle {why}: live pointer params require an explicit `noalias` verdict (see docs/OWNERSHIP.md)"
       else if 2 ≤ (oracleParams raw).length && !isChooseShape raw &&
           !isVecGrowShape raw && !isXorNShape raw &&
+          !isChacha20EncryptShape raw &&
           !isSumTwoShape raw && !isWrPairShape raw &&
           !isCondPairShape raw && !isAliasCondShape raw then
         reject raw.name .aliasReject
-          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline), the exact `wr_pair` shape (two `noalias` writers over two disjoint cells with the in-order dataflow pin, G2 writer-pair discipline), and the exact `cond_pair` shape (two `noalias` writers + `bool`, one scope-wrapped branch firing the first write with the in-order dataflow pin, G2b branch-writer discipline), and the exact `alias_cond` shape (two single-reference-triple writers + `bool`, same branch/dataflow skeleton with the fused C++ deref chain, admitted under any verdict via the G3 open contract — transfer case-splits on the addresses) are admitted (see docs/SUBSET.md rules 2, 6)"
+          s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline), the exact `wr_pair` shape (two `noalias` writers over two disjoint cells with the in-order dataflow pin, G2 writer-pair discipline), and the exact `cond_pair` shape (two `noalias` writers + `bool`, one scope-wrapped branch firing the first write with the in-order dataflow pin, G2b branch-writer discipline), and the exact `alias_cond` shape (two single-reference-triple writers + `bool`, same branch/dataflow skeleton with the fused C++ deref chain, admitted under any verdict via the G3 open contract — transfer case-splits on the addresses), and the exact `chacha20_encrypt` shape (single `noalias` writer + two `noalias` readers over the block-call/xor loops, K6 single-`&mut` containment) are admitted (see docs/SUBSET.md rules 2, 6)"
       else if isAddShape raw then
         .ok { addFunc with name := raw.name }
       else if isIncrShape raw then
@@ -1910,6 +1965,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { chachaBlockFunc with name := raw.name }
       else if isSha256Shape raw then
         .ok { sha256Func with name := raw.name }
+      else if isChacha20EncryptShape raw then
+        .ok { chacha20EncryptFunc with name := raw.name }
       else if isUnadmittedArithLeaf raw then
         reject raw.name .outOfSubset
           s!"out-of-subset: function '{raw.name}' uses integer arithmetic outside the admitted single-op leaves: {arithRejectWhy raw.text} (see docs/SUBSET.md)"

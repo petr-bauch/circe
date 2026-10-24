@@ -38,6 +38,7 @@ import Circe.Emit.Bitwise
 import Circe.Emit.XorBuf
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
+import Circe.Crypto.Stream
 import Circe.Emit.Move
 import Circe.Emit.Array
 import Circe.Emit.ArraySort
@@ -355,6 +356,27 @@ def matchFrag : Func → Option FragKind
         (.seq aw (.return_ (.var "state")))))) =>
       if rzero.toNat == 0 && izero.toNat == 0 && beqStmt rw roundWhile &&
           beqStmt aw addWhile then some .chachaBlock
+      else none
+    | _ => none
+  | ⟨_, [⟨"key", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"counter", .u 32, .owned⟩,
+         ⟨"nonce", .array (.u 32) _, .sharedBorrow⟩,
+         ⟨"msg", .array (.u 32) _, .mutBorrow _⟩,
+         ⟨"nwords", .u 64, .owned⟩], _, body⟩ =>
+    -- K6 stream kernel: counter lets, outer while with the admitted
+    -- block call, tail if — bodies compared via `beqStmt` against the
+    -- `Circe.Crypto.Stream` canonical fragments.
+    match body with
+    | .seq (.let_ "b" _ _)
+        (.seq (.let_ "off" _ _)
+        (.seq (.let_ "i" _ _)
+        (.seq (.let_ "st" _ _)
+        (.seq ow
+        (.seq (.let_ "ntail" _ _)
+        (.seq (.if_ _ tail .skip)
+              (.return_ (.var "msg")))))))) =>
+      if beqStmt ow outerWhileFrag && beqStmt tail tailFrag then
+        some .chacha20Encrypt
       else none
     | _ => none
   | ⟨_, [⟨"st", .array (.u 32) _, .mutBorrow _⟩], _, body⟩ =>
@@ -1621,6 +1643,9 @@ theorem matchFrag_shlU32 : matchFrag shlU32Func = some .shlU32 := rfl
 theorem matchFrag_shrU32 : matchFrag shrU32Func = some .shrU32 := rfl
 theorem matchFrag_xorN : matchFrag xorNFunc = some .xorN := rfl
 theorem matchFrag_chachaBlock : matchFrag chachaBlockFunc = some .chachaBlock :=
+  rfl
+theorem matchFrag_chacha20Encrypt :
+    matchFrag chacha20EncryptFunc = some .chacha20Encrypt := by
   rfl
 theorem matchFrag_sha256Compress : matchFrag sha256Func = some .sha256Compress :=
   rfl

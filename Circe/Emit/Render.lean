@@ -254,6 +254,17 @@ def emitSha256CompressText (name : String) : String :=
   ++ "    .ok (sha256CompressFwd s)\n"
   ++ "  else .error .OOB\n"
 
+/-- Render the ChaCha20 stream forward definition
+    (`chacha20_encrypt_fwd`: key/counter/nonce/message in, encrypted
+    message out over the word count, tag-erased). -/
+def emitChacha20EncryptText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Crypto.Stream\n\n"
+  ++ s!"/-- Pure translation of `{name}`: key/counter/nonce/message in, encrypted message out. -/\n"
+  ++ s!"def {name}_fwd (key : List (BitVec 32)) (counter : BitVec 32)\n"
+  ++ "  (nonce msg : List (BitVec 32)) (nwords : Nat) : Result (List (BitVec 32)) :=\n"
+  ++ "  chacha20EncryptList key counter nonce msg nwords 0 0\n"
+
 /-- Render the `choose` forward definition (`choose_fwd`). -/
 def emitChooseFwdText (name : String) : String :=
   emitHeader

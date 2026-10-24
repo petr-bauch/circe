@@ -105,8 +105,16 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
    multiset: nine mut `at()` + two self-calls; the self-calls are
    `callProg`, which steps fuel down per call, so recursion
    terminates by the fuel budget with exhaustion as `AssertFail`).
+   G1 adds one call-in-loop shape: the `chacha20_encrypt` caller
+   (exact multiset: one outer `cir.while`, two `cir.for`, one
+   `cir.if`, two `cir.call @chacha20_block(` sites — one in the loop
+   body, one in the tail branch; the callee is the call-free K4 leaf).
+   The C1 program-threading loop already runs loop bodies under the
+   program evaluator, so the call resolves by name against the
+   program; fuel is the loop budget as before.
    All other self-calls (recursion), mutual recursion, unknown
-   callees, and misshapen callers are rejected. Semantics:
+   callees, calls in loop bodies outside this exact shape, and
+   misshapen callers are rejected. Semantics:
    `callRet dst f args` binds `dst` to the callee return
    (`evalProgStmt` dispatches to `evalFuncFuel` at the same fuel;
    errors propagate).

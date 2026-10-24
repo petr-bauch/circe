@@ -43,6 +43,7 @@ import DiffVecPartition
 import DiffVecSelectionSort
 import DiffVecMergeSort
 import DiffVecQuicksort
+import DiffChacha20Encrypt
 import DiffVecReverse
 import DiffVecSegReverse
 import DiffVecRotate
@@ -100,6 +101,7 @@ import GoldenVecPartition
 import GoldenVecSelectionSort
 import GoldenVecMergeSort
 import GoldenVecQuicksort
+import GoldenChacha20Encrypt
 import GoldenVecReverse
 import GoldenVecSegReverse
 import GoldenVecRotate
@@ -326,6 +328,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("cc", ["tests/c/xor_n.c", "tests/diff/driver_xor_n.c"], bin "circe_xor_n_native"),
    ("cc", ["tests/diff/driver_qr.c"], bin "circe_qr_native"),
    ("cc", ["tests/c/chacha_block.c", "tests/diff/driver_chacha.c"], bin "circe_chacha_native"),
+   ("cc", ["tests/c/chacha_block.c", "tests/c/chacha20_encrypt.c", "tests/diff/driver_chacha20_encrypt.c"], bin "circe_chacha20_encrypt_native"),
    ("cc", ["tests/c/sha256_compress.c", "tests/diff/driver_sha.c"], bin "circe_sha_native"),
    ("cc", ["tests/c/vec_alloc.c", "tests/diff/driver_vec.c"], bin "circe_vec_native"),
    ("cc", ["tests/c/vec_copy_sum.c", "tests/diff/driver_veccopy.c"], bin "circe_vec2_native"),
@@ -412,7 +415,9 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/XorN.lean", "out/XorN.lean"),
    ("tests/golden/XorN_Spec.lean", "out/XorN_Spec.lean"),
    ("tests/golden/ChachaBlock.lean", "out/ChachaBlock.lean"),
+   ("tests/golden/Chacha20Encrypt.lean", "out/Chacha20Encrypt.lean"),
    ("tests/golden/ChachaBlock_Spec.lean", "out/ChachaBlock_Spec.lean"),
+   ("tests/golden/Chacha20Encrypt_Spec.lean", "out/Chacha20Encrypt_Spec.lean"),
    ("tests/golden/Sha256Compress.lean", "out/Sha256Compress.lean"),
    ("tests/golden/Sha256Compress_Spec.lean", "out/Sha256Compress_Spec.lean"),
    ("tests/golden/VecAlloc.lean", "out/VecAlloc.lean"),
@@ -608,6 +613,7 @@ def emittedTypechecks : List String :=
    "out/ShlU32.lean", "out/ShrU32.lean",
    "out/XorN.lean",
    "out/ChachaBlock.lean",
+   "out/Chacha20Encrypt.lean",
    "out/Sha256Compress.lean",
    "out/VecAlloc.lean",
    "out/VecCopySum.lean",
@@ -1921,8 +1927,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 137 then
-    throw (IO.userError s!"expected 137 spec stubs, found {stubs.length}")
+  if stubs.length != 138 then
+    throw (IO.userError s!"expected 138 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -1994,6 +2000,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-xorn", DiffXorN.main [bin "circe_xor_n_native", trials]),
    ("diff-qr", DiffQr.main [bin "circe_qr_native", trials]),
    ("diff-chacha", DiffChacha.main [bin "circe_chacha_native", trials]),
+   ("diff-chacha20encrypt", DiffChacha20Encrypt.main [bin "circe_chacha20_encrypt_native", trials]),
    ("diff-sha", DiffSha.main [bin "circe_sha_native", trials])]
 
 def checkSuites : List Job :=
@@ -2021,6 +2028,7 @@ def checkSuites : List Job :=
    ("golden-aliasprobe", GoldenAliasProbe.main),
    ("golden-xorn", GoldenXorN.main),
    ("golden-chacha", GoldenChacha.main),
+   ("golden-chacha20encrypt", GoldenChacha20Encrypt.main),
    ("golden-sha", GoldenSha.main),
    ("golden-optional", GoldenOptional.main),
    ("golden-span", GoldenSpan.main),
@@ -2064,12 +2072,12 @@ def suiteModules : List String :=
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
    "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecTransformAdd", "DiffVecPartition", "DiffVecSelectionSort", "DiffVecMergeSort", "DiffVecQuicksort", "DiffVecReverse", "DiffVecSegReverse", "DiffVecRotate",
-   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffSha", "DiffOverload", "DiffArray",
+   "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffChacha20Encrypt", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
    "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenView",
-   "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenSha", "ScopeReport",
+   "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",
    "CondPairGate", "GoldenCondPair", "DiffCondPair",

@@ -30,6 +30,7 @@ import Circe.Emit.CondPair
 import Circe.Emit.AliasCond
 import Circe.Crypto.Block
 import Circe.Crypto.ShaBlock
+import Circe.Crypto.Stream
 
 set_option maxRecDepth 2048
 
@@ -89,6 +90,7 @@ def main : IO Unit := do
   let shrU32 ← emitOrDie shrU32Func
   let xorN ← emitOrDie xorNFunc
   let chacha ← emitOrDie chachaBlockFunc
+  let chacha20 ← emitOrDie chacha20EncryptFunc
   let sha256 ← emitOrDie sha256Func
   let overloadAdd ← emitOrDie { addFunc with name := "_Z3addii" }
   let add3 ← emitOrDie add3Func
@@ -226,6 +228,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ShrU32.lean" (emitFileText (.ok shrU32))
   IO.FS.writeFile "out/XorN.lean" (emitFileText (.ok xorN))
   IO.FS.writeFile "out/ChachaBlock.lean" (emitFileText (.ok chacha))
+  IO.FS.writeFile "out/Chacha20Encrypt.lean" (emitFileText (.ok chacha20))
   IO.FS.writeFile "out/Sha256Compress.lean" (emitFileText (.ok sha256))
   IO.FS.writeFile "out/OverloadAdd.lean" (emitFileText (.ok overloadAdd))
   IO.FS.writeFile "out/Add3.lean" (emitFileText (.ok add3))
@@ -363,6 +366,7 @@ def main : IO Unit := do
   let shrU32Spec ← specOrDie shrU32Func
   let xorNSpec ← specOrDie xorNFunc
   let chachaSpec ← specOrDie chachaBlockFunc
+  let chacha20Spec ← specOrDie chacha20EncryptFunc
   let sha256Spec ← specOrDie sha256Func
   let overloadAddSpec ← specOrDie { addFunc with name := "_Z3addii" }
   let add3Spec ← specOrDie add3Func
@@ -500,6 +504,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ShrU32_Spec.lean" shrU32Spec
   IO.FS.writeFile "out/XorN_Spec.lean" xorNSpec
   IO.FS.writeFile "out/ChachaBlock_Spec.lean" chachaSpec
+  IO.FS.writeFile "out/Chacha20Encrypt_Spec.lean" chacha20Spec
   IO.FS.writeFile "out/Sha256Compress_Spec.lean" sha256Spec
   IO.FS.writeFile "out/OverloadAdd_Spec.lean" overloadAddSpec
   IO.FS.writeFile "out/Add3_Spec.lean" add3Spec
@@ -669,6 +674,8 @@ def main : IO Unit := do
     throw (IO.userError "sumTwo must not have a backward definition")
   if chacha.backward.isSome then
     throw (IO.userError "chacha20_block must not have a backward definition")
+  if chacha20.backward.isSome then
+    throw (IO.userError "chacha20_encrypt must not have a backward definition")
   if sha256.backward.isSome then
     throw (IO.userError "sha256_compress must not have a backward definition")
   if arrayRef.backward.isSome then
