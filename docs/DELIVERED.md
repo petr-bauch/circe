@@ -1763,6 +1763,25 @@ admission.
   `c02cce9`, `f089c83`, `f7fdab5`, `d31b87f`, `a593cbd`,
   `ef179a2`).
 
+### P2-M8. Recursive quicksort contract — DONE (2026-10-24)
+
+First admitted recursion: `vec_quicksort` (Lomuto + 2 self-calls)
+with the joint sorted+perm contract reusing the M6 partition bridge
+and M7 sorted/perm vocabulary. Admission: corpus
+`vec_quicksort.cpp` + real CIRGen `.cir` (9 mut `at()` + 2
+`callProg` self-calls; `callRet` self-call and mutual recursion stay
+rejected), recursive-caller shape + gate arm, `vecQuicksortFwd`
+model, goldens + 1008/1008 diff fuzz. Proof-A:
+`evalProgFunc` ok/err twins vs the forward model. Proof-B:
+`qsPartFwd_joint` (scan split) and `vecQuicksortFwd_joint` (length,
+confinement, perm, full sorted window via `sort_combine` + window
+permutations). Proof-C: `vecQuicksort_spec` closing spec at value
+level (no Transfer file — unlike M7, the program does not thread
+memory). Driver fixes the admission missed: spec-stub count 136→137,
+roster entries for `DiffVecQuicksort`/`GoldenVecQuicksort`.
+- Acceptance: 452 jobs TEST-OK, CHECK-OK (`b79752a`,
+  `f9b4e76`).
+
 ### P4 Phase 0. Iris vendoring re-check — DONE (2026-10-23, report-only)
 
 All three 2026-10-12 blockers re-checked in `/tmp` scratch (no

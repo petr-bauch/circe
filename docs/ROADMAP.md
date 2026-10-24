@@ -43,12 +43,12 @@ caller-owned buffers, loud misses (native exit 4), caller-debt
 side conditions, tamper-checked diff fuzz.
 
 Next:
-(none — the selection-sort, partition, and merge-sort stacks
-are closed; see `DELIVERED.md` §§ P2-M5, P2-M6, P2-M7)
+(none — the selection-sort, partition, merge-sort, and quicksort
+stacks are closed; see `DELIVERED.md` §§ P2-M5, P2-M6, P2-M7, P2-M8)
 
 Proposed (toward the platform goal — for approval, in order):
-(none — P2-M6 partition contract and P2-M7 merge-sort
-contract both landed proof-only; next P2 slice TBD)
+(none — P2-M6 partition and P2-M7 merge-sort landed proof-only,
+P2-M8 quicksort landed with admission; next P2 slice TBD)
 
 ## Pillar 3 — Human-readable/writable proofs
 
