@@ -1,0 +1,208 @@
+\chapter{Interpretation and Semantics}
+\label{ch:semantics}
+
+This chapter follows one small program from C++ to Lean, and each
+section below re-examines it at a deeper level: first as text the gate
+must recognize, then as values the evaluator computes, then as memory
+the transfer theorem erases. The program is an accumulator exercised
+twice, chosen because it is the smallest C++ shape that uses
+construction, mutation, observation, and destruction together:
+
+\begin{verbatim}
+struct Acc {
+  int32_t s;
+  Acc() : s(0) {}
+  ~Acc() {}
+  void add(int32_t v) { s += v; }
+  int32_t get() const { return s; }
+};
+int32_t acc_two(int32_t a, int32_t b) {
+  Acc acc;
+  acc.add(a);
+  acc.add(b);
+  return acc.get();
+}
+\end{verbatim}
+
+Nothing about this program is heap-allocated, aliased, or clever, and
+that is the point: it sits squarely inside the admitted subset, so
+every stage of the pipeline has something to say about it.
+
+\section{Scope and staging}
+
+Interpretation proceeds in stages, and the stage boundary is also the
+trust boundary. CIR text is parsed (trusted) into \texttt{RawIR}; oracle
+verdicts about aliasing are read in (trusted); the verified gate
+\texttt{validate} admits exactly the documented subset and lowers it to
+\texttt{CoreIR}; the verified emitter turns \texttt{CoreIR} into Lean
+definitions. Unverified text therefore never reaches the emitter without
+passing the gate. Pointers do not survive as values across this boundary:
+they become ownership roles (\texttt{owned}, \texttt{mutBorrow},
+\texttt{sharedBorrow}), and the admitted shapes are enumerated normatively
+in \texttt{docs/SUBSET.md}.
+
+For our example, the compiler produces five functions, and the gate
+reads them the way a bouncer reads IDs --- markers first, details
+second. Trap and cleanup regions are rejected outright everywhere else
+in the gate; this entry shape carries the explicit exemption, which is
+why the scope below survives into \texttt{CoreIR}. Eliding allocas,
+loads, stores, attributes, and location noise, the entry says:
+
+\begin{verbatim}
+cir.func ... @_Z7acc_twoii(%arg0: !s32i, %arg1: !s32i) -> !s32i {
+  ...
+  cir.call @_ZN3AccC2Ev(%3) : (...) -> ()
+  cir.cleanup.scope {
+    ...
+    cir.call @_ZN3Acc3addEi(%3, %4) : (...) -> ()   // acc.add(a)
+    ...
+    cir.call @_ZN3Acc3addEi(%3, %5) : (...) -> ()   // acc.add(b)
+    ...
+    %6 = cir.call @_ZNK3Acc3getEv(%3) : (...) -> !s32i
+    ...
+    cir.return %7 : !s32i
+  } cleanup normal {
+    cir.call @_ZN3AccD2Ev(%3) : (...) -> ()         // ~Acc()
+    ...
+  }
+  cir.trap
+}
+\end{verbatim}
+
+What the gate keys on is not the arithmetic but the shape around it:
+the constructor and destructor carry \texttt{cxx\_ctor} /
+\texttt{cxx\_dtor} markers, the \texttt{this} pointers carry the
+nonnull/dereferenceable/noundef attribute triple (never
+\texttt{restrict}, which \texttt{this} cannot carry), the body is a
+cleanup scope sequencing exactly five call sites, and the arithmetic
+hides inside the callees. The single addition that matters textually is
+one line in the \texttt{add} leaf:
+
+\begin{verbatim}
+%6 = cir.add nsw %5, %3 : !s32i
+\end{verbatim}
+
+The \texttt{nsw} flag is the difference between a checked operation and
+a wrapping one, and the gate demands it for signed addition. Past the
+gate, all of this becomes one canonical \texttt{CoreIR} function whose
+body is a straight-line chain of calls, with the cleanup scope made
+explicit sequencing:
+
+\begin{verbatim}
+.cleanup
+  (.seq (.callRet "s0" "_ZN3AccC2Ev" [])
+  (.seq (.callRet "s1" "_ZN3Acc3addEi" ["s0", "a"])
+  (.seq (.callRet "s2" "_ZN3Acc3addEi" ["s1", "b"])
+  (.seq (.callRet "s3" "_ZNK3Acc3getEv" ["s2"])
+  (.seq (.callRet "u" "_ZN3AccD2Ev" ["s3"])
+        (.return_ (.var "s3")))))))
+\end{verbatim}
+
+Methods have become functions over an explicit state word
+(\texttt{s0} through \texttt{s3}); the object never appears. That
+erasure, performed once per shape at admission time, is what makes the
+next section possible. Two smaller erasures of the same kind predate
+it and persist underneath: call composition is a program-level
+\texttt{callRet} step over a DAG of call-free leaves (callers
+evaluate by delegating to whole-function semantics, with errors
+propagating past every later call); growth routines compose a level
+higher, with composers calling proved composers through the depth-n
+program step over frozen leaves, never by inlining; recursion bottoms
+out in fuel too, with the single admitted recursive shape re-entering
+itself on strictly smaller ranges through the same step and exhaustion
+loud; and struct-by-value is a pair of
+pure expressions --- field projection fusing member access with its
+load, and point construction fusing field stores with the return ---
+so neither callers nor small structs need memory to be stated.
+
+\section{Value semantics}
+
+The meaning of an admitted program is given by a loan-based, value-only
+evaluation: environments map variables to values with borrow bookkeeping,
+and there is no heap and no addresses. Failure inside the subset is made
+explicit through a \texttt{Result} monad whose errors name the cause
+(overflow, division by zero, out-of-bounds access, failed assertion,
+uninitialized use). Loops are fuel-bounded, with fuel exhaustion reported
+as an assertion failure --- a deliberate incompleteness that can never
+become unsoundness, since the gate admits only loops paired with a length
+bound the fuel covers. Loop bodies may exit early --- loop-scoped
+\texttt{break} and \texttt{continue} with escape reported loudly,
+plus early \texttt{return} short-circuiting the sequence ---
+and switches arrive lowered to if-chains over exact constant pins.
+Arithmetic is width-polymorphic over 32- and 64-bit words, with mixed
+widths rejected loudly; sub-32-bit arithmetic is rejected too, because
+the frontend already promotes it through 32-bit casts, so there is no
+native small-width operation left to model. The value story has grown
+past readers: a sequential writer to one address is admitted by
+functionalization --- value in, updated value out --- and a disjoint
+writer pair returns both updated words as a single pair value, the
+writes commuting without sequencing. This evaluator is the
+specification against which every emitted definition is proved correct,
+one canonical function at a time.
+
+Our accumulator's meaning is a three-line definition: start from zero,
+thread two checked additions, read out the result. The constructor,
+getter, and destructor are identities at value level (field-init to
+zero, read-back, no-op), so only the additions can fail:
+
+\begin{verbatim}
+def accTwo (a b : BitVec 32) : Result (BitVec 32) :=
+  match checkedAddI32 0 a with
+  | .error e => .error e
+  | .ok s1 => checkedAddI32 s1 b
+\end{verbatim}
+
+Evaluating \texttt{accTwo 3 4} walks the chain in the open. The
+constructor yields \texttt{0}; the first call binds \texttt{s1} to the
+result of \texttt{checkedAddI32 0 3}, which is \texttt{.ok 3}; the
+second computes \texttt{checkedAddI32 3 4}, which is \texttt{.ok 7};
+the getter returns \texttt{7} and the destructor passes it through, so
+the whole program answers \texttt{.ok 7}. The \texttt{callRet} chain in
+the \texttt{CoreIR} body mirrors this exactly: each \texttt{s}-variable
+holds one intermediate word, and errors propagate past every later
+call by construction. An overflowing input takes the other path ---
+\texttt{checkedAddI32} reports \texttt{Overflow}, the match arm
+delivers \texttt{.error}, and the emitted program agrees, which is
+what the two error-path correctness lemmas pin down. Nothing was
+allocated, freed, or framed in this telling; there was nowhere for a
+memory to appear, because values were all the program ever touched.
+
+\section{Memory model and transfer}
+
+A second, addressful model exists for one purpose: to shrink trust in
+the aliasing oracle. The memory model is a flat block map with
+lightweight borrow tags, strong enough for exactly the project's
+uniqueness sources (\texttt{restrict}/\texttt{noalias} attributes,
+disjoint allocation results, length-paired access), and nothing more.
+Per-shape footprint proofs plus a transfer theorem --- memory evaluation
+coincides with value evaluation on admitted functions --- demote the
+oracle verdicts from a soundness argument to a checked cache: CI asserts
+agreement, but the proofs do not depend on belief. The recursive sort
+is the exception that proves the pattern: its whole-function value
+bridge closes the spec, so it ships no transfer file. The free
+discipline follows the same incompleteness-over-unsoundness rule: a missing free
+is tolerated as a leak, while a double free fails loudly through the
+affine token and the gate. Call composition has a memory twin as well:
+the program layer evaluates callers under the same fuel in both models,
+so the transfer covers entries, not just leaves. Shapes whose
+footprints depend on the caller (conditionally-live writers) were the
+known residue of the purely equational story, prototyped natively over
+the memory model; they are now admitted through an explicit framing
+contract --- scalar stores land on pinned cells under the open contract,
+and the transfer case-splits on the addresses.
+
+Run the accumulator a third time, now with addresses switched on, and
+watch nothing change. Each \texttt{this} pointer resolves through the
+layout to a live block whose tag matches the allocating epoch; the
+single-reference parameters bind plain values justified by the
+attribute triple; the stores and loads inside the leaves hit their
+cells and cross-check against the value-level reads. The transfer
+theorem for this shape states the outcome: memory evaluation of the
+entry agrees with \texttt{accTwo} on every input, ok and error paths
+alike. The oracle's verdict for these two integer parameters ---
+\texttt{unknown}, since integers never alias --- sits in the checked
+cache, consulted and irrelevant at once. That is the whole moral of
+the example, stated three ways across this chapter: the gate saw
+markers and calls, the evaluator saw threaded words, and memory saw
+tagged blocks, and all three told the same story about six lines of
+C++.

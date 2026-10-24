@@ -1,0 +1,107 @@
+\chapter{Foundations for Verification}
+\label{ch:verification}
+
+\section{Emitter correctness}
+
+For every admitted function shape, a correctness theorem states that
+running the emitted Lean definition agrees with evaluating the
+\texttt{CoreIR} function: semantics in, same semantics out, on both
+the ok and the error paths (each shape ships ok- and error-path
+corollaries alongside the main agreement). These proofs
+go by structural or fuel induction, and each new operation earns its
+per-operation lemmas before the gate admits it. Closed entries take a
+shorter path: both sides are closed terms, so kernel-checked evaluation
+decides them, replacing hand-written evaluation proofs. The result is that trust
+in any emitted program reduces to trust in the evaluator plus the
+per-shape proof --- never to the output text itself, which is additionally
+pinned byte-for-byte by golden files.
+
+\section{Validator and disciplines}
+
+The validator is the project's bouncer: it maps admitted corpus shapes to
+their canonical functions and rejects everything else with a precise,
+actionable code (aliasing, escape, possible out-of-bounds, out-of-subset).
+Around it sit the small disciplines that keep the common case pure:
+verified noalias derivation from CIR text, a read-only sharing discipline
+for recovered readers, and extracted scope/alloca lifetime evidence that
+informs admission messages, pins residue reports, and feeds admission
+pins. Each discipline follows the same rule as everything else: admit
+exactly what is understood, reject the rest loudly.
+
+\section{Specifications and tactics}
+
+Users prove properties as pure equations over emitted code, in the style
+of the gallery checked into \texttt{Circe.Specs}: sortedness of a fill
+loop, first-match minimality of a search, prefix preservation of a
+reallocation. The sorting case studies carry the full contracts: each
+admitted sort returns a sorted permutation of its input. Proof
+ergonomics come from a small tactic family. One
+simplifier set bundles checked-operation unfoldings, range bridges, and
+whole-program equations; fuel automation discharges the arithmetic that
+loop proofs otherwise repeat; a selector tactic closes the borrow-return
+lens laws; a registered step cascade discharges program-evaluation
+steps, with composer fuel splits packed into a single obtain; and a
+fold-end tactic closes the fold-termination script shared across all
+bounded folds. The emitter also scaffolds unverified spec stubs next to each
+generated file --- signature, body reference, edge cases, and a
+property-test entry --- so new programs arrive with their proof
+obligations already sketched. The standing audit result is that everyday
+proofs are simplifier-first with at most a couple of manual steps.
+
+\section{Hoare-style verification}
+
+A second verification style grows beside the equational one: Hoare
+triples over the memory evaluator. A triple $\{P\}~s~\{Q\}$ here is
+thin sugar, not new semantics. \texttt{HTriple} states that statement
+\texttt{s}, run from any state satisfying the pre-predicate \texttt{P},
+evaluates --- at any fuel --- to an \texttt{.ok} outcome satisfying the
+post-predicate \texttt{Q}. States are triples of environment, memory,
+and layout; outcomes distinguish falling through from returning a
+value, among others. Correctness is total over \texttt{.ok} only:
+failure is excluded by construction, and every way a program could fail
+(overflow, a failed store, a missed guard) is discharged as an explicit
+hypothesis instead --- debt in the open, matching the transfer style,
+never an axiom. A program-level twin covers loop bodies with calls,
+which the call-free triple cannot see.
+
+Fuel deserves one honest paragraph, because the loop rule turns on it.
+The evaluator is fuel-bounded, so loop invariants are indexed by fuel:
+\texttt{I k} describes the states that may arise with \texttt{k} steps
+left, and fuel itself does the bounding, which means no separate
+termination measure is needed for soundness. The index is load-bearing
+rather than decorative: at fuel zero a true-guard loop errors, so
+\texttt{I 0} admits only guard-false states, and each true-guard step
+must deliver a state satisfying \texttt{I k} from one satisfying
+\texttt{I (k+1)}. Bodies that break or return out of the loop are
+excluded for now; the handler arms exist, but the exit-post plumbing is
+deferred with the gap named, not silently assumed.
+
+The rules themselves are direct wrappers over the existing memory
+evaluator equations, one per statement shape: skip, sequencing with the
+mid-outcome pinned to falling through, consequence for strengthening
+pre-conditions and weakening post-conditions, both conditional branches
+over plain boolean guards, return with its value as the outcome, and
+let/assign for environment extension and update. At program level, call
+rules reduce the caller to the callee run, carrying caller memory
+across definitionally. Storage gets the
+interesting rule: a store produces the stored-cell fact and preserves
+one framed cell across the write --- the untouched cell carried through
+as an explicit conjunct. The store index is pinned to zero, which is
+complete rather than limiting, because the cell assertion describes a
+singleton one-word block and anything else would be out of bounds.
+Loads appear only inside store value expressions, through an
+expression-level helper, since loads have no value-side mirror by
+design.
+
+Confidence comes from a gallery of closed-instance proofs that double
+as regression tests: a two-cell increment with framing, both arms of a
+conditional writer over its real function body, a countdown loop, a
+pair-returning conditional, a read-only accumulation loop with
+per-prefix arithmetic debt, and an in-place increment loop carrying
+the evolving prefix in its invariant. Each is proved end to end from
+the rules with its debts as hypotheses, each ships with a runtime
+check, and the driver runs them all. Whole-list assertions generalize
+the singleton cell facts wherever loops range over blocks. Sequencing
+past an early return remains the named open lemma on the memory side;
+until it lands, straight-line bodies return last, and the chapter will
+say so for exactly as long as it stays true.
