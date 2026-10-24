@@ -925,6 +925,50 @@ containment rejections) ride the driver roster with a `k5-sha`
 content suite; spec stubs grow 107 → 108.
 - Acceptance: 588 jobs TEST-OK, CHECK-OK.
 
+### K6. ChaCha20 stream vs RFC 8439 §2.4.1/§2.4.2 — DONE (2026-10-24)
+
+First multi-block stream cipher and first call-in-loop program,
+verified end to end (pillar-1 guiding algorithm for the G1 gap):
+real CIRGen corpus (`tests/c/chacha20_encrypt.c` →
+`tests/cir/chacha20_encrypt.cir`, 688 lines: one outer `cir.while`
+over full 16-word blocks, two `cir.for` xor loops, one `cir.if`
+tail guard, two `cir.call @chacha20_block` sites — one in the loop
+body, one in the tail branch; no div/mul/rem) admitted by the exact
+caller-shape gate (`isChacha20EncryptShape` plus the caller-side
+alias exemption, SUBSET rule 9 G1; the callee is the call-free K4
+leaf and resolves by name against the program at the same fuel).
+New `Circe/Crypto/Stream.lean`: the fuel-threaded forward
+(`chacha20EncryptFwd` over `encLoopFwd`) and its fuel-free twin
+(`chacha20EncryptList`), proved equal at sufficient fuel; the
+chain-prefix environment discipline (`s`/`ntail` bindings shadow
+the fixed-shape env, so lookups/updates lift over the stale
+prefix); `setupFrag`/`xorBody`/`xorLoop`/`xorFull`/`blockCall`/
+`fullIter` fragment agreements; the outer fuel induction
+(`outerWhile_post`: one fuel per full block plus 16 for the tail)
+with wrap-free guard arithmetic (`nwords + 16 < 2^64`); the tail
+phase (`tailNtail_ok`, `tailIf_empty`/`tailIf_nonempty`);
+outer-plus-tail with the trailing return (`outerTail_correct`);
+whole-function agreement (`evalProgFunc_chacha20Encrypt`)
+collapsing to `emit_correct_chacha20Encrypt` at the default fuel.
+Bounds are stated, not hidden: `nwords ≤ 4096` (C array plus
+fuel), `nwords/16 < 2^32` (`u32` block counter), wrap-free guards.
+The §2.4.2 "Sunscreen" vector (28-word prefix: one full block plus
+a 12-word tail) is pinned four ways — `native_decide` list KAT
+(`kat_chacha20_list`, kernel-checked) plus its end-to-end eval
+corollary (`kat_chacha20_eval`), the forward-KAT leg, the
+native-vs-forward leg, and eval-vs-forward agreement on every
+fuzz trial (this caught a mistranscribed KAT word, `0x6f20756f`
+vs `0x6f75756f`). `DiffChacha20Encrypt` (pipeline + KAT +
+zero/short/long/OOB edges + fuzz vs the corpus-linked native
+driver) + `GoldenChacha20Encrypt` (pipeline-vs-golden
+byte-identical + `_Spec.lean`, `spec_check=true`) ride the driver
+roster. Limitation (K6c): input-OOB proof twins are
+runtime-covered only; the eval model errors exactly where
+setup/xor runs, while the list model rejects short keys up
+front, so they diverge on `(short key, nwords = 0)` (eval returns,
+list says OOB) — the ok-theorem carries `hk8`/`hn3` for agreement.
+- Acceptance: 456 jobs TEST-OK, CHECK-OK.
+
 ### N11. First writer admission: sequential reborrows (F1) — DONE (2026-10-12)
 
 First mutable writer through a borrowed reference: `alias_reborrow`

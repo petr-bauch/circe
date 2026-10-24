@@ -222,7 +222,7 @@ changes stay out.
 - L-track extractions + consumers (L–L5) — `DELIVERED.md` "L." / "L4." / "L5.".
 - F2 native conditional framing + S0–S4/G1 dispositions —
   `DELIVERED.md` "F2." / "S0–S4 + G1 dispositions".
-- K1–K5 crypto programs — `DELIVERED.md` "K." (summary; details
+- K1–K6 crypto programs — `DELIVERED.md` "K." (summary; details
   under each K header).
 - All N/H/A/B/M/V/W/C/G/S/T slices — `DELIVERED.md` under
   their headers (vector run V1/V2/W/M/C under N7; R/S/T own
