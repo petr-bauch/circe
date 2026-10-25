@@ -979,7 +979,12 @@ so the key/nonce twins carry `nwords ≠ 0`; the message twin
 needs no such side condition (`msg.length < nwords.toNat`
 already excludes `nwords = 0`). Bounds: message within the
 4096-word buffer, fuel covers the remaining words plus the
-block-call depth.
+block-call depth. The while-plumbing both xor inductions
+share (failing-iteration close, successful-iteration step,
+`i`-bound guard) is factored into `Circe/Crypto/LoopOob.lean`
+(`whileErr_of_bodyErr`, `whileStep_of_bodyOk`, `iterGuardT`)
+with the short-read-loop recipe; both inductions are rewired
+onto it, read-miss evals staying per-loop.
 - Acceptance: 456 jobs TEST-OK, CHECK-OK.
 
 ### N11. First writer admission: sequential reborrows (F1) — DONE (2026-10-12)

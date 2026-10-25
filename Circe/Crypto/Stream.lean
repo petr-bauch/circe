@@ -21,6 +21,7 @@ pass OOB loudly via the up-front length check (K4/K5 precedent).
 -/
 import Circe.Emit.Fragment
 import Circe.Crypto.Block
+import Circe.Crypto.LoopOob
 
 /-! ## Mirror fragments -/
 
@@ -3545,17 +3546,10 @@ theorem xorLoopMsgFirst_oob (prog : Prog) (F : Nat)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .ok (.u64 iB) :=
         evalExpr_var_hit _ _ _ hiV
-      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
-      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
-        rw [BitVec.ult_eq_decide, hi, hN]
-        exact decide_eq_true (by omega)
       have hguardT : evalExpr (.ult (.var "i") bnd)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
-          .ok (.b true) := by
-        have h := evalExpr_ult_u64 (.var "i") bnd
-          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
-          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
-        rwa [htrue] at h
+          .ok (.b true) :=
+        iterGuardT bnd _ iB i N hi hN64 hiN hivar (hbnd msg iB)
       have hoffV : envLookup
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
           "off" =
@@ -3612,7 +3606,7 @@ theorem xorLoopMsgFirst_oob (prog : Prog) (F : Nat)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .error .OOB := by
         rw [hbody, evalProgStmt_seq_err _ _ _ _ _ _ harr]
-      rw [hloop, evalProgStmt_while_true _ _ _ _ _ hguardT, herr]
+      exact whileErr_of_bodyErr prog F' _ _ _ _ _ hloop hguardT herr
   | succ n ih =>
     cases F with
     | zero => omega
@@ -3627,17 +3621,10 @@ theorem xorLoopMsgFirst_oob (prog : Prog) (F : Nat)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .ok (.u64 iB) :=
         evalExpr_var_hit _ _ _ hiV
-      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
-      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
-        rw [BitVec.ult_eq_decide, hi, hN]
-        exact decide_eq_true (by omega)
       have hguardT : evalExpr (.ult (.var "i") bnd)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
-          .ok (.b true) := by
-        have h := evalExpr_ult_u64 (.var "i") bnd
-          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
-          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
-        rwa [htrue] at h
+          .ok (.b true) :=
+        iterGuardT bnd _ iB i N hi hN64 hiN hivar (hbnd msg iB)
       have hhit : offN + i < msg.length := by omega
       obtain ⟨w, hgetm⟩ : ∃ w, msg[offN + i]? = some w :=
         ⟨_, List.getElem?_eq_getElem (by omega)⟩
@@ -3651,9 +3638,8 @@ theorem xorLoopMsgFirst_oob (prog : Prog) (F : Nat)
           evalProgStmt prog F' loop
             (pre ++ mkEncEnv key counter bB nonce
               (msg.set (offN + i) (w ^^^ k)) nwords bN offN
-              (iB + BitVec.ofNat 64 1) st) := by
-        simp only [hloop,
-          evalProgStmt_while_true prog F' _ _ _ hguardT, hbody]
+              (iB + BitVec.ofNat 64 1) st) :=
+        whileStep_of_bodyOk prog F' _ _ _ _ _ hloop hguardT hbody
       rw [hwhile]
       have hi1 : (BitVec.ofNat 64 1).toNat = 1 :=
         ofNat64_toNat 1 (by decide)
@@ -3716,17 +3702,10 @@ theorem xorLoopSFirst_oob (prog : Prog) (F : Nat)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .ok (.u64 iB) :=
         evalExpr_var_hit _ _ _ hiV
-      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
-      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
-        rw [BitVec.ult_eq_decide, hi, hN]
-        exact decide_eq_true (by omega)
       have hguardT : evalExpr (.ult (.var "i") bnd)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
-          .ok (.b true) := by
-        have h := evalExpr_ult_u64 (.var "i") bnd
-          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
-          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
-        rwa [htrue] at h
+          .ok (.b true) :=
+        iterGuardT bnd _ iB i N hi hN64 hiN hivar (hbnd msg iB)
       have hi16 : i = 16 := by omega
       have hoffV : envLookup
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
@@ -3791,7 +3770,7 @@ theorem xorLoopSFirst_oob (prog : Prog) (F : Nat)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .error .OOB := by
         rw [hbody, evalProgStmt_seq_err _ _ _ _ _ _ harr]
-      rw [hloop, evalProgStmt_while_true _ _ _ _ _ hguardT, herr]
+      exact whileErr_of_bodyErr prog F' _ _ _ _ _ hloop hguardT herr
   | succ n ih =>
     cases F with
     | zero => omega
@@ -3806,17 +3785,10 @@ theorem xorLoopSFirst_oob (prog : Prog) (F : Nat)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .ok (.u64 iB) :=
         evalExpr_var_hit _ _ _ hiV
-      have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
-      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
-        rw [BitVec.ult_eq_decide, hi, hN]
-        exact decide_eq_true (by omega)
       have hguardT : evalExpr (.ult (.var "i") bnd)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
-          .ok (.b true) := by
-        have h := evalExpr_ult_u64 (.var "i") bnd
-          (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st)
-          iB (BitVec.ofNat 64 N) hivar (hbnd msg iB)
-        rwa [htrue] at h
+          .ok (.b true) :=
+        iterGuardT bnd _ iB i N hi hN64 hiN hivar (hbnd msg iB)
       obtain ⟨w, hgetm⟩ : ∃ w, msg[offN + i]? = some w :=
         ⟨_, List.getElem?_eq_getElem (by omega)⟩
       obtain ⟨k, hgets⟩ : ∃ k, s[i]? = some k :=
@@ -3829,9 +3801,8 @@ theorem xorLoopSFirst_oob (prog : Prog) (F : Nat)
           evalProgStmt prog F' loop
             (pre ++ mkEncEnv key counter bB nonce
               (msg.set (offN + i) (w ^^^ k)) nwords bN offN
-              (iB + BitVec.ofNat 64 1) st) := by
-        simp only [hloop,
-          evalProgStmt_while_true prog F' _ _ _ hguardT, hbody]
+              (iB + BitVec.ofNat 64 1) st) :=
+        whileStep_of_bodyOk prog F' _ _ _ _ _ hloop hguardT hbody
       rw [hwhile]
       have hi1 : (BitVec.ofNat 64 1).toNat = 1 :=
         ofNat64_toNat 1 (by decide)
