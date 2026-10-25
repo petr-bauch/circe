@@ -1,4 +1,4 @@
-# Circe — Overview (current state, 2026-10-16)
+# Circe — Overview (current state, 2026-10-25)
 
 CIR → Lean 4 verification pipeline for non-aliasing C and STL-free
 C++-lite, Aeneas-style: source → ClangIR (raw CIRGen) → pure,
@@ -109,9 +109,11 @@ loop), B (in-place increment loop) — 8 closed-instance
 `hoare-gallery` jobs, all in `DELIVERED.md`. Newer since: the
 `std::vector<int>` algorithm run (V1 binary search, V2 two-sum, W
 checked store, M merge kernel, C bottom-up merge sort with
-calls-in-loop-bodies), K1–K5 crypto programs, N11–N14 writer and
-multi-output admissions, L2–L3 extractions, and the Iris/F2/S0–S4
+calls-in-loop-bodies, M8 quicksort), K1–K6 crypto programs
+(K6: ChaCha20 stream + input-OOB proof twins + `LoopOob`
+short-read-loop bricks), N11–N14 writer and
+multi-output admissions, L-track closure (L–L5), and the Iris/F2/S0–S4
 report dispositions — all in `DELIVERED.md`.
 Details in `DELIVERED.md`; active work in `ROADMAP.md`, now
-organized under three pillars (C completeness, STD algorithms,
-human-writable proofs).
+organized under four pillars (C completeness, STD algorithms,
+human-writable proofs, Iris separation logic).

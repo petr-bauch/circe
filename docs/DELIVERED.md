@@ -984,8 +984,23 @@ share (failing-iteration close, successful-iteration step,
 `i`-bound guard) is factored into `Circe/Crypto/LoopOob.lean`
 (`whileErr_of_bodyErr`, `whileStep_of_bodyOk`, `iterGuardT`)
 with the short-read-loop recipe; both inductions are rewired
-onto it, read-miss evals staying per-loop.
-- Acceptance: 456 jobs TEST-OK, CHECK-OK.
+onto it, read-miss evals staying per-loop. Third use
+(2026-10-25): `tests/lean/LoopOobGallery.lean` — a copy loop
+`while (i < n) { dst[i] = src[i]; i++ }` over a short source
+(`src.length < n ≤ dst.length`), with a genuine successful
+prefix (`src.length - i` iterations) before the failing read;
+`copyBody_correct` (ok leg) + `copyBody_oob` (err leg) feed
+`whileStep_of_bodyOk` / `whileErr_of_bodyErr` under an
+`iterGuardT` guard discharge, induction on the remaining
+iterations generalizing counter/destination/fuel. Closed
+`LoopOobGallery.main` runtime check (copies twice, third read
+reports `OOB`) rides the driver roster as `loopoob-gallery`.
+Graduation verdict: LoopOob stays a documented pattern, not a
+tactic — all three consumers apply the bricks as single
+`exact` steps, and the per-loop halves (read-miss evals,
+remaining-iterations measure, post-body env) do not unify, so
+a tactic would save nothing.
+- Acceptance: 457 jobs TEST-OK, CHECK-OK.
 
 ### N11. First writer admission: sequential reborrows (F1) — DONE (2026-10-12)
 

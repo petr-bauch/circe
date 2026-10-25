@@ -369,6 +369,30 @@ realloc eight). Missing callee specs are new verification, not
 harness work: the mergeRuns/drain forwards have no specs yet
 (U3 material).
 
+### OOB twins (K6c)
+
+A loop-level err leg for short reads follows the `LoopOob`
+recipe (`Circe/Crypto/LoopOob.lean`): induction on
+iterations-remaining with the mutated state generalized
+(message, counter, fuel); zero case proves the failing read
+and closes body and loop with `whileErr_of_bodyErr`;
+successor case proves both reads hit, falls the body through,
+and steps with `whileStep_of_bodyOk`; fuel `n + 1 ≤ F`
+discharged by `cases F`, the zero-fuel subcase by the fuel
+hypothesis. Guards read via `iterGuardT`. Instances:
+`xorLoopMsgFirst_oob` (message-read-first),
+`xorLoopSFirst_oob` (keystream-read-first, needs `i ≤ 16`
+since the keystream block is 16 words).
+Divergence fencing: where eval returns but the model rejects,
+fence with a side condition on the twin (`nwords ≠ 0` for the
+short key/nonce twins — the empty-message early return; the
+message twin needs none since `msg.length < nwords.toNat`
+already excludes `nwords = 0`). Early-exit loops use the
+loop-err/exit-ok sum (`outerWhile_msg_oob`): the exit case
+returns its state as payload for the tail instead of an
+equation, because the tail runs at outer fuel on one side
+and predecessor fuel on the other.
+
 ## Lemma packs (U3)
 
 Rule: prose note on first reuse, pack on the third use. Each pack

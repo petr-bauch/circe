@@ -4,7 +4,7 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-21): all delivered milestones live in `DELIVERED.md`.
+State (2026-10-25): all delivered milestones live in `DELIVERED.md`.
 Work going forward is organized under four pillars; each slice
 still follows the standing convention below.
 
@@ -15,14 +15,18 @@ C control-flow hardening (S3a), 64-bit widths (S3b), arithmetic +
 switch gaps (N6), and the lifetime-evidence work (L1–L3
 extract-only — scope/alloca tree, live ranges, content roots;
 L4 second sequential-writer admission; L5 verdicts — regions
-vestigial-by-design, L3 roots extract-only). The C core is
+vestigial-by-design, L3 roots extract-only), and the
+ChaCha20-stream guiding program (K6: `chacha20_encrypt`
+admission + full proof + input-OOB proof twins for short
+key/nonce/message; `LoopOob` short-read-loop bricks shared
+by the xor regimes). The C core is
 complete within the standing non-goals.
 
 Next: nothing open — the C core is complete within the
 standing non-goals (L-track closed; `optional::value` throw
 path closed, general `cir.try` stays out). Iris policy moved
 to pillar 4 (native first, Iris on fallback). See
-`DELIVERED.md` §§ M3/N1, S3, N6, L–L5, O1/O2, Iris, P4.
+`DELIVERED.md` §§ M3/N1, S3, N6, L–L5, O1/O2, Iris, P4, K6.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
@@ -52,7 +56,7 @@ P2-M8 quicksort landed with admission; next P2 slice TBD)
 
 ## Pillar 3 — Human-readable/writable proofs
 
-Delivered (all re-verified against the repo 2026-10-21;
+Delivered (all re-verified against the repo 2026-10-25;
 details in `DELIVERED.md` §§ N5, H1–H3, A, P3a/b/c/d/e,
 Frontend, U1–U3, T1, H1): proof ergonomics (N5: `cir_fuel`, fuel-bound
 lemmas, per-step cascades; N5a/N5b micro-tactics
@@ -84,7 +88,11 @@ in an earlier revision never landed in the repo (no such file,
 no git history); that material is session memory, not a repo
 deliverable.
 
-Next: open triggers only. Rule-of-three harvesting: third
+Next: open triggers only. `LoopOob` bricks
+(`whileErr_of_bodyErr`, `whileStep_of_bodyOk`, `iterGuardT`)
+at two uses (message-first/keystream-first xor regimes); a
+third short-read-loop use earns graduation (documented
+pattern vs tactic audit). Rule-of-three harvesting: third
 checked-add arity (audit #3), third user-goal transfer-leg use
 for a `cir_transfer_leg`-shaped tactic (audit #4), third
 countdown-loop shape for fuel arithmetic (audit #5) and for
