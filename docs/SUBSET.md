@@ -1000,6 +1000,26 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     arithmetic is needed — rotation correctness is the pure
     window lemma `segWindow_rotate3` over the reused S
     forwards. Verdict honestly `unknown` (single-ref).
+28v. Kadane maximum subarray (over the N4d-iv-c read):
+    `max_subarray` (`const vector<int>&` in, `i32` out,
+    `cur = best = v.at(0)` seeds, the `cir.for` index loop
+    from `1` over exactly one `size` + three `at()` calls
+    (two seeds + the `at(i)` read, one `lt` + two `gt`
+    guards, one `inc`, one `nsw` add, six consts: four `0` /
+    two `1`, 7 allocas / 21 loads / 11 stores). Admission
+    is one fused entry Func: single-ref vector param, `i32`
+    return, the two max updates as `if_`s around the
+    checked-add fold (`callRet` cannot live inside loop
+    bodies); the loop bound subsumes the guard, so
+    `AssertFail` is dead-but-propagated and the live
+    failures are the `nsw` overflow and the empty-input
+    `at(0)` seed (fused `fail`). The forward is the
+    dual-accumulator max fold. Encapsulation pins: no
+    direct `operator[]` / `_M_range_check` / throw calls —
+    the checked read goes through `at()` only. Unchecked
+    entries, wrapping-add variants, single-seed variants,
+    and bare vector pointers keep dedicated rejections.
+    Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

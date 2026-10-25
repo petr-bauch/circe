@@ -1503,6 +1503,47 @@ def isVecAtSumShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `max_subarray` entry shape (Kadane, over the N4d-iv-c read):
+    single-ref vector, returns `i32`, the `cir.for` index loop over
+    exactly one `size` + three `at()` calls (the two `at(0)` seeds
+    plus the `at(i)` read) with one `lt` guard and two `gt` guards
+    (the two max updates), one `inc`, one `nsw` add, six consts
+    (four `0`, two `1`). Encapsulation pins: no direct
+    `operator[]` / `_M_range_check` / throw calls — the checked
+    read goes through `at()` only. -/
+def isMaxSubarrayShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecSizeName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.cmp gt" == 2 &&
+    opCount raw.text "cir.inc" == 1 &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 6 &&
+    containsSubstr raw.text "#cir.int<0>" &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    opCount raw.text "cir.alloca" == 7 &&
+    opCount raw.text "cir.load" == 21 &&
+    opCount raw.text "cir.store" == 11 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one
