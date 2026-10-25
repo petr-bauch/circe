@@ -142,6 +142,13 @@ def main : IO Unit := do
   let vecAtOne ← emitOrDie vecAtOneFunc
   let vecAtSum ← emitOrDie vecAtSumFunc
   let vecMarkCount ← emitOrDie vecMarkCountFunc
+  let vecMarkCountC ← emitOrDie { vecMarkCountFunc with name := markCountCName }
+  let vecCharSize ← emitOrDie { stdVecSizeFunc with name := charVecSizeName }
+  let vecCharIndex ← emitOrDie { stdVecIndexFunc with name := charVecIndexName }
+  let vecCharRangeCheck ← emitOrDie { stdVecRangeCheckFunc with name := charVecRangeCheckName }
+  let vecCharAt ← emitOrDie { stdVecAtFunc with name := charVecAtName }
+  let vecCharIndexMut ← emitOrDie { stdVecIndexFunc with name := charVecIndexMutName }
+  let vecCharAtMut ← emitOrDie { stdVecAtFunc with name := charVecAtMutName }
   let vecKadane ← emitOrDie vecKadaneFunc
   let vecBinarySearch ← emitOrDie vecBinSearchFunc
   let vecTwoSum ← emitOrDie vecTwoSumFunc
@@ -282,6 +289,14 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAtOne.lean" (emitFileText (.ok vecAtOne))
   IO.FS.writeFile "out/VecAtSum.lean" (emitFileText (.ok vecAtSum))
   IO.FS.writeFile "out/VecMarkCount.lean" (emitFileText (.ok vecMarkCount))
+  IO.FS.writeFile "out/VecMarkCountC.lean" (emitFileText (.ok vecMarkCountC))
+  IO.FS.writeFile "out/VecCharSize.lean" (emitFileText (.ok vecCharSize))
+  IO.FS.writeFile "out/VecCharIndex.lean" (emitFileText (.ok vecCharIndex))
+  IO.FS.writeFile "out/VecCharRangeCheck.lean" (emitFileText (.ok vecCharRangeCheck))
+  IO.FS.writeFile "out/VecCharAt.lean" (emitFileText (.ok vecCharAt))
+  IO.FS.writeFile "out/VecCharIndexMut.lean" (emitFileText (.ok vecCharIndexMut))
+  IO.FS.writeFile "out/VecCharAtMut.lean" (emitFileText (.ok vecCharAtMut))
+  IO.FS.writeFile "out/VecMarkCountC.lean" (emitFileText (.ok vecMarkCountC))
   IO.FS.writeFile "out/VecKadane.lean" (emitFileText (.ok vecKadane))
   IO.FS.writeFile "out/VecBinarySearch.lean" (emitFileText (.ok vecBinarySearch))
   IO.FS.writeFile "out/VecTwoSum.lean" (emitFileText (.ok vecTwoSum))
@@ -422,6 +437,13 @@ def main : IO Unit := do
   let vecAtOneSpec ← specOrDie vecAtOneFunc
   let vecAtSumSpec ← specOrDie vecAtSumFunc
   let vecMarkCountSpec ← specOrDie vecMarkCountFunc
+  let vecMarkCountCSpec ← specOrDie { vecMarkCountFunc with name := markCountCName }
+  let vecCharSizeSpec ← specOrDie { stdVecSizeFunc with name := charVecSizeName }
+  let vecCharIndexSpec ← specOrDie { stdVecIndexFunc with name := charVecIndexName }
+  let vecCharRangeCheckSpec ← specOrDie { stdVecRangeCheckFunc with name := charVecRangeCheckName }
+  let vecCharAtSpec ← specOrDie { stdVecAtFunc with name := charVecAtName }
+  let vecCharIndexMutSpec ← specOrDie { stdVecIndexFunc with name := charVecIndexMutName }
+  let vecCharAtMutSpec ← specOrDie { stdVecAtFunc with name := charVecAtMutName }
   let vecKadaneSpec ← specOrDie vecKadaneFunc
   let vecBinarySearchSpec ← specOrDie vecBinSearchFunc
   let vecTwoSumSpec ← specOrDie vecTwoSumFunc
@@ -562,6 +584,13 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAtOne_Spec.lean" vecAtOneSpec
   IO.FS.writeFile "out/VecAtSum_Spec.lean" vecAtSumSpec
   IO.FS.writeFile "out/VecMarkCount_Spec.lean" vecMarkCountSpec
+  IO.FS.writeFile "out/VecCharSize_Spec.lean" vecCharSizeSpec
+  IO.FS.writeFile "out/VecCharIndex_Spec.lean" vecCharIndexSpec
+  IO.FS.writeFile "out/VecCharRangeCheck_Spec.lean" vecCharRangeCheckSpec
+  IO.FS.writeFile "out/VecCharAt_Spec.lean" vecCharAtSpec
+  IO.FS.writeFile "out/VecCharIndexMut_Spec.lean" vecCharIndexMutSpec
+  IO.FS.writeFile "out/VecCharAtMut_Spec.lean" vecCharAtMutSpec
+  IO.FS.writeFile "out/VecMarkCountC_Spec.lean" vecMarkCountCSpec
   IO.FS.writeFile "out/VecKadane_Spec.lean" vecKadaneSpec
   IO.FS.writeFile "out/VecBinarySearch_Spec.lean" vecBinarySearchSpec
   IO.FS.writeFile "out/VecTwoSum_Spec.lean" vecTwoSumSpec

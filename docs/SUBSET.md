@@ -1034,6 +1034,27 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `at_set`-shaped single-vector entries, and bare vector pointers
     keep dedicated rejections. Verdict honestly `unknown`
     (single-ref).
+28x. Char-width visited-mark idiom (G1b, over the same N4d-iv-c
+    read family): `mark_count_c` (`const vector<char>&` matrix +
+    `vector<char>&` visited, `u64` vertex in, `i32` out; the seed
+    through the char mut-`at()`, then the same `cir.for` index loop:
+    one char `size` + one char const-`at()` gate read + one char
+    mut-`at()` accumulator read, one `lt` + one `ne` guard, one
+    `nsw` add, six consts, 6 allocas / 14 loads / 9 stores, plus
+    two `cir.cast integral %x : !s8i -> !s32i` promotions — integer
+    promotion at the gate compare and the accumulation, never
+    native small-width arithmetic). The leaf CoreIR is the
+    width-agnostic int family (fused `stdVecLen` / `stdVecAt` over
+    the reified words; the struct layout is never projected), so
+    only Gate dispatch is width-aware (char callee names routing to
+    the shared CoreIR under the char mangled names); the entry
+    CoreIR is `vecMarkCountFunc` under its own name (the sext is
+    fused into the `stdVecAt` read, the view-`at()` precedent).
+    Reification contract: chars reify by sign-extension; the seed
+    stores `1`, exactly representable. Encapsulation pins: no
+    direct `operator[]` / `_M_range_check` / throw calls; the
+    promotion needle (`!s8i -> !s32i` twice) keeps cast-free
+    entries out. Verdict honestly `unknown` (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

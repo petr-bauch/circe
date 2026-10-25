@@ -25,6 +25,37 @@ forward is therefore the gated dual-list fold.
 import Circe.Emit.VecRead
 import Circe.Emit.VecAt
 
+/-! ## G1b: `vector<char>` instantiation names -/
+
+/-- Mangled callee names in `tests/cpp/mark_count_c.cpp` (the
+    char-width instantiation: `std::vector<char>`; element loads are
+    `!s8i`, and integer promotion to `i32` happens in the entry via
+    `cir.cast integral %x : !s8i -> !s32i`, never as native
+    small-width arithmetic — the S3b promotion precedent). The leaf
+    CoreIR is the width-agnostic int family (`stdVecLen` /
+    `stdVecAt` fuse over the reified words; the struct layout is
+    never projected), so these names only route Gate dispatch; the
+    entry CoreIR is `vecMarkCountFunc` under its own mangled name
+    (the sext is fused into the `stdVecAt` read, the `viewAt`
+    precedent). Reification contract: chars reify by sign-extension
+    (`c : Int` with `-128 ≤ c ≤ 127` maps to `BitVec.ofInt 32 c`);
+    the seed stores `1`, exactly representable, so the store/read
+    round-trip is the identity on the reified range. -/
+def charVecSizeName : String :=
+  "_ZNKSt6vectorIcSaIcEE4sizeEv"
+def charVecIndexName : String :=
+  "_ZNKSt6vectorIcSaIcEEixEm"
+def charVecIndexMutName : String :=
+  "_ZNSt6vectorIcSaIcEEixEm"
+def charVecRangeCheckName : String :=
+  "_ZNKSt6vectorIcSaIcEE14_M_range_checkEm"
+def charVecAtName : String :=
+  "_ZNKSt6vectorIcSaIcEE2atEm"
+def charVecAtMutName : String :=
+  "_ZNSt6vectorIcSaIcEE2atEm"
+def markCountCName : String :=
+  "_Z12mark_count_cRKSt6vectorIcSaIcEERS1_m"
+
 /-! ## G1: `mark_count` entry -/
 
 /-- Mangled name of the visited-mark entry. -/
@@ -862,3 +893,16 @@ theorem evalFuncFuel_vecMarkCount (mL visL : List (BitVec 32))
           evalStmtFuel, evalStmtWith, evalExpr, litVal, envExtend,
           henv, hseedW, hsret, hloopSw, hsum0]
 
+
+/-- G1b transport: the char-width entry is `vecMarkCountFunc` under
+    its own mangled name (the sext is fused into the `stdVecAt`
+    read, so the CoreIR body is width-agnostic); `evalFuncFuel`
+    never consults the name, so the G1 entry theorem applies
+    definitionally. -/
+theorem evalFuncFuel_vecMarkCountC (mL visL : List (BitVec 32))
+    (u : BitVec 64) (F : Nat) (hl64 : visL.length < 2 ^ 64)
+    (hF : visL.length + 1 ≤ F) :
+    evalFuncFuel F { vecMarkCountFunc with name := markCountCName }
+      [.stdVecVal mL, .stdVecVal visL, .u64 u] =
+      markFwd mL visL u :=
+  evalFuncFuel_vecMarkCount mL visL u F hl64 hF

@@ -10,6 +10,7 @@ import Circe.Emit
 import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSet
+import Circe.Emit.VecMarkCount
 import Circe.Emit.VecCompose
 import Circe.Emit.VecSegReverse
 import Circe.Validator.Shapes
@@ -132,6 +133,8 @@ def isVecRangeCheckExemptText (text : String) : Bool :=
 def stdVecLeafCallees : List String :=
   [stdVecSizeName, stdVecCapacityName, stdVecIndexName,
    stdVecIndexMutName, stdVecRangeCheckName, stdVecAtName, stdVecAtMutName,
+   charVecSizeName, charVecIndexName, charVecIndexMutName,
+   charVecRangeCheckName, charVecAtName, charVecAtMutName,
    stdVecCtorName, stdVecBaseCtorName, stdVecImplCtorName,
    stdVecImplDataCtorName, stdVecNewAllocCtorName, stdVecAllocCtorName,
    stdVecDtorName, stdVecBaseDtorName, stdVecImplDtorName,

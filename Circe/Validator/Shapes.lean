@@ -11,6 +11,7 @@ import Circe.Emit.VecAt
 import Circe.Emit.VecAtSet
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
+import Circe.Emit.VecMarkCount
 import Circe.Emit.VecCompose
 import Circe.Validator.Features
 
@@ -1579,6 +1580,169 @@ def isMarkCountShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text stdVecIndexName &&
     !callsFunc raw.text stdVecRangeCheckName &&
     !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-! ## G1b: char-width (`vector<char>`) shapes -/
+
+/-- The char-width `operator[]` fused leaf: the `isStdVecIndexShape`
+    fusion over `vector<char>` (same projection + `u64`-stride shape,
+    pointer-to-`s8` return). Width is pinned by the return type; the
+    body is the width-agnostic projection. Covers the const and the
+    non-const instantiations (both return element pointers). -/
+def isCharVecIndexShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [this, idx] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType this.ctype && this.singleRef && isStdVectorType this.ctype &&
+    isU64 idx.ctype &&
+    (match ptrInner raw.ret with | some inner => isS8 inner | none => false) &&
+    opCount raw.text "cir.call @" == 0 &&
+    !callsFunc raw.text raw.name &&
+    opCount raw.text "cir.base_class_addr" == 2 &&
+    opCount raw.text "cir.get_member" == 2 &&
+    containsSubstr raw.text "_M_impl" &&
+    containsSubstr raw.text "_M_start" &&
+    opCount raw.text "cir.ptr_stride" == 1 &&
+    !containsSubstr raw.text "cir.const" &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.ptr_diff" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.get_element" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.cond_br" &&
+    !containsSubstr raw.text "cir.do" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.derived_class_addr"
+  | _ => false
+
+/-- The char-width `_M_range_check` guard leaf: the
+    `isStdVecRangeCheckShape` fusion over `vector<char>` (calls the
+    char `size` leaf; the throw helper is instantiation-independent,
+    so its name is shared). -/
+def isCharVecRangeCheckShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text charVecSizeName &&
+    callsFunc raw.text stdVecRangeCheckThrowName &&
+    opCount raw.text "cir.call @" == 3 &&
+    containsSubstr raw.text "cir.cmp ge" &&
+    !containsSubstr raw.text "cir.cmp lt" &&
+    opCount raw.text "cir.if" == 1 &&
+    containsSubstr raw.text "cir.get_global" &&
+    containsSubstr raw.text "array_to_ptrdecay" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text charVecIndexName &&
+    !callsFunc raw.text charVecIndexMutName &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- The char-width guarded `at()` read composer: the `isStdVecAtShape`
+    fusion over `vector<char>` (calls the char guard + the char
+    const-`operator[]`; returns the `s8` element pointer — the
+    `s8i -> s32i` promotion happens in the entry, never here). -/
+def isCharVecAtShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    isPtrType raw.ret &&
+    callsFunc raw.text charVecRangeCheckName &&
+    callsFunc raw.text charVecIndexName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- The char-width guarded non-const `at()` composer: the
+    `isStdVecAtMutShape` fusion over `vector<char>` (the seed path;
+    same `at()`-throw precedent as the int family). -/
+def isCharVecAtMutShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [s, n] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType s.ctype && s.singleRef && isStdVectorType s.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    isPtrType raw.ret &&
+    callsFunc raw.text charVecRangeCheckName &&
+    callsFunc raw.text charVecIndexMutName &&
+    opCount raw.text "cir.call @" == 2 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
+/-- Char-width visited-mark entry (G1b, the `mark_count_c` shape):
+    the `isMarkCountShape` fold over `vector<char>` — same seed +
+    `cir.for` + one-`size` + gate-`at()` + accumulator-`at()` + one
+    `lt` + one `ne` + one `nsw` add skeleton, but the element loads
+    are `s8i` with integer promotion at both use sites (gate compare
+    and accumulation), so two `cir.cast integral` ops and six consts
+    (the extra `s8i` `1` seed literal). The promotion needle pins the
+    width: a cast-free entry is not this shape. -/
+def isCharMarkCountShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [m, vis, u] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType m.ctype && m.singleRef && isStdVectorType m.ctype &&
+    isPtrType vis.ctype && vis.singleRef && isStdVectorType vis.ctype &&
+    !isPtrType u.ctype && isU64 u.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text charVecAtName &&
+    callsFunc raw.text charVecAtMutName &&
+    callsFunc raw.text charVecSizeName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    containsSubstr raw.text "cir.cmp ne" &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 6 &&
+    opCount raw.text "cir.cast" == 2 &&
+    containsSubstr raw.text "!s8i -> !s32i" &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 14 &&
+    opCount raw.text "cir.store" == 9 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text charVecIndexName &&
+    !callsFunc raw.text charVecIndexMutName &&
+    !callsFunc raw.text charVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
     !containsSubstr raw.text "cir.get_global" &&
     !containsSubstr raw.text "cir.mul" &&
     !containsSubstr raw.text "cir.call @malloc" &&
