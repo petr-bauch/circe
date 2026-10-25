@@ -12,6 +12,7 @@ import Circe.Emit.View
 import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
@@ -1820,6 +1821,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecAtOneFunc with name := raw.name }
       else if isVecAtSumShape raw then
         .ok { vecAtSumFunc with name := raw.name }
+      else if isMaxSubarrayShape raw then
+        .ok { vecKadaneFunc with name := raw.name }
       else if isVecBinarySearchShape raw then
         .ok { vecBinSearchFunc with name := raw.name }
       else if isVecTwoSumShape raw then
