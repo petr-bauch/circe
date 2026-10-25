@@ -13,6 +13,7 @@ import Circe.Emit.VecGrow
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecMarkCount
+import Circe.Emit.VecMatAt
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -1844,6 +1845,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stdVecAtFunc with name := raw.name }
       else if isCharMarkCountShape raw then
         .ok { vecMarkCountFunc with name := raw.name }
+      else if isMatAtShape raw then
+        .ok { matAtFunc with name := raw.name }
       else if isVecMergeIntoShape raw then
         .ok { vecMergeIntoFunc with name := raw.name }
       else if isVecTransformAddShape raw then

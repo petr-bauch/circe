@@ -777,6 +777,14 @@ theorem evalExpr_uadd_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
     evalExpr (.uadd e₁ e₂) ρ = .ok (.u64 (x + y)) := by
   simp [evalExpr, h₁, h₂]
 
+/-- `umul` on two `u64`-valued expressions (G2: the flat-2D
+    `i * ncols` index computation, wrapping). -/
+theorem evalExpr_umul_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.umul e₁ e₂) ρ = .ok (.u64 (x * y)) := by
+  simp [evalExpr, h₁, h₂]
+
 /-- `uadd` type mismatches are rejected. -/
 theorem evalExpr_uadd_mismatch (ρ : Env) :
     evalExpr (.uadd (.lit (.u32 0)) (.lit (.b true))) ρ =

@@ -1464,6 +1464,33 @@ def emitVecAtSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `mat_at` entry. The mirror is the single
+    checked read at the wrapped unsigned 2D index; edges carry ground
+    truth (hit, miss, wrapping hit, zero-stride hit, empty miss). -/
+def emitVecMatAtSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(m, ncols, i, j)` returns `m.at(i * ncols + j)` (wrapping `u64` index).\n"
+  ++ s!"    Base body reference: the single checked read at the wrapped index on the reified words (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `matAtFwd`). Miss aborts like `at()`-throw (wrapping computations that land out of range included). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (ncols i j : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match l[(i * ncols + j).toNat]? with\n"
+  ++ "  | some w => .ok w\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hit, miss, wrapping hit, zero-stride hit, empty miss. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64 × BitVec 64 × BitVec 64) × Result (BitVec 32)) :=\n"
+  ++ "  [(([1, 2, 3], 3, 0, 2), .ok 3),\n"
+  ++ "   (([1, 2, 3], 3, 1, 0), .error .AssertFail),\n"
+  ++ "   (([9, 8], 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF), .ok 9),\n"
+  ++ "   (([5, 6], 0, 7, 1), .ok 6),\n"
+  ++ "   (([], 3, 0, 0), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2.1 t.1.2.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `mark_count` entry. The mirror is the
     visited-mark idiom over two reified word lists (seed, then gated
     fold); edges carry ground truth (seed hit, seed miss, short mask,

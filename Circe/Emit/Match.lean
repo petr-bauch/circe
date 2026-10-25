@@ -14,6 +14,7 @@ import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecMarkCount
+import Circe.Emit.VecMatAt
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -1220,6 +1221,17 @@ def matchFrag : Func → Option FragKind
         one == BitVec.ofNat 64 1 then
       some .vecMarkCount
     else none
+  | ⟨_, [⟨"m", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"ncols", .u 64, .owned⟩,
+        ⟨"i", .u 64, .owned⟩,
+        ⟨"j", .u 64, .owned⟩], _,
+      .if_ (.ult (.uadd (.umul (.var "i") (.var "ncols")) (.var "j"))
+              (.stdVecLen "m"))
+        (.return_ (.stdVecAt "m"
+          (.uadd (.umul (.var "i") (.var "ncols")) (.var "j"))))
+        .fail⟩ =>
+    some .vecMatAt
   | ⟨_, [], _,
       .return_ (.vgrowNew (.lit (.u64 zero)))⟩ =>
     if zero == BitVec.ofNat 64 0 then some .vecEmptyCtor else none
@@ -1759,6 +1771,8 @@ theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
 theorem matchFrag_vecAtSum : matchFrag vecAtSumFunc = some .vecAtSum := rfl
 theorem matchFrag_vecMarkCount :
     matchFrag vecMarkCountFunc = some .vecMarkCount := rfl
+theorem matchFrag_vecMatAt :
+    matchFrag matAtFunc = some .vecMatAt := rfl
 theorem matchFrag_vecKadane : matchFrag vecKadaneFunc = some .vecKadane := rfl
 theorem matchFrag_vecBinarySearch :
     matchFrag vecBinSearchFunc = some .vecBinSearch := rfl

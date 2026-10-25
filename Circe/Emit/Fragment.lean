@@ -134,6 +134,7 @@ inductive FragKind : Type
   | vecAt
   | vecAtOne
   | vecAtSum
+  | vecMatAt
   | vecMarkCount
   | vecKadane
   | vecBinSearch

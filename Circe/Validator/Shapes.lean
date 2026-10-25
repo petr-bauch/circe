@@ -1751,6 +1751,46 @@ def isCharMarkCountShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Flat-2D index read entry (G2, the `mat_at` shape):
+    single-ref `const vector<int>&` + three `u64` (`ncols`, `i`,
+    `j`), returns `i32`, exactly one const-`at()` call site, one
+    wrapping `cir.mul` (`i * ncols`) + one wrapping `cir.add`
+    (`+ j`) on `u64` (no `nsw` anywhere — C++ unsigned arithmetic
+    wraps, the S3b precedent), no consts, straight-line (no
+    `cir.cmp` / `cir.if` of its own — the bounds check lives in
+    the `at()` callee). -/
+def isMatAtShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [m, ncols, i, j] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType m.ctype && m.singleRef && isStdVectorType m.ctype &&
+    !isPtrType ncols.ctype && isU64 ncols.ctype &&
+    !isPtrType i.ctype && isU64 i.ctype &&
+    !isPtrType j.ctype && isU64 j.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.mul" == 1 &&
+    opCount raw.text "cir.add" == 1 &&
+    !containsSubstr raw.text "nsw" &&
+    opCount raw.text "cir.const" == 0 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 6 &&
+    opCount raw.text "cir.store" == 5 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

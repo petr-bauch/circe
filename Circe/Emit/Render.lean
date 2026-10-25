@@ -747,6 +747,19 @@ def emitVecAtSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the `mat_at` entry forward definition: the single
+    checked read at the wrapped unsigned 2D index (miss is
+    `AssertFail`, the `at()`-throw precedent — wrapping index
+    computations that land out of range included). -/
+def emitVecMatAtText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (flat-2D read at `i * ncols + j`, wrapping `u64` arithmetic; miss is `AssertFail`). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (ncols i j : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match l[(i * ncols + j).toNat]? with\n"
+  ++ "  | some w => .ok w\n"
+  ++ "  | none => .error .AssertFail\n"
+
 /-- Render the `mark_count` entry forward definition: the visited-mark
     idiom over two reified word lists (seed `vis[u] = 1`, then the
     gated checked-add fold — `m`-exhaustion is `OOB`, `nsw` overflow

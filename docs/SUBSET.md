@@ -1150,6 +1150,21 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     `operator[]`), and evaluates to the sum (`28`) at fuel 15.
     Pinned by `tests/lean/GoldenArraySort8.lean` + the N=8
     `DiffSort` leg.
+34. Flat-2D index read (G2, over the N4d-iv-c read): `mat_at`
+    (`const vector<int>&` matrix + `u64` `ncols` / `i` / `j`,
+    `i32` out; the single const-`at()` call on the unsigned index
+    `i * ncols + j`, computed with one wrapping `cir.mul` + one
+    wrapping `cir.add` on `u64` — no `nsw`, C++ unsigned
+    arithmetic wraps, the S3b precedent; straight-line, no consts,
+    5 allocas / 6 loads / 5 stores). Admission is one fused entry
+    Func: the single-ref vector, the wrapping index computation,
+    and the `at()`-fused guard (the `vec_at_one` precedent — miss
+    is the `at()`-throw `AssertFail`, including wrapping index
+    computations that land out of range). This is the read idiom
+    the G5a flat-matrix DFS loops over. Encapsulation pins: no
+    direct `operator[]` / `_M_range_check` / throw calls; `nsw`
+    anywhere rejects (the computation must wrap). Verdict honestly
+    `unknown` (single-ref).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
