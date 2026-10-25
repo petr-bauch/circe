@@ -1464,6 +1464,42 @@ def emitVecAtSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `mark_count` entry. The mirror is the
+    visited-mark idiom over two reified word lists (seed, then gated
+    fold); edges carry ground truth (seed hit, seed miss, short mask,
+    all-masked, `nsw` overflow). -/
+def emitVecMarkCountSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(m, vis, u)` seeds `vis.at(u) = 1`, then sums `vis.at(v)` over `v` with `m.at(v) != 0`.\n"
+  ++ s!"    Base body reference: seed plus the gated checked-add fold on the reified words (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `markFwd`). Seed miss aborts like `at()`-throw; a short mask aborts `OOB`; `nsw` overflow is loud. -/\n"
+  ++ s!"def {name}_spec_fwd (m vis : List (BitVec 32)) (u : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match vis[u.toNat]? with\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "  | some _ => go m (vis.set u.toNat 1) 0\n"
+  ++ "where go : List (BitVec 32) → List (BitVec 32) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | _, [], acc => .ok acc\n"
+  ++ "  | [], _ :: _, _ => .error .OOB\n"
+  ++ "  | mh :: mt, vh :: vt, acc =>\n"
+  ++ "      if mh != 0 then do\n"
+  ++ "        let a ← checkedAddI32 acc vh\n"
+  ++ "        go mt vt a\n"
+  ++ "      else go mt vt acc\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: seed hit, seed miss, short mask, all-masked, `nsw` overflow. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32) × BitVec 64) × Result (BitVec 32)) :=\n"
+  ++ "  [(([1, 0, 1], [0, 0, 0], 0), .ok 1),\n"
+  ++ "   (([1], [0], 5), .error .AssertFail),\n"
+  ++ "   (([1], [0, 0], 0), .error .OOB),\n"
+  ++ "   (([0, 0], [5, 6], 1), .ok 0),\n"
+  ++ "   (([1, 1], [0x7FFFFFFF, 0x7FFFFFFF], 0), .error .Overflow)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `max_subarray` entry. The mirror is Kadane's
     algorithm over the reified words, seeded from `l[0]`; edges carry
     ground truth (empty seed failure, canonical mix, all-negative,

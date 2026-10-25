@@ -1020,6 +1020,20 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     entries, wrapping-add variants, single-seed variants,
     and bare vector pointers keep dedicated rejections.
     Verdict honestly `unknown` (single-ref).
+28w. Visited-mark idiom (G1, over the N4d-iv-c read): `mark_count`
+    (`const vector<int>&` matrix + `vector<int>&` visited, `u64`
+    vertex in, `i32` out; the mut-`at()` seed write, then the
+    `cir.for` index loop over exactly one `size` + one const-`at()`
+    gate read + one mut-`at()` accumulator read, one `lt` + one `ne`
+    guard, one `nsw` add, five consts: three s32i `0` / one s32i `1` /
+    one u64i `0`, 6 allocas / 14 loads / 9 stores). Admission is one
+    fused entry Func: both vectors single-ref, the gate read and the
+    accumulator go through `at()` only (mut-`at()` for the visited
+    vector, which is non-const). Encapsulation pins: no direct
+    `operator[]` / `_M_range_check` / throw calls. Unchecked stores,
+    `at_set`-shaped single-vector entries, and bare vector pointers
+    keep dedicated rejections. Verdict honestly `unknown`
+    (single-ref).
 29. `std::string_view` range-for sum (N7a): the `begin` iterator
     leaf (single `const&` with the single-reference triple,
     pointer-to-`s8` return, one `_M_str` projection, no stride) +

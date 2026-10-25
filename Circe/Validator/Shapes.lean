@@ -1544,6 +1544,49 @@ def isMaxSubarrayShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `mark_count` entry shape (visited-mark idiom, G1): single-ref
+    const matrix + single-ref mut visited vector, `i32` vertex, `i32`
+    return; the mut-`at()` seed write, then the `cir.for` index loop
+    over exactly one `size` + one const-`at()` gate read + one
+    mut-`at()` accumulator read, one `lt` + one `ne` guard, one `nsw`
+    add, five consts (three s32i `0`, one s32i `1`, one u64i `0`).
+    Encapsulation pins: no direct `operator[]` / `_M_range_check` /
+    throw calls — checked access goes through `at()` only. -/
+def isMarkCountShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [m, vis, u] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType m.ctype && m.singleRef && isStdVectorType m.ctype &&
+    isPtrType vis.ctype && vis.singleRef && isStdVectorType vis.ctype &&
+    !isPtrType u.ctype && isU64 u.ctype &&
+    isI32 raw.ret &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    callsFunc raw.text stdVecSizeName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    containsSubstr raw.text "cir.cmp lt" &&
+    containsSubstr raw.text "cir.cmp ne" &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.const" == 5 &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 14 &&
+    opCount raw.text "cir.store" == 9 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

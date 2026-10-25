@@ -13,6 +13,7 @@ import Circe.Emit.Sum
 import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecMarkCount
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -1196,6 +1197,29 @@ def matchFrag : Func → Option FragKind
           one == BitVec.ofNat 64 1 then some .vecKadane
       else none
     | _ => none
+  | ⟨_, [⟨"m", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .sharedBorrow⟩,
+        ⟨"vis", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"u", .u 64, .owned⟩], _,
+      .seq (.if_ (.ult (.var "u") (.stdVecLen "vis"))
+              (.vecSet "vis" (.var "u") (.lit (.i32 one32)))
+              .fail)
+      (.seq (.let_ "t" (.i 32) (.lit (.i32 t0)))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
+      (.seq (.while_ (.ult (.var "i") (.stdVecLen "vis"))
+              (.seq (.if_ (.une (.stdVecAt "m" (.var "i"))
+                            (.lit (.i32 mz)))
+                      (.assign "t" (.add (.var "t")
+                        (.stdVecAt "vis" (.var "i"))))
+                      .skip)
+                (.assign "i" (.uadd (.var "i") (.lit (.u64 one))))))
+            (.return_ (.var "t")))))⟩ =>
+    if one32 == BitVec.ofNat 32 1 && t0 == BitVec.ofNat 32 0 &&
+        i0 == BitVec.ofNat 64 0 && mz == BitVec.ofNat 32 0 &&
+        one == BitVec.ofNat 64 1 then
+      some .vecMarkCount
+    else none
   | ⟨_, [], _,
       .return_ (.vgrowNew (.lit (.u64 zero)))⟩ =>
     if zero == BitVec.ofNat 64 0 then some .vecEmptyCtor else none
@@ -1733,6 +1757,8 @@ theorem matchFrag_stdVecRangeCheck : matchFrag stdVecRangeCheckFunc = some .vecR
 theorem matchFrag_stdVecAt : matchFrag stdVecAtFunc = some .vecAt := rfl
 theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
 theorem matchFrag_vecAtSum : matchFrag vecAtSumFunc = some .vecAtSum := rfl
+theorem matchFrag_vecMarkCount :
+    matchFrag vecMarkCountFunc = some .vecMarkCount := rfl
 theorem matchFrag_vecKadane : matchFrag vecKadaneFunc = some .vecKadane := rfl
 theorem matchFrag_vecBinarySearch :
     matchFrag vecBinSearchFunc = some .vecBinSearch := rfl

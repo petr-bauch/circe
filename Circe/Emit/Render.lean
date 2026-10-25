@@ -747,6 +747,27 @@ def emitVecAtSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the `mark_count` entry forward definition: the visited-mark
+    idiom over two reified word lists (seed `vis[u] = 1`, then the
+    gated checked-add fold — `m`-exhaustion is `OOB`, `nsw` overflow
+    is loud via `checkedAddI32`; fuel is structural on the tails). -/
+def emitVecMarkCountText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (visited-mark idiom over the reified words; seed miss is `AssertFail`, `m`-exhaustion is `OOB`, `nsw` overflow is loud). -/\n"
+  ++ s!"def {name}_fwd (m vis : List (BitVec 32)) (u : BitVec 64) : Result (BitVec 32) :=\n"
+  ++ "  match vis[u.toNat]? with\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "  | some _ => go m (vis.set u.toNat 1) 0\n"
+  ++ "where go : List (BitVec 32) → List (BitVec 32) → BitVec 32 → Result (BitVec 32)\n"
+  ++ "  | _, [], acc => .ok acc\n"
+  ++ "  | [], _ :: _, _ => .error .OOB\n"
+  ++ "  | mh :: mt, vh :: vt, acc =>\n"
+  ++ "      if mh != 0 then do\n"
+  ++ "        let a ← checkedAddI32 acc vh\n"
+  ++ "        go mt vt a\n"
+  ++ "      else go mt vt acc\n"
+
 /-- Render the `max_subarray` entry forward definition: Kadane's
     algorithm over the reified words (seed from `l[0]`, so empty
     input is `AssertFail`; `nsw` overflow is loud via `checkedAddI32`;

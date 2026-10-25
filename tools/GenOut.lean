@@ -10,6 +10,7 @@
 import Circe.Emit
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecMarkCount
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -140,6 +141,7 @@ def main : IO Unit := do
   let vecAt ← emitOrDie stdVecAtFunc
   let vecAtOne ← emitOrDie vecAtOneFunc
   let vecAtSum ← emitOrDie vecAtSumFunc
+  let vecMarkCount ← emitOrDie vecMarkCountFunc
   let vecKadane ← emitOrDie vecKadaneFunc
   let vecBinarySearch ← emitOrDie vecBinSearchFunc
   let vecTwoSum ← emitOrDie vecTwoSumFunc
@@ -279,6 +281,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAt.lean" (emitFileText (.ok vecAt))
   IO.FS.writeFile "out/VecAtOne.lean" (emitFileText (.ok vecAtOne))
   IO.FS.writeFile "out/VecAtSum.lean" (emitFileText (.ok vecAtSum))
+  IO.FS.writeFile "out/VecMarkCount.lean" (emitFileText (.ok vecMarkCount))
   IO.FS.writeFile "out/VecKadane.lean" (emitFileText (.ok vecKadane))
   IO.FS.writeFile "out/VecBinarySearch.lean" (emitFileText (.ok vecBinarySearch))
   IO.FS.writeFile "out/VecTwoSum.lean" (emitFileText (.ok vecTwoSum))
@@ -418,6 +421,7 @@ def main : IO Unit := do
   let vecAtSpec ← specOrDie stdVecAtFunc
   let vecAtOneSpec ← specOrDie vecAtOneFunc
   let vecAtSumSpec ← specOrDie vecAtSumFunc
+  let vecMarkCountSpec ← specOrDie vecMarkCountFunc
   let vecKadaneSpec ← specOrDie vecKadaneFunc
   let vecBinarySearchSpec ← specOrDie vecBinSearchFunc
   let vecTwoSumSpec ← specOrDie vecTwoSumFunc
@@ -557,6 +561,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecAt_Spec.lean" vecAtSpec
   IO.FS.writeFile "out/VecAtOne_Spec.lean" vecAtOneSpec
   IO.FS.writeFile "out/VecAtSum_Spec.lean" vecAtSumSpec
+  IO.FS.writeFile "out/VecMarkCount_Spec.lean" vecMarkCountSpec
   IO.FS.writeFile "out/VecKadane_Spec.lean" vecKadaneSpec
   IO.FS.writeFile "out/VecBinarySearch_Spec.lean" vecBinarySearchSpec
   IO.FS.writeFile "out/VecTwoSum_Spec.lean" vecTwoSumSpec
