@@ -1791,6 +1791,48 @@ def isMatAtShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Cursor-stack push kernel (G3, the `stack_push` shape):
+    single-`&mut vector<int>&` workspace + `u64` cursor + `i32`
+    value in, updated workspace out (the `vec_at_set` threading
+    precedent — the `u64` cursor advance is pure `uadd`, asserted
+    at the Diff layer); exactly one mut-`at()` call site (the
+    guarded store), one wrapping `u64` `cir.add` (no `nsw` —
+    cursor arithmetic wraps, the S3b precedent), two consts
+    (`1` seed-value ghost + `1` cursor step), 4 allocas / 5 loads /
+    5 stores, straight-line (no `cir.cmp` / `cir.if` of its own —
+    the bounds check lives in the `at()` callee). -/
+def isStackPushShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [st, top, x] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType st.ctype && st.singleRef && isStdVectorType st.ctype &&
+    !isPtrType top.ctype && isU64 top.ctype &&
+    !isPtrType x.ctype && isI32 x.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.add" == 1 &&
+    !containsSubstr raw.text "nsw" &&
+    opCount raw.text "cir.const" == 2 &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.load" == 5 &&
+    opCount raw.text "cir.store" == 5 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cmp" &&
+    !containsSubstr raw.text "cir.if" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.while" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

@@ -747,6 +747,19 @@ def emitVecAtSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the `stack_push` entry forward definition: the
+    guarded workspace store returning the `(workspace, cursor)`
+    pair (miss is `AssertFail`, the `at()`-throw precedent — the
+    cursor advance is pure wrapping `uadd`). -/
+def emitVecStackPushText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (cursor-stack push: guarded store, returns the workspace and the advanced cursor; miss is `AssertFail`). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (top : BitVec 64) (x : BitVec 32) : Result (List (BitVec 32) × BitVec 64) :=\n"
+  ++ "  match l[top.toNat]? with\n"
+  ++ "  | some _ => .ok (l.set top.toNat x, top + 1)\n"
+  ++ "  | none => .error .AssertFail\n"
+
 /-- Render the `mat_at` entry forward definition: the single
     checked read at the wrapped unsigned 2D index (miss is
     `AssertFail`, the `at()`-throw precedent — wrapping index

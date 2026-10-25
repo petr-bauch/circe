@@ -1165,6 +1165,21 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     direct `operator[]` / `_M_range_check` / throw calls; `nsw`
     anywhere rejects (the computation must wrap). Verdict honestly
     `unknown` (single-ref).
+35. Cursor-stack push kernel (G3, over the N4d-iv-c mut-`at()`
+    composer): `stack_push` (`vector<int>&` workspace + `u64`
+    cursor + `i32` value in, updated workspace out — the
+    `vec_at_set` threading precedent, the `u64` cursor advance
+    being pure `uadd` asserted at the Diff layer); the single
+    mut-`at()` guarded store plus one wrapping `u64` add, two
+    consts, 4 allocas / 5 loads / 5 stores, straight-line. The
+    pop/read/empty cursor duals reuse admitted machinery
+    (`usub`, const-`at()`, `== 0`), so this kernel admits the one
+    genuinely new piece — the guarded workspace store — with no
+    iterator values in CoreIR (the `__gnu_cxx` iterator closure
+    behind `empty()` / `back()` / `pop_back()` stays deferred).
+    Encapsulation pins: no direct `operator[]` / `_M_range_check`
+    / throw calls; `nsw` anywhere rejects. Verdict honestly
+    `unknown` (single-ref).
 
 ## Admitted CIR ops (raw CIRGen shape)
 

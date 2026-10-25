@@ -12,6 +12,7 @@ import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
 import Circe.Emit.VecMarkCount
 import Circe.Emit.VecMatAt
+import Circe.Emit.VecStackPush
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -145,6 +146,7 @@ def main : IO Unit := do
   let vecMarkCount ← emitOrDie vecMarkCountFunc
   let vecMarkCountC ← emitOrDie { vecMarkCountFunc with name := markCountCName }
   let vecMatAt ← emitOrDie matAtFunc
+  let vecStackPush ← emitOrDie stackPushFunc
   let vecCharSize ← emitOrDie { stdVecSizeFunc with name := charVecSizeName }
   let vecCharIndex ← emitOrDie { stdVecIndexFunc with name := charVecIndexName }
   let vecCharRangeCheck ← emitOrDie { stdVecRangeCheckFunc with name := charVecRangeCheckName }
@@ -293,6 +295,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecMarkCount.lean" (emitFileText (.ok vecMarkCount))
   IO.FS.writeFile "out/VecMarkCountC.lean" (emitFileText (.ok vecMarkCountC))
   IO.FS.writeFile "out/VecMatAt.lean" (emitFileText (.ok vecMatAt))
+  IO.FS.writeFile "out/VecStackPush.lean" (emitFileText (.ok vecStackPush))
   IO.FS.writeFile "out/VecCharSize.lean" (emitFileText (.ok vecCharSize))
   IO.FS.writeFile "out/VecCharIndex.lean" (emitFileText (.ok vecCharIndex))
   IO.FS.writeFile "out/VecCharRangeCheck.lean" (emitFileText (.ok vecCharRangeCheck))
@@ -441,6 +444,7 @@ def main : IO Unit := do
   let vecMarkCountSpec ← specOrDie vecMarkCountFunc
   let vecMarkCountCSpec ← specOrDie { vecMarkCountFunc with name := markCountCName }
   let vecMatAtSpec ← specOrDie matAtFunc
+  let vecStackPushSpec ← specOrDie stackPushFunc
   let vecCharSizeSpec ← specOrDie { stdVecSizeFunc with name := charVecSizeName }
   let vecCharIndexSpec ← specOrDie { stdVecIndexFunc with name := charVecIndexName }
   let vecCharRangeCheckSpec ← specOrDie { stdVecRangeCheckFunc with name := charVecRangeCheckName }
@@ -595,6 +599,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecCharAtMut_Spec.lean" vecCharAtMutSpec
   IO.FS.writeFile "out/VecMarkCountC_Spec.lean" vecMarkCountCSpec
   IO.FS.writeFile "out/VecMatAt_Spec.lean" vecMatAtSpec
+  IO.FS.writeFile "out/VecStackPush_Spec.lean" vecStackPushSpec
   IO.FS.writeFile "out/VecKadane_Spec.lean" vecKadaneSpec
   IO.FS.writeFile "out/VecBinarySearch_Spec.lean" vecBinarySearchSpec
   IO.FS.writeFile "out/VecTwoSum_Spec.lean" vecTwoSumSpec

@@ -1464,6 +1464,34 @@ def emitVecAtSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `stack_push` entry. The mirror is the
+    guarded workspace store returning the `(workspace, cursor)`
+    pair; edges carry ground truth (hit, miss, singleton hit,
+    empty miss, last-slot hit). -/
+def emitVecStackPushSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(st, top, x)` stores `x` at `st.at(top)` and returns `top + 1` (wrapping `u64`).\n"
+  ++ s!"    Base body reference: the guarded store plus the pure cursor advance on the reified words (cf. emitted `{name}_fwd`,\n"
+  ++ s!"    `stackPushFwd` for the workspace leg). Miss aborts like `at()`-throw. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) (top : BitVec 64) (x : BitVec 32) : Result (List (BitVec 32) × BitVec 64) :=\n"
+  ++ "  match l[top.toNat]? with\n"
+  ++ "  | some _ => .ok (l.set top.toNat x, top + 1)\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: hit, miss, singleton hit, empty miss, last-slot hit. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × BitVec 64 × BitVec 32) × Result (List (BitVec 32) × BitVec 64)) :=\n"
+  ++ "  [(([1, 2, 3], 1, 9), (.ok ([1, 9, 3], 2))),\n"
+  ++ "   (([1, 2, 3], 3, 9), .error .AssertFail),\n"
+  ++ "   (([0], 0, 7), (.ok ([7], 1))),\n"
+  ++ "   (([], 0, 7), .error .AssertFail),\n"
+  ++ "   (([1, 2], 1, 5), (.ok ([1, 5], 2)))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `mat_at` entry. The mirror is the single
     checked read at the wrapped unsigned 2D index; edges carry ground
     truth (hit, miss, wrapping hit, zero-stride hit, empty miss). -/
