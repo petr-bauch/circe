@@ -1464,6 +1464,39 @@ def emitVecAtSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `max_subarray` entry. The mirror is Kadane's
+    algorithm over the reified words, seeded from `l[0]`; edges carry
+    ground truth (empty seed failure, canonical mix, all-negative,
+    `nsw` overflow). -/
+def emitVecKadaneSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v)` returns the maximum subarray sum of `v.at(i)`.\n"
+  ++ s!"    Base body reference: Kadane's algorithm on the reified words, seeded from `l[0]`\n"
+  ++ s!"    (cf. emitted `{name}_fwd`). Empty input fails like `at()`-throw; `nsw` overflow is loud. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match l with\n"
+  ++ "  | [] => .error .AssertFail\n"
+  ++ "  | h :: t => (go t h h).map (fun p => p.2)\n"
+  ++ "where go : List (BitVec 32) → BitVec 32 → BitVec 32 → Result (BitVec 32 × BitVec 32)\n"
+  ++ "  | [], cur, best => .ok (cur, best)\n"
+  ++ "  | x :: xs, cur, best => do\n"
+  ++ "      let s ← checkedAddI32 cur x\n"
+  ++ "      let c := if s.slt x then x else s\n"
+  ++ "      go xs c (if best.slt c then c else best)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: empty seed failure, small sums, all-negative, `nsw` overflow, canonical mix. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (BitVec 32)) :=\n"
+  ++ "  [([], .error .AssertFail), ([1, 2, 3], .ok 6),\n"
+  ++ "   ([0xFFFFFFFF, 0xFFFFFFFF], .ok 0xFFFFFFFF),\n"
+  ++ "   ([0x7FFFFFFF, 1], .error .Overflow), ([2, 0xFFFFFFFF, 3], .ok 4),\n"
+  ++ "   ([0xFFFFFFFE, 1, 0xFFFFFFFD, 4, 0xFFFFFFFF, 2, 1, 0xFFFFFFFB, 4], .ok 6)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_binary_search` entry. The mirror is an
     independent binary search over the reified words; edges carry
     ground truth (sorted hit, miss past the end, empty miss). -/

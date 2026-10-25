@@ -34,6 +34,7 @@ import DiffVec2
 import DiffVec64
 import DiffVecAt
 import DiffVecAtSum
+import DiffVecKadane
 import DiffVecBinarySearch
 import DiffVecTwoSum
 import DiffVecAtSet
@@ -92,6 +93,7 @@ import GoldenVec2
 import GoldenVec64
 import GoldenVecAt
 import GoldenVecAtSum
+import GoldenVecKadane
 import GoldenVecBinarySearch
 import GoldenVecTwoSum
 import GoldenVecAtSet
@@ -356,6 +358,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/vec_read_sum.cpp", "tests/diff/driver_vec_read.cpp"], bin "circe_vec_read_native"),
    ("c++", ["tests/cpp/vec_at_one.cpp", "tests/diff/driver_vec_at.cpp"], bin "circe_vec_at_native"),
    ("c++", ["tests/cpp/vec_at_sum.cpp", "tests/diff/driver_vec_at_sum.cpp"], bin "circe_vec_at_sum_native"),
+   ("c++", ["tests/cpp/max_subarray.cpp", "tests/diff/driver_vec_kadane.cpp"], bin "circe_vec_kadane_native"),
    ("c++", ["tests/cpp/vec_binary_search.cpp", "tests/diff/driver_vec_binary_search.cpp"], bin "circe_vec_binary_search_native"),
    ("c++", ["tests/cpp/vec_two_sum.cpp", "tests/diff/driver_vec_two_sum.cpp"], bin "circe_vec_two_sum_native"),
    ("c++", ["tests/cpp/vec_at_set.cpp", "tests/diff/driver_vec_at_set.cpp"], bin "circe_vec_at_set_native"),
@@ -444,6 +447,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecAtOne_Spec.lean", "out/VecAtOne_Spec.lean"),
    ("tests/golden/VecAtSum.lean", "out/VecAtSum.lean"),
    ("tests/golden/VecAtSum_Spec.lean", "out/VecAtSum_Spec.lean"),
+   ("tests/golden/VecKadane.lean", "out/VecKadane.lean"),
+   ("tests/golden/VecKadane_Spec.lean", "out/VecKadane_Spec.lean"),
    ("tests/golden/VecBinarySearch.lean", "out/VecBinarySearch.lean"),
    ("tests/golden/VecBinarySearch_Spec.lean", "out/VecBinarySearch_Spec.lean"),
    ("tests/golden/VecTwoSum.lean", "out/VecTwoSum.lean"),
@@ -633,6 +638,7 @@ def emittedTypechecks : List String :=
    "out/VecAt.lean",
    "out/VecAtOne.lean",
    "out/VecAtSum.lean",
+   "out/VecKadane.lean",
    "out/VecBinarySearch.lean",
    "out/VecTwoSum.lean",
    "out/VecAtSet.lean",
@@ -1417,6 +1423,17 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Transfer/Slice.lean", "theorem memVecAtSumWhile_correct"),
      ("out/VecAtSum.lean", "_Z10vec_at_sumRKSt6vectorIiSaIiEE_fwd"),
      ("tests/golden/VecAtSum.lean", "_Z10vec_at_sumRKSt6vectorIiSaIiEE_fwd")]),
+   ("max-subarray",
+    [("Circe/Emit/VecKadane.lean", "theorem evalFuncFuel_vecKadane"),
+     ("Circe/Emit/VecKadane.lean", "theorem kadaneWhile_correct"),
+     ("Circe/Emit/VecKadane.lean", "theorem kadaneSeed_empty"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecKadane"),
+     ("Circe/Emit/Render.lean", "def emitVecKadaneText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecKadaneSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isMaxSubarrayShape"),
+     ("Circe/Validator/Gate.lean", "vecKadaneFunc"),
+     ("out/VecKadane.lean", "_Z12max_subarrayRKSt6vectorIiSaIiEE_fwd"),
+     ("tests/golden/VecKadane.lean", "_Z12max_subarrayRKSt6vectorIiSaIiEE_fwd")]),
    ("vec-binary-search",
     [("Circe/Emit/VecBinarySearch.lean", "theorem evalFuncFuel_vecBinarySearch"),
      ("Circe/Emit/VecBinarySearch.lean", "theorem vecBinSearchWhile_hit"),
@@ -1928,8 +1945,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 138 then
-    throw (IO.userError s!"expected 138 spec stubs, found {stubs.length}")
+  if stubs.length != 139 then
+    throw (IO.userError s!"expected 139 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -1977,6 +1994,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecread", DiffVecRead.main [bin "circe_vec_read_native", trials]),
    ("diff-vecat", DiffVecAt.main [bin "circe_vec_at_native", trials]),
    ("diff-vecatsum", DiffVecAtSum.main [bin "circe_vec_at_sum_native", trials]),
+   ("diff-veckadane", DiffVecKadane.main [bin "circe_vec_kadane_native", trials]),
    ("diff-vecbinarysearch", DiffVecBinarySearch.main [bin "circe_vec_binary_search_native", trials]),
    ("diff-vectwosum", DiffVecTwoSum.main [bin "circe_vec_two_sum_native", trials]),
    ("diff-vecatset", DiffVecAtSet.main [bin "circe_vec_at_set_native", trials]),
@@ -2037,6 +2055,7 @@ def checkSuites : List Job :=
    ("golden-vecread", GoldenVecRead.main),
    ("golden-vecat", GoldenVecAt.main),
    ("golden-vecatsum", GoldenVecAtSum.main),
+   ("golden-veckadane", GoldenVecKadane.main),
    ("golden-vecbinarysearch", GoldenVecBinarySearch.main),
    ("golden-vectwosum", GoldenVecTwoSum.main),
    ("golden-vecatset", GoldenVecAtSet.main),
@@ -2073,12 +2092,12 @@ def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
-   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecTransformAdd", "DiffVecPartition", "DiffVecSelectionSort", "DiffVecMergeSort", "DiffVecQuicksort", "DiffVecReverse", "DiffVecSegReverse", "DiffVecRotate",
+   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecKadane", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecTransformAdd", "DiffVecPartition", "DiffVecSelectionSort", "DiffVecMergeSort", "DiffVecQuicksort", "DiffVecReverse", "DiffVecSegReverse", "DiffVecRotate",
    "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffChacha20Encrypt", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

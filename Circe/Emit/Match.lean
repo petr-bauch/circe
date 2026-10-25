@@ -13,6 +13,7 @@ import Circe.Emit.Sum
 import Circe.Emit.SumTwo
 import Circe.Emit.VecAt
 import Circe.Emit.VecAtSum
+import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
 import Circe.Emit.VecAtSet
@@ -1172,6 +1173,28 @@ def matchFrag : Func → Option FragKind
             (.return_ (.var "t")))) =>
       if t0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 0 &&
           one == BitVec.ofNat 64 1 then some .vecReadSum else none
+    | .seq (.if_ (.ult (.lit (.u64 z0)) (.stdVecLen "s"))
+        (.seq (.let_ "cur" (.i 32) (.stdVecAt "s" (.lit (.u64 z1))))
+          (.let_ "best" (.i 32) (.stdVecAt "s" (.lit (.u64 z2)))))
+        .fail)
+      (.seq (.let_ "x" (.i 32) (.lit (.i32 x0)))
+      (.seq (.let_ "sum" (.i 32) (.lit (.i32 s0)))
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 i0)))
+      (.seq (.while_ (.ult (.var "i") (.stdVecLen "s"))
+          (.seq (.assign "x" (.stdVecAt "s" (.var "i")))
+          (.seq (.assign "sum" (.add (.var "cur") (.var "x")))
+          (.seq (.if_ (.slt (.var "sum") (.var "x"))
+                  (.assign "sum" (.var "x")) .skip)
+          (.seq (.assign "cur" (.var "sum"))
+          (.seq (.if_ (.slt (.var "best") (.var "cur"))
+                  (.assign "best" (.var "cur")) .skip)
+            (.assign "i" (.uadd (.var "i") (.lit (.u64 one))))))))))
+        (.return_ (.var "best")))))) =>
+      if z0 == BitVec.ofNat 64 0 && z1 == BitVec.ofNat 64 0 &&
+          z2 == BitVec.ofNat 64 0 && x0 == BitVec.ofNat 32 0 &&
+          s0 == BitVec.ofNat 32 0 && i0 == BitVec.ofNat 64 1 &&
+          one == BitVec.ofNat 64 1 then some .vecKadane
+      else none
     | _ => none
   | ⟨_, [], _,
       .return_ (.vgrowNew (.lit (.u64 zero)))⟩ =>
@@ -1710,6 +1733,7 @@ theorem matchFrag_stdVecRangeCheck : matchFrag stdVecRangeCheckFunc = some .vecR
 theorem matchFrag_stdVecAt : matchFrag stdVecAtFunc = some .vecAt := rfl
 theorem matchFrag_vecAtOne : matchFrag vecAtOneFunc = some .vecAtOne := rfl
 theorem matchFrag_vecAtSum : matchFrag vecAtSumFunc = some .vecAtSum := rfl
+theorem matchFrag_vecKadane : matchFrag vecKadaneFunc = some .vecKadane := rfl
 theorem matchFrag_vecBinarySearch :
     matchFrag vecBinSearchFunc = some .vecBinSearch := rfl
 theorem matchFrag_vecTwoSum :

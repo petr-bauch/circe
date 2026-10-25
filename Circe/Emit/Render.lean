@@ -747,6 +747,25 @@ def emitVecAtSumText (name : String) : String :=
   ++ "      let a ← checkedAddI32 acc x\n"
   ++ "      go xs a\n"
 
+/-- Render the `max_subarray` entry forward definition: Kadane's
+    algorithm over the reified words (seed from `l[0]`, so empty
+    input is `AssertFail`; `nsw` overflow is loud via `checkedAddI32`;
+    fuel is structural on the tail). -/
+def emitVecKadaneText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (Kadane maximum subarray over the reified words; `nsw` overflow is loud, empty input is `AssertFail`). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (BitVec 32) :=\n"
+  ++ "  match l with\n"
+  ++ "  | [] => .error .AssertFail\n"
+  ++ "  | h :: t => (go t h h).map (fun p => p.2)\n"
+  ++ "where go : List (BitVec 32) → BitVec 32 → BitVec 32 → Result (BitVec 32 × BitVec 32)\n"
+  ++ "  | [], cur, best => .ok (cur, best)\n"
+  ++ "  | x :: xs, cur, best => do\n"
+  ++ "      let s ← checkedAddI32 cur x\n"
+  ++ "      let c := if s.slt x then x else s\n"
+  ++ "      go xs c (if best.slt c then c else best)\n"
+
 /-- Render the `vec_binary_search` entry forward definition: binary
     search over the reified words with the safe midpoint
     `lo + ((hi - lo) >> 1)` (no div op in the model, fuel `len + 1`;
