@@ -15,6 +15,7 @@ import Circe.Emit.VecAtSum
 import Circe.Emit.VecMarkCount
 import Circe.Emit.VecMatAt
 import Circe.Emit.VecStackPush
+import Circe.Emit.VecDfs
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -1850,6 +1851,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { matAtFunc with name := raw.name }
       else if isStackPushShape raw then
         .ok { stackPushFunc with name := raw.name }
+      else if isDfsReachableShape raw then
+        .ok { dfsFunc with name := raw.name }
       else if isVecMergeIntoShape raw then
         .ok { vecMergeIntoFunc with name := raw.name }
       else if isVecTransformAddShape raw then

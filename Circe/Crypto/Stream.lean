@@ -85,7 +85,6 @@ def xorFullFrag : CStmt :=
 def xorTailFrag : CStmt :=
   .while_ (.ult (.var "i") (.var "ntail")) xorBodyFrag
 
-
 /-- One full iteration: reset `i`, setup, block call, xor, bump `b`
     and `off`. -/
 def fullIterFrag : CStmt :=
@@ -407,7 +406,6 @@ theorem mkEncEnv_update_msg (key : List (BitVec 32)) (counter : BitVec 32)
     show ("msg" : String) ≠ "key" by decide,
     show ("msg" : String) ≠ "counter" by decide,
     show ("msg" : String) ≠ "nonce" by decide]
-
 
 /-- Program-level `arrSet` (K6 analogue of `revVecSet`). -/
 theorem encArrSet (prog : Prog) (F : Nat) (x : String) (ie ve : CExpr)
@@ -1084,7 +1082,6 @@ theorem xorBodyFrag_correct (prog : Prog) (F : Nat)
   rw [hbody, evalProgStmt_seq_fallthrough _ _ _ _ _ _ harr]
   exact hasg
 
-
 /-- Loop-exit: a false guard leaves the env unchanged (either fuel),
     in loop-model conclusion form. -/
 theorem xorLoopFrag_exit (prog : Prog) (F : Nat)
@@ -1546,13 +1543,6 @@ theorem evalProgStmt_let_ok (prog : Prog) (F : Nat) (x : String)
   cases F with
   | zero => simpa [evalProgStmt] using hfu
   | succ F => simpa [evalProgStmt] using hfu
-
-/-- `une` on two `u64` words. -/
-theorem evalExpr_une_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
-    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
-    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
-    evalExpr (.une e₁ e₂) ρ = .ok (.b (x != y)) := by
-  simp [evalExpr, h₁, h₂]
 
 /-- The `ntail` let evaluates the wrap-free difference (needs `off ≤ nwords`). -/
 theorem tailNtail_ok (prog : Prog) (F : Nat)
@@ -3237,7 +3227,6 @@ theorem setupRest_nonce_oob (prog : Prog) (F : Nat)
               rw [hdrop, hdrop16]
               exact herr
 
-
 /-- Setup fails on a short nonce (setup-level twin). -/
 theorem setupFrag_oob_nonce (prog : Prog) (F : Nat)
     (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)
@@ -3253,7 +3242,6 @@ theorem setupFrag_oob_nonce (prog : Prog) (F : Nat)
   rw [setupFrag_eq_rest]
   exact setupRest_nonce_oob prog F key counter bB nonce msg nwords bN offN
     iB stCur pre hpre 16 0 rfl (by omega) (Or.inl (by omega)) hk8 hm hst16
-
 
 /-- Whole-function twin: a short nonce fails with `OOB` (nonzero `nwords`;
     the empty-message case returns early without touching the nonce). -/
@@ -4195,7 +4183,6 @@ theorem tailSeq_msg_oob (prog : Prog) (F : Nat)
     exact htail
   rw [evalProgStmt_seq_fallthrough _ _ _ _ _ _ hnt,
     evalProgStmt_seq_err _ _ _ _ _ _ hifT]
-
 
 theorem outerSkipped_msg_oob (prog : Prog) (F : Nat)
     (key : List (BitVec 32)) (counter : BitVec 32) (bB : BitVec 32)

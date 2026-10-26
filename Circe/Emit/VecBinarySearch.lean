@@ -237,15 +237,6 @@ def vecBinarySearchFwd (l : List (BitVec 32)) (t : BitVec 32) : Result Value :=
   | .hit m => .ok (.u64 (BitVec.ofNat 64 m))
   | .miss => .ok (.u64 (BitVec.ofNat 64 l.length))
 
-/-- `ueq` on two `i32`-valued expressions (no general lemma exists —
-only literal shapes — so the binary-search branch proves this local one;
-mirrors `evalExpr_ult_u64`). -/
-theorem evalExpr_ueq_i32 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 32)
-    (h₁ : evalExpr e₁ ρ = .ok (.i32 x))
-    (h₂ : evalExpr e₂ ρ = .ok (.i32 y)) :
-    evalExpr (.ueq e₁ e₂) ρ = .ok (.b (x == y)) := by
-  simp [evalExpr, h₁, h₂]
-
 /-- `seq` propagates `returned` (the second component never runs); local
 mirror of `evalStmtFuel_seq_fallthrough`, needed for the hit path. -/
 theorem evalStmtFuel_seq_return (f : Nat) (a b : CStmt)

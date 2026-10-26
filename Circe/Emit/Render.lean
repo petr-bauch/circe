@@ -1151,6 +1151,83 @@ def emitVecMergeSortText (name : String) : String :=
   ++ s!"def {name}_fwd (la lt : List (BitVec 32)) (F : Nat) : Result Value :=\n"
   ++ "  VecMergeSort.vecMergeSortFwd la lt F\n"
 
+/-- Render the `dfs_reachable` entry forward definition: the
+    seeded stack drain over the flat `n × n` matrix (iterative DFS,
+    caller stack, reserve-upfront). The seed marks `vis[src]` and
+    pushes `src`; the outer loop pops into `v` while `top != 0` and
+    the inner row scan pushes every unvisited neighbour. Every vector
+    access is fused-guard `at()`-style (miss is `AssertFail`, loud
+    like `at()`-throw); the `u64` index arithmetic wraps. Fuel is
+    structural on `F` (one per row-scan step and drain step). -/
+def emitVecDfsText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative DFS over the flat matrix; seed miss, stack miss, and matrix miss are `AssertFail`). -/\n"
+  ++ s!"def {name}_seed_fwd (vis st : List (BitVec 32)) (src : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × List (BitVec 32)) :=\n"
+  ++ "  match vis[src.toNat]? with\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "  | some _ =>\n"
+  ++ "    match st[(BitVec.ofNat 64 0).toNat]? with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some _ =>\n"
+  ++ "      .ok (vis.set src.toNat 1,\n"
+  ++ "        st.set 0 (BitVec.ofNat 32 src.toNat))\n"
+  ++ "\n"
+  ++ s!"def {name}_row_fwd (F : Nat) (m vis st : List (BitVec 32))\n"
+  ++ "    (n v top count u : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × List (BitVec 32) × BitVec 64 × BitVec 64 × BitVec 64) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    if u.ult n then .error .AssertFail\n"
+  ++ "    else .ok (vis, st, top, count, u)\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    if u.ult n then\n"
+  ++ "      match m[(v * n + u).toNat]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some g =>\n"
+  ++ "        if g != (BitVec.ofNat 32 0) then\n"
+  ++ "          match vis[u.toNat]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some w =>\n"
+  ++ "            if w == (BitVec.ofNat 32 0) then\n"
+  ++ "              match st[top.toNat]? with\n"
+  ++ "              | none => .error .AssertFail\n"
+  ++ "              | some _ =>\n"
+  ++ s!"                {name}_row_fwd F m (vis.set u.toNat 1)\n"
+  ++ "                  (st.set top.toNat (BitVec.ofNat 32 u.toNat))\n"
+  ++ "                  n v (top + 1) (count + 1) (u + 1)\n"
+  ++ s!"            else {name}_row_fwd F m vis st n v top count (u + 1)\n"
+  ++ s!"        else {name}_row_fwd F m vis st n v top count (u + 1)\n"
+  ++ "    else .ok (vis, st, top, count, u)\n"
+  ++ "\n"
+  ++ s!"def {name}_drain_fwd (F : Nat) (m vis st : List (BitVec 32))\n"
+  ++ "    (n top count v u : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × List (BitVec 32) × BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    if top != (BitVec.ofNat 64 0) then .error .AssertFail\n"
+  ++ "    else .ok (vis, st, top, count, v, u)\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    if top != (BitVec.ofNat 64 0) then\n"
+  ++ "      let top1 := top - 1\n"
+  ++ "      match st[top1.toNat]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some w =>\n"
+  ++ s!"        match {name}_row_fwd F m vis st n (w.signExtend 64) top1 count 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok (vis', st', top', count', u') =>\n"
+  ++ s!"          {name}_drain_fwd F m vis' st' n top' count' (w.signExtend 64) u'\n"
+  ++ "    else .ok (vis, st, top, count, v, u)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m vis st : List (BitVec 32)) (n src : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ s!"  match {name}_seed_fwd vis st src with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (vis1, st1) =>\n"
+  ++ s!"    match {name}_drain_fwd F m vis1 st1 n 1 1 0 0 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, _, _, count, _, _) => .ok count\n"
+
 /-- Render the `vec_quicksort` entry forward definition: recursive
     quicksort over the reified words (ranges shrink strictly, fuel
     steps down per `callProg` — the rendering delegates to the

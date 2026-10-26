@@ -709,6 +709,11 @@ def evalExpr : CExpr → Env → Result Value
     | .ok (.u64 x) => .ok (.i32 (BitVec.ofNat 32 x.toNat))
     | .ok _ => .error .AssertFail
     | .error e => .error e
+  | .u64ofI32 e, ρ =>
+    match evalExpr e ρ with
+    | .ok (.i32 x) => .ok (.u64 (x.signExtend 64))
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
 
 theorem evalExpr_lit (l : CLit) (ρ : Env) :
     evalExpr (.lit l) ρ = .ok (litVal l) := rfl
@@ -783,6 +788,38 @@ theorem evalExpr_umul_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
     (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
     (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
     evalExpr (.umul e₁ e₂) ρ = .ok (.u64 (x * y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `usub` on two `u64`-valued expressions (G5a: the cursor
+    pop `top - 1`, wrapping). -/
+theorem evalExpr_usub_u64_rr (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.usub e₁ e₂) ρ = .ok (.u64 (x - y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `une` on two `u64`-valued expressions (G5a: the stack-drain
+    `top != 0` condition). -/
+theorem evalExpr_une_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.une e₁ e₂) ρ = .ok (.b (x != y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `ueq` on two `i32`-valued expressions (G5a: the unvisited
+    `vis[u] == 0` gate). -/
+theorem evalExpr_ueq_i32 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 32)
+    (h₁ : evalExpr e₁ ρ = .ok (.i32 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.i32 y)) :
+    evalExpr (.ueq e₁ e₂) ρ = .ok (.b (x == y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `une` on two `i32`-valued expressions (G5a: the edge `m[i] != 0`
+    gate). -/
+theorem evalExpr_une_i32 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 32)
+    (h₁ : evalExpr e₁ ρ = .ok (.i32 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.i32 y)) :
+    evalExpr (.une e₁ e₂) ρ = .ok (.b (x != y)) := by
   simp [evalExpr, h₁, h₂]
 
 /-- `uadd` type mismatches are rejected. -/
@@ -870,6 +907,19 @@ example : evalExpr (.bshr (.lit (.u64 7)) (.lit (.u64 1))) [] =
 theorem evalExpr_i32ofU64_ok (e : CExpr) (ρ : Env) (x : BitVec 64)
     (h : evalExpr e ρ = .ok (.u64 x)) :
     evalExpr (.i32ofU64 e) ρ = .ok (.i32 (BitVec.ofNat 32 x.toNat)) := by
+  simp [evalExpr, h]
+
+/-- `u64ofI32` on an `i32`-valued expression sign-extends
+    (G5a: C integer promotion on the pop-read). -/
+theorem evalExpr_u64ofI32_ok (e : CExpr) (ρ : Env) (x : BitVec 32)
+    (h : evalExpr e ρ = .ok (.i32 x)) :
+    evalExpr (.u64ofI32 e) ρ = .ok (.u64 (x.signExtend 64)) := by
+  simp [evalExpr, h]
+
+/-- `u64ofI32` on a non-`i32` word is rejected. -/
+theorem evalExpr_u64ofI32_mismatch (e : CExpr) (ρ : Env) (v : BitVec 64)
+    (h : evalExpr e ρ = .ok (.u64 v)) :
+    evalExpr (.u64ofI32 e) ρ = .error .AssertFail := by
   simp [evalExpr, h]
 
 /-- `i32ofU64` on a non-`u64` word is rejected. -/

@@ -1180,6 +1180,26 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     Encapsulation pins: no direct `operator[]` / `_M_range_check`
     / throw calls; `nsw` anywhere rejects. Verdict honestly
     `unknown` (single-ref).
+36. Iterative DFS over a flat row-major matrix (G5a, over the
+    N4d-iv-c composers): `dfs_reachable` (`const vector<int>&`
+    matrix + `vector<int>&` visited + `vector<int>&` caller stack +
+    `u64` dimension + `u64` source in, `u64` reachable-count out;
+    the seed marks `src` and pushes it, the outer `while` drains
+    the stack, the inner `for` scans each row `v * n + u` (the G2
+    index computation) pushing every unvisited non-zero neighbor
+    (the G1 gated idiom — gate one `m.at(v*n+u) != 0`, gate two
+    `vis.at(u) == 0`), counting each first visit; seven `at()`
+    sites, `cir.while` + `cir.for`, `&&` as one `ternary` + one
+    `if`, four `cir.cmp`, wrapping `mul`/`add`/`sub` (no `nsw`),
+    three `cir.cast integral` (narrowing stores, widening pop),
+    21 consts, 10 allocas / 29 loads / 18 stores). Admission is one
+    fused entry Func: the seed guards, the pop guard, the row-scan
+    guard, the two gate conditions, and the two push stores (each
+    miss is the `at()`-throw `AssertFail`); the cursor and count
+    advances are pure wrapping `uadd`. The stack never grows
+    beyond the visited count (caller sizes it upfront, the G0
+    caller-reserves-upfront decision — growth is G4). Verdict
+    honestly `unknown` (single-ref).
 
 ## Admitted CIR ops (raw CIRGen shape)
 

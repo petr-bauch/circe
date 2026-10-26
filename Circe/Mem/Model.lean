@@ -805,6 +805,11 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok (.u64 x) => .ok (.i32 (BitVec.ofNat 32 x.toNat))
     | .ok _ => .error .AssertFail
     | .error e => .error e
+  | .u64ofI32 e, ρ, m, π =>
+    match memEvalExpr e ρ m π with
+    | .ok (.i32 x) => .ok (.u64 (x.signExtend 64))
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
 
 /-- Pure-expression agreement for closed shapes: `lit`/`var` hold by
     definition; binary operators agree once their discriminants are
@@ -1194,6 +1199,15 @@ theorem memEvalExpr_i32ofU64_agree (e : CExpr) (ρ : Env) (m : Mem)
     (π : Layout)
     (h : memEvalExpr e ρ m π = evalExpr e ρ) :
     memEvalExpr (.i32ofU64 e) ρ m π = evalExpr (.i32ofU64 e) ρ := by
+  simp only [memEvalExpr, evalExpr, h]
+  rfl
+
+/-- `u64ofI32` agreement: both sides widen the same way
+    (G5a: C integer promotion on the pop-read). -/
+theorem memEvalExpr_u64ofI32_agree (e : CExpr) (ρ : Env) (m : Mem)
+    (π : Layout)
+    (h : memEvalExpr e ρ m π = evalExpr e ρ) :
+    memEvalExpr (.u64ofI32 e) ρ m π = evalExpr (.u64ofI32 e) ρ := by
   simp only [memEvalExpr, evalExpr, h]
   rfl
 

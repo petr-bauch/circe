@@ -123,6 +123,9 @@ inductive CLit : Type
     `i32ofU64 e` narrows a `u64` index word to `i32` (wrapping mod
     2^32, C `(int)` cast on indices; V2 two-sum early `IPair`
     return over `u64` loop indices).
+    `u64ofI32 e` widens an `i32` word to `u64` (sign-extension, C
+    integer promotion on values read out of `int` vectors; the G5a
+    pop-read twin of the narrowing cast).
     `mload s ie` (G3/S3) is the `B2` load twin of `mstore`: reads
     the `i32` word at `u64` offset `ie` of the cell pinned to slot
     `s` (address + tag from the `Layout` pin; unpinned slot, tag
@@ -185,6 +188,7 @@ inductive CExpr : Type
   | pmk : CExpr → CExpr → CExpr
   | pair : CExpr → CExpr → CExpr
   | i32ofU64 : CExpr → CExpr
+  | u64ofI32 : CExpr → CExpr
   | mload : String → CExpr → CExpr
   deriving DecidableEq, Repr
 
