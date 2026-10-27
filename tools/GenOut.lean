@@ -24,6 +24,7 @@ import Circe.Emit.VecPartition
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecDfs
+import Circe.Emit.VecDfsGrow
 import Circe.Emit.VecQuicksort
 import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
@@ -167,6 +168,7 @@ def main : IO Unit := do
   let vecMergeSort ← emitOrDie VecMergeSort.vecMergeSortFunc
   let vecQuicksort ← emitOrDie VecQuicksort.vecQuicksortFunc
   let vecDfs ← emitOrDie dfsFunc
+  let vecDfsGrow ← emitOrDie dfsGrowFunc
   let vecReverse ← emitOrDie vecReverseFunc
   let vecSegReverse ← emitOrDie vecSegReverseFunc
   let vecRotate ← emitOrDie vecRotateFunc
@@ -317,6 +319,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecMergeSort.lean" (emitFileText (.ok vecMergeSort))
   IO.FS.writeFile "out/VecQuicksort.lean" (emitFileText (.ok vecQuicksort))
   IO.FS.writeFile "out/VecDfs.lean" (emitFileText (.ok vecDfs))
+  IO.FS.writeFile "out/VecDfsGrow.lean" (emitFileText (.ok vecDfsGrow))
   IO.FS.writeFile "out/VecReverse.lean" (emitFileText (.ok vecReverse))
   IO.FS.writeFile "out/VecSegReverse.lean" (emitFileText (.ok vecSegReverse))
   IO.FS.writeFile "out/VecRotate.lean" (emitFileText (.ok vecRotate))
@@ -467,6 +470,7 @@ def main : IO Unit := do
   let vecMergeSortSpec ← specOrDie VecMergeSort.vecMergeSortFunc
   let vecQuicksortSpec ← specOrDie VecQuicksort.vecQuicksortFunc
   let vecDfsSpec ← specOrDie dfsFunc
+  let vecDfsGrowSpec ← specOrDie dfsGrowFunc
   let vecReverseSpec ← specOrDie vecReverseFunc
   let vecSegReverseSpec ← specOrDie vecSegReverseFunc
   let vecRotateSpec ← specOrDie vecRotateFunc
@@ -617,6 +621,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecMergeSort_Spec.lean" vecMergeSortSpec
   IO.FS.writeFile "out/VecQuicksort_Spec.lean" vecQuicksortSpec
   IO.FS.writeFile "out/VecDfs_Spec.lean" vecDfsSpec
+  IO.FS.writeFile "out/VecDfsGrow_Spec.lean" vecDfsGrowSpec
   IO.FS.writeFile "out/VecReverse_Spec.lean" vecReverseSpec
   IO.FS.writeFile "out/VecSegReverse_Spec.lean" vecSegReverseSpec
   IO.FS.writeFile "out/VecRotate_Spec.lean" vecRotateSpec

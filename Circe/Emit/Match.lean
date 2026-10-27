@@ -27,6 +27,7 @@ import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecDfs
+import Circe.Emit.VecDfsGrow
 import Circe.Emit.VecQuicksort
 import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
@@ -1214,6 +1215,79 @@ def matchFrag : Func → Option FragKind
       some .vecDfs
     else none
 
+  | ⟨_, [{ name := "m", ty := .vecBlock, role := .owned },
+        { name := "vis", ty := .vecBlock, role := .owned },
+        { name := "st", ty := .vecBlock, role := .owned },
+        { name := "n", ty := .u 64, role := .owned },
+        { name := "src", ty := .u 64, role := .owned }],
+      .u 64,
+      (.seq (.seq (.if_ (.ult (.var "src") (.vgrowLen "vis"))
+                (.vgrowSet "vis" (.var "src") (.lit (.i32 one1)))
+                .fail)
+              (.seq (.let_ "x0" (.i 32) (.i32ofU64 (.var "src")))
+              (.seq (.callProg "st" pb1 ["st", "x0"])
+              (.seq (.let_ "top" (.u 64) (.lit (.u64 ot1)))
+              (.seq (.let_ "count" (.u 64) (.lit (.u64 oc1)))
+              (.seq (.let_ "v" (.u 64) (.lit (.u64 zv1)))
+                    (.let_ "u" (.u 64) (.lit (.u64 zu1)))))))))
+            (.seq (.while_ (.une (.var "top") (.lit (.u64 zt1)))
+                      (.seq (.assign "top"
+                              (.usub (.var "top") (.lit (.u64 dt1))))
+                      (.seq (.if_ (.ult (.var "top") (.vgrowLen "st"))
+                              (.assign "v"
+                                (.u64ofI32 (.vgrowAt "st" (.var "top"))))
+                              .fail)
+                      (.seq (.assign "u" (.lit (.u64 zu2)))
+                            (.while_ (.ult (.var "u") (.var "n"))
+                              (.seq (.if_ (.ult (.uadd (.umul (.var "v")
+                                                      (.var "n"))
+                                                  (.var "u"))
+                                              (.vgrowLen "m"))
+                                      (.if_ (.une (.vgrowAt "m"
+                                                    (.uadd (.umul (.var "v")
+                                                      (.var "n")) (.var "u")))
+                                              (.lit (.i32 mz1)))
+                                        (.if_ (.ult (.var "u")
+                                                (.vgrowLen "vis"))
+                                          (.if_ (.ueq (.vgrowAt "vis"
+                                                        (.var "u"))
+                                                  (.lit (.i32 vz1)))
+                                            (.seq (.vgrowSet "vis" (.var "u")
+                                                     (.lit (.i32 one2)))
+                                                  (.seq (.let_ "x" (.i 32)
+                                                          (.i32ofU64 (.var "u")))
+                                                  (.seq (.if_ (.ult
+                                                          (.var "top")
+                                                          (.vgrowLen "st"))
+                                                          (.vgrowSet "st"
+                                                            (.var "top")
+                                                            (.var "x"))
+                                                          (.callProg "st"
+                                                            pb2 ["st", "x"]))
+                                                  (.seq (.assign "top" (.uadd
+                                                          (.var "top")
+                                                          (.lit (.u64 it1))))
+                                                        (.assign "count" (.uadd
+                                                          (.var "count")
+                                                          (.lit (.u64 ic1))))))))
+                                            .skip)
+                                          .fail)
+                                        .skip)
+                                      .fail)
+                                    (.assign "u" (.uadd (.var "u")
+                                      (.lit (.u64 au1))))))))))
+                    (.return_ (.var "count"))))⟩ =>
+    if one1 == BitVec.ofNat 32 1 && one2 == BitVec.ofNat 32 1 &&
+        mz1 == BitVec.ofNat 32 0 && vz1 == BitVec.ofNat 32 0 &&
+        ot1 == BitVec.ofNat 64 1 && oc1 == BitVec.ofNat 64 1 &&
+        zv1 == BitVec.ofNat 64 0 && zu1 == BitVec.ofNat 64 0 &&
+        zt1 == BitVec.ofNat 64 0 && zu2 == BitVec.ofNat 64 0 &&
+        dt1 == BitVec.ofNat 64 1 && it1 == BitVec.ofNat 64 1 &&
+        ic1 == BitVec.ofNat 64 1 && au1 == BitVec.ofNat 64 1 &&
+        pb1 == stdVecPushBackName && pb2 == stdVecPushBackName then
+      some .vecDfsGrow
+    else none
+
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩], _,
       .if_ (.ult (.lit (.u64 zero)) (.stdVecLen "v"))
@@ -1890,6 +1964,8 @@ theorem matchFrag_vecQuicksort :
     matchFrag VecQuicksort.vecQuicksortFunc = some .vecQuicksort := rfl
 theorem matchFrag_vecDfs :
     matchFrag dfsFunc = some .vecDfs := rfl
+theorem matchFrag_vecDfsGrow :
+    matchFrag dfsGrowFunc = some .vecDfsGrow := rfl
 theorem matchFrag_stdVecEmptyCtor : matchFrag stdVecEmptyCtorFunc = some .vecEmptyCtor := rfl
 theorem matchFrag_stdVecUnit : matchFrag stdVecUnitFunc = some .vecUnit := rfl
 theorem matchFrag_stdVecDtor : matchFrag stdVecDtorFunc = some .vecDtor := rfl

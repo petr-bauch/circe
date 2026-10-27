@@ -1891,6 +1891,68 @@ def isDfsReachableShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Iterative DFS over a growing stack (G4, the `dfs_grow` shape):
+    same params as G5a (`const vector<int>&` matrix +
+    `vector<int>&` visited + `vector<int>&` caller stack +
+    `u64` dimension + `u64` source in, `u64` reachable-count out),
+    but the two stack pushes go through `push_back` (the N4d-iv-b2
+    growth composer — the caller passes the stack empty, the
+    `_M_realloc_insert` slow path relocates as needed) instead of
+    guarded `at()` stores. Exactly seven call sites (three mut-`at`:
+    seed-visited, pop-read, visited-store; two const-`at`: matrix
+    read, visited gate; two `push_back`: seed + discovery), one
+    `cir.while` (stack drain, `top != 0`) wrapped around one
+    `cir.for` (`u in 0..n`), the `&&` lowered to one `cir.ternary`
+    + one `cir.if`, plus the slot/grow `cir.if` (slot reuse when
+    `top < st.size()`, `push_back` past the high-water mark). Five
+    `cir.cmp` (outer `ne`-`u64`, bound `lt`-`u64`, slot `lt`-`u64`,
+    gate `ne`-`s32`, gate `eq`-`s32`), one wrapping `cir.mul` +
+    three wrapping `cir.add` + one wrapping `cir.sub` (no `nsw`
+    anywhere), four `cir.cast integral` (seed/slot/push narrow
+    `u64 -> s32`, pop-read widen `s32 -> u64`), 19 consts,
+    12 allocas / 33 loads / 19 stores. -/
+def isDfsGrowShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [m, vis, st, n, src] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType m.ctype && m.singleRef && isStdVectorType m.ctype &&
+    isPtrType vis.ctype && vis.singleRef && isStdVectorType vis.ctype &&
+    isPtrType st.ctype && st.singleRef && isStdVectorType st.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    !isPtrType src.ctype && isU64 src.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecAtMutName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecPushBackName &&
+    opCount raw.text "cir.call @" == 9 &&
+    opCount raw.text ("cir.call @" ++ stdVecPushBackName ++ "(") == 2 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 5 &&
+    opCount raw.text "cir.cmp ne" == 2 &&
+    opCount raw.text "cir.cmp eq" == 1 &&
+    opCount raw.text "cir.cmp lt" == 2 &&
+    opCount raw.text "cir.mul" == 1 &&
+    opCount raw.text "cir.add" == 3 &&
+    opCount raw.text "cir.sub" == 1 &&
+    !containsSubstr raw.text "nsw" &&
+    opCount raw.text "cir.const" == 19 &&
+    opCount raw.text "cir.cast" == 4 &&
+    opCount raw.text "cir.alloca" == 12 &&
+    opCount raw.text "cir.load" == 33 &&
+    opCount raw.text "cir.store" == 19 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

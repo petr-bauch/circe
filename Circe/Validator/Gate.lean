@@ -16,6 +16,7 @@ import Circe.Emit.VecMarkCount
 import Circe.Emit.VecMatAt
 import Circe.Emit.VecStackPush
 import Circe.Emit.VecDfs
+import Circe.Emit.VecDfsGrow
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
 import Circe.Emit.VecTwoSum
@@ -1668,6 +1669,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     .ok { stdVecEraseFunc with name := raw.name }
   else if isVecEraseSumEntryShape raw then
     .ok { vecEraseSumEntryFunc with name := raw.name }
+  else if isDfsGrowShape raw then
+    .ok { dfsGrowFunc with name := raw.name }
   else if isVecGrowComposerText raw.text then
     reject raw.name .outOfSubset
       s!"out-of-subset: function '{raw.name}' is an N4d-iv-b2 growth composer (multi-call growth composition — checked length, fresh storage, value relocation): growth leaves and composers validate in N4d-iv-b1/N4d-iv-b2 (the `vec_push_sum`, `vec_reserve_sum`, and `vec_insert_sum` entries are admitted; further composers such as `erase` are deferred — see docs/ROADMAP.md N4d-iv-b)"

@@ -1228,6 +1228,20 @@ def emitVecDfsText (name : String) : String :=
   ++ "    | .error e => .error e\n"
   ++ "    | .ok (_, _, _, count, _, _) => .ok count\n"
 
+/-- Render the `dfs_grow` entry forward definition: the seeded
+    stack drain over the flat `n × n` matrix with a caller-grown
+    stack (the seed pushes `src` through the `push_back` composer;
+    each discovery push reuses the popped slot when one is free and
+    grows through the composer past the high-water mark; the
+    rendering delegates to the verified forward function like the
+    composer forwarders). -/
+def emitVecDfsGrowText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecDfsGrow\n\n"
+  ++ s!"/-- Pure translation of `{name}` (growing-stack DFS over the flat matrix; seed miss, stack miss, and matrix miss are `AssertFail`). -/\n"
+  ++ s!"def {name}_fwd (F : Nat) (mL visL : List (BitVec 32)) (b : Vec32) (len cap : Nat) (n src : BitVec 64) : Result Value :=\n"
+  ++ "  dfsGrowFwd F mL visL b len cap n src\n"
+
 /-- Render the `vec_quicksort` entry forward definition: recursive
     quicksort over the reified words (ranges shrink strictly, fuel
     steps down per `callProg` — the rendering delegates to the
