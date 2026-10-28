@@ -16,6 +16,7 @@ import Circe.Emit.VecMarkCount
 import Circe.Emit.VecMatAt
 import Circe.Emit.VecStackPush
 import Circe.Emit.VecDfs
+import Circe.Emit.VecBfs
 import Circe.Emit.VecDfsGrow
 import Circe.Emit.VecKadane
 import Circe.Emit.VecBinarySearch
@@ -1856,6 +1857,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { stackPushFunc with name := raw.name }
       else if isDfsReachableShape raw then
         .ok { dfsFunc with name := raw.name }
+      else if isBfsOrderShape raw then
+        .ok { bfsOrderFunc with name := raw.name }
       else if isVecMergeIntoShape raw then
         .ok { vecMergeIntoFunc with name := raw.name }
       else if isVecTransformAddShape raw then
