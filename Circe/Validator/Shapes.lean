@@ -1953,6 +1953,65 @@ def isDfsGrowShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Breadth-first traversal with visit-order record (B, the
+    `bfs_order` shape): `const vector<int>&` matrix +
+    `vector<int>&` visited + `vector<int>&` caller queue +
+    `vector<int>&` visit-order record + `u64` dimension + `u64`
+    source in, `u64` reachable-count out. Eight `at()` call sites
+    (five mut: seed-visited, seed-queue, visit record,
+    visited-store, queue-store; three const: dequeue read, matrix
+    read, visited gate), one `cir.while` (queue drain,
+    `head != tail`) wrapped around one `cir.for` (`u in 0..n`),
+    the `&&` lowered to one `cir.ternary` + one `cir.if`, four
+    `cir.cmp` (outer `ne`-`u64`, bound `lt`-`u64`, gate `ne`-`s32`,
+    gate `eq`-`s32`), one wrapping `cir.mul` + four wrapping
+    `cir.add` and no `cir.sub` (the head cursor only advances; no
+    `nsw` anywhere), four `cir.cast integral` (seed/visit/enqueue
+    narrow `u64 -> s32`, dequeue widen `s32 -> u64`), 21 consts,
+    12 allocas / 33 loads / 21 stores. The bounds checks live in
+    the `at()` callees (no direct `cir.cmp`/`cir.if` of their own
+    beyond the loop/branch skeleton). -/
+def isBfsOrderShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [m, vis, q, order, n, src] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType m.ctype && m.singleRef && isStdVectorType m.ctype &&
+    isPtrType vis.ctype && vis.singleRef && isStdVectorType vis.ctype &&
+    isPtrType q.ctype && q.singleRef && isStdVectorType q.ctype &&
+    isPtrType order.ctype && order.singleRef && isStdVectorType order.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    !isPtrType src.ctype && isU64 src.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecAtMutName &&
+    callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 8 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.for" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 4 &&
+    opCount raw.text "cir.cmp ne" == 2 &&
+    opCount raw.text "cir.cmp eq" == 1 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.mul" == 1 &&
+    opCount raw.text "cir.add" == 4 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    opCount raw.text "cir.const" == 21 &&
+    opCount raw.text "cir.cast" == 4 &&
+    opCount raw.text "cir.alloca" == 12 &&
+    opCount raw.text "cir.load" == 33 &&
+    opCount raw.text "cir.store" == 21 &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

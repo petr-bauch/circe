@@ -1200,6 +1200,35 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     beyond the visited count (caller sizes it upfront, the G0
     caller-reserves-upfront decision — growth is G4). Verdict
     honestly `unknown` (single-ref).
+37. Breadth-first traversal with visit-order record (B, over the
+    N4d-iv-c composers): `bfs_order` (`const vector<int>&`
+    matrix + `vector<int>&` visited + `vector<int>&` caller queue
+    + `vector<int>&` visit-order record + `u64` dimension + `u64`
+    source in, `u64` reachable-count out; the seed marks `src` and
+    enqueues it, the outer `while` drains the queue (`head` vs
+    `tail`), each dequeue records the visit in `order[head]`
+    (`head` already counts drained vertices, so no extra cursor),
+    the inner `for` scans each row `v * n + u` (the G2 index
+    computation) enqueueing every unvisited non-zero neighbor (the
+    G1 gated idiom), counting each first visit; eight `at()`
+    sites, `cir.while` + `cir.for`, `&&` as one `ternary` + one
+    `if`, four `cir.cmp`, wrapping `mul`/`add` with no `sub` (the
+    head cursor only advances) and no `nsw`, four `cir.cast
+    integral` (seed/visit/enqueue narrow, dequeue widen), 21
+    consts, 12 allocas / 33 loads / 21 stores). Admission is one
+    fused entry Func: the seed guards, the dequeue guard, the
+    visit-record store, the row-scan guard, the two gate
+    conditions, and the enqueue store (each miss is the
+    `at()`-throw `AssertFail`); the cursor and count advances are
+    pure wrapping `uadd`. The queue never grows beyond `n`
+    (caller sizes `q` and `order` upfront, the G0
+    caller-reserves-upfront decision — growth stays out, exactly
+    like G5a). Visit order (the dequeue sequence) is what sets
+    this apart from G5a: on the diamond 0->1, 0->2, 1->3, 2->3,
+    BFS visits 0,1,2,3 where DFS visits 0,2,3,1. Encapsulation
+    pins: no direct `operator[]` / `_M_range_check` / throw calls;
+    `nsw` anywhere rejects. Verdict honestly `unknown`
+    (single-ref).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
