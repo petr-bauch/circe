@@ -1908,3 +1908,126 @@ inside `iprop(...)`, the global `∃` macro means BI-exists
 - Acceptance: sorry-free and warning-free, `lake build`
 green, gate stays 445 jobs TEST-OK, CHECK-OK (`44a86c0`);
 no driver jobs added, no `validate`/Emit/transfer churn.
+
+### Kadane. `max_subarray` maximum-subarray scan — DONE (2026-10-25)
+
+Kadane over the N4d-iv-c read: corpus `max_subarray.cpp` +
+real CIRGen `.cir`, dedicated entry shape (`Shapes.lean:1507`),
+SUBSET rule (M1), emit + forward proof + Gate dispatch (M2),
+goldens + diff fuzz + roster (M3). Forward `kadaneFwd` over
+`kadaneFold` with ok/err twins (`kadaneFwd_ok`/`_err`,
+`kadaneMap_ok`/`_err`) plus fold-step/drop lemmas; render pins
+`nsw` overflow loud and empty input `AssertFail`. Goldens
+`VecKadane.lean` (+`_Spec`), `DiffVecKadane` +
+`GoldenVecKadane` suites with the native `driver_vec_kadane`
+binary.
+- Acceptance: CHECK-OK (`a1137fd`, `44f264f`, `b30a0e0`).
+
+### G1. Visited-mark idiom (`mark_count`) — DONE (2026-10-25)
+
+Gated fold over `const vector<int>&` + `vector<int>&` +
+`u64`: the `vis[u] = 1` seed write through mut-`at()`, then a
+`cir.for` index loop over exactly one `size` + one const-`at()`
+gate read + one mut-`at()` accumulator read, one `lt` + one
+`ne` guard, one `nsw` add, five consts. Encapsulation pins: no
+direct `operator[]` / `_M_range_check` / throw calls — checked
+access goes through `at()` only (`isMarkCountShape`). Theorems
+`evalFuncFuel_vecMarkCount`, `markWhile_correct`,
+`markSeed_hit`; Match arm + Render/SpecStubs text + Gate arm.
+Goldens `VecMarkCount.lean` (+`_Spec`), `DiffVecMarkCount` +
+`GoldenVecMarkCount` suites with the native driver.
+- Acceptance: CHECK-OK (`215a9ee`).
+
+### G1b. Char-width visited-mark idiom (`mark_count_c`) — DONE (2026-10-25)
+
+Same seed + `for` + one-`size` + gate-`at()` +
+accumulator-`at()` skeleton as G1 over `vector<char>`, with
+`s8i` element loads and integer promotion at both use sites
+(two `cir.cast integral` ops, six u64 consts, no `nsw` —
+unsigned wrap, the S3b precedent). Shape
+`isCharMarkCountShape` plus the char-width leaf shapes
+(`isCharVecAtShape`, `isCharVecAtMutShape`,
+`isCharVecRangeCheckShape`, `isCharVecIndexShape`).
+- Acceptance: CHECK-OK (`ac224d7`).
+
+### G2. Flat-2D index read (`mat_at`) — DONE (2026-10-25)
+
+`(matrix, ncols, i, j)` read at the wrapping index `i*ncols+j`
+(new `evalExpr_umul_u64` eval lemma): `matAtIdx_eval` /
+`matAtGuard_eval` around the `matAtFwd` mirror (hit returns the
+word, miss is `AssertFail`). Shape `isMatAtShape`, Match arm,
+Render/SpecStubs text, Gate arm (`matAtFunc`). Goldens
+`VecMatAt.lean` (+`_Spec`), `DiffVecMatAt` +
+`GoldenVecMatAt` suites with the native driver.
+- Acceptance: CHECK-OK (`9f88ed9`).
+
+### G3. Cursor-stack push kernel (`stack_push`) — DONE (2026-10-25)
+
+`(workspace, top, x)` push through the N4d-iv-c mut-`at()`
+composer: hit leg writes the slot, miss leg is `AssertFail`
+(`stackPushBody_hit`/`stackPushBody_miss`,
+`stackPushFwd`/`stackPushFwd_ok`). Shape `isStackPushShape`,
+Match arm, Render/SpecStubs text, Gate arm (`stackPushFunc`).
+Goldens `VecStackPush.lean` (+`_Spec`), `DiffVecStackPush` +
+`GoldenVecStackPush` suites with the native driver.
+- Acceptance: CHECK-OK (`106fb67`).
+
+### G5a. Iterative DFS (`dfs_reachable`) — DONE (2026-10-26)
+
+Reserve-upfront iterative DFS over the flat row-major matrix
+(`const vector<int>&` matrix + `&` visited + `&` pre-sized
+stack + `u64` n/src): seed marks `vis[src]` and fills slot 0,
+the `while top != 0` drain pops into `v`, the inner `for u`
+scan gates on `m[v*n+u] != 0` + `vis[u] == 0` and stores
+through the reserved slot. Forward `dfsFwd` with `dfsPush_ok`
+and `dfsInnerBody_eval`; entry theorem `evalFuncFuel_dfs`;
+Match arm, Render/SpecStubs text (true-reachability edges),
+Gate arm via `isDfsReachableShape`. Goldens `VecDfs.lean`
+(+`_Spec`), `DiffVecDfs` + `GoldenVecDfs` suites with the
+native driver.
+- Acceptance: CHECK-OK (`7a115da`).
+
+### G4. Growing-stack DFS (`dfs_grow`) — DONE (2026-10-27)
+
+Same params as G5a but the stack grows by `push_back`: the
+seed pushes `src` through the composer, each discovery push
+reuses the popped slot when `top < len` and grows past the
+high-water mark otherwise. The unconditional-push corpus
+undercounted the 0→1→2 chain (2 instead of 3) — fixed in C++
+to slot-reuse (LIFO, preserves the termination potential) and
+pinned by the chain edge. Forwards `dfsGrowSeedFwd` /
+`dfsGrowRowFwd` / `dfsGrowOuterFwd` / `dfsGrowFwd` with ok +
+err legs per level (`dfsGrowSeed_ok`/`_err`,
+`dfsGrowRow_ok`/`_err`, `dfsGrowOuter_ok`/`_err`), entry
+theorem `evalProgFunc_dfsGrow` (Prog-world, the composer calls
+need program linking). 46-def frontier (`isDfsGrowShape` op
+pins separate it from G5a; Gate arm ahead of the growth
+composer rejection). Goldens `VecDfsGrow.lean` (+`_Spec`),
+`DiffVecDfsGrow` (Prog-world eval/fwd agreement + native
+counts + exit-4 loud legs) + `GoldenVecDfsGrow` (24 pinned
+leaves, entry + spec, 7 rejection checks) with the native
+driver.
+- Acceptance: CHECK-OK (`0fd0bd5`).
+
+### G4 refactor. Push-lemma extraction — DONE (2026-10-28)
+
+The row proofs replayed the whole push sequence inline, so the
+push step was factored into two standalone first-order lemmas
+(`dfsGrowPushSlot_ok` for the guarded-store leg,
+`dfsGrowPushGrow_ok` for the composer-grow leg, the latter
+also proving the forward `pt` bridges `b2`/`l2`/`c2`): whole
+`dfsGrowPush` statement + general env with one lookup premise
+per binding + guard/evidence premises, concluding the post
+env with its lookups and well-formedness. Both row proofs and
+both err-proof ok-prefixes apply the lemmas; the err legs stay
+inline (single-use — extraction would add lines). Net −715
+lines, zero change to emitted bytes, forwards, or proved
+statements. No shared cross-slice kit: G5a `dfsPush_ok`
+evaluates borrows in `evalStmtFuel` while G4 needs Prog-world
+evaluation over owned triples with capacity — the interface
+would need higher-order parameters, so the pattern stays a
+documented convention (session notes), to be revisited only
+when a third push discipline arrives. Evidence for the
+pillar-3 standing rule (helpers first-order, no grand
+whole-while abstraction).
+- Acceptance: CHECK-OK (`9bbbe1c`).

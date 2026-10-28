@@ -4,7 +4,7 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-25): all delivered milestones live in `DELIVERED.md`.
+State (2026-10-28): all delivered milestones live in `DELIVERED.md`.
 Work going forward is organized under four pillars; each slice
 still follows the standing convention below.
 
@@ -41,18 +41,26 @@ insertion sort over `std::array` (N9), binary search (V1),
 two-sum (V2), checked `at()` store (W), out-of-place merge
 kernel (M), bottom-up merge sort (C), reverse (R), segment
 reverse (S), rotate (T), crypto over `std::array`
-(K1–K5). The rule-of-three tactic harvest (P3-T2) lives with
-the pillar-3 entries. Discipline throughout: pre-sized
-caller-owned buffers, loud misses (native exit 4), caller-debt
-side conditions, tamper-checked diff fuzz.
+(K1–K5), maximum-subarray scan (Kadane), and the G-track vector
+idioms — visited-mark fold (G1, incl. char-width G1b), flat-2D
+index read (G2), cursor-stack push kernel (G3), reserve-upfront
+iterative DFS (G5a), caller-grown-stack DFS (G4, incl. the
+slot-reuse discipline and the push-lemma proof refactor). The
+rule-of-three tactic harvest (P3-T2) lives with the pillar-3
+entries. Discipline throughout: caller-owned buffers (pre-sized,
+or caller-grown past the high-water mark as in G4), loud misses
+(native exit 4), caller-debt side conditions, tamper-checked
+diff fuzz.
 
 Next:
 (none — the selection-sort, partition, merge-sort, and quicksort
-stacks are closed; see `DELIVERED.md` §§ P2-M5, P2-M6, P2-M7, P2-M8)
+stacks are closed, as are the Kadane scan and the G-track
+(G1/G1b/G2/G3/G5a/G4); see `DELIVERED.md` §§ P2-M5–P2-M8,
+Kadane, G1, G1b, G2, G3, G5a, G4)
 
 Proposed (toward the platform goal — for approval, in order):
-(none — P2-M6 partition and P2-M7 merge-sort landed proof-only,
-P2-M8 quicksort landed with admission; next P2 slice TBD)
+(none approved yet; next P2 slice TBD — candidates under
+discussion, none committed)
 
 ## Pillar 3 — Human-readable/writable proofs
 
@@ -237,3 +245,8 @@ changes stay out.
   sections; G2/G2b/G3 under N12–N14).
 - P3a/b program-level rules + Frontend + U1–U3 + T1 + P3c/d/e
   + H1 — `DELIVERED.md` under their headers.
+- Kadane max-subarray scan, G-track vector idioms
+  (G1/G1b/G2/G3/G5a/G4), G4 push-lemma refactor —
+  `DELIVERED.md` §§ Kadane, G1, G1b, G2, G3, G5a, G4, G4
+  refactor (the G-track slice labels are distinct from the
+  Gate rule G-labels cited under N12–N14).
