@@ -39,6 +39,7 @@ import DiffVecMarkCountC
 import DiffVecMatAt
 import DiffVecStackPush
 import DiffVecDfs
+import DiffVecBfs
 import DiffVecDfsGrow
 import DiffVecKadane
 import DiffVecBinarySearch
@@ -104,6 +105,7 @@ import GoldenVecMarkCountC
 import GoldenVecMatAt
 import GoldenVecStackPush
 import GoldenVecDfs
+import GoldenVecBfs
 import GoldenVecDfsGrow
 import GoldenVecKadane
 import GoldenVecBinarySearch
@@ -375,6 +377,7 @@ def nativeBuilds : List (String × List String × String) :=
    ("c++", ["tests/cpp/mat_at.cpp", "tests/diff/driver_mat_at.cpp"], bin "circe_vec_mat_at_native"),
    ("c++", ["tests/cpp/stack_push.cpp", "tests/diff/driver_stack_push.cpp"], bin "circe_vec_stack_push_native"),
    ("c++", ["tests/cpp/dfs_reachable.cpp", "tests/diff/driver_vec_dfs.cpp"], bin "circe_vec_dfs_native"),
+   ("c++", ["tests/cpp/bfs_order.cpp", "tests/diff/driver_vec_bfs.cpp"], bin "circe_vec_bfs_native"),
    ("c++", ["tests/cpp/dfs_grow.cpp", "tests/diff/driver_vec_dfs_grow.cpp"], bin "circe_vec_dfs_grow_native"),
    ("c++", ["tests/cpp/max_subarray.cpp", "tests/diff/driver_vec_kadane.cpp"], bin "circe_vec_kadane_native"),
    ("c++", ["tests/cpp/vec_binary_search.cpp", "tests/diff/driver_vec_binary_search.cpp"], bin "circe_vec_binary_search_native"),
@@ -475,6 +478,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecStackPush_Spec.lean", "out/VecStackPush_Spec.lean"),
    ("tests/golden/VecDfs.lean", "out/VecDfs.lean"),
    ("tests/golden/VecDfs_Spec.lean", "out/VecDfs_Spec.lean"),
+   ("tests/golden/VecBfs.lean", "out/VecBfs.lean"),
+   ("tests/golden/VecBfs_Spec.lean", "out/VecBfs_Spec.lean"),
    ("tests/golden/VecDfsGrow.lean", "out/VecDfsGrow.lean"),
    ("tests/golden/VecDfsGrow_Spec.lean", "out/VecDfsGrow_Spec.lean"),
    ("tests/golden/VecCharSize.lean", "out/VecCharSize.lean"),
@@ -685,6 +690,7 @@ def emittedTypechecks : List String :=
    "out/VecMatAt.lean",
    "out/VecStackPush.lean",
    "out/VecDfs.lean",
+   "out/VecBfs.lean",
    "out/VecDfsGrow.lean",
    "out/VecKadane.lean",
    "out/VecBinarySearch.lean",
@@ -1536,6 +1542,19 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Validator/Gate.lean", "dfsFunc"),
      ("out/VecDfs.lean", "_Z13dfs_reachableRKSt6vectorIiSaIiEERS1_S4_mm_fwd"),
      ("tests/golden/VecDfs.lean", "_Z13dfs_reachableRKSt6vectorIiSaIiEERS1_S4_mm_fwd")]),
+   ("bfs-queue",
+    [("Circe/Emit/VecBfs.lean", "theorem evalFuncFuel_bfs"),
+     ("Circe/Emit/VecBfs.lean", "theorem bfsPush_ok"),
+     ("Circe/Emit/VecBfs.lean", "theorem bfsInnerBody_eval"),
+     ("Circe/Emit/VecBfs.lean", "theorem bfsNarrowWiden"),
+     ("Circe/Emit/VecBfs.lean", "def bfsFwd"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecBfs"),
+     ("Circe/Emit/Render.lean", "def emitVecBfsText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecBfsSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isBfsOrderShape"),
+     ("Circe/Validator/Gate.lean", "bfsOrderFunc"),
+     ("out/VecBfs.lean", "_Z9bfs_orderRKSt6vectorIiSaIiEERS1_S4_S4_mm_fwd"),
+     ("tests/golden/VecBfs.lean", "_Z9bfs_orderRKSt6vectorIiSaIiEERS1_S4_S4_mm_fwd")]),
    ("dfs-grow",
     [("Circe/Emit/VecDfsGrow.lean", "theorem dfsGrowSeed_ok"),
      ("Circe/Emit/VecDfsGrow.lean", "theorem dfsGrowSeed_err"),
@@ -2074,8 +2093,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 151 then
-    throw (IO.userError s!"expected 151 spec stubs, found {stubs.length}")
+  if stubs.length != 152 then
+    throw (IO.userError s!"expected 152 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2128,6 +2147,7 @@ def diffSuites (trials : String) : List Job :=
    ("diff-vecmatat", DiffVecMatAt.main [bin "circe_vec_mat_at_native", trials]),
    ("diff-vecstackpush", DiffVecStackPush.main [bin "circe_vec_stack_push_native", trials]),
    ("diff-vecdfs", DiffVecDfs.main [bin "circe_vec_dfs_native", trials]),
+   ("diff-vecbfs", DiffVecBfs.main [bin "circe_vec_bfs_native", trials]),
    ("diff-vecdfsgrow", DiffVecDfsGrow.main [bin "circe_vec_dfs_grow_native", trials]),
    ("diff-veckadane", DiffVecKadane.main [bin "circe_vec_kadane_native", trials]),
    ("diff-vecbinarysearch", DiffVecBinarySearch.main [bin "circe_vec_binary_search_native", trials]),
@@ -2195,6 +2215,7 @@ def checkSuites : List Job :=
    ("golden-vecmatat", GoldenVecMatAt.main),
    ("golden-vecstackpush", GoldenVecStackPush.main),
    ("golden-vecdfs", GoldenVecDfs.main),
+   ("golden-vecbfs", GoldenVecBfs.main),
    ("golden-vecdfsgrow", GoldenVecDfsGrow.main),
    ("golden-veckadane", GoldenVecKadane.main),
    ("golden-vecbinarysearch", GoldenVecBinarySearch.main),
@@ -2233,12 +2254,12 @@ def suiteModules : List String :=
   ["DerivedNoalias", "DiffAcc", "DiffArith", "DiffBox", "DiffCalls", "DiffFlow",
    "DiffMethod", "DiffMove", "DiffNorestrict", "DiffOptional", "DiffOverload", "DiffPhase3", "DiffPhase4", "DiffSpan", "DiffStruct", "DiffSumTwo",
    "DiffTadd",
-   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecMarkCount", "DiffVecMarkCountC", "DiffVecMatAt", "DiffVecStackPush", "DiffVecDfs", "DiffVecDfsGrow", "DiffVecKadane", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecTransformAdd", "DiffVecPartition", "DiffVecSelectionSort", "DiffVecMergeSort", "DiffVecQuicksort", "DiffVecReverse", "DiffVecSegReverse", "DiffVecRotate",
+   "DiffVec", "DiffVec2", "DiffVec64", "DiffVecLeak", "DiffVecRealloc", "DiffVecRead", "DiffVecAt", "DiffVecAtSum", "DiffVecMarkCount", "DiffVecMarkCountC", "DiffVecMatAt", "DiffVecStackPush", "DiffVecDfs", "DiffVecBfs", "DiffVecDfsGrow", "DiffVecKadane", "DiffVecBinarySearch", "DiffVecTwoSum", "DiffVecAtSet", "DiffVecMergeInto", "DiffVecTransformAdd", "DiffVecPartition", "DiffVecSelectionSort", "DiffVecMergeSort", "DiffVecQuicksort", "DiffVecReverse", "DiffVecSegReverse", "DiffVecRotate",
    "DiffView", "DiffReserve", "DiffInsert", "DiffErase", "DiffSort", "DiffWidth", "DiffXorN", "DiffQr", "DiffChacha", "DiffChacha20Encrypt", "DiffSha", "DiffOverload", "DiffArray",
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

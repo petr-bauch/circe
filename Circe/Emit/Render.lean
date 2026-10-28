@@ -1228,6 +1228,88 @@ def emitVecDfsText (name : String) : String :=
   ++ "    | .error e => .error e\n"
   ++ "    | .ok (_, _, _, count, _, _) => .ok count\n"
 
+/-- Render the `bfs_order` entry forward definition: the seeded
+    queue drain over the flat `n × n` matrix (iterative BFS,
+    caller queue, reserve-upfront). The seed marks `vis[src]` and
+    enqueues `src`; each drain step dequeues `q[head]` into `v`,
+    records the visit in `order[head]`, and advances head; the
+    inner row scan enqueues every unvisited neighbour. Every
+    vector access is fused-guard `at()`-style (miss is
+    `AssertFail`, loud like `at()`-throw); the `u64` index
+    arithmetic wraps. Fuel is structural on `F` (one per row-scan
+    step and drain step). -/
+def emitVecBfsText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative BFS over the flat matrix; seed miss, queue miss, order miss, and matrix miss are `AssertFail`). -/\n"
+  ++ s!"def {name}_seed_fwd (vis q : List (BitVec 32)) (src : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × List (BitVec 32)) :=\n"
+  ++ "  match vis[src.toNat]? with\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "  | some _ =>\n"
+  ++ "    match q[(BitVec.ofNat 64 0).toNat]? with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some _ =>\n"
+  ++ "      .ok (vis.set src.toNat 1,\n"
+  ++ "        q.set 0 (BitVec.ofNat 32 src.toNat))\n"
+  ++ "\n"
+  ++ s!"def {name}_row_fwd (F : Nat) (m vis q : List (BitVec 32))\n"
+  ++ "    (n v tail count u : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × List (BitVec 32) × BitVec 64 × BitVec 64 × BitVec 64) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    if u.ult n then .error .AssertFail\n"
+  ++ "    else .ok (vis, q, tail, count, u)\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    if u.ult n then\n"
+  ++ "      match m[(v * n + u).toNat]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some g =>\n"
+  ++ "        if g != (BitVec.ofNat 32 0) then\n"
+  ++ "          match vis[u.toNat]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some w =>\n"
+  ++ "            if w == (BitVec.ofNat 32 0) then\n"
+  ++ "              match q[tail.toNat]? with\n"
+  ++ "              | none => .error .AssertFail\n"
+  ++ "              | some _ =>\n"
+  ++ s!"                {name}_row_fwd F m (vis.set u.toNat 1)\n"
+  ++ "                  (q.set tail.toNat (BitVec.ofNat 32 u.toNat))\n"
+  ++ "                  n v (tail + 1) (count + 1) (u + 1)\n"
+  ++ s!"            else {name}_row_fwd F m vis q n v tail count (u + 1)\n"
+  ++ s!"        else {name}_row_fwd F m vis q n v tail count (u + 1)\n"
+  ++ "    else .ok (vis, q, tail, count, u)\n"
+  ++ "\n"
+  ++ s!"def {name}_drain_fwd (F : Nat) (m vis q order : List (BitVec 32))\n"
+  ++ "    (n head tail count v u : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × List (BitVec 32) × List (BitVec 32) × BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64 × BitVec 64) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    if head != tail then .error .AssertFail\n"
+  ++ "    else .ok (vis, q, order, head, tail, count, v, u)\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    if head != tail then\n"
+  ++ "      match q[head.toNat]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some w =>\n"
+  ++ "        match order[head.toNat]? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some _ =>\n"
+  ++ s!"          match {name}_row_fwd F m vis q n (w.signExtend 64) tail count 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok (vis', q', tail', count', u') =>\n"
+  ++ s!"          {name}_drain_fwd F m vis' q' (order.set head.toNat w)\n"
+  ++ "            n (head + 1) tail' count' (w.signExtend 64) u'\n"
+  ++ "    else .ok (vis, q, order, head, tail, count, v, u)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m vis q order : List (BitVec 32)) (n src : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ s!"  match {name}_seed_fwd vis q src with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (vis1, q1) =>\n"
+  ++ s!"    match {name}_drain_fwd F m vis1 q1 order n 0 1 1 0 0 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, _, _, _, _, count, _, _) => .ok count\n"
+
 /-- Render the `dfs_grow` entry forward definition: the seeded
     stack drain over the flat `n × n` matrix with a caller-grown
     stack (the seed pushes `src` through the `push_back` composer;
