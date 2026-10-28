@@ -1157,6 +1157,586 @@ theorem dfsGrowRow_skip (F : Nat) (mL visL : List (BitVec 32))
     hlive, hlen, hbuflen, hlen64, hcap64, hcnt, Nat.le_refl _,
     trivial, htopLe⟩
 
+/-- Push-sequence agreement, slot-reuse leg: with the reuse guard
+    true and the guarded store succeeding, `dfsGrowPush` runs the
+    `x` let, takes the store branch, and advances `top`/`count`,
+    leaving every other binding untouched. (Extracted from the
+    row-ok discovery branch; cf. `dfsPush_ok` in `VecDfs`.) -/
+theorem dfsGrowPushSlot_ok (F : Nat) (b b2 : Vec32) (len cap : Nat)
+    (top count u : BitVec 64) (ρ : Env)
+    (vv : Vec32) (vl vc : Nat)
+    (mv : Vec32) (ml mc : Nat) (nn v0 : BitVec 64)
+    (hvis : envLookup ρ "vis" = some (.stdVecOwned vv vl vc))
+    (hm : envLookup ρ "m" = some (.stdVecOwned mv ml mc))
+    (hn : envLookup ρ "n" = some (.u64 nn))
+    (hv : envLookup ρ "v" = some (.u64 v0))
+    (hst : envLookup ρ "st" = some (.stdVecOwned b len cap))
+    (htop : envLookup ρ "top" = some (.u64 top))
+    (hcount : envLookup ρ "count" = some (.u64 count))
+    (hu : envLookup ρ "u" = some (.u64 u))
+    (hlen : len ≤ b.val.length)
+    (hbuflen : b.val.length < 2 ^ 64)
+    (hlen64 : len < 2 ^ 64)
+    (hguard : top.ult (BitVec.ofNat 64 len) = true)
+    (hsetB : vecSet b top.toNat (BitVec.ofNat 32 u.toNat) = .ok b2) :
+    ∃ ρC, evalProgStmt vecGrowProg F dfsGrowPush ρ =
+        .ok (ρC, .fellThrough) ∧
+      envLookup ρC "m" = some (.stdVecOwned mv ml mc) ∧
+      envLookup ρC "vis" = some (.stdVecOwned vv vl vc) ∧
+      envLookup ρC "st" = some (.stdVecOwned b2 len cap) ∧
+      envLookup ρC "n" = some (.u64 nn) ∧
+      envLookup ρC "v" = some (.u64 v0) ∧
+      envLookup ρC "top" = some (.u64 (top + 1)) ∧
+      envLookup ρC "count" = some (.u64 (count + 1)) ∧
+      envLookup ρC "u" = some (.u64 u) ∧
+      len ≤ b2.val.length ∧ b2.val.length < 2 ^ 64 ∧
+      b2.freed = false := by
+  -- The `x` let.
+  have hxE : evalExpr (.i32ofU64 (.var "u")) ρ =
+      .ok (.i32 (BitVec.ofNat 32 u.toNat)) :=
+    evalExpr_i32ofU64_ok _ _ _
+      (evalExpr_var_hit ρ "u" (.u64 u) hu)
+  have hletX : evalStmtFuel F (.let_ "x" (.i 32)
+      (.i32ofU64 (.var "u"))) ρ =
+      .ok (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat)),
+        .fellThrough) :=
+    evalStmtFuel_let_ F "x" (.i 32) (.i32ofU64 (.var "u")) ρ _ hxE
+  have hstepX : evalProgStmt vecGrowProg F (.let_ "x" (.i 32)
+      (.i32ofU64 (.var "u"))) ρ =
+      .ok (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat)),
+        .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact hletX
+  -- The reuse-guard evaluation.
+  have hstX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "st" =
+      some (.stdVecOwned b len cap) :=
+    envLookup_extend_miss _ _ _ _ _ hst (by decide)
+  have hxX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "x" =
+      some (.i32 (BitVec.ofNat 32 u.toNat)) :=
+    envLookup_extend_hit _ _ _
+  have htopX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "top" =
+      some (.u64 top) :=
+    envLookup_extend_miss _ _ _ _ _ htop (by decide)
+  have hstLenX : evalExpr (.vgrowLen "st") (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (.u64 (BitVec.ofNat 64 len)) :=
+    evalExpr_vgrowLen_some "st" _ b len cap hstX
+  have hguardP : evalExpr (.ult (.var "top") (.vgrowLen "st"))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (.b (top.ult (BitVec.ofNat 64 len))) :=
+    evalExpr_ult_u64 _ _ _ _ _
+      (evalExpr_var_hit _ "top" (.u64 top) htopX) hstLenX
+  rw [hguard] at hguardP
+  -- Slot reuse: the guarded store hits; length and capacity
+  -- are unchanged.
+  have htlN : top.toNat < len := by
+    have h := hguard
+    rw [BitVec.ult_eq_decide, decide_eq_true_eq] at h
+    have ho : (BitVec.ofNat 64 len).toNat = len := by
+      rw [BitVec.toNat_ofNat]
+      exact Nat.mod_eq_of_lt hlen64
+    omega
+  have hlenB : b2.val.length = b.val.length :=
+    vecSet_length _ _ _ _ hsetB
+  have hfrB : b2.freed = false :=
+    vecSet_live _ _ _ _ hsetB
+  have hlen2 : len ≤ b2.val.length := by
+    rw [hlenB]; exact hlen
+  have hbuflen2 : b2.val.length < 2 ^ 64 := by
+    rw [hlenB]; exact hbuflen
+  have hvisX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "vis" =
+      some (.stdVecOwned vv vl vc) :=
+    envLookup_extend_miss _ _ _ _ _ hvis (by decide)
+  have hnX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "n" =
+      some (.u64 nn) :=
+    envLookup_extend_miss _ _ _ _ _ hn (by decide)
+  have hvX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "v" =
+      some (.u64 v0) :=
+    envLookup_extend_miss _ _ _ _ _ hv (by decide)
+  have huX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "u" =
+      some (.u64 u) :=
+    envLookup_extend_miss _ _ _ _ _ hu (by decide)
+  have hcountX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "count" =
+      some (.u64 count) :=
+    envLookup_extend_miss _ _ _ _ _ hcount (by decide)
+  obtain ⟨ρS, hupS⟩ := envUpdate_some_of_lookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "st"
+      (.stdVecOwned b len cap) (.stdVecOwned b2 len cap) hstX
+  have hstepSet : evalStmtFuel F (.vgrowSet "st" (.var "top")
+      (.var "x")) (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (ρS, .fellThrough) :=
+    evalStmtFuel_vgrowSet F "st" (.var "top") (.var "x")
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat)))
+      top (BitVec.ofNat 32 u.toNat) b b2 len cap ρS
+      (evalExpr_var_hit _ "top" (.u64 top) htopX)
+      (evalExpr_var_hit _ "x" (.i32 (BitVec.ofNat 32 u.toNat))
+        hxX)
+      hstX hsetB hupS
+  have hifS : evalProgStmt vecGrowProg F
+      (.if_ (.ult (.var "top") (.vgrowLen "st"))
+        (.vgrowSet "st" (.var "top") (.var "x"))
+        (.callProg "st" stdVecPushBackName ["st", "x"]))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      evalProgStmt vecGrowProg F
+        (.vgrowSet "st" (.var "top") (.var "x"))
+        (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) := by
+    rw [evalProgStmt_if_true _ _ _ _ _ _ hguardP]
+  have hstepSetP : evalProgStmt vecGrowProg F
+      (.vgrowSet "st" (.var "top") (.var "x"))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (ρS, .fellThrough) := by
+    have hfb : evalProgStmt vecGrowProg F
+        (.vgrowSet "st" (.var "top") (.var "x"))
+        (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+        evalStmtFuel F (.vgrowSet "st" (.var "top") (.var "x"))
+          (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) := by
+      simp only [evalProgStmt]
+    rw [hfb]
+    exact hstepSet
+  have hifEv : evalProgStmt vecGrowProg F
+      (.if_ (.ult (.var "top") (.vgrowLen "st"))
+        (.vgrowSet "st" (.var "top") (.var "x"))
+        (.callProg "st" stdVecPushBackName ["st", "x"]))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (ρS, .fellThrough) :=
+    hifS.trans hstepSetP
+  -- Post-store lookups.
+  have hvisS : envLookup ρS "vis" = some (.stdVecOwned vv vl vc) :=
+    (envLookup_update_miss _ "vis" "st" (.stdVecOwned b2 len cap)
+      ρS (by decide) hupS).trans hvisX
+  have hnS : envLookup ρS "n" = some (.u64 nn) :=
+    (envLookup_update_miss _ "n" "st" (.stdVecOwned b2 len cap)
+      ρS (by decide) hupS).trans hnX
+  have hvS : envLookup ρS "v" = some (.u64 v0) :=
+    (envLookup_update_miss _ "v" "st" (.stdVecOwned b2 len cap)
+      ρS (by decide) hupS).trans hvX
+  have huS : envLookup ρS "u" = some (.u64 u) :=
+    (envLookup_update_miss _ "u" "st" (.stdVecOwned b2 len cap)
+      ρS (by decide) hupS).trans huX
+  have hcountS : envLookup ρS "count" = some (.u64 count) :=
+    (envLookup_update_miss _ "count" "st" (.stdVecOwned b2 len cap)
+      ρS (by decide) hupS).trans hcountX
+  have htopS : envLookup ρS "top" = some (.u64 top) :=
+    (envLookup_update_miss _ "top" "st" (.stdVecOwned b2 len cap)
+      ρS (by decide) hupS).trans htopX
+  have hstS : envLookup ρS "st" = some (.stdVecOwned b2 len cap) :=
+    envLookup_update_hit _ "st" _ ρS hupS
+  -- The `top` advance.
+  have htopE : evalExpr (.uadd (.var "top")
+      (.lit (.u64 (BitVec.ofNat 64 1)))) ρS =
+      .ok (.u64 (top + 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _
+      (evalExpr_var_hit _ "top" (.u64 top) htopS)
+      (evalExpr_lit _ _)
+  obtain ⟨ρT, hupT⟩ := envUpdate_some_of_lookup ρS "top"
+      (.u64 top) (.u64 (top + 1)) htopS
+  have htopA : evalProgStmt vecGrowProg F (.assign "top"
+      (.uadd (.var "top") (.lit (.u64 (BitVec.ofNat 64 1)))))
+      ρS = .ok (ρT, .fellThrough) := by
+    have hfb : evalProgStmt vecGrowProg F (.assign "top"
+        (.uadd (.var "top") (.lit (.u64 (BitVec.ofNat 64 1)))))
+        ρS =
+        evalStmtFuel F (.assign "top" (.uadd (.var "top")
+          (.lit (.u64 (BitVec.ofNat 64 1))))) ρS := by
+      simp only [evalProgStmt]
+    rw [hfb]
+    exact evalStmtFuel_assign _ _ _ _ _ _ htopE hupT
+  have hvisT : envLookup ρT "vis" = some (.stdVecOwned vv vl vc) :=
+    (envLookup_update_miss _ "vis" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hvisS
+  have hstT : envLookup ρT "st" = some (.stdVecOwned b2 len cap) :=
+    (envLookup_update_miss _ "st" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hstS
+  have htopT : envLookup ρT "top" = some (.u64 (top + 1)) :=
+    envLookup_update_hit _ "top" _ ρT hupT
+  have hnT : envLookup ρT "n" = some (.u64 nn) :=
+    (envLookup_update_miss _ "n" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hnS
+  have hvT : envLookup ρT "v" = some (.u64 v0) :=
+    (envLookup_update_miss _ "v" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hvS
+  have hcountT : envLookup ρT "count" = some (.u64 count) :=
+    (envLookup_update_miss _ "count" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hcountS
+  -- The `count` advance.
+  have hcountE : evalExpr (.uadd (.var "count")
+      (.lit (.u64 (BitVec.ofNat 64 1)))) ρT =
+      .ok (.u64 (count + 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _
+      (evalExpr_var_hit ρT "count" (.u64 count) hcountT)
+      (evalExpr_lit _ _)
+  obtain ⟨ρC, hupC⟩ := envUpdate_some_of_lookup ρT "count"
+      (.u64 count) (.u64 (count + 1)) hcountT
+  have hcountA : evalProgStmt vecGrowProg F (.assign "count"
+      (.uadd (.var "count") (.lit (.u64 (BitVec.ofNat 64 1)))))
+      ρT = .ok (ρC, .fellThrough) := by
+    have hfb : evalProgStmt vecGrowProg F (.assign "count"
+        (.uadd (.var "count") (.lit (.u64 (BitVec.ofNat 64 1)))))
+        ρT =
+        evalStmtFuel F (.assign "count" (.uadd (.var "count")
+          (.lit (.u64 (BitVec.ofNat 64 1))))) ρT := by
+      simp only [evalProgStmt]
+    rw [hfb]
+    exact evalStmtFuel_assign _ _ _ _ _ _ hcountE hupC
+  -- Post-count lookups.
+  have hvisC : envLookup ρC "vis" = some (.stdVecOwned vv vl vc) :=
+    (envLookup_update_miss ρT "vis" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hvisT
+  have hstC : envLookup ρC "st" = some (.stdVecOwned b2 len cap) :=
+    (envLookup_update_miss ρT "st" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hstT
+  have htopC : envLookup ρC "top" = some (.u64 (top + 1)) :=
+    (envLookup_update_miss ρT "top" "count" (.u64 (count + 1))
+      ρC (by decide) hupC).trans htopT
+  have hnC : envLookup ρC "n" = some (.u64 nn) :=
+    (envLookup_update_miss ρT "n" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hnT
+  have hvC : envLookup ρC "v" = some (.u64 v0) :=
+    (envLookup_update_miss ρT "v" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hvT
+  have hmC : envLookup ρC "m" = some (.stdVecOwned mv ml mc) :=
+    (envLookup_update_miss ρT "m" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans
+      ((envLookup_update_miss _ "m" "top" (.u64 (top + 1)) ρT
+        (by decide) hupT).trans
+        ((envLookup_update_miss _ "m" "st" (.stdVecOwned b2 len cap)
+          ρS (by decide) hupS).trans
+          (envLookup_extend_miss _ _ _ _ _ hm (by decide))))
+  have huC : envLookup ρC "u" = some (.u64 u) :=
+    (envLookup_update_miss ρT "u" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans
+      ((envLookup_update_miss _ "u" "top" (.u64 (top + 1)) ρT
+        (by decide) hupT).trans huS)
+  have hcountC : envLookup ρC "count" = some (.u64 (count + 1)) :=
+    envLookup_update_hit _ "count" _ ρC hupC
+  -- Whole-push assembly.
+  have hPushS : evalProgStmt vecGrowProg F dfsGrowPush ρ =
+      .ok (ρC, .fellThrough) := by
+    simp only [dfsGrowPush]
+    exact (evalProgStmt_seq_fallthrough vecGrowProg F _ _ _ _
+      hstepX).trans
+      ((evalProgStmt_seq_fallthrough vecGrowProg F _ _ _ _
+        hifEv).trans
+        ((evalProgStmt_seq_fallthrough vecGrowProg F _ _ _ _
+          htopA).trans hcountA))
+  exact ⟨ρC, hPushS, hmC, hvisC, hstC, hnC, hvC, htopC, hcountC,
+    huC, hlen2, hbuflen2, hfrB⟩
+
+/-- Push-sequence agreement, growth leg: with the reuse guard false
+    and the composer push succeeding through the check-length and
+    relocation machinery, `dfsGrowPush` runs the `x` let, takes the
+    `push_back` branch, and advances `top`/`count`, leaving every
+    other binding untouched. (Extracted from the row-ok discovery
+    branch; the fuel premise dominates the composer call.) -/
+theorem dfsGrowPushGrow_ok (F : Nat) (b : Vec32) (len cap : Nat)
+    (top count u : BitVec 64) (ρ : Env)
+    (vv : Vec32) (vl vc : Nat)
+    (mv : Vec32) (ml mc : Nat) (nn v0 : BitVec 64)
+    (pv : Value) (pt : Vec32 × Nat × Nat)
+    (hvis : envLookup ρ "vis" = some (.stdVecOwned vv vl vc))
+    (hm : envLookup ρ "m" = some (.stdVecOwned mv ml mc))
+    (hn : envLookup ρ "n" = some (.u64 nn))
+    (hv : envLookup ρ "v" = some (.u64 v0))
+    (hst : envLookup ρ "st" = some (.stdVecOwned b len cap))
+    (htop : envLookup ρ "top" = some (.u64 top))
+    (hcount : envLookup ρ "count" = some (.u64 count))
+    (hu : envLookup ρ "u" = some (.u64 u))
+    (hlive : b.freed = false)
+    (hlen : len ≤ b.val.length)
+    (hbuflen : b.val.length < 2 ^ 64)
+    (hlen64 : len < 2 ^ 64)
+    (hcap64 : cap < 2 ^ 64)
+    (hguard : top.ult (BitVec.ofNat 64 len) = false)
+    (hmaxC : len ≤ stdVecMaxDiffBV.toNat - 1)
+    (hadq : len + 4 ≤ F)
+    (hpush : stdVecPushBackFwd b len cap
+      (BitVec.ofNat 32 u.toNat) = .ok pv)
+    (hown : vecGrowOwned pv = .ok pt) :
+    ∃ ρC b2 l2 c2, evalProgStmt vecGrowProg F dfsGrowPush ρ =
+        .ok (ρC, .fellThrough) ∧
+      envLookup ρC "m" = some (.stdVecOwned mv ml mc) ∧
+      envLookup ρC "vis" = some (.stdVecOwned vv vl vc) ∧
+      envLookup ρC "st" = some (.stdVecOwned b2 l2 c2) ∧
+      envLookup ρC "n" = some (.u64 nn) ∧
+      envLookup ρC "v" = some (.u64 v0) ∧
+      envLookup ρC "top" = some (.u64 (top + 1)) ∧
+      envLookup ρC "count" = some (.u64 (count + 1)) ∧
+      envLookup ρC "u" = some (.u64 u) ∧
+      b2.freed = false ∧ l2 ≤ b2.val.length ∧
+      b2.val.length < 2 ^ 64 ∧ l2 < 2 ^ 64 ∧ c2 < 2 ^ 64 ∧
+      l2 = len + 1 ∧ b2 = pt.1 ∧ l2 = pt.2.1 ∧
+      c2 = pt.2.2 := by
+  -- The `x` let.
+  have hxE : evalExpr (.i32ofU64 (.var "u")) ρ =
+      .ok (.i32 (BitVec.ofNat 32 u.toNat)) :=
+    evalExpr_i32ofU64_ok _ _ _
+      (evalExpr_var_hit ρ "u" (.u64 u) hu)
+  have hletX : evalStmtFuel F (.let_ "x" (.i 32)
+      (.i32ofU64 (.var "u"))) ρ =
+      .ok (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat)),
+        .fellThrough) :=
+    evalStmtFuel_let_ F "x" (.i 32) (.i32ofU64 (.var "u")) ρ _ hxE
+  have hstepX : evalProgStmt vecGrowProg F (.let_ "x" (.i 32)
+      (.i32ofU64 (.var "u"))) ρ =
+      .ok (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat)),
+        .fellThrough) := by
+    rw [evalProgStmt_let_fb]
+    exact hletX
+  -- The reuse-guard evaluation (false on the growth leg).
+  have hstX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "st" =
+      some (.stdVecOwned b len cap) :=
+    envLookup_extend_miss _ _ _ _ _ hst (by decide)
+  have hxX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "x" =
+      some (.i32 (BitVec.ofNat 32 u.toNat)) :=
+    envLookup_extend_hit _ _ _
+  have htopX : envLookup (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) "top" =
+      some (.u64 top) :=
+    envLookup_extend_miss _ _ _ _ _ htop (by decide)
+  have hstLenX : evalExpr (.vgrowLen "st") (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (.u64 (BitVec.ofNat 64 len)) :=
+    evalExpr_vgrowLen_some "st" _ b len cap hstX
+  have hguardP : evalExpr (.ult (.var "top") (.vgrowLen "st"))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (.b (top.ult (BitVec.ofNat 64 len))) :=
+    evalExpr_ult_u64 _ _ _ _ _
+      (evalExpr_var_hit _ "top" (.u64 top) htopX) hstLenX
+  rw [hguard] at hguardP
+  -- The composer push: check-length, fresh storage, relocation.
+  have hv0 := vecGrowOwned_ok hown
+  obtain ⟨b2, l2, c2, hv2, hfr, hlen2, hbuflen2, h64_2, hcap2,
+      hlen1⟩ :=
+    stdVecPushBackFwd_ok b len cap (BitVec.ofNat 32 u.toNat) pv
+      hlive hlen hbuflen hlen64 hcap64 hmaxC hpush
+  obtain ⟨Fp, hFeq, hFp⟩ := fuel_step_down (len + 3) hadq
+  have hmaxC' : len ≤ stdVecMaxDiffBV.toNat := by
+    omega
+  have hcall := evalProgFunc_stdVecPushBack Fp b len cap
+      (BitVec.ofNat 32 u.toNat) hlive hmaxC' hlen hbuflen hcap64 hFp
+  rw [hpush, hv2] at hcall
+  have hargs : lookupArgs (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat))) ["st", "x"] =
+      some [.stdVecOwned b len cap,
+        .i32 (BitVec.ofNat 32 u.toNat)] :=
+    lookupArgs_cons_hit _ _ _ _ _ hstX
+      (lookupArgs_cons_hit _ _ _ [] [] hxX (lookupArgs_nil _))
+  have hstepPushF : evalProgStmt vecGrowProg (Fp + 1)
+      (.callProg "st" stdVecPushBackName ["st", "x"])
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (envExtend (envExtend ρ "x"
+        (.i32 (BitVec.ofNat 32 u.toNat)))
+        "st" (.stdVecOwned b2 l2 c2), .fellThrough) :=
+    evalProgStmt_callProg_ok vecGrowProg Fp "st"
+      stdVecPushBackName ["st", "x"]
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat)))
+      [.stdVecOwned b len cap, .i32 (BitVec.ofNat 32 u.toNat)]
+      stdVecPushBackFunc (.stdVecOwned b2 l2 c2) hargs
+      findFunc_stdVecPushBack hcall
+  rw [← hFeq] at hstepPushF
+  -- The branch: guard false takes the composer call.
+  have hifG : evalProgStmt vecGrowProg F
+      (.if_ (.ult (.var "top") (.vgrowLen "st"))
+        (.vgrowSet "st" (.var "top") (.var "x"))
+        (.callProg "st" stdVecPushBackName ["st", "x"]))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      evalProgStmt vecGrowProg F
+        (.callProg "st" stdVecPushBackName ["st", "x"])
+        (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) := by
+    rw [evalProgStmt_if_false _ _ _ _ _ _ hguardP]
+  have hifEvG : evalProgStmt vecGrowProg F
+      (.if_ (.ult (.var "top") (.vgrowLen "st"))
+        (.vgrowSet "st" (.var "top") (.var "x"))
+        (.callProg "st" stdVecPushBackName ["st", "x"]))
+      (envExtend ρ "x" (.i32 (BitVec.ofNat 32 u.toNat))) =
+      .ok (envExtend (envExtend ρ "x"
+        (.i32 (BitVec.ofNat 32 u.toNat)))
+        "st" (.stdVecOwned b2 l2 c2), .fellThrough) :=
+    hifG.trans hstepPushF
+  -- Double-extended lookups (post-call env).
+  have hvisVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "vis" =
+      some (.stdVecOwned vv vl vc) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ hvis (by decide))
+      (by decide)
+  have hnVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "n" =
+      some (.u64 nn) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ hn (by decide))
+      (by decide)
+  have hvVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "v" =
+      some (.u64 v0) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ hv (by decide))
+      (by decide)
+  have huVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "u" =
+      some (.u64 u) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ hu (by decide))
+      (by decide)
+  have hcountVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "count" =
+      some (.u64 count) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ hcount (by decide))
+      (by decide)
+  have htopVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "top" =
+      some (.u64 top) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ htop (by decide))
+      (by decide)
+  have hmVxS : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "m" =
+      some (.stdVecOwned mv ml mc) :=
+    envLookup_extend_miss _ _ _ _ _
+      (envLookup_extend_miss _ _ _ _ _ hm (by decide))
+      (by decide)
+  -- The `top` advance.
+  have htopE : evalExpr (.uadd (.var "top")
+      (.lit (.u64 (BitVec.ofNat 64 1))))
+      (envExtend (envExtend ρ "x"
+        (.i32 (BitVec.ofNat 32 u.toNat)))
+        "st" (.stdVecOwned b2 l2 c2)) =
+      .ok (.u64 (top + 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _
+      (evalExpr_var_hit _ "top" (.u64 top) htopVxS)
+      (evalExpr_lit _ _)
+  obtain ⟨ρT, hupT⟩ := envUpdate_some_of_lookup
+      (envExtend (envExtend ρ "x"
+        (.i32 (BitVec.ofNat 32 u.toNat)))
+        "st" (.stdVecOwned b2 l2 c2)) "top"
+      (.u64 top) (.u64 (top + 1)) htopVxS
+  have htopA : evalProgStmt vecGrowProg F (.assign "top"
+      (.uadd (.var "top") (.lit (.u64 (BitVec.ofNat 64 1)))))
+      (envExtend (envExtend ρ "x"
+        (.i32 (BitVec.ofNat 32 u.toNat)))
+        "st" (.stdVecOwned b2 l2 c2)) =
+      .ok (ρT, .fellThrough) := by
+    have hfb : evalProgStmt vecGrowProg F (.assign "top"
+        (.uadd (.var "top") (.lit (.u64 (BitVec.ofNat 64 1)))))
+        (envExtend (envExtend ρ "x"
+          (.i32 (BitVec.ofNat 32 u.toNat)))
+          "st" (.stdVecOwned b2 l2 c2)) =
+        evalStmtFuel F (.assign "top" (.uadd (.var "top")
+          (.lit (.u64 (BitVec.ofNat 64 1)))))
+          (envExtend (envExtend ρ "x"
+            (.i32 (BitVec.ofNat 32 u.toNat)))
+            "st" (.stdVecOwned b2 l2 c2)) := by
+      simp only [evalProgStmt]
+    rw [hfb]
+    exact evalStmtFuel_assign _ _ _ _ _ _ htopE hupT
+  have hvisT : envLookup ρT "vis" = some (.stdVecOwned vv vl vc) :=
+    (envLookup_update_miss _ "vis" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hvisVxS
+  have hstX2 : envLookup (envExtend (envExtend ρ "x"
+      (.i32 (BitVec.ofNat 32 u.toNat)))
+      "st" (.stdVecOwned b2 l2 c2)) "st" =
+      some (.stdVecOwned b2 l2 c2) :=
+    envLookup_extend_hit _ _ _
+  have hstT : envLookup ρT "st" = some (.stdVecOwned b2 l2 c2) :=
+    (envLookup_update_miss _ "st" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hstX2
+  have htopT : envLookup ρT "top" = some (.u64 (top + 1)) :=
+    envLookup_update_hit _ "top" _ ρT hupT
+  have hnT : envLookup ρT "n" = some (.u64 nn) :=
+    (envLookup_update_miss _ "n" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hnVxS
+  have hvT : envLookup ρT "v" = some (.u64 v0) :=
+    (envLookup_update_miss _ "v" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hvVxS
+  have hcountT : envLookup ρT "count" = some (.u64 count) :=
+    (envLookup_update_miss _ "count" "top" (.u64 (top + 1)) ρT
+      (by decide) hupT).trans hcountVxS
+  -- The `count` advance.
+  have hcountE : evalExpr (.uadd (.var "count")
+      (.lit (.u64 (BitVec.ofNat 64 1)))) ρT =
+      .ok (.u64 (count + 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _
+      (evalExpr_var_hit ρT "count" (.u64 count) hcountT)
+      (evalExpr_lit _ _)
+  obtain ⟨ρC, hupC⟩ := envUpdate_some_of_lookup ρT "count"
+      (.u64 count) (.u64 (count + 1)) hcountT
+  have hcountA : evalProgStmt vecGrowProg F (.assign "count"
+      (.uadd (.var "count") (.lit (.u64 (BitVec.ofNat 64 1)))))
+      ρT = .ok (ρC, .fellThrough) := by
+    have hfb : evalProgStmt vecGrowProg F (.assign "count"
+        (.uadd (.var "count") (.lit (.u64 (BitVec.ofNat 64 1)))))
+        ρT =
+        evalStmtFuel F (.assign "count" (.uadd (.var "count")
+          (.lit (.u64 (BitVec.ofNat 64 1))))) ρT := by
+      simp only [evalProgStmt]
+    rw [hfb]
+    exact evalStmtFuel_assign _ _ _ _ _ _ hcountE hupC
+  -- Post-count lookups.
+  have hvisC : envLookup ρC "vis" = some (.stdVecOwned vv vl vc) :=
+    (envLookup_update_miss ρT "vis" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hvisT
+  have hstC : envLookup ρC "st" = some (.stdVecOwned b2 l2 c2) :=
+    (envLookup_update_miss ρT "st" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hstT
+  have htopC : envLookup ρC "top" = some (.u64 (top + 1)) :=
+    (envLookup_update_miss ρT "top" "count" (.u64 (count + 1))
+      ρC (by decide) hupC).trans htopT
+  have hnC : envLookup ρC "n" = some (.u64 nn) :=
+    (envLookup_update_miss ρT "n" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hnT
+  have hvC : envLookup ρC "v" = some (.u64 v0) :=
+    (envLookup_update_miss ρT "v" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans hvT
+  have hmC : envLookup ρC "m" = some (.stdVecOwned mv ml mc) :=
+    (envLookup_update_miss ρT "m" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans
+      ((envLookup_update_miss _ "m" "top" (.u64 (top + 1)) ρT
+        (by decide) hupT).trans hmVxS)
+  have huC : envLookup ρC "u" = some (.u64 u) :=
+    (envLookup_update_miss ρT "u" "count" (.u64 (count + 1)) ρC
+      (by decide) hupC).trans
+      ((envLookup_update_miss _ "u" "top" (.u64 (top + 1)) ρT
+        (by decide) hupT).trans huVxS)
+  have hcountC : envLookup ρC "count" = some (.u64 (count + 1)) :=
+    envLookup_update_hit _ "count" _ ρC hupC
+  -- The composer's triple is the forward's `pt`.
+  have hconnV : (Value.stdVecOwned b2 l2 c2 : Value) =
+      Value.stdVecOwned pt.1 pt.2.1 pt.2.2 := hv2.symm.trans hv0
+  simp only [Value.stdVecOwned.injEq] at hconnV
+  obtain ⟨e1, e2, e3⟩ := hconnV
+  -- Whole-push assembly.
+  have hPushG : evalProgStmt vecGrowProg F dfsGrowPush ρ =
+      .ok (ρC, .fellThrough) := by
+    simp only [dfsGrowPush]
+    exact (evalProgStmt_seq_fallthrough vecGrowProg F _ _ _ _
+      hstepX).trans
+      ((evalProgStmt_seq_fallthrough vecGrowProg F _ _ _ _
+        hifEvG).trans
+        ((evalProgStmt_seq_fallthrough vecGrowProg F _ _ _ _
+          htopA).trans hcountA))
+  exact ⟨ρC, b2, l2, c2, hPushG, hmC, hvisC, hstC, hnC, hvC,
+    htopC, hcountC, huC, hfr, hlen2, hbuflen2, h64_2, hcap2,
+    hlen1, e1, e2, e3⟩
+
 /-! ## Row-scan agreement -/
 
 /-- Row-scan agreement (ok leg): the `u` loop evaluates exactly as
@@ -1498,74 +2078,9 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                               ⟨visL.set u.toNat 1, false⟩
                               visL.length visL.length) ρV
                             (by decide) huv).trans hst
-                        -- The `x` let.
-                        have hxE : evalExpr
-                            (.i32ofU64 (.var "u")) ρV =
-                            .ok (.i32
-                              (BitVec.ofNat 32 u.toNat)) :=
-                          evalExpr_i32ofU64_ok _ _ _
-                            (evalExpr_var_hit ρV "u" (.u64 u)
-                              huV2)
-                        have hletX : evalStmtFuel F
-                            (.let_ "x" (.i 32)
-                              (.i32ofU64 (.var "u"))) ρV =
-                            .ok (envExtend ρV "x"
-                              (.i32 (BitVec.ofNat 32 u.toNat)),
-                              .fellThrough) :=
-                          evalStmtFuel_let_ F "x" (.i 32)
-                            (.i32ofU64 (.var "u")) ρV _ hxE
-                        have hstepX : evalProgStmt vecGrowProg F
-                            (.let_ "x" (.i 32)
-                              (.i32ofU64 (.var "u"))) ρV =
-                            .ok (envExtend ρV "x"
-                              (.i32 (BitVec.ofNat 32 u.toNat)),
-                              .fellThrough) := by
-                          rw [evalProgStmt_let_fb]
-                          exact hletX
-                        -- The `push_back` call.
-                        have hstVx : envLookup (envExtend ρV "x"
-                            (.i32 (BitVec.ofNat 32 u.toNat)))
-                            "st" =
-                            some (.stdVecOwned b len cap) :=
-                          envLookup_extend_miss _ _ _ _ _ hstV
-                            (by decide)
-                        have hxVx : envLookup (envExtend ρV "x"
-                            (.i32 (BitVec.ofNat 32 u.toNat)))
-                            "x" =
-                            some (.i32
-                              (BitVec.ofNat 32 u.toNat)) :=
-                          envLookup_extend_hit _ _ _
-
-                        have htopVx : envLookup (envExtend ρV "x"
-                            (.i32 (BitVec.ofNat 32 u.toNat)))
-                            "top" =
-                            some (.u64 top) :=
-                          envLookup_extend_miss _ _ _ _ _ htopV
-                            (by decide)
-                        have hstLenX : evalExpr (.vgrowLen "st")
-                            (envExtend ρV "x"
-                              (.i32
-                                (BitVec.ofNat 32 u.toNat))) =
-                            .ok (.u64
-                              (BitVec.ofNat 64 len)) :=
-                          evalExpr_vgrowLen_some "st" _ b len cap
-                            hstVx
-                        have hguardP : evalExpr
-                            (.ult (.var "top")
-                              (.vgrowLen "st"))
-                            (envExtend ρV "x"
-                              (.i32
-                                (BitVec.ofNat 32 u.toNat))) =
-                            .ok (.b (top.ult
-                              (BitVec.ofNat 64 len))) :=
-                          evalExpr_ult_u64 _ _ _ _ _
-                            (evalExpr_var_hit _
-                              "top" (.u64 top) htopVx)
-                            hstLenX
                         by_cases htl :
                             top.ult (BitVec.ofNat 64 len) = true
-                        · rw [htl] at hguardP
-                          simp only [htl, ↓reduceIte] at hrow
+                        · simp only [htl, ↓reduceIte] at hrow
                           -- Slot reuse (`top < len`): the guarded store
                           -- hits; length and capacity are unchanged.
                           have hw00 : w = 0 := by simpa using hw0
@@ -1591,311 +2106,18 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                             cases hrow
                           | ok b2 =>
                             simp only [hsetB] at hrow
-                            have hlenB : b2.val.length =
-                                b.val.length :=
-                              vecSet_length _ _ _ _ hsetB
-                            have hfrB : b2.freed = false :=
-                              vecSet_live _ _ _ _ hsetB
-                            have hlen2 : len ≤ b2.val.length := by
-                              rw [hlenB]; exact hlen
-                            have hbuflen2 : b2.val.length < 2 ^ 64 := by
-                              rw [hlenB]; exact hbuflen
-                            have hvisX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              envLookup_extend_miss _ _ _ _ _ hvisV
-                                (by decide)
-                            have hnX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "n" =
-                                some (.u64 n) :=
-                              envLookup_extend_miss _ _ _ _ _ hnV
-                                (by decide)
-                            have hvX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "v" =
-                                some (.u64 v) :=
-                              envLookup_extend_miss _ _ _ _ _ hvV
-                                (by decide)
-                            have huX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "u" =
-                                some (.u64 u) :=
-                              envLookup_extend_miss _ _ _ _ _ huV2
-                                (by decide)
-                            have hcountX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "count" =
-                                some (.u64 count) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                hcountV (by decide)
-                            obtain ⟨ρS, hupS⟩ :=
-                              envUpdate_some_of_lookup
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) "st"
-                                (.stdVecOwned b len cap)
-                                (.stdVecOwned b2 len cap) hstVx
-                            have hstepSet : evalStmtFuel F
-                                (.vgrowSet "st" (.var "top")
-                                  (.var "x"))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (ρS, .fellThrough) :=
-                              evalStmtFuel_vgrowSet F "st"
-                                (.var "top") (.var "x")
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat)))
-                                top
-                                (BitVec.ofNat 32 u.toNat) b b2
-                                len cap ρS
-                                (evalExpr_var_hit _
-                                  "top" (.u64 top) htopVx)
-                                (evalExpr_var_hit _
-                                  "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))
-                                  hxVx)
-                                hstVx hsetB hupS
-                            have hifS : evalProgStmt vecGrowProg F
-                                (.if_ (.ult (.var "top")
-                                  (.vgrowLen "st"))
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"]))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                evalProgStmt vecGrowProg F
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (envExtend ρV "x"
-                                    (.i32
-                                      (BitVec.ofNat 32 u.toNat))) := by
-                              rw [evalProgStmt_if_true _ _ _ _ _ _
-                                hguardP]
-                            have hstepSetP : evalProgStmt vecGrowProg F
-                                (.vgrowSet "st" (.var "top")
-                                  (.var "x"))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (ρS, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (envExtend ρV "x"
-                                    (.i32
-                                      (BitVec.ofNat 32 u.toNat))) =
-                                  evalStmtFuel F
-                                    (.vgrowSet "st" (.var "top")
-                                      (.var "x"))
-                                    (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat))) := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact hstepSet
-                            have hifEv : evalProgStmt vecGrowProg F
-                                (.if_ (.ult (.var "top")
-                                  (.vgrowLen "st"))
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"]))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (ρS, .fellThrough) :=
-                              hifS.trans hstepSetP
-                            have hvisS : envLookup ρS "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss _ "vis" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hvisX
-                            have hnS : envLookup ρS "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss _ "n" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hnX
-                            have hvS : envLookup ρS "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss _ "v" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hvX
-                            have huS : envLookup ρS "u" =
-                                some (.u64 u) :=
-                              (envLookup_update_miss _ "u" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans huX
-                            have hcountS : envLookup ρS "count" =
-                                some (.u64 count) :=
-                              (envLookup_update_miss _ "count" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hcountX
-                            have htopS : envLookup ρS "top" =
-                                some (.u64 top) :=
-                              (envLookup_update_miss _ "top" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans htopVx
-                            have hstS : envLookup ρS "st" =
-                                some (.stdVecOwned b2 len cap) :=
-                              envLookup_update_hit _ "st" _ ρS hupS
-                            have htopE : evalExpr
-                                (.uadd (.var "top")
-                                  (.lit (.u64
-                                    (BitVec.ofNat 64 1)))) ρS =
-                                .ok (.u64 (top + 1)) :=
-                              evalExpr_uadd_u64 _ _ _ _ _
-                                (evalExpr_var_hit _ "top"
-                                  (.u64 top) htopS)
-                                (evalExpr_lit _ _)
-                            obtain ⟨ρT, hupT⟩ :=
-                              envUpdate_some_of_lookup ρS "top"
-                                (.u64 top) (.u64 (top + 1)) htopS
-                            have htopA : evalProgStmt vecGrowProg F
-                                (.assign "top"
-                                  (.uadd (.var "top")
-                                    (.lit (.u64
-                                      (BitVec.ofNat 64 1))))) ρS =
-                                .ok (ρT, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.assign "top"
-                                    (.uadd (.var "top")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1))))) ρS =
-                                  evalStmtFuel F
-                                    (.assign "top"
-                                      (.uadd (.var "top")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    ρS := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact evalStmtFuel_assign _ _ _ _ _ _
-                                htopE hupT
-                            have hvisT : envLookup ρT "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss _ "vis" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hvisS
-                            have hstT : envLookup ρT "st" =
-                                some (.stdVecOwned b2 len cap) :=
-                              (envLookup_update_miss _ "st" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hstS
-                            have htopT : envLookup ρT "top" =
-                                some (.u64 (top + 1)) :=
-                              envLookup_update_hit _ "top" _ ρT hupT
-                            have hnT : envLookup ρT "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss _ "n" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hnS
-                            have hvT : envLookup ρT "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss _ "v" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hvS
-                            have hcountT : envLookup ρT "count" =
-                                some (.u64 count) :=
-                              (envLookup_update_miss _ "count" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hcountS
-                            have hcountE : evalExpr
-                                (.uadd (.var "count")
-                                  (.lit (.u64
-                                    (BitVec.ofNat 64 1)))) ρT =
-                                .ok (.u64 (count + 1)) :=
-                              evalExpr_uadd_u64 _ _ _ _ _
-                                (evalExpr_var_hit ρT "count"
-                                  (.u64 count) hcountT)
-                                (evalExpr_lit _ _)
-                            obtain ⟨ρC, hupC⟩ :=
-                              envUpdate_some_of_lookup ρT "count"
-                                (.u64 count) (.u64 (count + 1))
-                                hcountT
-                            have hcountA : evalProgStmt vecGrowProg F
-                                (.assign "count"
-                                  (.uadd (.var "count")
-                                    (.lit (.u64
-                                      (BitVec.ofNat 64 1))))) ρT =
-                                .ok (ρC, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.assign "count"
-                                    (.uadd (.var "count")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1))))) ρT =
-                                  evalStmtFuel F
-                                    (.assign "count"
-                                      (.uadd (.var "count")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    ρT := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact evalStmtFuel_assign _ _ _ _ _ _
-                                hcountE hupC
-                            have hvisC : envLookup ρC "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss ρT "vis" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hvisT
-                            have hstC : envLookup ρC "st" =
-                                some (.stdVecOwned b2 len cap) :=
-                              (envLookup_update_miss ρT "st" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hstT
-                            have htopC : envLookup ρC "top" =
-                                some (.u64 (top + 1)) :=
-                              (envLookup_update_miss ρT "top" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans htopT
-                            have hnC : envLookup ρC "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss ρT "n" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hnT
-                            have hvC : envLookup ρC "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss ρT "v" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hvT
-                            have hmC : envLookup ρC "m" =
-                                some (.stdVecOwned ⟨mL, false⟩
-                                  mL.length mL.length) :=
-                              (envLookup_update_miss ρT "m" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans
-                                ((envLookup_update_miss _ "m" "top"
-                                  (.u64 (top + 1)) ρT
-                                  (by decide) hupT).trans
-                                  ((envLookup_update_miss _ "m" "st"
-                                    (.stdVecOwned b2 len cap) ρS
-                                    (by decide) hupS).trans
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hmV
-                                      (by decide))))
-                            have huC : envLookup ρC "u" =
-                                some (.u64 u) :=
-                              (envLookup_update_miss ρT "u" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans
-                                ((envLookup_update_miss _ "u" "top"
-                                  (.u64 (top + 1)) ρT
-                                  (by decide) hupT).trans huS)
+                            -- The push sequence (slot leg): factored
+                            -- into `dfsGrowPushSlot_ok`.
+                            obtain ⟨ρC, hPushS, hmC, hvisC, hstC,
+                                hnC, hvC, htopC, hcountC, huC,
+                                hlen2, hbuflen2, hfrB⟩ :=
+                              dfsGrowPushSlot_ok F b b2 len cap top
+                                count u ρV
+                                ⟨visL.set u.toNat 1, false⟩
+                                visL.length visL.length
+                                ⟨mL, false⟩ mL.length mL.length n v
+                                hvisV hmV hnV hvV hstV htopV hcountV
+                                huV2 hlen hbuflen hlen64 htl hsetB
                             obtain ⟨ρU, hupU⟩ :=
                               envUpdate_some_of_lookup ρC "u"
                                 (.u64 u) (.u64 (u + 1)) huC
@@ -1926,9 +2148,7 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                                 some (.u64 (count + 1)) :=
                               (envLookup_update_miss ρC "count" "u"
                                 (.u64 (u + 1)) ρU
-                                (by decide) hupU).trans
-                                (envLookup_update_hit _ "count" _
-                                  ρC hupC)
+                                (by decide) hupU).trans hcountC
                             have hvisB : envLookup ρU "vis" =
                                 some (.stdVecOwned
                                   ⟨visL.set u.toNat 1, false⟩
@@ -1948,18 +2168,6 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                               (envLookup_update_miss ρC "st" "u"
                                 (.u64 (u + 1)) ρU
                                 (by decide) hupU).trans hstC
-                            have hPushS : evalProgStmt vecGrowProg F
-                                dfsGrowPush ρV =
-                                .ok (ρC, .fellThrough) := by
-                              simp only [dfsGrowPush]
-                              exact (evalProgStmt_seq_fallthrough
-                                vecGrowProg F _ _ _ _ hstepX).trans
-                                ((evalProgStmt_seq_fallthrough
-                                  vecGrowProg F _ _ _ _
-                                  hifEv).trans
-                                  ((evalProgStmt_seq_fallthrough
-                                    vecGrowProg F _ _ _ _
-                                    htopA).trans hcountA))
                             have hwrapTop : (top + 1).toNat =
                                 top.toNat + 1 := by
                               have h1 : ((1 : BitVec 64)).toNat = 1 :=
@@ -2099,7 +2307,6 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                         · have htlF : top.ult
                               (BitVec.ofNat 64 len) = false :=
                             Bool.eq_false_of_ne_true htl
-                          rw [htlF] at hguardP
                           simp only [htlF, ↓reduceIte] at hrow
                           by_cases hmaxC :
                               len ≤ stdVecMaxDiffBV.toNat - 1
@@ -2120,243 +2327,35 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                                 cases hrow
                               | ok pt =>
                                 simp only [hown, vecGrow_bind_ok] at hrow
-                                have hv0 := vecGrowOwned_ok hown
-                                obtain ⟨b2, l2, c2, hv2, hfr, hlen2,
-                                    hbuflen2, h64_2, hcap2, hlen1⟩ :=
-                                  stdVecPushBackFwd_ok b len cap
-                                    (BitVec.ofNat 32 u.toNat) pv hlive
-                                    hlen hbuflen hlen64 hcap64 hmaxC hpush
                                 -- Push adequacy from the absolute bound:
                                 -- `len ≤ L0 + ones ≤ L0 + V` and `hP`.
                                 have hadq : len + 4 ≤ F := by
                                   have hle : ones visL ≤ visL.length :=
                                     ones_le_length visL
                                   omega
-                                obtain ⟨Fp, hFeq, hFp⟩ :=
-                                  fuel_step_down (len + 3) hadq
-                                have hmaxC' :
-                                    len ≤ stdVecMaxDiffBV.toNat := by
-                                  omega
-                                have hcall := evalProgFunc_stdVecPushBack
-                                  Fp b len cap
-                                  (BitVec.ofNat 32 u.toNat) hlive hmaxC'
-                                  hlen hbuflen hcap64 hFp
-                                rw [hpush, hv2] at hcall
-                                -- The visited mark.
-                                have hargs : lookupArgs (envExtend ρV "x"
-                                    (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    ["st", "x"] =
-                                    some [.stdVecOwned b len cap,
-                                      .i32
-                                        (BitVec.ofNat 32 u.toNat)] :=
-                                  lookupArgs_cons_hit _ _ _ _ _ hstVx
-                                    (lookupArgs_cons_hit _ _ _ [] []
-                                      hxVx (lookupArgs_nil _))
-                                have hstepPushF : evalProgStmt vecGrowProg
-                                    (Fp + 1)
-                                    (.callProg "st" stdVecPushBackName
-                                      ["st", "x"])
-                                    (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat))) =
-                                    .ok (envExtend (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                      "st" (.stdVecOwned b2 l2 c2),
-                                      .fellThrough) :=
-                                  evalProgStmt_callProg_ok vecGrowProg Fp
-                                    "st" stdVecPushBackName ["st", "x"]
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    [.stdVecOwned b len cap,
-                                      .i32 (BitVec.ofNat 32 u.toNat)]
-                                    stdVecPushBackFunc
-                                    (.stdVecOwned b2 l2 c2) hargs
-                                    findFunc_stdVecPushBack hcall
-                                rw [← hFeq] at hstepPushF
-                                -- Cursor and count advances.
-                                have htopVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "top" =
-                                    some (.u64 top) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      htopV (by decide)) (by decide)
-                                have htopE : evalExpr
-                                    (.uadd (.var "top")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1))))
-                                    (envExtend (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2)) =
-                                    .ok (.u64 (top + 1)) :=
-                                  evalExpr_uadd_u64 _ _ _ _ _
-                                    (evalExpr_var_hit _ "top"
-                                      (.u64 top) htopVxS)
-                                    (evalExpr_lit _ _)
-                                obtain ⟨ρT, hupT⟩ :=
-                                  envUpdate_some_of_lookup
-                                    (envExtend (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2)) "top"
-                                    (.u64 top) (.u64 (top + 1)) htopVxS
-                                have htopA : evalProgStmt vecGrowProg F
-                                    (.assign "top"
-                                      (.uadd (.var "top")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    (envExtend (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2)) =
-                                    .ok (ρT, .fellThrough) := by
-                                  have hfb : evalProgStmt vecGrowProg F
-                                      (.assign "top"
-                                        (.uadd (.var "top")
-                                          (.lit (.u64
-                                            (BitVec.ofNat 64 1)))))
-                                      (envExtend (envExtend ρV "x"
-                                        (.i32 (BitVec.ofNat 32 u.toNat)))
-                                      "st" (.stdVecOwned b2 l2 c2)) =
-                                      evalStmtFuel F
-                                        (.assign "top"
-                                          (.uadd (.var "top")
-                                            (.lit (.u64
-                                              (BitVec.ofNat 64 1)))))
-                                        (envExtend (envExtend ρV "x"
-                                          (.i32
-                                            (BitVec.ofNat 32 u.toNat)))
-                                        "st"
-                                          (.stdVecOwned b2 l2 c2)) := by
-                                    simp only [evalProgStmt]
-                                  rw [hfb]
-                                  exact evalStmtFuel_assign _ _ _ _ _ _
-                                    htopE hupT
-                                have hcountVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "count" =
-                                    some (.u64 count) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hcountV (by decide)) (by decide)
-                                have hcountT : envLookup ρT "count" =
-                                    some (.u64 count) :=
-                                  (envLookup_update_miss _
-                                    "count" "top" (.u64 (top + 1)) ρT
-                                    (by decide) hupT).trans hcountVxS
-                                have hcountE : evalExpr
-                                    (.uadd (.var "count")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1)))) ρT =
-                                    .ok (.u64 (count + 1)) :=
-                                  evalExpr_uadd_u64 _ _ _ _ _
-                                    (evalExpr_var_hit ρT "count"
-                                      (.u64 count) hcountT)
-                                    (evalExpr_lit _ _)
-                                obtain ⟨ρC, hupC⟩ :=
-                                  envUpdate_some_of_lookup ρT "count"
-                                    (.u64 count) (.u64 (count + 1))
-                                    hcountT
-                                have hcountA : evalProgStmt vecGrowProg F
-                                    (.assign "count"
-                                      (.uadd (.var "count")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1))))) ρT =
-                                    .ok (ρC, .fellThrough) := by
-                                  have hfb : evalProgStmt vecGrowProg F
-                                      (.assign "count"
-                                        (.uadd (.var "count")
-                                          (.lit (.u64
-                                            (BitVec.ofNat 64 1))))) ρT =
-                                      evalStmtFuel F
-                                        (.assign "count"
-                                          (.uadd (.var "count")
-                                            (.lit (.u64
-                                              (BitVec.ofNat 64 1)))))
-                                        ρT := by
-                                    simp only [evalProgStmt]
-                                  rw [hfb]
-                                  exact evalStmtFuel_assign _ _ _ _ _ _
-                                    hcountE hupC
+                                -- The push sequence (growth leg):
+                                -- factored into `dfsGrowPushGrow_ok`.
+                                obtain ⟨ρC, b2, l2, c2, hPush,
+                                    hmC, hvisC, hstC, hnC, hvC,
+                                    htopC, hcountC, huC, hfr, hlen2,
+                                    hbuflen2, h64_2, hcap2, hlen1,
+                                    e1, e2, e3⟩ :=
+                                  dfsGrowPushGrow_ok F b len cap top
+                                    count u ρV
+                                    ⟨visL.set u.toNat 1, false⟩
+                                    visL.length visL.length
+                                    ⟨mL, false⟩ mL.length mL.length
+                                    n v pv pt hvisV hmV hnV hvV hstV
+                                    htopV hcountV huV2 hlive hlen
+                                    hbuflen hlen64 hcap64 htlF hmaxC
+                                    hadq hpush hown
+                                -- (composer call now in lemma)
                                 -- The `u` advance (helper).
-                                have huVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "u" =
-                                    some (.u64 u) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      huV2 (by decide)) (by decide)
-                                have huC : envLookup ρC "u" =
-                                    some (.u64 u) :=
-                                  (envLookup_update_miss ρT "u" "count"
-                                    (.u64 (count + 1)) ρC
-                                    (by decide) hupC).trans
-                                    ((envLookup_update_miss _ "u" "top"
-                                      (.u64 (top + 1)) ρT (by decide)
-                                      hupT).trans huVxS)
                                 obtain ⟨ρU, hupU⟩ :=
                                   envUpdate_some_of_lookup ρC "u"
                                     (.u64 u) (.u64 (u + 1)) huC
                                 obtain ⟨huA, huU⟩ :=
                                   evalProgUAdv F ρC u huC ρU hupU
-                                -- Push-sequence assembly (growth arm: the
-                                -- reuse guard is false here).
-                                have hifG : evalProgStmt vecGrowProg F
-                                    (.if_ (.ult (.var "top")
-                                      (.vgrowLen "st"))
-                                      (.vgrowSet "st" (.var "top")
-                                        (.var "x"))
-                                      (.callProg "st"
-                                        stdVecPushBackName
-                                        ["st", "x"]))
-                                    (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat))) =
-                                    evalProgStmt vecGrowProg F
-                                      (.callProg "st"
-                                        stdVecPushBackName
-                                        ["st", "x"])
-                                      (envExtend ρV "x"
-                                        (.i32
-                                          (BitVec.ofNat 32
-                                            u.toNat))) := by
-                                  rw [evalProgStmt_if_false _ _ _ _ _ _
-                                    hguardP]
-                                have hifEvG : evalProgStmt vecGrowProg F
-                                    (.if_ (.ult (.var "top")
-                                      (.vgrowLen "st"))
-                                      (.vgrowSet "st" (.var "top")
-                                        (.var "x"))
-                                      (.callProg "st"
-                                        stdVecPushBackName
-                                        ["st", "x"]))
-                                    (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat))) =
-                                    .ok (envExtend (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat)))
-                                      "st"
-                                      (.stdVecOwned b2 l2 c2),
-                                      .fellThrough) :=
-                                  hifG.trans hstepPushF
-                                have hPush : evalProgStmt vecGrowProg F
-                                    dfsGrowPush ρV =
-                                    .ok (ρC, .fellThrough) := by
-                                  simp only [dfsGrowPush]
-                                  exact (evalProgStmt_seq_fallthrough
-                                    vecGrowProg F _ _ _ _
-                                    hstepX).trans
-                                    ((evalProgStmt_seq_fallthrough
-                                      vecGrowProg F _ _ _ _
-                                      hifEvG).trans
-                                      ((evalProgStmt_seq_fallthrough
-                                        vecGrowProg F _ _ _ _
-                                        htopA).trans hcountA))
                                 have hL4 : evalProgStmt vecGrowProg F
                                     (.seq (.vgrowSet "vis" (.var "u")
                                       (.lit (.i32
@@ -2417,108 +2416,24 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                                     .ok (ρU, .fellThrough) :=
                                   (evalProgStmt_seq_fallthrough vecGrowProg
                                     F _ _ _ _ hL1ev).trans huA
-                                -- Thread the post-body lookups.
-                                have hmVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "m" =
-                                    some (.stdVecOwned ⟨mL, false⟩
-                                      mL.length mL.length) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hmV (by decide)) (by decide)
-                                have hmT : envLookup ρT "m" =
-                                    some (.stdVecOwned ⟨mL, false⟩
-                                      mL.length mL.length) :=
-                                  (envLookup_update_miss _ "m" "top"
-                                    (.u64 (top + 1)) ρT (by decide)
-                                    hupT).trans hmVxS
-                                have hmC : envLookup ρC "m" =
-                                    some (.stdVecOwned ⟨mL, false⟩
-                                      mL.length mL.length) :=
-                                  (envLookup_update_miss ρT "m" "count"
-                                    (.u64 (count + 1)) ρC (by decide)
-                                    hupC).trans hmT
+                                -- Thread the post-body lookups (all from
+                                -- the lemma conclusions).
                                 have hmB : envLookup ρU "m" =
                                     some (.stdVecOwned ⟨mL, false⟩
                                       mL.length mL.length) :=
                                   (envLookup_update_miss ρC "m" "u"
                                     (.u64 (u + 1)) ρU (by decide)
                                     hupU).trans hmC
-                                have hnVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "n" =
-                                    some (.u64 n) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hnV (by decide)) (by decide)
-                                have hnT : envLookup ρT "n" =
-                                    some (.u64 n) :=
-                                  (envLookup_update_miss _ "n" "top"
-                                    (.u64 (top + 1)) ρT (by decide)
-                                    hupT).trans hnVxS
-                                have hnC : envLookup ρC "n" =
-                                    some (.u64 n) :=
-                                  (envLookup_update_miss ρT "n" "count"
-                                    (.u64 (count + 1)) ρC (by decide)
-                                    hupC).trans hnT
                                 have hnB : envLookup ρU "n" =
                                     some (.u64 n) :=
                                   (envLookup_update_miss ρC "n" "u"
                                     (.u64 (u + 1)) ρU (by decide)
                                     hupU).trans hnC
-                                have hvVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "v" =
-                                    some (.u64 v) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hvV (by decide)) (by decide)
-                                have hvT : envLookup ρT "v" =
-                                    some (.u64 v) :=
-                                  (envLookup_update_miss _ "v" "top"
-                                    (.u64 (top + 1)) ρT (by decide)
-                                    hupT).trans hvVxS
-                                have hvC : envLookup ρC "v" =
-                                    some (.u64 v) :=
-                                  (envLookup_update_miss ρT "v" "count"
-                                    (.u64 (count + 1)) ρC (by decide)
-                                    hupC).trans hvT
                                 have hvB : envLookup ρU "v" =
                                     some (.u64 v) :=
                                   (envLookup_update_miss ρC "v" "u"
                                     (.u64 (u + 1)) ρU (by decide)
                                     hupU).trans hvC
-                                have hvisVxS : envLookup (envExtend
-                                    (envExtend ρV "x"
-                                      (.i32 (BitVec.ofNat 32 u.toNat)))
-                                    "st" (.stdVecOwned b2 l2 c2))
-                                    "vis" =
-                                    some (.stdVecOwned
-                                      ⟨visL.set u.toNat 1, false⟩
-                                      visL.length visL.length) :=
-                                  envLookup_extend_miss _ _ _ _ _
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hvisV (by decide)) (by decide)
-                                have hvisT : envLookup ρT "vis" =
-                                    some (.stdVecOwned
-                                      ⟨visL.set u.toNat 1, false⟩
-                                      visL.length visL.length) :=
-                                  (envLookup_update_miss _ "vis" "top"
-                                    (.u64 (top + 1)) ρT (by decide)
-                                    hupT).trans hvisVxS
-                                have hvisC : envLookup ρC "vis" =
-                                    some (.stdVecOwned
-                                      ⟨visL.set u.toNat 1, false⟩
-                                      visL.length visL.length) :=
-                                  (envLookup_update_miss ρT "vis" "count"
-                                    (.u64 (count + 1)) ρC (by decide)
-                                    hupC).trans hvisT
                                 have hvisU : envLookup ρU "vis" =
                                     some (.stdVecOwned
                                       ⟨visL.set u.toNat 1, false⟩
@@ -2538,49 +2453,21 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                                     2 ^ 64 := by
                                   rw [hsetlen]
                                   exact hvislen
-                                have hstT : envLookup ρT "st" =
-                                    some (.stdVecOwned b2 l2 c2) :=
-                                  (envLookup_update_miss _
-                                    "st" "top" (.u64 (top + 1)) ρT
-                                    (by decide) hupT).trans
-                                    (envLookup_extend_hit _ _ _)
-                                have hstC : envLookup ρC "st" =
-                                    some (.stdVecOwned b2 l2 c2) :=
-                                  (envLookup_update_miss ρT "st" "count"
-                                    (.u64 (count + 1)) ρC (by decide)
-                                    hupC).trans hstT
                                 have hstB : envLookup ρU "st" =
                                     some (.stdVecOwned b2 l2 c2) :=
                                   (envLookup_update_miss ρC "st" "u"
                                     (.u64 (u + 1)) ρU (by decide)
                                     hupU).trans hstC
-                                have htopT : envLookup ρT "top" =
-                                    some (.u64 (top + 1)) :=
-                                  envLookup_update_hit _ "top" _ ρT hupT
-                                have htopC : envLookup ρC "top" =
-                                    some (.u64 (top + 1)) :=
-                                  (envLookup_update_miss ρT "top" "count"
-                                    (.u64 (count + 1)) ρC (by decide)
-                                    hupC).trans htopT
                                 have htopB : envLookup ρU "top" =
                                     some (.u64 (top + 1)) :=
                                   (envLookup_update_miss ρC "top" "u"
                                     (.u64 (u + 1)) ρU (by decide)
                                     hupU).trans htopC
-                                have hcountC : envLookup ρC "count" =
-                                    some (.u64 (count + 1)) :=
-                                  envLookup_update_hit _ "count" _ ρC hupC
                                 have hcountB : envLookup ρU "count" =
                                     some (.u64 (count + 1)) :=
                                   (envLookup_update_miss ρC "count" "u"
                                     (.u64 (u + 1)) ρU (by decide)
                                     hupU).trans hcountC
-                                have hconn : Value.stdVecOwned b2 l2 c2 =
-                                    Value.stdVecOwned pt.1 pt.2.1
-                                      pt.2.2 := by
-                                  rw [← hv2, hv0]
-                                simp only [Value.stdVecOwned.injEq] at hconn
-                                obtain ⟨e1, e2, e3⟩ := hconn
                                 rw [← e1, ← e2, ← e3] at hrow
                                 -- Measure facts for the row IH: the mark
                                 -- is fresh, so `ones` and `len` advance in
@@ -3464,311 +3351,20 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                             exact hevS
                           | ok b2 =>
                             simp only [hsetB] at herr
-                            have hlenB : b2.val.length =
-                                b.val.length :=
-                              vecSet_length _ _ _ _ hsetB
-                            have hfrB : b2.freed = false :=
-                              vecSet_live _ _ _ _ hsetB
-                            have hlen2 : len ≤ b2.val.length := by
-                              rw [hlenB]; exact hlen
-                            have hbuflen2 : b2.val.length < 2 ^ 64 := by
-                              rw [hlenB]; exact hbuflen
-                            have hvisX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              envLookup_extend_miss _ _ _ _ _ hvisV
-                                (by decide)
-                            have hnX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "n" =
-                                some (.u64 n) :=
-                              envLookup_extend_miss _ _ _ _ _ hnV
-                                (by decide)
-                            have hvX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "v" =
-                                some (.u64 v) :=
-                              envLookup_extend_miss _ _ _ _ _ hvV
-                                (by decide)
-                            have huX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "u" =
-                                some (.u64 u) :=
-                              envLookup_extend_miss _ _ _ _ _ huV2
-                                (by decide)
-                            have hcountX : envLookup (envExtend ρV "x"
-                                (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "count" =
-                                some (.u64 count) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                hcountV (by decide)
-                            obtain ⟨ρS, hupS⟩ :=
-                              envUpdate_some_of_lookup
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) "st"
-                                (.stdVecOwned b len cap)
-                                (.stdVecOwned b2 len cap) hstVx
-                            have hstepSet : evalStmtFuel F
-                                (.vgrowSet "st" (.var "top")
-                                  (.var "x"))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (ρS, .fellThrough) :=
-                              evalStmtFuel_vgrowSet F "st"
-                                (.var "top") (.var "x")
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat)))
-                                top
-                                (BitVec.ofNat 32 u.toNat) b b2
-                                len cap ρS
-                                (evalExpr_var_hit _
-                                  "top" (.u64 top) htopVx)
-                                (evalExpr_var_hit _
-                                  "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))
-                                  hxVx)
-                                hstVx hsetB hupS
-                            have hifS : evalProgStmt vecGrowProg F
-                                (.if_ (.ult (.var "top")
-                                  (.vgrowLen "st"))
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"]))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                evalProgStmt vecGrowProg F
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (envExtend ρV "x"
-                                    (.i32
-                                      (BitVec.ofNat 32 u.toNat))) := by
-                              rw [evalProgStmt_if_true _ _ _ _ _ _
-                                hguardP]
-                            have hstepSetP : evalProgStmt vecGrowProg F
-                                (.vgrowSet "st" (.var "top")
-                                  (.var "x"))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (ρS, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (envExtend ρV "x"
-                                    (.i32
-                                      (BitVec.ofNat 32 u.toNat))) =
-                                  evalStmtFuel F
-                                    (.vgrowSet "st" (.var "top")
-                                      (.var "x"))
-                                    (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat))) := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact hstepSet
-                            have hifEv : evalProgStmt vecGrowProg F
-                                (.if_ (.ult (.var "top")
-                                  (.vgrowLen "st"))
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"]))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (ρS, .fellThrough) :=
-                              hifS.trans hstepSetP
-                            have hvisS : envLookup ρS "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss _ "vis" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hvisX
-                            have hnS : envLookup ρS "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss _ "n" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hnX
-                            have hvS : envLookup ρS "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss _ "v" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hvX
-                            have huS : envLookup ρS "u" =
-                                some (.u64 u) :=
-                              (envLookup_update_miss _ "u" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans huX
-                            have hcountS : envLookup ρS "count" =
-                                some (.u64 count) :=
-                              (envLookup_update_miss _ "count" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans hcountX
-                            have htopS : envLookup ρS "top" =
-                                some (.u64 top) :=
-                              (envLookup_update_miss _ "top" "st"
-                                (.stdVecOwned b2 len cap) ρS
-                                (by decide) hupS).trans htopVx
-                            have hstS : envLookup ρS "st" =
-                                some (.stdVecOwned b2 len cap) :=
-                              envLookup_update_hit _ "st" _ ρS hupS
-                            have htopE : evalExpr
-                                (.uadd (.var "top")
-                                  (.lit (.u64
-                                    (BitVec.ofNat 64 1)))) ρS =
-                                .ok (.u64 (top + 1)) :=
-                              evalExpr_uadd_u64 _ _ _ _ _
-                                (evalExpr_var_hit _ "top"
-                                  (.u64 top) htopS)
-                                (evalExpr_lit _ _)
-                            obtain ⟨ρT, hupT⟩ :=
-                              envUpdate_some_of_lookup ρS "top"
-                                (.u64 top) (.u64 (top + 1)) htopS
-                            have htopA : evalProgStmt vecGrowProg F
-                                (.assign "top"
-                                  (.uadd (.var "top")
-                                    (.lit (.u64
-                                      (BitVec.ofNat 64 1))))) ρS =
-                                .ok (ρT, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.assign "top"
-                                    (.uadd (.var "top")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1))))) ρS =
-                                  evalStmtFuel F
-                                    (.assign "top"
-                                      (.uadd (.var "top")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    ρS := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact evalStmtFuel_assign _ _ _ _ _ _
-                                htopE hupT
-                            have hvisT : envLookup ρT "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss _ "vis" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hvisS
-                            have hstT : envLookup ρT "st" =
-                                some (.stdVecOwned b2 len cap) :=
-                              (envLookup_update_miss _ "st" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hstS
-                            have htopT : envLookup ρT "top" =
-                                some (.u64 (top + 1)) :=
-                              envLookup_update_hit _ "top" _ ρT hupT
-                            have hnT : envLookup ρT "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss _ "n" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hnS
-                            have hvT : envLookup ρT "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss _ "v" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hvS
-                            have hcountT : envLookup ρT "count" =
-                                some (.u64 count) :=
-                              (envLookup_update_miss _ "count" "top"
-                                (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hcountS
-                            have hcountE : evalExpr
-                                (.uadd (.var "count")
-                                  (.lit (.u64
-                                    (BitVec.ofNat 64 1)))) ρT =
-                                .ok (.u64 (count + 1)) :=
-                              evalExpr_uadd_u64 _ _ _ _ _
-                                (evalExpr_var_hit ρT "count"
-                                  (.u64 count) hcountT)
-                                (evalExpr_lit _ _)
-                            obtain ⟨ρC, hupC⟩ :=
-                              envUpdate_some_of_lookup ρT "count"
-                                (.u64 count) (.u64 (count + 1))
-                                hcountT
-                            have hcountA : evalProgStmt vecGrowProg F
-                                (.assign "count"
-                                  (.uadd (.var "count")
-                                    (.lit (.u64
-                                      (BitVec.ofNat 64 1))))) ρT =
-                                .ok (ρC, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.assign "count"
-                                    (.uadd (.var "count")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1))))) ρT =
-                                  evalStmtFuel F
-                                    (.assign "count"
-                                      (.uadd (.var "count")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    ρT := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact evalStmtFuel_assign _ _ _ _ _ _
-                                hcountE hupC
-                            have hvisC : envLookup ρC "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss ρT "vis" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hvisT
-                            have hstC : envLookup ρC "st" =
-                                some (.stdVecOwned b2 len cap) :=
-                              (envLookup_update_miss ρT "st" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hstT
-                            have htopC : envLookup ρC "top" =
-                                some (.u64 (top + 1)) :=
-                              (envLookup_update_miss ρT "top" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans htopT
-                            have hnC : envLookup ρC "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss ρT "n" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hnT
-                            have hvC : envLookup ρC "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss ρT "v" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans hvT
-                            have hmC : envLookup ρC "m" =
-                                some (.stdVecOwned ⟨mL, false⟩
-                                  mL.length mL.length) :=
-                              (envLookup_update_miss ρT "m" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans
-                                ((envLookup_update_miss _ "m" "top"
-                                  (.u64 (top + 1)) ρT
-                                  (by decide) hupT).trans
-                                  ((envLookup_update_miss _ "m" "st"
-                                    (.stdVecOwned b2 len cap) ρS
-                                    (by decide) hupS).trans
-                                    (envLookup_extend_miss _ _ _ _ _
-                                      hmV
-                                      (by decide))))
-                            have huC : envLookup ρC "u" =
-                                some (.u64 u) :=
-                              (envLookup_update_miss ρT "u" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans
-                                ((envLookup_update_miss _ "u" "top"
-                                  (.u64 (top + 1)) ρT
-                                  (by decide) hupT).trans huS)
+                            -- The push sequence (slot leg): factored
+                            -- into `dfsGrowPushSlot_ok`.
+                            obtain ⟨ρC, hPushS, hmC, hvisC, hstC,
+                                hnC, hvC, htopC, hcountC, huC,
+                                hlen2, hbuflen2, hfrB⟩ :=
+                              dfsGrowPushSlot_ok F b b2 len cap top
+                                count u ρV
+                                ⟨visL.set u.toNat 1, false⟩
+                                visL.length visL.length
+                                ⟨mL, false⟩ mL.length mL.length n v
+                                hvisV hmV hnV hvV hstV htopV hcountV
+                                huV2 hlen hbuflen hlen64 htl hsetB
+                            -- (push tail now in lemma; u advance below
+                            -- threads the lemma post-state)
                             obtain ⟨ρU, hupU⟩ :=
                               envUpdate_some_of_lookup ρC "u"
                                 (.u64 u) (.u64 (u + 1)) huC
@@ -3799,9 +3395,7 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                                 some (.u64 (count + 1)) :=
                               (envLookup_update_miss ρC "count" "u"
                                 (.u64 (u + 1)) ρU
-                                (by decide) hupU).trans
-                                (envLookup_update_hit _ "count" _
-                                  ρC hupC)
+                                (by decide) hupU).trans hcountC
                             have hvisB : envLookup ρU "vis" =
                                 some (.stdVecOwned
                                   ⟨visL.set u.toNat 1, false⟩
@@ -3821,19 +3415,6 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                               (envLookup_update_miss ρC "st" "u"
                                 (.u64 (u + 1)) ρU
                                 (by decide) hupU).trans hstC
-                            have hPushS : evalProgStmt vecGrowProg F
-                                dfsGrowPush ρV =
-                                .ok (ρC, .fellThrough) := by
-                              simp only [dfsGrowPush]
-                              exact (evalProgStmt_seq_fallthrough
-                                vecGrowProg F _ _ _ _
-                                hstepX).trans
-                                ((evalProgStmt_seq_fallthrough
-                                  vecGrowProg F _ _ _ _
-                                  hifEv).trans
-                                  ((evalProgStmt_seq_fallthrough
-                                    vecGrowProg F _ _ _ _
-                                    htopA).trans hcountA))
                             have hL4S : evalProgStmt vecGrowProg F
                                 (.seq (.vgrowSet "vis" (.var "u")
                                   (.lit (.i32
@@ -3998,215 +3579,31 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                             cases hown
                           | ok pt =>
                             simp only [hown, vecGrow_bind_ok] at herr
-                            have hv0 := vecGrowOwned_ok hown
-                            obtain ⟨b2, l2, c2, hv2, hfr, hlen2,
-                                hbuflen2, h64_2, hcap2, hlen1⟩ :=
-                              stdVecPushBackFwd_ok b len cap
-                                (BitVec.ofNat 32 u.toNat) pv hlive
-                                hlen hbuflen hlen64 hcap64 hmaxC hpush
-                            rw [hpush, hv2] at hcall
-                            have hstepPushF : evalProgStmt vecGrowProg
-                                (Fp + 1)
-                                (.callProg "st" stdVecPushBackName
-                                  ["st", "x"])
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat))) =
-                                .ok (envExtend (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                  "st" (.stdVecOwned b2 l2 c2),
-                                  .fellThrough) :=
-                              evalProgStmt_callProg_ok vecGrowProg Fp
-                                "st" stdVecPushBackName ["st", "x"]
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                [.stdVecOwned b len cap,
-                                  .i32 (BitVec.ofNat 32 u.toNat)]
-                                stdVecPushBackFunc
-                                (.stdVecOwned b2 l2 c2) hargs
-                                findFunc_stdVecPushBack hcall
-                            rw [← hFeq] at hstepPushF
-                            -- Cursor and count advances.
-                            have htopVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "top" =
-                                some (.u64 top) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  htopV (by decide)) (by decide)
-                            have htopE : evalExpr
-                                (.uadd (.var "top")
-                                  (.lit (.u64
-                                    (BitVec.ofNat 64 1))))
-                                (envExtend (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2)) =
-                                .ok (.u64 (top + 1)) :=
-                              evalExpr_uadd_u64 _ _ _ _ _
-                                (evalExpr_var_hit _ "top"
-                                  (.u64 top) htopVxS)
-                                (evalExpr_lit _ _)
-                            obtain ⟨ρT, hupT⟩ :=
-                              envUpdate_some_of_lookup
-                                (envExtend (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2)) "top"
-                                (.u64 top) (.u64 (top + 1)) htopVxS
-                            have htopA : evalProgStmt vecGrowProg F
-                                (.assign "top"
-                                  (.uadd (.var "top")
-                                    (.lit (.u64
-                                      (BitVec.ofNat 64 1)))))
-                                (envExtend (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2)) =
-                                .ok (ρT, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.assign "top"
-                                    (.uadd (.var "top")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1)))))
-                                  (envExtend (envExtend ρV "x"
-                                    (.i32 (BitVec.ofNat 32 u.toNat)))
-                                  "st"
-                                    (.stdVecOwned b2 l2 c2)) =
-                                  evalStmtFuel F
-                                    (.assign "top"
-                                      (.uadd (.var "top")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    (envExtend (envExtend ρV "x"
-                                      (.i32
-                                        (BitVec.ofNat 32 u.toNat)))
-                                    "st"
-                                      (.stdVecOwned b2 l2 c2)) := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact evalStmtFuel_assign _ _ _ _ _ _
-                                htopE hupT
-                            have hcountVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "count" =
-                                some (.u64 count) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  hcountV (by decide)) (by decide)
-                            have hcountT : envLookup ρT "count" =
-                                some (.u64 count) :=
-                              (envLookup_update_miss _
-                                "count" "top" (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans hcountVxS
-                            have hcountE : evalExpr
-                                (.uadd (.var "count")
-                                  (.lit (.u64
-                                    (BitVec.ofNat 64 1)))) ρT =
-                                .ok (.u64 (count + 1)) :=
-                              evalExpr_uadd_u64 _ _ _ _ _
-                                (evalExpr_var_hit ρT "count"
-                                  (.u64 count) hcountT)
-                                (evalExpr_lit _ _)
-                            obtain ⟨ρC, hupC⟩ :=
-                              envUpdate_some_of_lookup ρT "count"
-                                (.u64 count) (.u64 (count + 1))
-                                hcountT
-                            have hcountA : evalProgStmt vecGrowProg F
-                                (.assign "count"
-                                  (.uadd (.var "count")
-                                    (.lit (.u64
-                                      (BitVec.ofNat 64 1))))) ρT =
-                                .ok (ρC, .fellThrough) := by
-                              have hfb : evalProgStmt vecGrowProg F
-                                  (.assign "count"
-                                    (.uadd (.var "count")
-                                      (.lit (.u64
-                                        (BitVec.ofNat 64 1))))) ρT =
-                                  evalStmtFuel F
-                                    (.assign "count"
-                                      (.uadd (.var "count")
-                                        (.lit (.u64
-                                          (BitVec.ofNat 64 1)))))
-                                    ρT := by
-                                simp only [evalProgStmt]
-                              rw [hfb]
-                              exact evalStmtFuel_assign _ _ _ _ _ _
-                                hcountE hupC
-                            -- The `u` advance (helper).
-                            have huVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "u" =
-                                some (.u64 u) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  huV2 (by decide)) (by decide)
-                            have huC : envLookup ρC "u" =
-                                some (.u64 u) :=
-                              (envLookup_update_miss ρT "u" "count"
-                                (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans
-                                ((envLookup_update_miss _ "u" "top"
-                                  (.u64 (top + 1)) ρT (by decide)
-                                  hupT).trans huVxS)
+                            -- Push adequacy from the absolute bound.
+                            have hadq : len + 4 ≤ F := by
+                              have hle : ones visL ≤ visL.length :=
+                                ones_le_length visL
+                              omega
+                            -- The push sequence (growth leg): factored.
+                            obtain ⟨ρC, b2, l2, c2, hPush,
+                                hmC, hvisC, hstC, hnC, hvC,
+                                htopC, hcountC, huC, hfr, hlen2,
+                                hbuflen2, h64_2, hcap2, hlen1,
+                                e1, e2, e3⟩ :=
+                              dfsGrowPushGrow_ok F b len cap top
+                                count u ρV
+                                ⟨visL.set u.toNat 1, false⟩
+                                visL.length visL.length
+                                ⟨mL, false⟩ mL.length mL.length
+                                n v pv pt hvisV hmV hnV hvV hstV
+                                htopV hcountV huV2 hlive hlen
+                                hbuflen hlen64 hcap64 htlF hmaxC
+                                hadq hpush hown
                             obtain ⟨ρU, hupU⟩ :=
                               envUpdate_some_of_lookup ρC "u"
                                 (.u64 u) (.u64 (u + 1)) huC
                             obtain ⟨huA, huU⟩ :=
                               evalProgUAdv F ρC u huC ρU hupU
-                            -- Push-sequence assembly (growth arm: the
-                            -- reuse guard is false here).
-                            have hifG : evalProgStmt vecGrowProg F
-                                (.if_ (.ult (.var "top")
-                                  (.vgrowLen "st"))
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"]))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                evalProgStmt vecGrowProg F
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"])
-                                  (envExtend ρV "x"
-                                    (.i32
-                                      (BitVec.ofNat 32
-                                        u.toNat))) := by
-                              rw [evalProgStmt_if_false _ _ _ _ _ _
-                                hguardP]
-                            have hifEvG : evalProgStmt vecGrowProg F
-                                (.if_ (.ult (.var "top")
-                                  (.vgrowLen "st"))
-                                  (.vgrowSet "st" (.var "top")
-                                    (.var "x"))
-                                  (.callProg "st"
-                                    stdVecPushBackName ["st", "x"]))
-                                (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat))) =
-                                .ok (envExtend (envExtend ρV "x"
-                                  (.i32
-                                    (BitVec.ofNat 32 u.toNat)))
-                                  "st"
-                                  (.stdVecOwned b2 l2 c2),
-                                  .fellThrough) :=
-                              hifG.trans hstepPushF
-                            have hPush : evalProgStmt vecGrowProg F
-                                dfsGrowPush ρV =
-                                .ok (ρC, .fellThrough) := by
-                              simp only [dfsGrowPush]
-                              exact (evalProgStmt_seq_fallthrough
-                                vecGrowProg F _ _ _ _
-                                hstepX).trans
-                                ((evalProgStmt_seq_fallthrough
-                                  vecGrowProg F _ _ _ _
-                                  hifEvG).trans
-                                  ((evalProgStmt_seq_fallthrough
-                                    vecGrowProg F _ _ _ _
-                                    htopA).trans hcountA))
                             have hL4 : evalProgStmt vecGrowProg F
                                 (.seq (.vgrowSet "vis" (.var "u")
                                   (.lit (.i32
@@ -4280,108 +3677,24 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                               simp only [dfsGrowInnerBody]
                               exact (evalProgStmt_seq_fallthrough
                                 vecGrowProg F _ _ _ _ hL1ev).trans huA
-                            -- Thread the post-body lookups.
-                            have hmVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "m" =
-                                some (.stdVecOwned ⟨mL, false⟩
-                                  mL.length mL.length) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  hmV (by decide)) (by decide)
-                            have hmT : envLookup ρT "m" =
-                                some (.stdVecOwned ⟨mL, false⟩
-                                  mL.length mL.length) :=
-                              (envLookup_update_miss _ "m" "top"
-                                (.u64 (top + 1)) ρT (by decide)
-                                hupT).trans hmVxS
-                            have hmC : envLookup ρC "m" =
-                                some (.stdVecOwned ⟨mL, false⟩
-                                  mL.length mL.length) :=
-                              (envLookup_update_miss ρT "m" "count"
-                                (.u64 (count + 1)) ρC (by decide)
-                                hupC).trans hmT
+                            -- Thread the post-body lookups (all from
+                            -- the lemma conclusions).
                             have hmB : envLookup ρU "m" =
                                 some (.stdVecOwned ⟨mL, false⟩
                                   mL.length mL.length) :=
                               (envLookup_update_miss ρC "m" "u"
                                 (.u64 (u + 1)) ρU (by decide)
                                 hupU).trans hmC
-                            have hnVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "n" =
-                                some (.u64 n) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  hnV (by decide)) (by decide)
-                            have hnT : envLookup ρT "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss _ "n" "top"
-                                (.u64 (top + 1)) ρT (by decide)
-                                hupT).trans hnVxS
-                            have hnC : envLookup ρC "n" =
-                                some (.u64 n) :=
-                              (envLookup_update_miss ρT "n" "count"
-                                (.u64 (count + 1)) ρC (by decide)
-                                hupC).trans hnT
                             have hnB : envLookup ρU "n" =
                                 some (.u64 n) :=
                               (envLookup_update_miss ρC "n" "u"
                                 (.u64 (u + 1)) ρU (by decide)
                                 hupU).trans hnC
-                            have hvVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "v" =
-                                some (.u64 v) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  hvV (by decide)) (by decide)
-                            have hvT : envLookup ρT "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss _ "v" "top"
-                                (.u64 (top + 1)) ρT (by decide)
-                                hupT).trans hvVxS
-                            have hvC : envLookup ρC "v" =
-                                some (.u64 v) :=
-                              (envLookup_update_miss ρT "v" "count"
-                                (.u64 (count + 1)) ρC (by decide)
-                                hupC).trans hvT
                             have hvB : envLookup ρU "v" =
                                 some (.u64 v) :=
                               (envLookup_update_miss ρC "v" "u"
                                 (.u64 (u + 1)) ρU (by decide)
                                 hupU).trans hvC
-                            have hvisVxS : envLookup (envExtend
-                                (envExtend ρV "x"
-                                  (.i32 (BitVec.ofNat 32 u.toNat)))
-                                "st" (.stdVecOwned b2 l2 c2))
-                                "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              envLookup_extend_miss _ _ _ _ _
-                                (envLookup_extend_miss _ _ _ _ _
-                                  hvisV (by decide)) (by decide)
-                            have hvisT : envLookup ρT "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss _ "vis" "top"
-                                (.u64 (top + 1)) ρT (by decide)
-                                hupT).trans hvisVxS
-                            have hvisC : envLookup ρC "vis" =
-                                some (.stdVecOwned
-                                  ⟨visL.set u.toNat 1, false⟩
-                                  visL.length visL.length) :=
-                              (envLookup_update_miss ρT "vis" "count"
-                                (.u64 (count + 1)) ρC (by decide)
-                                hupC).trans hvisT
                             have hvisU : envLookup ρU "vis" =
                                 some (.stdVecOwned
                                   ⟨visL.set u.toNat 1, false⟩
@@ -4401,49 +3714,21 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                                 2 ^ 64 := by
                               rw [hsetlen]
                               exact hvislen
-                            have hstT : envLookup ρT "st" =
-                                some (.stdVecOwned b2 l2 c2) :=
-                              (envLookup_update_miss _
-                                "st" "top" (.u64 (top + 1)) ρT
-                                (by decide) hupT).trans
-                                (envLookup_extend_hit _ _ _)
-                            have hstC : envLookup ρC "st" =
-                                some (.stdVecOwned b2 l2 c2) :=
-                              (envLookup_update_miss ρT "st" "count"
-                                (.u64 (count + 1)) ρC (by decide)
-                                hupC).trans hstT
                             have hstB : envLookup ρU "st" =
                                 some (.stdVecOwned b2 l2 c2) :=
                               (envLookup_update_miss ρC "st" "u"
                                 (.u64 (u + 1)) ρU (by decide)
                                 hupU).trans hstC
-                            have htopT : envLookup ρT "top" =
-                                some (.u64 (top + 1)) :=
-                              envLookup_update_hit _ "top" _ ρT hupT
-                            have htopC : envLookup ρC "top" =
-                                some (.u64 (top + 1)) :=
-                              (envLookup_update_miss ρT "top"
-                                "count" (.u64 (count + 1)) ρC
-                                (by decide) hupC).trans htopT
                             have htopB : envLookup ρU "top" =
                                 some (.u64 (top + 1)) :=
                               (envLookup_update_miss ρC "top" "u"
                                 (.u64 (u + 1)) ρU (by decide)
                                 hupU).trans htopC
-                            have hcountC : envLookup ρC "count" =
-                                some (.u64 (count + 1)) :=
-                              envLookup_update_hit _ "count" _ ρC hupC
                             have hcountB : envLookup ρU "count" =
                                 some (.u64 (count + 1)) :=
                               (envLookup_update_miss ρC "count" "u"
                                 (.u64 (u + 1)) ρU (by decide)
                                 hupU).trans hcountC
-                            have hconn : Value.stdVecOwned b2 l2 c2 =
-                                Value.stdVecOwned pt.1 pt.2.1
-                                  pt.2.2 := by
-                              rw [← hv2, hv0]
-                            simp only [Value.stdVecOwned.injEq] at hconn
-                            obtain ⟨e1, e2, e3⟩ := hconn
                             rw [← e1, ← e2, ← e3] at herr
                             -- Budget premises after the push: fuel and
                             -- maxdiff track the marked list; the count
