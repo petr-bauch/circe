@@ -15,6 +15,7 @@ import Circe.Emit.CondPair
 import Circe.Transfer.VecReverse
 import Circe.Transfer.VecSegReverse
 import Circe.Transfer.VecRotate
+import Circe.Emit.VecListRev
 
 namespace HoareGallery
 
@@ -889,6 +890,51 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: rotate failed: {(repr e).pretty}")
+  -- Link-rewire step over `nxt=[1,2,3]` from the seeded entry
+  -- state (`prev=n=3`, `cur=head=0`): one `revBody` iteration
+  -- rewires `nxt[0]` to the predecessor and advances both
+  -- cursors (`prev=0`, `cur=1`, `nxt_cur=1`, `nxt=[3,2,3]`).
+  let revData : List (BitVec 32) := [10, 20, 30]
+  let revNxt : List (BitVec 32) := [1, 2, 3]
+  match evalStmtFuel 10 revBody
+      (mkRevEnv revData revNxt 3 0 3 0 0) with
+  | .ok (ρ', .fellThrough) =>
+    match envLookup ρ' "nxt", envLookup ρ' "prev",
+        envLookup ρ' "cur", envLookup ρ' "nxt_cur" with
+    | some (.stdVecVal gotNxt), some (.u64 gotP),
+      some (.u64 gotC), some (.u64 gotX) =>
+      if gotNxt != [3, 2, 3] || gotP.toNat != 0 ||
+          gotC.toNat != 1 || gotX.toNat != 1 then
+        throw (IO.userError
+          s!"hoare-gallery: listrev step got nxt={gotNxt.map (·.toInt)}, want [3,2,3]")
+      else passed := passed + 1
+    | _, _, _, _ =>
+      throw (IO.userError "hoare-gallery: listrev step env lost")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: listrev step want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: listrev step failed: {(repr e).pretty}")
+  -- Whole chase over `nxt=[1,2,3]` from `head=0` exits with the
+  -- new head 2 and rewired links `[3,0,1]` (the links leg is what
+  -- sets reversal apart from a head-only spec).
+  -- Prose note on the Hoare boundary: J has no Mem-level
+  -- (Transfer) presence, so there is no rewire-step triple for
+  -- `htripleProg_while_at` to consume yet — a triple would need
+  -- the step at Mem level plus the loop-rule application (named
+  -- future work; the executable instances above pin the behavior
+  -- instead). Rule-of-three status: the R/S swap-step tactics
+  -- are Mem-level, so the Func-level chase step is not a third
+  -- use — no tactic harvest.
+  match revOuterFwd 40 revNxt 3 3 0 with
+  | .ok (gotNxt, gotP, gotC) =>
+    if gotNxt != [3, 0, 1] || gotP.toNat != 2 || gotC.toNat != 3 then
+      throw (IO.userError
+        s!"hoare-gallery: listrev chase got nxt={gotNxt.map (·.toInt)}, want [3,0,1]")
+    else passed := passed + 1
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: listrev chase failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix
