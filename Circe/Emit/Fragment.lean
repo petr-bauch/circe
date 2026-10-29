@@ -144,6 +144,7 @@ inductive FragKind : Type
   | vecReverse
   | vecSegReverse
   | vecRotate
+  | vecListRev
   | vecMergeInto
   | vecMergeRuns
   | vecMergeSort

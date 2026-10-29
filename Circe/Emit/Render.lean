@@ -901,6 +901,35 @@ def emitVecRotateText (name : String) : String :=
   ++ "    .ok ((l.drop k.toNat) ++ l.take k.toNat)\n"
   ++ "  else .error .AssertFail\n"
 
+/-- Render the `list_rev` entry forward definition: the
+    index-linked in-place chase that rewires each visited link to
+    its predecessor (widening `at()`-style read, narrowing rewire
+    store at the same site; either miss is `AssertFail`, loud like
+    `at()`-throw; fuel is structural on `F`, one per chase step). -/
+def emitVecListRevText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (index-linked in-place reversal over the reified link words; read miss and rewire miss are `AssertFail`). -/\n"
+  ++ s!"def {name}_rev_outer_fwd (F : Nat) (nxt : List (BitVec 32)) (n prev cur : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × BitVec 64 × BitVec 64) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    if cur != n then .error .AssertFail\n"
+  ++ "    else .ok (nxt, prev, cur)\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    if cur != n then\n"
+  ++ "      match nxt[cur.toNat]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some w =>\n"
+  ++ s!"        {name}_rev_outer_fwd F (nxt.set cur.toNat (BitVec.ofNat 32 prev.toNat))\n"
+  ++ "          n cur (w.signExtend 64)\n"
+  ++ "    else .ok (nxt, prev, cur)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (data nxt : List (BitVec 32)) (head n : BitVec 64) : Result (BitVec 64) :=\n"
+  ++ s!"  match {name}_rev_outer_fwd F nxt n n head with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, prev, _) => .ok prev\n"
+
 /-- Render the `vec_seg_reverse` entry forward definition: window
     reversal over the reified words (`take`/`drop` saturate, so the
     mirror agrees with native on every in-bounds `[lo, hi)`). -/

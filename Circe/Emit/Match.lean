@@ -23,6 +23,7 @@ import Circe.Emit.VecAtSet
 import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
 import Circe.Emit.VecRotate
+import Circe.Emit.VecListRev
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -921,6 +922,29 @@ def matchFrag : Func → Option FragKind
                   ["v", "z", "m"])
                 (.return_ (.var "v")))))))⟩ =>
     some .vecRotate
+  | ⟨_, [⟨"data", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+          .mutBorrow _⟩,
+        ⟨"nxt", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+          .mutBorrow _⟩,
+        ⟨"head", .u 64, .owned⟩,
+        ⟨"n", .u 64, .owned⟩],
+      .u 64,
+      (.seq (.seq (.let_ "prev" (.u 64) (.var "n"))
+              (.seq (.let_ "cur" (.u 64) (.var "head"))
+                (.let_ "nxt_cur" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))))
+        (.seq (.while_ (.une (.var "cur") (.var "n"))
+          (.seq (.if_ (.ult (.var "cur") (.stdVecLen "nxt"))
+                  (.assign "nxt_cur"
+                    (.u64ofI32 (.stdVecAt "nxt" (.var "cur"))))
+                  .fail)
+            (.seq (.if_ (.ult (.var "cur") (.stdVecLen "nxt"))
+                    (.vecSet "nxt" (.var "cur")
+                      (.i32ofU64 (.var "prev")))
+                    .fail)
+              (.seq (.assign "prev" (.var "cur"))
+                (.assign "cur" (.var "nxt_cur"))))))
+          (.return_ (.var "prev"))))⟩ =>
+    some .vecListRev
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2014,6 +2038,8 @@ theorem matchFrag_vecSegReverse :
     matchFrag vecSegReverseFunc = some .vecSegReverse := rfl
 theorem matchFrag_vecRotate :
     matchFrag vecRotateFunc = some .vecRotate := rfl
+theorem matchFrag_vecListRev :
+    matchFrag listRevFunc = some .vecListRev := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :

@@ -1758,6 +1758,52 @@ def emitVecRotateSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `list_rev` entry. The mirror is the
+    index-linked chase over the reified link words: seed the
+    sentinel pair (`prev = n`, `cur = head`), then rewire each
+    visited link to its predecessor. Edges pin the REWIRED LINKS,
+    not just the new head (head-only specs would coincide with
+    weaker traversals): 3-node chase, singleton, empty, mid-list
+    head (index 0 untouched), OOB head, and short-`nxt` misses;
+    the payload rides along untouched. -/
+def emitVecListRevSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(data, nxt, head, n)` reverses the `head`-rooted chain in `nxt` in place, returning the new head. Base body reference: the link chase over the reified words (cf. emitted `{name}_fwd`, `revFwd` for the entry leg). Read and rewire misses abort like `at()`-throw; cyclic input exhausts fuel. -/\n"
+  ++ s!"def {name}_spec_chase (F : Nat) (nxt : List (BitVec 32)) (n prev cur : BitVec 64) :\n"
+  ++ "    Result (List (BitVec 32) × BitVec 64 × BitVec 64) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    if cur != n then .error .AssertFail\n"
+  ++ "    else .ok (nxt, prev, cur)\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    if cur != n then\n"
+  ++ "      match nxt[cur.toNat]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some w =>\n"
+  ++ s!"        {name}_spec_chase F (nxt.set cur.toNat (BitVec.ofNat 32 prev.toNat))\n"
+  ++ "          n cur (w.signExtend 64)\n"
+  ++ "    else .ok (nxt, prev, cur)\n"
+  ++ "\n"
+  ++ s!"def {name}_spec_fwd (F : Nat) (data nxt : List (BitVec 32)) (head n : BitVec 64) : Result (List (BitVec 32) × BitVec 64) :=\n"
+  ++ s!"  match {name}_spec_chase F nxt n n head with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (nxt', prev, _) => .ok (nxt', prev)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: 3-node chase, singleton, empty, mid-list head, OOB head, short `nxt`. -/\n"
+  ++ s!"def {name}_spec_edges : List (((Nat × List (BitVec 32) × List (BitVec 32) × BitVec 64 × BitVec 64)) × Result (List (BitVec 32) × BitVec 64)) :=\n"
+  ++ "  [((100, [10, 20, 30], [1, 2, 3], 0, 3), .ok ([3, 0, 1], 2)),\n"
+  ++ "   ((100, [7], [1], 0, 1), .ok ([1], 0)),\n"
+  ++ "   ((100, [], [], 0, 0), .ok ([], 0)),\n"
+  ++ "   ((100, [10, 20, 30], [1, 2, 3], 1, 3), .ok ([1, 3, 1], 2)),\n"
+  ++ "   ((100, [10], [0], 5, 1), .error .AssertFail),\n"
+  ++ "   ((100, [10, 20], [1], 0, 2), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2.1 t.1.2.2.2.1 t.1.2.2.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_merge_into` entry. The mirror is an
     independent out-of-place two-pointer merge over the reified
     words; edges carry ground truth (interleave, empty-`a` drain,
