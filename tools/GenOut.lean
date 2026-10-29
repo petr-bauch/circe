@@ -27,6 +27,7 @@ import Circe.Emit.VecDfs
 import Circe.Emit.VecBfs
 import Circe.Emit.VecDfsGrow
 import Circe.Emit.VecQuicksort
+import Circe.Emit.VecHeapSort
 import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
 import Circe.Emit.VecRotate
@@ -169,6 +170,7 @@ def main : IO Unit := do
   let vecMergeRuns ← emitOrDie VecMergeRuns.mergeRunsFunc
   let vecMergeSort ← emitOrDie VecMergeSort.vecMergeSortFunc
   let vecQuicksort ← emitOrDie VecQuicksort.vecQuicksortFunc
+  let vecHeapSort ← emitOrDie heapSortFunc
   let vecDfs ← emitOrDie dfsFunc
   let vecBfs ← emitOrDie bfsOrderFunc
   let vecDfsGrow ← emitOrDie dfsGrowFunc
@@ -322,6 +324,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecMergeRuns.lean" (emitFileText (.ok vecMergeRuns))
   IO.FS.writeFile "out/VecMergeSort.lean" (emitFileText (.ok vecMergeSort))
   IO.FS.writeFile "out/VecQuicksort.lean" (emitFileText (.ok vecQuicksort))
+  IO.FS.writeFile "out/VecHeapSort.lean" (emitFileText (.ok vecHeapSort))
   IO.FS.writeFile "out/VecDfs.lean" (emitFileText (.ok vecDfs))
   IO.FS.writeFile "out/VecBfs.lean" (emitFileText (.ok vecBfs))
   IO.FS.writeFile "out/VecDfsGrow.lean" (emitFileText (.ok vecDfsGrow))
@@ -475,6 +478,7 @@ def main : IO Unit := do
   let vecMergeRunsSpec ← specOrDie VecMergeRuns.mergeRunsFunc
   let vecMergeSortSpec ← specOrDie VecMergeSort.vecMergeSortFunc
   let vecQuicksortSpec ← specOrDie VecQuicksort.vecQuicksortFunc
+  let vecHeapSortSpec ← specOrDie heapSortFunc
   let vecDfsSpec ← specOrDie dfsFunc
   let vecBfsSpec ← specOrDie bfsOrderFunc
   let vecDfsGrowSpec ← specOrDie dfsGrowFunc
@@ -628,6 +632,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecMergeRuns_Spec.lean" vecMergeRunsSpec
   IO.FS.writeFile "out/VecMergeSort_Spec.lean" vecMergeSortSpec
   IO.FS.writeFile "out/VecQuicksort_Spec.lean" vecQuicksortSpec
+  IO.FS.writeFile "out/VecHeapSort_Spec.lean" vecHeapSortSpec
   IO.FS.writeFile "out/VecDfs_Spec.lean" vecDfsSpec
   IO.FS.writeFile "out/VecBfs_Spec.lean" vecBfsSpec
   IO.FS.writeFile "out/VecDfsGrow_Spec.lean" vecDfsGrowSpec

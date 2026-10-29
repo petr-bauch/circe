@@ -1364,6 +1364,21 @@ def emitVecQuicksortText (name : String) : String :=
   ++ s!"def {name}_fwd (l : List (BitVec 32)) (lo hi F : Nat) : Result (List (BitVec 32)) :=\n"
   ++ "  VecQuicksort.vecQuicksortFwd l F lo hi\n"
 
+/-- Render the `heap_sort` entry forward definition: iterative
+    in-place heapsort over the reified words (down-counting heapify
+    drain + extract-max drain; fuel is the drain/sift budget — the
+    rendering delegates to the verified forward function like the
+    composer forwarders). -/
+def emitVecHeapSortText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\nimport Circe.Emit.VecHeapSort\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative in-place heapsort over `[0, n)`; fuel is the drain/sift budget). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (n F : Nat) : Result (List (BitVec 32)) :=\n"
+  ++ "  match heapSortFwd F l (BitVec.ofNat 64 n) with\n"
+  ++ "  | .ok (.stdVecVal l') => .ok l'\n"
+  ++ "  | .ok _ => .error .AssertFail\n"
+  ++ "  | .error e => .error e\n"
+
 /-- Render the `vec_at_one` entry forward definition: the `at(0)` read
     over the reified words. -/
 def emitVecAtOneText (name : String) : String :=

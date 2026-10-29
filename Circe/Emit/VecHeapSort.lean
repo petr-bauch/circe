@@ -134,6 +134,11 @@ def heapSortFunc : Func :=
        (.seq extrDrain
          (.return_ (.var "v")))))⟩
 
+/-- Whole-program wrapper: the single-function `heapSortFunc`
+    program (no calls; the singleton list suffices for
+    `evalProgFunc` composition in the differential test). -/
+def heapSortProg : Prog := [heapSortFunc]
+
 /-- Sift environment: reified words, heap length, down-counters,
     sift bound, cursors, compare binds. Built as an `envExtend`
     chain in seed order, so the seed lets land on it exactly. -/

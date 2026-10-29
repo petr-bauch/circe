@@ -16,6 +16,7 @@ import Circe.Transfer.VecReverse
 import Circe.Transfer.VecSegReverse
 import Circe.Transfer.VecRotate
 import Circe.Emit.VecListRev
+import Circe.Emit.VecHeapSort
 
 namespace HoareGallery
 
@@ -935,6 +936,53 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: listrev chase failed: {(repr e).pretty}")
+  -- Sift step over `v=[1,3,2]` from `root=0, B=3`: `child=2*0+1=1`,
+  -- `other=2` loses the pick (`v[1]=3` is not less than `v[2]=2`),
+  -- `aR=1 < aC=3` swaps through `vecSet`, `root=1`; the next
+  -- descent reads `child=3`, out of bound, and breaks
+  -- (`v=[3,1,2]`, `root=1`).
+  -- Prose note on the Hoare boundary: H has no Mem-level
+  -- (Transfer) presence — all reads are pure `stdVecAt` (the J
+  -- precedent) — so there is no sift-step triple for
+  -- `htripleProg_while_at` to consume yet (named future work; the
+  -- executable instances below pin the behavior instead).
+  match evalStmtFuel 40 heapSift
+      (mkHeapEnv ([1, 3, 2] : List (BitVec 32))
+        (BitVec.ofNat 64 3) (BitVec.ofNat 64 3)
+        (BitVec.ofNat 64 3) (BitVec.ofNat 64 3)
+        (BitVec.ofNat 64 0) (BitVec.ofNat 64 0)
+        (BitVec.ofNat 64 0) (BitVec.ofNat 32 0)
+        (BitVec.ofNat 32 0)) with
+  | .ok (ρ', .fellThrough) =>
+    match envLookup ρ' "v", envLookup ρ' "root" with
+    | some (.stdVecVal gotV), some (.u64 gotR) =>
+      if gotV != [3, 1, 2] || gotR.toNat != 1 then
+        throw (IO.userError
+          s!"hoare-gallery: heap sift got v={gotV.map (·.toInt)} root={gotR.toNat}, want [3,1,2]/1")
+      else passed := passed + 1
+    | _, _ =>
+      throw (IO.userError "hoare-gallery: heap sift env lost")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: heap sift want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: heap sift failed: {(repr e).pretty}")
+  -- Whole entry over `[3,1,2]` exits with `v=[1,2,3]`
+  -- (executable instance of `heapSort_body_ok`: the heapify drain
+  -- builds the heap, the extract drain emits ascending order).
+  match evalProgFunc heapSortProg 60 heapSortFunc
+      [.stdVecVal ([3, 1, 2] : List (BitVec 32)),
+        .u64 (BitVec.ofNat 64 3)] with
+  | .ok (.stdVecVal got) =>
+    if got != [1, 2, 3] then
+      throw (IO.userError
+        s!"hoare-gallery: heap entry got={got.map (·.toInt)}, want [1,2,3]")
+    else passed := passed + 1
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: heap entry want stdVecVal")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: heap entry failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix

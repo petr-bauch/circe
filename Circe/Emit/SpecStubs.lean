@@ -2460,6 +2460,35 @@ def emitVecQuicksortSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for the `heap_sort` shape (H3 heap entry). The mirror is
+    an insertion sort over the reified words (independent of the
+    heapify/extract forward); edges carry ground truth (unsorted
+    sorts, duplicates keep multiplicity, empty/singleton are
+    no-ops). -/
+def emitVecHeapSortSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v, n)` sorts `v[0..n)` in place (iterative heapsort: down-counting heapify + extract-max). Base body reference: insertion-sort mirror over the reified words (cf. emitted `{name}_fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : List (BitVec 32) :=\n"
+  ++ "  l.foldl ins []\n"
+  ++ "where\n"
+  ++ "  ins : List (BitVec 32) → BitVec 32 → List (BitVec 32)\n"
+  ++ "    | [], x => [x]\n"
+  ++ "    | y :: ys, x => if x.slt y then x :: y :: ys else y :: ins ys x\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: unsorted sorts, duplicates keep multiplicity, empty/singleton are no-ops. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × List (BitVec 32)) :=\n"
+  ++ "  [([3, 1, 2], [1, 2, 3]),\n"
+  ++ "   ([], []),\n"
+  ++ "   ([1], [1]),\n"
+  ++ "   ([5, 5, 5], [5, 5, 5]),\n"
+  ++ "   ([2, 1], [1, 2])]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for the `vec_read_sum` shape (N4d-iv-a index-loop
     entry). The mirror is the tag-erased `stdVecReadSumFwd`; edges
     carry ground truth (empty sum, small sums, `nsw` overflow). -/

@@ -31,6 +31,7 @@ import Circe.Emit.VecDfs
 import Circe.Emit.VecBfs
 import Circe.Emit.VecDfsGrow
 import Circe.Emit.VecQuicksort
+import Circe.Emit.VecHeapSort
 import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
 import Circe.Emit.VecSelectionSort
@@ -128,8 +129,9 @@ def beqStmt : CStmt → CStmt → Bool
   | _, _ => false
 
 -- The structural match is near the compiler heartbeat limit (each arm
--- splits the equation compilation); F1's arm needs headroom.
-set_option maxHeartbeats 400000 in
+-- splits the equation compilation); F1's arm needs headroom (H3's
+-- heap arm pushed past 400000).
+set_option maxHeartbeats 800000 in
 /-- Recognize the admitted `Func` shapes. Anything else is `none`
     (and `emitFunc` rejects it loudly).
 
@@ -1169,6 +1171,69 @@ def matchFrag : Func → Option FragKind
       some .vecQuicksort
     else none
   | ⟨_,
+   [{ name := "v", ty := .struct "std::vector<int>" [.u 64, .u 64, .u 64], role := .mutBorrow _ },
+    { name := "n", ty := .u 64, role := .owned }],
+   .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+   (.seq (.seq (.let_ "i" (.u 64) (.var "n"))
+   (.seq (.let_ "last" (.u 64) (.var "n"))
+   (.seq (.let_ "B" (.u 64) (.var "n"))
+   (.seq (.let_ "root" (.u 64) (.lit (.u64 0)))
+   (.seq (.let_ "child" (.u 64) (.lit (.u64 0)))
+   (.seq (.let_ "other" (.u 64) (.lit (.u64 0)))
+   (.seq (.let_ "aR" (.i 32) (.lit (.i32 0)))
+     (.let_ "aC" (.i 32) (.lit (.i32 0))))))))))
+   (.seq (.while_ (.une (.var "i") (.lit (.u64 0)))
+     (.seq (.assign "i" (.usub (.var "i") (.lit (.u64 1))))
+     (.seq (.assign "root" (.var "i"))
+       (.while_ (.lit (.b true))
+         (.seq (.seq (.assign "child"
+               (.uadd (.umul (.var "root") (.lit (.u64 2))) (.lit (.u64 1))))
+             (.assign "other" (.uadd (.var "child") (.lit (.u64 1)))))
+         (.if_ (.ult (.var "child") (.var "B"))
+           (.seq (.if_ (.ult (.var "other") (.var "B"))
+                 (.if_ (.slt (.stdVecAt "v" (.var "child"))
+                           (.stdVecAt "v" (.var "other")))
+                   (.assign "child" (.var "other"))
+                   .skip)
+                 .skip)
+             (.seq (.assign "aR" (.stdVecAt "v" (.var "root")))
+             (.seq (.assign "aC" (.stdVecAt "v" (.var "child")))
+             (.if_ (.slt (.var "aR") (.var "aC"))
+               (.seq (.vecSet "v" (.var "root") (.var "aC"))
+                 (.seq (.vecSet "v" (.var "child") (.var "aR"))
+                   (.assign "root" (.var "child"))))
+               .break_))))
+           .break_))))))
+   (.seq (.while_ (.une (.var "last") (.lit (.u64 0)))
+     (.seq (.assign "last" (.usub (.var "last") (.lit (.u64 1))))
+     (.seq (.seq (.assign "aR" (.stdVecAt "v" (.lit (.u64 0))))
+     (.seq (.assign "aC" (.stdVecAt "v" (.var "last")))
+     (.seq (.vecSet "v" (.lit (.u64 0)) (.var "aC"))
+     (.seq (.vecSet "v" (.var "last") (.var "aR"))
+       (.assign "B" (.var "last"))))))
+     (.seq (.assign "root" (.lit (.u64 0)))
+       (.while_ (.lit (.b true))
+         (.seq (.seq (.assign "child"
+               (.uadd (.umul (.var "root") (.lit (.u64 2))) (.lit (.u64 1))))
+             (.assign "other" (.uadd (.var "child") (.lit (.u64 1)))))
+         (.if_ (.ult (.var "child") (.var "B"))
+           (.seq (.if_ (.ult (.var "other") (.var "B"))
+                 (.if_ (.slt (.stdVecAt "v" (.var "child"))
+                           (.stdVecAt "v" (.var "other")))
+                   (.assign "child" (.var "other"))
+                   .skip)
+                 .skip)
+             (.seq (.assign "aR" (.stdVecAt "v" (.var "root")))
+             (.seq (.assign "aC" (.stdVecAt "v" (.var "child")))
+             (.if_ (.slt (.var "aR") (.var "aC"))
+               (.seq (.vecSet "v" (.var "root") (.var "aC"))
+                 (.seq (.vecSet "v" (.var "child") (.var "aR"))
+                   (.assign "root" (.var "child"))))
+               .break_))))
+           .break_)))))))
+     (.return_ (.var "v")))))⟩ =>
+    some .vecHeapSort
+  | ⟨_,
    [{ name := "m", ty := .struct "std::vector<int>" [.u 64, .u 64, .u 64], role := .sharedBorrow },
     { name := "vis", ty := .struct "std::vector<int>" [.u 64, .u 64, .u 64], role := .mutBorrow 0 },
     { name := "st", ty := .struct "std::vector<int>" [.u 64, .u 64, .u 64], role := .mutBorrow 0 },
@@ -2057,6 +2122,8 @@ theorem matchFrag_vecMergeSort :
     matchFrag VecMergeSort.vecMergeSortFunc = some .vecMergeSort := rfl
 theorem matchFrag_vecQuicksort :
     matchFrag VecQuicksort.vecQuicksortFunc = some .vecQuicksort := rfl
+theorem matchFrag_vecHeapSort :
+    matchFrag heapSortFunc = some .vecHeapSort := rfl
 theorem matchFrag_vecDfs :
     matchFrag dfsFunc = some .vecDfs := rfl
 theorem matchFrag_vecBfs :

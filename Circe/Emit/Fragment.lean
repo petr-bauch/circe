@@ -149,6 +149,7 @@ inductive FragKind : Type
   | vecMergeRuns
   | vecMergeSort
   | vecQuicksort
+  | vecHeapSort
   | vecDfs
   | vecBfs
   | vecDfsGrow
