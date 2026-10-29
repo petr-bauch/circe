@@ -1250,6 +1250,26 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     edges). Encapsulation pins: no direct `operator[]` /
     `_M_range_check` / throw calls; `nsw` anywhere rejects.
     Verdict honestly `unknown` (single-ref).
+39. In-place ascending heapsort (H, over the N4d-iv-c
+    composers): `heap_sort` (`vector<int>&` + `u64` heap length
+    in, `void` out; down-counting heapify from `n` (`usub`,
+    leaves are no-ops — no `n/2`, no division) plus extract-max,
+    each sifting with `child = 2*root+1` (`umul`/`uadd`);
+    twenty mut-`at()` sites (bound checks, child picks,
+    compares, `at()`-ptr swap stores), four `cir.while` (two
+    drains + two sifts), six `cir.if` (bound-breaks, nested
+    child-pick, heap-breaks), two `cir.ternary` (the `&&`
+    child-pick guards), four `cir.break`, ten `cir.cmp`
+    (`ne`/`ge`/`lt`-`u64` cursor guards + `gt`/`ge`-`s32`
+    payload compares), `mul` 2 / `add` 4 / `sub` 2, no `nsw`,
+    30 consts, no `cir.cast`, 13 allocas / 78 loads / 25
+    stores). Admission is one fused entry Func: the drain
+    conditions, the bound-break guards, the child-pick guards,
+    and the swap read/write guards (each miss is the
+    `at()`-throw `AssertFail`). The tail past `n` is
+    deliberately untouched. Encapsulation pins: no direct
+    `operator[]` / `_M_range_check` / throw calls; `nsw`
+    anywhere rejects. Verdict honestly `unknown` (single-ref).
 
 ## Admitted CIR ops (raw CIRGen shape)
 

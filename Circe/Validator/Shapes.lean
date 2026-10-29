@@ -2062,6 +2062,59 @@ def isListRevShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- In-place ascending heapsort (H, the `heap_sort` shape):
+    single-ref `vector<int>&` + owned `u64` heap length in,
+    `void` out. Down-counting heapify (`usub`) plus extract-max,
+    each sifting with wrapping `child = 2*root+1` (`umul` /
+    `uadd` — no division anywhere); twenty mut-`at()` sites
+    (no const-`at()`), four `cir.while` (two drains + two
+    sifts), six `cir.if` + two `cir.ternary` (bound-breaks,
+    `&&` child-pick guards, heap-breaks) with four `cir.break`
+    (the first break-carrying entry), ten `cir.cmp`
+    (`ne`/`ge`/`lt`-`u64` cursor guards, `gt`/`ge`-`s32`
+    payload compares), no `nsw`, 30 consts, no `cir.cast`,
+    13 allocas / 78 loads / 25 stores. The tail past `n` is
+    deliberately untouched. -/
+def isHeapSortShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, n] =>
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    !isPtrType n.ctype && isU64 n.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 20 &&
+    opCount raw.text "cir.while" == 4 &&
+    opCount raw.text "cir.for" == 0 &&
+    opCount raw.text "cir.if" == 6 &&
+    opCount raw.text "cir.ternary" == 2 &&
+    opCount raw.text "cir.cmp" == 10 &&
+    opCount raw.text "cir.cmp ne" == 2 &&
+    opCount raw.text "cir.cmp ge" == 4 &&
+    opCount raw.text "cir.cmp lt" == 2 &&
+    opCount raw.text "cir.cmp gt" == 2 &&
+    opCount raw.text "cir.mul" == 2 &&
+    opCount raw.text "cir.add" == 4 &&
+    opCount raw.text "cir.sub" == 2 &&
+    !containsSubstr raw.text "nsw" &&
+    opCount raw.text "cir.const" == 30 &&
+    opCount raw.text "cir.cast" == 0 &&
+    opCount raw.text "cir.alloca" == 13 &&
+    opCount raw.text "cir.load" == 78 &&
+    opCount raw.text "cir.store" == 25 &&
+    opCount raw.text "cir.break" == 4 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecAtName &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one
