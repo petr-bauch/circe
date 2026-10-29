@@ -33,6 +33,7 @@ import Circe.Emit.VecPartition
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecQuicksort
+import Circe.Emit.VecHeapSort
 import Circe.Emit.Reborrow
 import Circe.Emit.Reborrow34
 import Circe.Emit.WrPair
@@ -1876,6 +1877,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { VecMergeSort.vecMergeSortFunc with name := raw.name }
       else if isVecQuicksortShape raw then
         .ok { VecQuicksort.vecQuicksortFunc with name := raw.name }
+      else if isHeapSortShape raw then
+        .ok { heapSortFunc with name := raw.name }
       else if isVecReverseShape raw then
         .ok { vecReverseFunc with name := raw.name }
       else if isVecSegReverseShape raw then
