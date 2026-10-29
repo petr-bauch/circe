@@ -6,7 +6,9 @@
 // sentinel (`u64`, the G-track cursor convention — no signed
 // sentinel, no new arithmetic). The loop chases `cur` through `nxt`:
 // read `nxt[cur]` (widened into `nxt_cur`), rewire `nxt[cur]` to the
-// predecessor, advance. `data` is deliberately untouched by the loop
+// predecessor, advance. All loop variables are seed-initialized
+// (`nxt_cur = 0`, the G5a init-all-loop-vars convention — keeps the
+// model environment uniform). `data` is deliberately untouched by the loop
 // (payload-agnosticism is part of the spec story, pinned by golden
 // edges). Cyclic input is not structurally excluded — fuel bounds
 // the chase (the S3a fuel contract: exhaustion aborts loud). Every
@@ -22,6 +24,7 @@
 unsigned long list_rev(std::vector<int> &data, std::vector<int> &nxt, unsigned long head, unsigned long n) {
   unsigned long prev = n;
   unsigned long cur = head;
+  unsigned long nxt_cur = 0;
   while (cur != n) {
     unsigned long nxt_cur = nxt.at(cur);
     nxt.at(cur) = (int)prev;

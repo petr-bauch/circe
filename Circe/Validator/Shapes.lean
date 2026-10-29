@@ -2019,10 +2019,11 @@ def isBfsOrderShape (raw : RawFunc) : Bool :=
     narrowing rewire store — no const-`at()`), one `cir.while`
     (`cur != n` drain), one `cir.cmp` (`ne`-`u64`), no `for` /
     `if` / `ternary` of its own (the bounds checks live in the
-    `at()` callees), no `mul` / `add` / `sub` and no `cir.const`
-    (the loop carries no literals), two `cir.cast integral`
-    (read widen `s32 -> u64`, store narrow `u64 -> s32`), 8
-    allocas / 14 loads / 11 stores. The payload vector is
+    `at()` callees), no `mul` / `add` / `sub`, one seed literal
+    (`cir.const` is 2: the `nxt_cur = 0` init pair, the G5a
+    init-all-loop-vars convention), two `cir.cast integral`
+    (read widen `s32 -> u64`, store narrow `u64 -> s32`), 9
+    allocas / 14 loads / 12 stores. The payload vector is
     deliberately untouched. -/
 def isListRevShape (raw : RawFunc) : Bool :=
   match raw.params with
@@ -2045,11 +2046,11 @@ def isListRevShape (raw : RawFunc) : Bool :=
     opCount raw.text "cir.add" == 0 &&
     opCount raw.text "cir.sub" == 0 &&
     !containsSubstr raw.text "nsw" &&
-    opCount raw.text "cir.const" == 0 &&
+    opCount raw.text "cir.const" == 2 &&
     opCount raw.text "cir.cast" == 2 &&
-    opCount raw.text "cir.alloca" == 8 &&
+    opCount raw.text "cir.alloca" == 9 &&
     opCount raw.text "cir.load" == 14 &&
-    opCount raw.text "cir.store" == 11 &&
+    opCount raw.text "cir.store" == 12 &&
     !callsFunc raw.text raw.name &&
     !callsFunc raw.text stdVecAtName &&
     !callsFunc raw.text stdVecIndexName &&
