@@ -1229,6 +1229,25 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     pins: no direct `operator[]` / `_M_range_check` / throw calls;
     `nsw` anywhere rejects. Verdict honestly `unknown`
     (single-ref).
+38. Index-linked in-place reversal (J, over the N4d-iv-c
+    composers): `list_rev` (`vector<int>&` payloads +
+    `vector<int>&` successor links + `u64` head + `u64` node
+    count / end sentinel in, `u64` new head out; the seed binds
+    the sentinels, the single `while` (`cur != n`) chases `cur`
+    through `nxt`, rewiring each visited link to its predecessor
+    (widening read, narrowing store); two mut-`at()` sites, one
+    `cir.while`, one `cir.cmp` (`ne`-`u64`), no `for`/`if`/
+    `ternary`/`mul`/`add`/`sub` of its own (the loop carries no
+    literals: `cir.const` is 0), two `cir.cast integral` (read
+    widen `s32 -> u64`, store narrow `u64 -> s32`), 8 allocas /
+    14 loads / 11 stores). Admission is one fused entry Func: the
+    read guard, the store guard, and the drain condition (each
+    miss is the `at()`-throw `AssertFail`; cyclic input just
+    exhausts fuel, the S3a contract). The payload vector is
+    deliberately untouched (payload-agnosticism, pinned by golden
+    edges). Encapsulation pins: no direct `operator[]` /
+    `_M_range_check` / throw calls; `nsw` anywhere rejects.
+    Verdict honestly `unknown` (single-ref).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
