@@ -28,11 +28,8 @@ theorem htriple_skip (P : Env × Mem × Layout → Prop) :
   exact ⟨ρ, m, π, .fellThrough, by cases F <;> rfl, hP, rfl⟩
 
 /-- Sequencing with the mid-outcome pinned to `fellThrough`:
-    straight-line bodies return last. Early-return propagation
-    needs Mem-side seq-return equations that do not exist yet
-    (only `memEvalStmtFuel_seq`, `_seq_err`, and
-    `_seq_fallthrough` exist) — deferred with that lemma named
-    rather than silently assumed. -/
+    straight-line bodies return last. The early-return case is
+    `htriple_seq_return` (via `memEvalStmtFuel_seq_return`). -/
 theorem htriple_seq (P R : Env × Mem × Layout → Prop)
     (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt)
     (ha : HTriple P a (fun st o => o = .fellThrough ∧ R st))
@@ -46,13 +43,26 @@ theorem htriple_seq (P R : Env × Mem × Layout → Prop)
     memEvalStmtFuel_seq F a b ρ m π ρ₁ m₁ π₁ ρ₂ m₂ π₂ o₂ ha' hb',
     hQ⟩
 
+/-- Sequencing with an early return in the first component: the
+    second statement is skipped and the returned value propagates
+    with the threaded state (the `memEvalStmtFuel_seq_return`
+    equation). -/
+theorem htriple_seq_return (P : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt) (v : Value)
+    (ha : HTriple P a (fun st o => o = .returned v ∧ Q st o)) :
+    HTriple P (.seq a b) Q := by
+  intro F ρ m π hP
+  obtain ⟨ρ₁, m₁, π₁, o₁, ha', hmid⟩ := ha F ρ m π hP
+  obtain ⟨rfl, hQ⟩ := hmid
+  exact ⟨ρ₁, m₁, π₁, .returned v,
+    memEvalStmtFuel_seq_return F a b ρ m π ρ₁ m₁ π₁ v ha', hQ⟩
+
 /-- Program-level sequencing at fixed fuel (the `∀ F` rule is
     this pointwise): both components run at the same `F`, memory
     threaded. Mid-outcome pinned to `fellThrough`: straight-line
-    call spines return last. Same scope as `htriple_seq` one
-    level down — early-return propagation needs prog-level
-    seq-return equations that do not exist yet, deferred with
-    that lemma named rather than silently assumed. -/
+    call spines return last. The early-return case is
+    `htripleProg_seq_at_return` (via
+    `memEvalProgStmt_seq_returned`). -/
 theorem htripleProg_seq_at (prog : Prog) (F : Nat)
     (P R : Env × Mem × Layout → Prop)
     (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt)
@@ -76,6 +86,31 @@ theorem htripleProg_seq (prog : Prog)
     (hb : HTripleProg prog R b Q) :
     HTripleProg prog P (.seq a b) Q :=
   fun F => htripleProg_seq_at prog F P R Q a b (ha F) (hb F)
+
+/-- Program-level sequencing with an early return in the first
+    component at fixed fuel: the second statement is skipped and
+    the returned value propagates (the
+    `memEvalProgStmt_seq_returned` equation). The `∀ F` rule is
+    this pointwise. -/
+theorem htripleProg_seq_at_return (prog : Prog) (F : Nat)
+    (P : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt) (v : Value)
+    (ha : HTripleProgAt prog F P a (fun st o => o = .returned v ∧ Q st o)) :
+    HTripleProgAt prog F P (.seq a b) Q := by
+  intro ρ m π hP
+  obtain ⟨ρ₁, m₁, π₁, o₁, ha', hmid⟩ := ha ρ m π hP
+  obtain ⟨rfl, hQ⟩ := hmid
+  exact ⟨ρ₁, m₁, π₁, .returned v,
+    memEvalProgStmt_seq_returned prog F a b ρ m π ρ₁ m₁ π₁ v ha', hQ⟩
+
+/-- `∀ F` program-level sequencing with an early return,
+    pointwise from `htripleProg_seq_at_return`. -/
+theorem htripleProg_seq_return (prog : Prog)
+    (P : Env × Mem × Layout → Prop)
+    (Q : Env × Mem × Layout → Outcome → Prop) (a b : CStmt) (v : Value)
+    (ha : HTripleProg prog P a (fun st o => o = .returned v ∧ Q st o)) :
+    HTripleProg prog P (.seq a b) Q :=
+  fun F => htripleProg_seq_at_return prog F P Q a b v (ha F)
 
 /-- Program-level frame for `.callProg`: a caller-memory frame
     `R` rides across the call untouched. This is definitional,

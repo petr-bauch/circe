@@ -108,8 +108,8 @@ the unfold-loop-`show` tactic (R/S are two uses);
 R memory-threading stays prose at first use; third lockstep
 use earns a tactic; first triple-level store customer earns a
 rule; a fully framed spine waits for an actual multi-cell
-caller (P2-M2 was one — delivered). The trailing `return_` still
-needs the prog-level seq-return equation. A gallery per new
+caller (P2-M2 was one — delivered). The trailing `return_`
+seq equation landed (P3f, DELIVERED). A gallery per new
 admitted shape, as always.
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`

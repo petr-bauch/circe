@@ -428,8 +428,8 @@ statement `s` evaluates (at any fuel) to an ok outcome
 satisfying `Q`; errors stay caller-side hypotheses, matching
 transfer style. Rules (`Circe/Hoare/Rules.lean`):
 `htriple_skip`, `htriple_seq` (mid-outcome pinned to
-`fellThrough` — early-return propagation deferred, no Mem-side
-seq-return lemma exists), `htriple_consequence`,
+`fellThrough`; early return is `htriple_seq_return` via
+`memEvalStmtFuel_seq_return`), `htriple_consequence`,
 `htriple_mstore_frame` (stored-cell fact plus one framed cell;
 index pinned to `0`, complete rather than limiting because
 `cellAt` is a singleton assertion, so any successful store into
@@ -483,8 +483,9 @@ fuel (the zero-fuel arm errors, so `At (F+1)`) — the U2
 contract + transfer plug in as the run equation, never
 re-verified. `hoare_rotateSpine_closed` is the closed rotate
 prefix: all five leaves discharged, four `seq_at`
-compositions at fuel `G+1`. The trailing `return_` needs the
-deferred prog-level seq-return equation.
+compositions at fuel `G+1` (`htripleProg_seq_at_return` +
+`htripleProg_seq_return` now cover the trailing-`return_`
+case via the pre-existing `memEvalProgStmt_seq_returned`).
 
 Program-level frame (F3): `htripleProg_callProg_frame_at` /
 `htripleProg_callRet_frame_at` ride a caller-memory frame `R`

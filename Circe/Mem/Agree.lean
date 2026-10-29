@@ -232,6 +232,23 @@ theorem memEvalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt) (ρ : Env)
     simp only [memEvalStmtFuel] at ha ⊢
     simp only [memEvalStmtWith, ha]
 
+/-- `seq` short-circuits on `returned` in the first component (any
+    fuel): the second statement is skipped and the value propagates
+    with the threaded state (mirrors `evalStmtFuel_seq_return`). -/
+theorem memEvalStmtFuel_seq_return (f : Nat) (a b : CStmt) (ρ : Env)
+    (m : Mem) (π : Layout) (ρ₁ : Env) (m₁ : Mem) (π₁ : Layout)
+    (v : Value)
+    (ha : memEvalStmtFuel f a ρ m π = .ok ((ρ₁, m₁, π₁), .returned v)) :
+    memEvalStmtFuel f (.seq a b) ρ m π =
+      .ok ((ρ₁, m₁, π₁), .returned v) := by
+  cases f with
+  | zero =>
+    simp only [memEvalStmtFuel, memEvalStmtZero] at ha ⊢
+    simp only [memEvalStmtWith, ha]
+  | succ g =>
+    simp only [memEvalStmtFuel] at ha ⊢
+    simp only [memEvalStmtWith, ha]
+
 /-- Pure `let_` agrees when the bound expression does (`vnew` takes
     the allocating arm instead — see `memEvalStmtFuel_let_vnew`;
     `boxNew` takes its own allocating arm — see

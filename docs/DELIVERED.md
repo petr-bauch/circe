@@ -2031,3 +2031,55 @@ when a third push discipline arrives. Evidence for the
 pillar-3 standing rule (helpers first-order, no grand
 whole-while abstraction).
 - Acceptance: CHECK-OK (`9bbbe1c`).
+
+### B. Visit-order BFS (`bfs_order`) — DONE (2026-10-28)
+
+FIFO traversal over the G5a flat-matrix + visited setup with a
+caller-sized queue instead of the stack: two cursors
+(`head`/`tail`), empty test `head != tail`, no growth leaves
+(the visited gate bounds the queue by `n`, the G0
+caller-reserves-upfront decision verbatim). The dequeue step
+records the visit in a caller-provided `order` vector at the
+drain index — visit order (dequeue sequence) is what sets BFS
+apart from DFS: on the diamond 0->1, 0->2, 1->3, 2->3, BFS
+visits 0,1,2,3 where the G5a DFS visits 0,2,3,1 (discovery
+order coincides at 0,1,2,3, verified against a native sketch
+before the corpus was fixed). B1: corpus + real CIRGen +
+SUBSET-37 + `isBfsOrderShape` (6 params, 8 `at()` sites,
+`while` + `for`, 4 `cmp`, wrapping `mul` + 4 `add` / no `sub`,
+4 casts, 21 consts, 12 allocas / 33 loads / 21 stores).
+B2: `bfsOrderFunc` emitter + `bfsSeedFwd` / `bfsRowFwd` /
+`bfsOuterFwd` / `bfsFwd` with ok + err legs per level and
+entry theorem `evalFuncFuel_bfs` (zero sorry, G5a axiom set);
+new asset vs G5a is `bfsNarrowWiden` (narrow-after-widen is the
+identity — the visit record stores `(int)v` of the widened
+dequeue); Gate arm beside G5a's (no composer fight — no
+`push_back`). B3: goldens `VecBfs.lean` (+`_Spec`, whose
+edges pin visit order, not just count), native driver
+printing count + order words, `DiffVecBfs` (eval/fwd
+composition + word-for-word visit agreement + exit-4 loud
+legs: seed miss, short rows, short queue, short order) +
+`GoldenVecBfs` (pipeline + 5 rejections) + roster.
+- Acceptance: CHECK-OK (`ec6185d`, `f89841c`, `9d692de`).
+
+### P3f. Trailing `return_` seq equation — DONE (2026-10-28)
+
+The `seq_at` rules pinned the mid-outcome to `fellThrough`; an
+early return in the first component had no equation (both
+evaluators short-circuit, but neither level had the lemma and
+no Hoare rule used it — the gap was named, not silently
+assumed). Now: `evalStmtFuel_seq_return` (pure level,
+completing the err/fallthrough/return trio) +
+`memEvalStmtFuel_seq_return` (Mem level, same proof shape) +
+`htriple_seq_return` (statement Hoare) +
+`htripleProg_seq_at_return` and pointwise
+`htripleProg_seq_return` (program Hoare, via the pre-existing
+N4b `memEvalProgStmt_seq_returned`). Cleanup inside the slice:
+the V1 `evalStmtFuel_seq_return` local mirror in
+`VecBinarySearch.lean` was byte-identical to the new global,
+so it was deleted — V1/V2 (its two users) now use the global
+with zero proof changes. `htriple_seq` /
+`htripleProg_seq_at` doc comments updated from "deferred" to
+pointing at the new rules; ROADMAP P3 triggers and VERIFYING
+references updated likewise.
+- Acceptance: CHECK-OK.

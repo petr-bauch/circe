@@ -237,20 +237,6 @@ def vecBinarySearchFwd (l : List (BitVec 32)) (t : BitVec 32) : Result Value :=
   | .hit m => .ok (.u64 (BitVec.ofNat 64 m))
   | .miss => .ok (.u64 (BitVec.ofNat 64 l.length))
 
-/-- `seq` propagates `returned` (the second component never runs); local
-mirror of `evalStmtFuel_seq_fallthrough`, needed for the hit path. -/
-theorem evalStmtFuel_seq_return (f : Nat) (a b : CStmt)
-    (ρ ρ' : Env) (v : Value)
-    (h : evalStmtFuel f a ρ = .ok (ρ', .returned v)) :
-    evalStmtFuel f (.seq a b) ρ = .ok (ρ', .returned v) := by
-  cases f with
-  | zero =>
-    simp only [evalStmtFuel, evalStmtZero] at h ⊢
-    simp only [evalStmtWith, h]
-  | succ g =>
-    simp only [evalStmtFuel] at h ⊢
-    simp only [evalStmtWith, h]
-
 /-- Loop-guard evaluation: `ult lo hi` is `decide (lo < hi)`. -/
 theorem vecBinSearchGuard_eval (l : List (BitVec 32)) (lo hi : Nat)
     (t : BitVec 32) (mid0 : Nat) (x0 : BitVec 32)

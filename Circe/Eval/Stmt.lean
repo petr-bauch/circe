@@ -930,6 +930,21 @@ theorem evalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt)
     simp only [evalStmtFuel] at h ⊢
     simp only [evalStmtWith, h]
 
+/-- `seq` short-circuits on `returned` in the first component (any
+    fuel): the second statement is skipped and the value
+    propagates. -/
+theorem evalStmtFuel_seq_return (f : Nat) (a b : CStmt)
+    (ρ ρ' : Env) (v : Value)
+    (h : evalStmtFuel f a ρ = .ok (ρ', .returned v)) :
+    evalStmtFuel f (.seq a b) ρ = .ok (ρ', .returned v) := by
+  cases f with
+  | zero =>
+    simp only [evalStmtFuel, evalStmtZero] at h ⊢
+    simp only [evalStmtWith, h]
+  | succ g =>
+    simp only [evalStmtFuel] at h ⊢
+    simp only [evalStmtWith, h]
+
 /-! ## `break_` / `continue_` composition (S3a) -/
 
 /-- `break_` signals at any fuel. -/

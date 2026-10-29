@@ -16,9 +16,9 @@ returns `IPair` of the explicitly-narrowed indices (`(int)i`,
 `(int)j` in the corpus, `.i32ofU64` in the model — `structVal`
 holds 32-bit words only, so a u64 pair is inexpressible), miss
 returns the narrowed `(n, n)` (`find_eq` house style generalized
-to pairs). Sortedness is irrelevant (brute force). Reuses the V1
-`evalStmtFuel_seq_return` / `ofNat64_toNat'` helpers by import
-(V1 stays untouched).
+to pairs). Sortedness is irrelevant (brute force). Reuses the V1 `ofNat64_toNat'` helper by import
+(V1 stays untouched); `evalStmtFuel_seq_return` now comes from
+the global `Circe.Eval.Stmt` equation.
 -/
 
 /-- Function name (Itanium mangling of a `vec_two_sum` free function
