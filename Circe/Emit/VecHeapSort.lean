@@ -28,6 +28,7 @@ behavior cannot arise (no links), short `n` (past the vector
 length) misses loud at the first out-of-range `at()`.
 -/
 import Circe.Emit.VecListRev
+import Circe.Emit.VecSelectionSort
 import Circe.Lemmas.CheckedIx
 
 /-! ## H: `heap_sort` entry -/
@@ -2547,3 +2548,1456 @@ theorem heapSort_body_ok (F : Nat) (vL : List (BitVec 32))
       ((evalStmtFuel_seq_fallthrough F _ _ _ _ hdrain).trans
         ((evalStmtFuel_seq_fallthrough F _ _ _ _ hextr).trans
           hret)))⟩
+
+/-! ## H4: pure heapsort mirror + sort contract.
+
+The fuel-threaded `siftFwd`/`heapifyFwd`/`extractFwd` use `BitVec 64`
+cursors; the contract is proved about a pure `Nat`-indexed mirror
+with the same recursion scheme, then transferred across by a
+fuel-sufficiency bridge (`v.length + 1 ≤ F`, lengths below `2^63`
+so no cursor wraps). Ascending means
+`Pairwise (fun a b => (b.slt a) = false)` (the M5a relation);
+order facts go through `toInt` + `omega` (the `slt_ge_trans`
+precedent). -/
+
+/-- Subtree membership: `r` is `root` or descends from it via
+    `child = 2*r+1 / 2*r+2` (heap links, no division). -/
+inductive InSubtree (root : Nat) : Nat → Prop
+  | self : InSubtree root root
+  | left {r : Nat} : InSubtree root r → InSubtree root (2 * r + 1)
+  | right {r : Nat} : InSubtree root r → InSubtree root (2 * r + 2)
+
+/-- Subtree nodes sit at or below the root. -/
+theorem InSubtree.ge {root r : Nat} (h : InSubtree root r) :
+    root ≤ r := by
+  induction h with
+  | self => exact Nat.le_refl _
+  | left _ ih => omega
+  | right _ ih => omega
+
+/-- Children of a subtree node stay in the subtree. -/
+theorem InSubtree.child {root r c : Nat}
+    (h : InSubtree root r) (hc : c = 2 * r + 1 ∨ c = 2 * r + 2) :
+    InSubtree root c := by
+  rcases hc with rfl | rfl
+  · exact .left h
+  · exact .right h
+
+/-- Subtrees nest: membership below a member. -/
+theorem InSubtree.trans' {root m r : Nat}
+    (h1 : InSubtree root m) (h2 : InSubtree m r) :
+    InSubtree root r := by
+  induction h2 with
+  | self => exact h1
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Every index is in the whole heap (`0`-rooted subtree): auxiliary
+    induction on an upper bound (the parent sits below it). -/
+theorem mem_subtree_zero_aux : ∀ n m : Nat, m ≤ n → InSubtree 0 m := by
+  intro n
+  induction n with
+  | zero =>
+    intro m hm
+    have hm0 : m = 0 := Nat.le_zero.mp hm
+    subst hm0
+    exact .self
+  | succ n ih =>
+    intro m hm
+    by_cases h : m ≤ n
+    · exact ih m h
+    · have hm' : m = n + 1 := by omega
+      subst hm'
+      have hp : ((n + 1 - 1) / 2) ≤ n := by omega
+      have h2 : n + 1 = 2 * ((n + 1 - 1) / 2) + 1 ∨
+          n + 1 = 2 * ((n + 1 - 1) / 2) + 2 := by omega
+      exact (ih _ hp).child h2
+
+/-- Every index is in the whole heap (`0`-rooted subtree). -/
+theorem mem_subtree_zero : ∀ n : Nat, InSubtree 0 n :=
+  fun n => mem_subtree_zero_aux n n (Nat.le_refl _)
+
+/-- `v[i]? = some x` forces `i < v.length`. -/
+theorem lt_length_of_getElem?_eq_some {v : List (BitVec 32)}
+    {i : Nat} {x : BitVec 32} (h : v[i]? = some x) :
+    i < v.length := by
+  by_cases hm : i < v.length
+  · exact hm
+  · have hle : v.length ≤ i := by omega
+    rw [List.getElem?_eq_none_iff.mpr hle] at h
+    cases h
+
+/-- Reading back a just-read value. -/
+theorem getElem_of_getElem?_eq_some {v : List (BitVec 32)}
+    {i : Nat} {x : BitVec 32} (h : v[i]? = some x)
+    (hil : i < v.length) : v[i] = x := by
+  have h2 := List.getElem?_eq_getElem hil
+  rw [h] at h2
+  exact (Option.some.inj h2).symm
+
+/-- Swapping two read positions preserves the permutation (count
+    argument: each `set` adjusts one count, the two adjustments
+    cancel). -/
+theorem swapPerm (v : List (BitVec 32)) (i j : Nat)
+    (x y : BitVec 32)
+    (hi : v[i]? = some x) (hj : v[j]? = some y) :
+    List.Perm (v.set i y |>.set j x) v := by
+  have hil : i < v.length := lt_length_of_getElem?_eq_some hi
+  have hjl : j < v.length := lt_length_of_getElem?_eq_some hj
+  have hxi : v[i] = x := getElem_of_getElem?_eq_some hi hil
+  have hyj : v[j] = y := getElem_of_getElem?_eq_some hj hjl
+  apply List.perm_iff_count.mpr
+  intro c
+  have hlen : (v.set i y).length = v.length := List.length_set
+  rw [List.count_set (by rw [hlen]; exact hjl), List.count_set hil]
+  have e1 : ((v.set i y)[j] == c) = (y == c) := by
+    rw [List.getElem_set (by rw [hlen]; exact hjl)]
+    split
+    · rfl
+    · next h => rw [hyj]
+  rw [e1, hxi]
+  have hmemx : x ∈ v := by
+    rw [← hxi]
+    exact List.getElem_mem hil
+  cases hxb : (x == c) with
+  | true =>
+    have hxeq : x = c := beq_iff_eq.mp hxb
+    have h1 : 1 ≤ List.count c v := by
+      rw [← hxeq]
+      have hpos : 0 < List.count x v :=
+        List.count_pos_iff.mpr hmemx
+      omega
+    cases hyb : (y == c) with
+    | true =>
+      simp only [hxb, hyb, ite_true]
+      omega
+    | false =>
+      simp only [hxb, hyb, Bool.false_eq_true, ite_false, ite_true]
+      omega
+  | false =>
+    cases hyb : (y == c) with
+    | true =>
+      simp only [hxb, hyb, Bool.false_eq_true, ite_false, ite_true]
+      omega
+    | false =>
+      simp only [hxb, hyb, Bool.false_eq_true, ite_false]
+      omega
+
+/-- `slt` is asymmetric (via `toInt` + `omega`). -/
+theorem slt_asymm {x y : BitVec 32} (h : (x.slt y) = true) :
+    (y.slt x) = false := by
+  rw [BitVec.slt_eq_decide] at h ⊢
+  simp only [decide_eq_true_eq] at h
+  simp only [decide_eq_false_iff_not]
+  omega
+
+/-- One sift level, pure `Nat` mirror of `siftFwd` (same recursion
+    scheme; out-of-range reads fall back to `v`, dead under the
+    bridge invariant). -/
+def siftDown (bound root : Nat) (v : List (BitVec 32)) :
+    List (BitVec 32) :=
+  if hcb : root * 2 + 1 < bound then
+    match v[root * 2 + 1]? with
+    | some wc =>
+      if hob : root * 2 + 1 + 1 < bound then
+        match v[root * 2 + 1 + 1]? with
+        | some wo =>
+          match v[root]? with
+          | some a =>
+            if hcand : wc.slt wo then
+              if hab : a.slt wo then
+                siftDown bound (root * 2 + 1 + 1)
+                  (v.set root wo |>.set (root * 2 + 1 + 1) a)
+              else v
+            else
+              if hab : a.slt wc then
+                siftDown bound (root * 2 + 1)
+                  (v.set root wc |>.set (root * 2 + 1) a)
+              else v
+          | none => v
+        | none => v
+      else
+        match v[root]? with
+        | some a =>
+          if hab : a.slt wc then
+            siftDown bound (root * 2 + 1)
+              (v.set root wc |>.set (root * 2 + 1) a)
+          else v
+        | none => v
+    | none => v
+  else v
+termination_by bound - root
+decreasing_by
+  all_goals omega
+
+/-- Heapify drain, pure mirror of `heapifyFwd` (count down from
+    `i`, sifting each). -/
+def heapifyDown (bound i : Nat) (v : List (BitVec 32)) :
+    List (BitVec 32) :=
+  match i with
+  | 0 => v
+  | n + 1 => heapifyDown bound n (siftDown bound n v)
+
+/-- Extract drain, pure mirror of `extractFwd` (swap root/`last`,
+    re-sift the shrunk heap). -/
+def extractDown (bound last : Nat) (v : List (BitVec 32)) :
+    List (BitVec 32) :=
+  match last with
+  | 0 => v
+  | l + 1 =>
+    match v[0]?, v[l]? with
+    | some a, some b =>
+      extractDown bound l (siftDown l 0 (v.set 0 b |>.set l a))
+    | _, _ => v
+
+/-- Pure heapsort: heapify, then extract. -/
+def heapSortList (v : List (BitVec 32)) : List (BitVec 32) :=
+  extractDown v.length v.length (heapifyDown v.length v.length v)
+
+/-- Sifting permutes (functional induction: stops/misses are `rfl`,
+    swaps chain the swap lemma with the IH). -/
+theorem siftDown_perm (bound root : Nat) (v : List (BitVec 32)) :
+    List.Perm (siftDown bound root v) v := by
+  induction root, v using siftDown.induct with
+  | bound => exact bound
+  | case1 r l hcb wc hwc hob wo hwo a hro hcand hab ih =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true, List.Perm.refl]
+    exact ih.trans (swapPerm l r (r * 2 + 1 + 1) a wo hro hwo)
+  | case2 r l hcb wc hwc hob wo hwo a hro hcand hab =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true, List.Perm.refl]
+  | case3 r l hcb wc hwc hob wo hwo a hro hcand hab ih =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true, List.Perm.refl]
+    exact ih.trans (swapPerm l r (r * 2 + 1) a wc hro hwc)
+  | case4 r l hcb wc hwc hob wo hwo a hro hcand hab =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true, List.Perm.refl]
+  | case5 r l hcb wc hwc hob wo hwo hro =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false, List.Perm.refl]
+  | case6 r l hcb wc hwc hob hwo =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, dite_true, dite_false, List.Perm.refl]
+  | case7 r l hcb wc hwc hob a hro hab ih =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false, Bool.false_eq_true,
+      List.Perm.refl]
+    exact ih.trans (swapPerm l r (r * 2 + 1) a wc hro hwc)
+  | case8 r l hcb wc hwc hob a hro hab =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false, Bool.false_eq_true,
+      List.Perm.refl]
+  | case9 r l hcb wc hwc hob hro =>
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, dite_true, dite_false, List.Perm.refl]
+  | case10 r l hcb hwc =>
+    unfold siftDown
+    simp only [hcb, hwc, dite_true, dite_false, List.Perm.refl]
+  | case11 r l hcb =>
+    unfold siftDown
+    simp only [hcb, dite_true, dite_false, List.Perm.refl]
+
+/-- Heapify drain permutes: each sift permutes, chained by induction. -/
+theorem heapifyDown_perm (bound i : Nat) (v : List (BitVec 32)) :
+    List.Perm (heapifyDown bound i v) v := by
+  induction i generalizing v with
+  | zero => exact List.Perm.refl _
+  | succ n ih =>
+    simp only [heapifyDown]
+    exact (ih _).trans (siftDown_perm bound n v)
+
+/-- Extract drain permutes: the root/`last` swap permutes, the re-sift
+    permutes, chained by induction. -/
+theorem extractDown_perm (bound last : Nat) (v : List (BitVec 32)) :
+    List.Perm (extractDown bound last v) v := by
+  induction last generalizing v with
+  | zero => exact List.Perm.refl _
+  | succ l ih =>
+    simp only [extractDown]
+    cases h0 : v[0]? with
+    | none =>
+      cases hl : v[l]? with
+      | none => exact List.Perm.refl _
+      | some _ => exact List.Perm.refl _
+    | some a =>
+      cases hl : v[l]? with
+      | none => exact List.Perm.refl _
+      | some b =>
+        simp only [h0, hl]
+        exact (ih _).trans
+          ((siftDown_perm l 0 _).trans (swapPerm v 0 l a b h0 hl))
+
+/-- Pure heapsort permutes its input. -/
+theorem heapSortList_perm (v : List (BitVec 32)) :
+    List.Perm (heapSortList v) v := by
+  simp only [heapSortList]
+  exact (extractDown_perm _ _ _).trans (heapifyDown_perm _ _ _)
+
+/-! ## H4b: max-heap invariant -/
+
+/-- Heap order at one subtree: every in-bound child is `≤` its parent
+    (`a.slt b = false` with `a` at the parent: the parent is never
+    strictly below a child). -/
+def HeapAt (bound j : Nat) (l : List (BitVec 32)) : Prop :=
+  ∀ s t a b, InSubtree j s → (t = 2 * s + 1 ∨ t = 2 * s + 2) → t < bound →
+    l[s]? = some a → l[t]? = some b → a.slt b = false
+
+/-- Heap order at every subtree rooted at or above `n`. -/
+def HeapAbove (bound n : Nat) (l : List (BitVec 32)) : Prop :=
+  ∀ j, n ≤ j → j < bound → HeapAt bound j l
+
+/-- Max-heap: heap order at every subtree. -/
+def IsHeap (bound : Nat) (l : List (BitVec 32)) : Prop :=
+  HeapAbove bound 0 l
+
+/-- Reading a valid index always succeeds. -/
+theorem getElem?_some_of_lt_length {l : List (BitVec 32)} {k : Nat}
+    (h : k < l.length) : ∃ x, l[k]? = some x :=
+  ⟨l[k], List.getElem?_eq_getElem h⟩
+
+/-- `HeapAt` survives a write outside the subtree. -/
+theorem HeapAt_set_ne {bound j p : Nat} {x : BitVec 32}
+    {l : List (BitVec 32)} (hp : ¬ InSubtree j p)
+    (h : HeapAt bound j l) : HeapAt bound j (l.set p x) := by
+  intro s t a b hs ht htb hsa hsb
+  have hsne : s ≠ p := fun e => hp (e ▸ hs)
+  have htne : t ≠ p := by
+    intro e
+    apply hp
+    subst e
+    exact hs.child ht
+  rw [List.getElem?_set_ne hsne.symm] at hsa
+  rw [List.getElem?_set_ne htne.symm] at hsb
+  exact h s t a b hs ht htb hsa hsb
+
+/-- Subtree membership splits at the root: either the root itself or a
+    strict descendant with an explicit intermediate parent. -/
+theorem InSubtree.eq_or_parent {j c : Nat} (h : InSubtree j c) :
+    j = c ∨ ∃ r, InSubtree j r ∧ (c = 2 * r + 1 ∨ c = 2 * r + 2) := by
+  cases h with
+  | self => exact Or.inl rfl
+  | left h' => exact Or.inr ⟨_, h', Or.inl rfl⟩
+  | right h' => exact Or.inr ⟨_, h', Or.inr rfl⟩
+
+/-- A node strictly above a child link is outside the child's
+    subtree unless it is the child itself. -/
+theorem not_mem_child_of {j c r : Nat} (hrj : r < j) (hne : j ≠ c)
+    (hc : c = 2 * r + 1 ∨ c = 2 * r + 2) (h : InSubtree j c) : False := by
+  rcases h.eq_or_parent with rfl | ⟨r', hr', hc'⟩
+  · exact hne rfl
+  · have heq : r' = r := by
+      rcases hc with hc | hc <;> rcases hc' with hc' | hc' <;> omega
+    subst heq
+    have := hr'.ge
+    omega
+
+/-- A heap-ordered subtree root bounds every value below it. -/
+theorem HeapAt_all {bound j : Nat} {l : List (BitVec 32)}
+    (h : HeapAt bound j l) {x : BitVec 32} (hx : l[j]? = some x)
+    {s : Nat} (hs : InSubtree j s) (hlt : s < bound)
+    {y : BitVec 32} (hy : l[s]? = some y) :
+    x.slt y = false := by
+  refine InSubtree.rec
+    (motive := fun s _ => ∀ (hlt : s < bound) (y : BitVec 32)
+      (hy : l[s]? = some y), x.slt y = false)
+    ?_ ?_ ?_ hs hlt y hy
+  · intro hlt y hy
+    have heq : x = y := Option.some.inj (hx.symm.trans hy)
+    subst heq
+    exact VecSelectionSort.slt_irrefl x
+  · intro r' h' ih hlt y hy
+    obtain ⟨z, hz⟩ := getElem?_some_of_lt_length
+      (l := l) (k := r')
+      (by have hlen := lt_length_of_getElem?_eq_some hy; omega)
+    have h1 : x.slt z = false := ih (by omega) z hz
+    have h2 : z.slt y = false :=
+      h r' (2 * r' + 1) z y h' (Or.inl rfl) hlt hz hy
+    exact VecSelectionSort.slt_ge_trans h1 h2
+  · intro r' h' ih hlt y hy
+    obtain ⟨z, hz⟩ := getElem?_some_of_lt_length
+      (l := l) (k := r')
+      (by have hlen := lt_length_of_getElem?_eq_some hy; omega)
+    have h1 : x.slt z = false := ih (by omega) z hz
+    have h2 : z.slt y = false :=
+      h r' (2 * r' + 2) z y h' (Or.inr rfl) hlt hz hy
+    exact VecSelectionSort.slt_ge_trans h1 h2
+
+/-- Subtree membership splits at an explicit child pair. -/
+theorem InSubtree.child_or {n c o s : Nat}
+    (hc : c = 2 * n + 1) (ho : o = 2 * n + 2)
+    (hs : InSubtree n s) :
+    s = n ∨ InSubtree c s ∨ InSubtree o s := by
+  induction hs with
+  | self => exact Or.inl rfl
+  | left h' ih =>
+    rcases ih with rfl | h1 | h2
+    · exact Or.inr (Or.inl (hc ▸ InSubtree.self))
+    · exact Or.inr (Or.inl (InSubtree.left h1))
+    · exact Or.inr (Or.inr (InSubtree.left h2))
+  | right h' ih =>
+    rcases ih with rfl | h1 | h2
+    · exact Or.inr (Or.inr (ho ▸ InSubtree.self))
+    · exact Or.inr (Or.inl (InSubtree.right h1))
+    · exact Or.inr (Or.inr (InSubtree.right h2))
+
+/-- `slt` bridge facts (via `toInt`, the `slt_ge_trans` precedent). -/
+theorem slt_lt_of_true {a b : BitVec 32} (h : a.slt b = true) :
+    a.toInt < b.toInt := by
+  rw [BitVec.slt_eq_decide] at h
+  simpa using h
+
+theorem slt_nlt_of_false {a b : BitVec 32} (h : a.slt b = false) :
+    ¬ a.toInt < b.toInt := by
+  rw [BitVec.slt_eq_decide] at h
+  simpa using h
+
+theorem slt_nlt_of_notrue {a b : BitVec 32} (h : ¬ a.slt b = true) :
+    ¬ a.toInt < b.toInt := by
+  rw [BitVec.slt_eq_decide] at h
+  simpa using h
+
+theorem slt_of_nlt {a b : BitVec 32} (h : ¬ a.toInt < b.toInt) :
+    a.slt b = false := by
+  rw [BitVec.slt_eq_decide]
+  simpa using h
+
+/-- Child links with source-syntax indices. -/
+theorem mem_child_left (r : Nat) : InSubtree r (r * 2 + 1) := by
+  have h : r * 2 + 1 = 2 * r + 1 := by omega
+  rw [h]
+  exact InSubtree.left InSubtree.self
+
+theorem mem_child_right (r : Nat) : InSubtree r (r * 2 + 1 + 1) := by
+  have h : r * 2 + 1 + 1 = 2 * r + 2 := by omega
+  rw [h]
+  exact InSubtree.right InSubtree.self
+
+/-- Sifting only writes inside the sift root's subtree: reads anywhere
+    else are preserved. -/
+theorem siftDown_get_outside (bound r : Nat) (l : List (BitVec 32))
+    (t : Nat) (ht : ¬ InSubtree r t) :
+    (siftDown bound r l)[t]? = l[t]? := by
+  refine siftDown.induct bound
+    (fun r l => ¬ InSubtree r t → (siftDown bound r l)[t]? = l[t]?)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ _ _ ht
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hcr : InSubtree r (r * 2 + 1 + 1) := mem_child_right r
+    have hct : ¬ InSubtree (r * 2 + 1 + 1) t :=
+      fun hc' => ht (hcr.trans' hc')
+    have hne1 : r * 2 + 1 + 1 ≠ t := by
+      intro e; subst e; exact hct InSubtree.self
+    have hne2 : r ≠ t := by
+      intro e; subst e; exact ht InSubtree.self
+    rw [ih hct, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hcr : InSubtree r (r * 2 + 1) := mem_child_left r
+    have hct : ¬ InSubtree (r * 2 + 1) t :=
+      fun hc' => ht (hcr.trans' hc')
+    have hne1 : r * 2 + 1 ≠ t := by
+      intro e; subst e; exact hct InSubtree.self
+    have hne2 : r ≠ t := by
+      intro e; subst e; exact ht InSubtree.self
+    rw [ih hct, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo hro ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob hwo ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob a hro hab ih ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hcr : InSubtree r (r * 2 + 1) := mem_child_left r
+    have hct : ¬ InSubtree (r * 2 + 1) t :=
+      fun hc' => ht (hcr.trans' hc')
+    have hne1 : r * 2 + 1 ≠ t := by
+      intro e; subst e; exact hct InSubtree.self
+    have hne2 : r ≠ t := by
+      intro e; subst e; exact ht InSubtree.self
+    rw [ih hct, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
+  · intro r l hcb wc hwc hob a hro hab ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob hro ht
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb hwc ht
+    unfold siftDown
+    simp only [hcb, hwc, dite_true, dite_false, Bool.false_eq_true]
+  · intro r l hcb ht
+    unfold siftDown
+    simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+
+/-- Values landing in-bound inside the sift region come from in-bound
+    positions of the original region. -/
+theorem siftDown_mem_region (bound r : Nat) (l : List (BitVec 32))
+    (t : Nat) (x : BitVec 32) (htt : InSubtree r t) (htb : t < bound)
+    (hx : (siftDown bound r l)[t]? = some x) :
+    ∃ t', InSubtree r t' ∧ t' < bound ∧ l[t']? = some x := by
+  refine siftDown.induct bound
+    (fun r l => ∀ (t : Nat) (x : BitVec 32), InSubtree r t → t < bound →
+      (siftDown bound r l)[t]? = some x →
+      ∃ t', InSubtree r t' ∧ t' < bound ∧ l[t']? = some x)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ r l t x htt htb hx
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    rcases Classical.em (InSubtree (r * 2 + 1 + 1) t) with hmem | hmem
+    · obtain ⟨t', ht', htb', hsw⟩ := ih t x hmem htb hx
+      by_cases he2 : t' = r * 2 + 1 + 1
+      · rw [he2] at hsw
+        have hswa : ((l.set r wo).set (r * 2 + 1 + 1) a)[r * 2 + 1 + 1]? =
+            some a :=
+          List.getElem?_set_self (by
+            rw [List.length_set]
+            exact lt_length_of_getElem?_eq_some hwo)
+        have hxa : a = x := Option.some.inj (hswa.symm.trans hsw)
+        exact ⟨r, InSubtree.self, by omega, hxa ▸ hro⟩
+      · have htr : t' ≠ r := by
+          intro e; subst e; have := ht'.ge; omega
+        have hswl : l[t']? = some x := by
+          have e1 : r ≠ t' := fun e => htr e.symm
+          have e2 : r * 2 + 1 + 1 ≠ t' := fun e => he2 e.symm
+          rw [List.getElem?_set_ne e2] at hsw
+          rw [List.getElem?_set_ne e1] at hsw
+          exact hsw
+        exact ⟨t', (mem_child_right r).trans' ht', htb', hswl⟩
+    · rw [siftDown_get_outside _ _ _ _ hmem] at hx
+      by_cases he1 : t = r
+      · rw [he1] at hx
+        have hswr : ((l.set r wo).set (r * 2 + 1 + 1) a)[r]? = some wo := by
+          have hne : r * 2 + 1 + 1 ≠ r := by omega
+          have hlt : r < l.length := lt_length_of_getElem?_eq_some hro
+          rw [List.getElem?_set_ne hne]
+          rw [List.getElem?_set_self hlt]
+        have hxw : wo = x := Option.some.inj (hswr.symm.trans hx)
+        exact ⟨r * 2 + 1 + 1, mem_child_right r, hob, hxw ▸ hwo⟩
+      · by_cases he2 : t = r * 2 + 1 + 1
+        · rw [he2] at hmem
+          exact False.elim (hmem InSubtree.self)
+        · have hswl : l[t]? = some x := by
+            have e1 : r ≠ t := fun e => he1 e.symm
+            have e2 : r * 2 + 1 + 1 ≠ t := fun e => he2 e.symm
+            rw [List.getElem?_set_ne e2] at hx
+            rw [List.getElem?_set_ne e1] at hx
+            exact hx
+          exact ⟨t, htt, htb, hswl⟩
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    rcases Classical.em (InSubtree (r * 2 + 1) t) with hmem | hmem
+    · obtain ⟨t', ht', htb', hsw⟩ := ih t x hmem htb hx
+      by_cases he2 : t' = r * 2 + 1
+      · rw [he2] at hsw
+        have hswa : ((l.set r wc).set (r * 2 + 1) a)[r * 2 + 1]? =
+            some a :=
+          List.getElem?_set_self (by
+            rw [List.length_set]
+            exact lt_length_of_getElem?_eq_some hwc)
+        have hxa : a = x := Option.some.inj (hswa.symm.trans hsw)
+        exact ⟨r, InSubtree.self, by omega, hxa ▸ hro⟩
+      · have htr : t' ≠ r := by
+          intro e; subst e; have := ht'.ge; omega
+        have hswl : l[t']? = some x := by
+          have e1 : r ≠ t' := fun e => htr e.symm
+          have e2 : r * 2 + 1 ≠ t' := fun e => he2 e.symm
+          rw [List.getElem?_set_ne e2] at hsw
+          rw [List.getElem?_set_ne e1] at hsw
+          exact hsw
+        exact ⟨t', (mem_child_left r).trans' ht', htb', hswl⟩
+    · rw [siftDown_get_outside _ _ _ _ hmem] at hx
+      by_cases he1 : t = r
+      · rw [he1] at hx
+        have hswr : ((l.set r wc).set (r * 2 + 1) a)[r]? = some wc := by
+          have hne : r * 2 + 1 ≠ r := by omega
+          have hlt : r < l.length := lt_length_of_getElem?_eq_some hro
+          rw [List.getElem?_set_ne hne]
+          rw [List.getElem?_set_self hlt]
+        have hxw : wc = x := Option.some.inj (hswr.symm.trans hx)
+        exact ⟨r * 2 + 1, mem_child_left r, hcb, hxw ▸ hwc⟩
+      · by_cases he2 : t = r * 2 + 1
+        · rw [he2] at hmem
+          exact False.elim (hmem InSubtree.self)
+        · have hswl : l[t]? = some x := by
+            have e1 : r ≠ t := fun e => he1 e.symm
+            have e2 : r * 2 + 1 ≠ t := fun e => he2 e.symm
+            rw [List.getElem?_set_ne e2] at hx
+            rw [List.getElem?_set_ne e1] at hx
+            exact hx
+          exact ⟨t, htt, htb, hswl⟩
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb wc hwc hob wo hwo hro t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb wc hwc hob hwo t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hwo, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb wc hwc hob a hro hab ih t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    rcases Classical.em (InSubtree (r * 2 + 1) t) with hmem | hmem
+    · obtain ⟨t', ht', htb', hsw⟩ := ih t x hmem htb hx
+      by_cases he2 : t' = r * 2 + 1
+      · rw [he2] at hsw
+        have hswa : ((l.set r wc).set (r * 2 + 1) a)[r * 2 + 1]? =
+            some a :=
+          List.getElem?_set_self (by
+            rw [List.length_set]
+            exact lt_length_of_getElem?_eq_some hwc)
+        have hxa : a = x := Option.some.inj (hswa.symm.trans hsw)
+        exact ⟨r, InSubtree.self, by omega, hxa ▸ hro⟩
+      · have htr : t' ≠ r := by
+          intro e; subst e; have := ht'.ge; omega
+        have hswl : l[t']? = some x := by
+          have e1 : r ≠ t' := fun e => htr e.symm
+          have e2 : r * 2 + 1 ≠ t' := fun e => he2 e.symm
+          rw [List.getElem?_set_ne e2] at hsw
+          rw [List.getElem?_set_ne e1] at hsw
+          exact hsw
+        exact ⟨t', (mem_child_left r).trans' ht', htb', hswl⟩
+    · rw [siftDown_get_outside _ _ _ _ hmem] at hx
+      by_cases he1 : t = r
+      · rw [he1] at hx
+        have hswr : ((l.set r wc).set (r * 2 + 1) a)[r]? = some wc := by
+          have hne : r * 2 + 1 ≠ r := by omega
+          have hlt : r < l.length := lt_length_of_getElem?_eq_some hro
+          rw [List.getElem?_set_ne hne]
+          rw [List.getElem?_set_self hlt]
+        have hxw : wc = x := Option.some.inj (hswr.symm.trans hx)
+        exact ⟨r * 2 + 1, mem_child_left r, hcb, hxw ▸ hwc⟩
+      · by_cases he2 : t = r * 2 + 1
+        · rw [he2] at hmem
+          exact False.elim (hmem InSubtree.self)
+        · have hswl : l[t]? = some x := by
+            have e1 : r ≠ t := fun e => he1 e.symm
+            have e2 : r * 2 + 1 ≠ t := fun e => he2 e.symm
+            rw [List.getElem?_set_ne e2] at hx
+            rw [List.getElem?_set_ne e1] at hx
+            exact hx
+          exact ⟨t, htt, htb, hswl⟩
+  · intro r l hcb wc hwc hob a hro hab t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb wc hwc hob hro t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, hob, hro, dite_true, dite_false,
+      Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb hwc t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, hwc, dite_true, dite_false, Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+  · intro r l hcb t x htt htb hx
+    unfold siftDown at hx
+    simp only [hcb, dite_true, dite_false, Bool.false_eq_true] at hx
+    exact ⟨t, htt, htb, hx⟩
+
+/-- Subtree co-members are comparable by inclusion. -/
+theorem subtree_comparable {j c' t : Nat} (h1 : InSubtree j t)
+    (h2 : InSubtree c' t) : InSubtree j c' ∨ InSubtree c' j := by
+  induction h1 with
+  | self => exact Or.inr h2
+  | left h' ih =>
+    rename_i r''
+    rcases h2.eq_or_parent with rfl | ⟨p, hcp, htp⟩
+    · exact Or.inl (InSubtree.left h')
+    · have hpp : p = r'' := by
+        rcases htp with htp | htp <;> omega
+      subst hpp
+      exact ih hcp
+  | right h' ih =>
+    rename_i r''
+    rcases h2.eq_or_parent with rfl | ⟨p, hcp, htp⟩
+    · exact Or.inl (InSubtree.right h')
+    · have hpp : p = r'' := by
+        rcases htp with htp | htp <;> omega
+      subst hpp
+      exact ih hcp
+
+/-- A child of the middle region reached from inside stays inside. -/
+theorem middle_child_closed {r c' j s t : Nat}
+    (hc' : c' = 2 * r + 1 ∨ c' = 2 * r + 2)
+    (hjr : r < j) (hjc : j < c') (hjs : InSubtree j s)
+    (hct : InSubtree c' t) (ht : t = 2 * s + 1 ∨ t = 2 * s + 2) :
+    InSubtree c' s := by
+  have hsr : s ≠ r := by
+    intro e; subst e; have := hjs.ge; omega
+  rcases hct.eq_or_parent with rfl | ⟨p, hcp, htp⟩
+  · have hsr' : s = r := by
+      rcases hc' with hc' | hc' <;> rcases ht with ht | ht <;> omega
+    exact absurd hsr' hsr
+  · have hps : p = s := by
+      rcases ht with ht | ht <;> rcases htp with htp | htp <;> omega
+    subst hps
+    exact hcp
+
+/-- A node strictly between a link stays outside the child's subtree. -/
+theorem not_mem_child_above {j r c : Nat}
+    (hc : c = r * 2 + 1 ∨ c = r * 2 + 1 + 1)
+    (hjr : r < j) (hjc : j < c) : ¬ InSubtree j c := by
+  intro hc'
+  rcases hc'.eq_or_parent with hjj | ⟨p, hjp, hpc⟩
+  · omega
+  · have hpr : p = r := by
+      rcases hc with hc | hc <;> rcases hpc with hpc | hpc <;> omega
+    subst hpr
+    have := hjp.ge
+    omega
+
+/-- Subtree membership splits at source-syntax child indices. -/
+theorem InSubtree.child_or2 {r s : Nat} (hs : InSubtree r s) :
+    s = r ∨ InSubtree (r * 2 + 1) s ∨ InSubtree (r * 2 + 1 + 1) s := by
+  have hc : r * 2 + 1 = 2 * r + 1 := by omega
+  have ho : r * 2 + 1 + 1 = 2 * r + 2 := by omega
+  rcases InSubtree.child_or (c := r * 2 + 1) (o := r * 2 + 1 + 1) hc ho hs with
+    h | h | h
+  · exact Or.inl h
+  · exact Or.inr (Or.inl h)
+  · exact Or.inr (Or.inr h)
+
+/-- The other child sits outside the recursed sibling subtree. -/
+theorem not_mem_sibling {r c o : Nat} (hc : c = r * 2 + 1)
+    (ho : o = r * 2 + 1 + 1) : ¬ InSubtree c o := by
+  intro hco
+  rcases hco.eq_or_parent with hcon | ⟨p, hcp, hpo⟩
+  · omega
+  · have hpr : p = r := by
+      rcases hpo with hpo | hpo <;> omega
+    subst hpr
+    have := hcp.ge
+    omega
+
+/-- Sifting restores heap order at and above the sift root. The bound
+    must sit inside the list so missing-node cases are contradictory. -/
+theorem sift_step (bound r : Nat) (l : List (BitVec 32))
+    (hlen : bound ≤ l.length)
+    (h : HeapAbove bound (r + 1) l) :
+    HeapAbove bound r (siftDown bound r l) := by
+  refine siftDown.induct bound
+    (fun r l => bound ≤ l.length → HeapAbove bound (r + 1) l →
+      HeapAbove bound r (siftDown bound r l))
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ r l hlen h
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hlen h
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hlen' : bound ≤ ((l.set r wo).set (r * 2 + 1 + 1) a).length := by
+      rwa [List.length_set, List.length_set]
+    have hpres : HeapAbove bound (r * 2 + 1 + 1 + 1)
+        ((l.set r wo).set (r * 2 + 1 + 1) a) := by
+      intro j hj1 hj2
+      have hrj : ¬ InSubtree j r := by
+        intro hr; have := hr.ge; omega
+      have hoj : ¬ InSubtree j (r * 2 + 1 + 1) := by
+        intro ho'; have := ho'.ge; omega
+      exact HeapAt_set_ne hoj
+        (HeapAt_set_ne hrj (h j (by omega) hj2))
+    have ihc := ih hlen' hpres
+    have hmax : ∀ t' y, InSubtree r t' → t' < bound → l[t']? = some y →
+        wo.slt y = false := by
+      intro t' y ht' htb' hl'
+      by_cases he : t' = r
+      · rw [he] at hl'
+        have hya : y = a := Option.some.inj (hl'.symm.trans hro)
+        rw [hya]
+        exact slt_of_nlt (by have := slt_lt_of_true hab; omega)
+      · rcases InSubtree.child_or2 ht' with hcon | hcs | hos
+        · exact absurd hcon he
+        · have h1 := HeapAt_all (h (r * 2 + 1) (by omega) hcb) hwc hcs
+            htb' hl'
+          have hc1 := slt_lt_of_true hcand
+          have hn1 := slt_nlt_of_false h1
+          exact slt_of_nlt (by omega)
+        · exact HeapAt_all (h (r * 2 + 1 + 1) (by omega) hob) hwo hos
+            htb' hl'
+    have hmid : ∀ j, r < j → j < r * 2 + 1 + 1 → j < bound →
+        HeapAt bound j
+          (siftDown bound (r * 2 + 1 + 1) ((l.set r wo).set (r * 2 + 1 + 1) a)) := by
+      intro j hjr hjc hjb s t x y hs ht htb hsx hsy
+      rcases Nat.lt_or_ge s (r * 2 + 1 + 1) with hlt | hge
+      · have hns : ¬ InSubtree (r * 2 + 1 + 1) s := by
+          intro hs'; have := hs'.ge; omega
+        have hnt : ¬ InSubtree (r * 2 + 1 + 1) t := by
+          intro ht'
+          exact hns (middle_child_closed (Or.inr (by omega)) hjr hjc hs ht' ht)
+        rw [siftDown_get_outside _ _ _ _ hns] at hsx
+        rw [siftDown_get_outside _ _ _ _ hnt] at hsy
+        have hSW : HeapAt bound j ((l.set r wo).set (r * 2 + 1 + 1) a) := by
+          apply HeapAt_set_ne
+            (not_mem_child_above (Or.inr rfl) hjr hjc)
+          apply HeapAt_set_ne (by intro hr'; have := hr'.ge; omega)
+          exact h j (by omega) hjb
+        exact hSW s t x y hs ht htb hsx hsy
+      · exact ihc s hge (by omega) s t x y InSubtree.self ht htb hsx hsy
+
+    have hroot : HeapAt bound r
+        (siftDown bound (r * 2 + 1 + 1) ((l.set r wo).set (r * 2 + 1 + 1) a)) := by
+      have hRr : (siftDown bound (r * 2 + 1 + 1)
+          ((l.set r wo).set (r * 2 + 1 + 1) a))[r]? = some wo := by
+        have hnr : ¬ InSubtree (r * 2 + 1 + 1) r := by
+          intro hr; have := hr.ge; omega
+        rw [siftDown_get_outside _ _ _ _ hnr]
+        have hne : r * 2 + 1 + 1 ≠ r := by omega
+        have hlt : r < l.length := lt_length_of_getElem?_eq_some hro
+        rw [List.getElem?_set_ne hne]
+        rw [List.getElem?_set_self hlt]
+      intro s t x y hs ht htb hsx hsy
+      rcases InSubtree.child_or2 hs with hsr | hcs | hos
+      rw [hsr] at hs ht hsx
+      · have hxw : x = wo := Option.some.inj (hsx.symm.trans hRr)
+        rw [hxw]
+        rcases (by rcases ht with h | h <;> omega : t = r * 2 + 1 ∨ t = r * 2 + 1 + 1) with rfl | rfl
+        · have hnc : ¬ InSubtree (r * 2 + 1 + 1) (r * 2 + 1) := by
+            intro hc'; have := hc'.ge; omega
+          have hRc : (siftDown bound (r * 2 + 1 + 1)
+              ((l.set r wo).set (r * 2 + 1 + 1) a))[r * 2 + 1]? = some wc := by
+            rw [siftDown_get_outside _ _ _ _ hnc]
+            have e1 : r ≠ r * 2 + 1 := by omega
+            have e2 : r * 2 + 1 + 1 ≠ r * 2 + 1 := by omega
+            rw [List.getElem?_set_ne e2]
+            rw [List.getElem?_set_ne e1]
+            exact hwc
+          have hyw : y = wc := Option.some.inj (hsy.symm.trans hRc)
+          rw [hyw]
+          exact slt_of_nlt (by have := slt_lt_of_true hcand; omega)
+        · obtain ⟨t', ht', htb', hl'⟩ :=
+            siftDown_mem_region bound (r * 2 + 1 + 1)
+              ((l.set r wo).set (r * 2 + 1 + 1) a) (r * 2 + 1 + 1) y
+              InSubtree.self htb hsy
+          by_cases heo : t' = r * 2 + 1 + 1
+          · rw [heo] at hl'
+            have hswa : ((l.set r wo).set (r * 2 + 1 + 1) a)[r * 2 + 1 + 1]? =
+                some a :=
+              List.getElem?_set_self (by
+                rw [List.length_set]
+                exact lt_length_of_getElem?_eq_some hwo)
+            have hya : a = y := Option.some.inj (hswa.symm.trans hl')
+            rw [← hya]
+            exact slt_of_nlt (by have := slt_lt_of_true hab; omega)
+          · have htr : t' ≠ r := by
+              intro e
+              have hge := ht'.ge
+              omega
+            have hswl : l[t']? = some y := by
+              have e1 : r ≠ t' := fun e => htr e.symm
+              have e2 : r * 2 + 1 + 1 ≠ t' := fun e => heo e.symm
+              rw [List.getElem?_set_ne e2] at hl'
+              rw [List.getElem?_set_ne e1] at hl'
+              exact hl'
+            have htr' : InSubtree r t' :=
+              (mem_child_right r).trans' ht'
+            exact hmax t' y htr' htb' hswl
+      · by_cases hso : r * 2 + 1 + 1 ≤ s
+        · exact ihc s hso (by omega) s t x y InSubtree.self ht htb hsx hsy
+        · exact hmid s (by have := hcs.ge; omega) (by omega) (by omega)
+            s t x y InSubtree.self ht htb hsx hsy
+      · exact ihc s (hos.ge) (by omega) s t x y InSubtree.self ht htb hsx hsy
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j; exact hroot
+    · by_cases hjc : j < r * 2 + 1 + 1
+      · exact hmid j (by omega) hjc hj2
+      · exact ihc j (by omega) hj2
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab hlen h
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j
+      intro s t x y hs ht htb hsx hsy
+      rcases InSubtree.child_or2 hs with hsr | hcs | hos
+      rw [hsr] at hs ht hsx
+      · rcases (by rcases ht with h | h <;> omega : t = r * 2 + 1 ∨ t = r * 2 + 1 + 1) with rfl | rfl
+        · have hx : x = a := Option.some.inj (hsx.symm.trans hro)
+          have hy : y = wc := Option.some.inj (hsy.symm.trans hwc)
+          rw [hx, hy]
+          have hc1 := slt_lt_of_true hcand
+          have hn1 := slt_nlt_of_notrue hab
+          exact slt_of_nlt (by omega)
+        · have hx : x = a := Option.some.inj (hsx.symm.trans hro)
+          have hy : y = wo := Option.some.inj (hsy.symm.trans hwo)
+          rw [hx, hy]; exact (by simpa using hab)
+      · exact h (r * 2 + 1) (by omega) hcb s t x y hcs ht htb hsx hsy
+      · exact h (r * 2 + 1 + 1) (by omega) hob s t x y hos ht htb hsx hsy
+    · exact h j (by omega) hj2
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hlen h
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hlen' : bound ≤ ((l.set r wc).set (r * 2 + 1) a).length := by
+      rwa [List.length_set, List.length_set]
+    have hpres : HeapAbove bound (r * 2 + 1 + 1)
+        ((l.set r wc).set (r * 2 + 1) a) := by
+      intro j hj1 hj2
+      have hrj : ¬ InSubtree j r := by
+        intro hr; have := hr.ge; omega
+      have hcj : ¬ InSubtree j (r * 2 + 1) := by
+        intro hc'; have := hc'.ge; omega
+      exact HeapAt_set_ne hcj
+        (HeapAt_set_ne hrj (h j (by omega) hj2))
+    have ihc := ih hlen' hpres
+    have hroot : HeapAt bound r
+        (siftDown bound (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a)) := by
+      have hRr : (siftDown bound (r * 2 + 1)
+          ((l.set r wc).set (r * 2 + 1) a))[r]? = some wc := by
+        have hnr : ¬ InSubtree (r * 2 + 1) r := by
+          intro hr; have := hr.ge; omega
+        rw [siftDown_get_outside _ _ _ _ hnr]
+        have hne : r * 2 + 1 ≠ r := by omega
+        have hlt : r < l.length := lt_length_of_getElem?_eq_some hro
+        rw [List.getElem?_set_ne hne]
+        rw [List.getElem?_set_self hlt]
+      intro s t x y hs ht htb hsx hsy
+      rcases InSubtree.child_or2 hs with hsr | hcs | hos
+      rw [hsr] at hs ht hsx
+      · have hxw : x = wc := Option.some.inj (hsx.symm.trans hRr)
+        rw [hxw]
+        rcases (by rcases ht with h | h <;> omega : t = r * 2 + 1 ∨ t = r * 2 + 1 + 1) with rfl | rfl
+        · obtain ⟨t', ht', htb', hl'⟩ :=
+            siftDown_mem_region bound (r * 2 + 1)
+              ((l.set r wc).set (r * 2 + 1) a) (r * 2 + 1) y
+              InSubtree.self htb hsy
+          by_cases heo : t' = r * 2 + 1
+          · rw [heo] at hl'
+            have hswa : ((l.set r wc).set (r * 2 + 1) a)[r * 2 + 1]? =
+                some a :=
+              List.getElem?_set_self (by
+                rw [List.length_set]
+                exact lt_length_of_getElem?_eq_some hwc)
+            have hya : a = y := Option.some.inj (hswa.symm.trans hl')
+            rw [← hya]
+            exact slt_of_nlt (by have := slt_lt_of_true hab; omega)
+          · have htr : t' ≠ r := by
+              intro e
+              have hge := ht'.ge
+              omega
+            have hswl : l[t']? = some y := by
+              have e1 : r ≠ t' := fun e => htr e.symm
+              have e2 : r * 2 + 1 ≠ t' := fun e => heo e.symm
+              rw [List.getElem?_set_ne e2] at hl'
+              rw [List.getElem?_set_ne e1] at hl'
+              exact hl'
+            exact HeapAt_all (h (r * 2 + 1) (by omega) hcb) hwc ht' htb' hswl
+        · have hno : ¬ InSubtree (r * 2 + 1) (r * 2 + 1 + 1) :=
+            not_mem_sibling rfl rfl
+          have hRo : (siftDown bound (r * 2 + 1)
+              ((l.set r wc).set (r * 2 + 1) a))[r * 2 + 1 + 1]? = some wo := by
+            rw [siftDown_get_outside _ _ _ _ hno]
+            have e1 : r ≠ r * 2 + 1 + 1 := by omega
+            have e2 : r * 2 + 1 ≠ r * 2 + 1 + 1 := by omega
+            rw [List.getElem?_set_ne e2]
+            rw [List.getElem?_set_ne e1]
+            exact hwo
+          have hyw : y = wo := Option.some.inj (hsy.symm.trans hRo)
+          rw [hyw]
+          exact (by simpa using hcand)
+      · exact ihc s (hcs.ge) (by omega) s t x y InSubtree.self ht htb hsx hsy
+      · exact ihc s (by have := hos.ge; omega) (by omega)
+          s t x y InSubtree.self ht htb hsx hsy
+    have hmid : ∀ j, r < j → j < r * 2 + 1 → j < bound →
+        HeapAt bound j
+          (siftDown bound (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a)) := by
+      intro j hjr hjc hjb s t x y hs ht htb hsx hsy
+      rcases Nat.lt_or_ge s (r * 2 + 1) with hlt | hge
+      · have hns : ¬ InSubtree (r * 2 + 1) s := by
+          intro hs'; have := hs'.ge; omega
+        have hnt : ¬ InSubtree (r * 2 + 1) t := by
+          intro ht'
+          exact hns (middle_child_closed (Or.inl (by omega)) hjr hjc hs ht' ht)
+        rw [siftDown_get_outside _ _ _ _ hns] at hsx
+        rw [siftDown_get_outside _ _ _ _ hnt] at hsy
+        have hSW : HeapAt bound j ((l.set r wc).set (r * 2 + 1) a) := by
+          apply HeapAt_set_ne
+            (not_mem_child_above (Or.inl rfl) hjr hjc)
+          apply HeapAt_set_ne (by intro hr'; have := hr'.ge; omega)
+          exact h j (by omega) hjb
+        exact hSW s t x y hs ht htb hsx hsy
+      · exact ihc s hge (by omega) s t x y InSubtree.self ht htb hsx hsy
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j; exact hroot
+    · by_cases hjc : j < r * 2 + 1
+      · exact hmid j (by omega) hjc hj2
+      · exact ihc j (by omega) hj2
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab hlen h
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j
+      intro s t x y hs ht htb hsx hsy
+      rcases InSubtree.child_or2 hs with hsr | hcs | hos
+      rw [hsr] at hs ht hsx
+      · rcases (by rcases ht with h | h <;> omega : t = r * 2 + 1 ∨ t = r * 2 + 1 + 1) with rfl | rfl
+        · have hx : x = a := Option.some.inj (hsx.symm.trans hro)
+          have hy : y = wc := Option.some.inj (hsy.symm.trans hwc)
+          rw [hx, hy]; exact (by simpa using hab)
+        · have hx : x = a := Option.some.inj (hsx.symm.trans hro)
+          have hy : y = wo := Option.some.inj (hsy.symm.trans hwo)
+          rw [hx, hy]
+          have hcand' : wc.slt wo = false := by simpa using hcand
+          have hab' : a.slt wc = false := by simpa using hab
+          exact VecSelectionSort.slt_ge_trans hab' hcand'
+      · exact h (r * 2 + 1) (by omega) hcb s t x y hcs ht htb hsx hsy
+      · exact h (r * 2 + 1 + 1) (by omega) hob s t x y hos ht htb hsx hsy
+    · exact h j (by omega) hj2
+  · intro r l hcb wc hwc hob wo hwo hro hlen h
+    have hlt : r < l.length := by omega
+    obtain ⟨w, hw⟩ := getElem?_some_of_lt_length (l := l) (k := r) hlt
+    rw [hro] at hw
+    simp at hw
+  · intro r l hcb wc hwc hob hwo hlen h
+    have hlt : r * 2 + 1 + 1 < l.length := by omega
+    obtain ⟨w, hw⟩ := getElem?_some_of_lt_length (l := l)
+      (k := r * 2 + 1 + 1) hlt
+    rw [hwo] at hw
+    simp at hw
+  · intro r l hcb wc hwc hob a hro hab ih hlen h
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hlen' : bound ≤ ((l.set r wc).set (r * 2 + 1) a).length := by
+      rwa [List.length_set, List.length_set]
+    have hpres : HeapAbove bound (r * 2 + 1 + 1)
+        ((l.set r wc).set (r * 2 + 1) a) := by
+      intro j hj1 hj2
+      have hrj : ¬ InSubtree j r := by
+        intro hr; have := hr.ge; omega
+      have hcj : ¬ InSubtree j (r * 2 + 1) := by
+        intro hc'; have := hc'.ge; omega
+      exact HeapAt_set_ne hcj
+        (HeapAt_set_ne hrj (h j (by omega) hj2))
+    have ihc := ih hlen' hpres
+    have hroot : HeapAt bound r
+        (siftDown bound (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a)) := by
+      have hRr : (siftDown bound (r * 2 + 1)
+          ((l.set r wc).set (r * 2 + 1) a))[r]? = some wc := by
+        have hnr : ¬ InSubtree (r * 2 + 1) r := by
+          intro hr; have := hr.ge; omega
+        rw [siftDown_get_outside _ _ _ _ hnr]
+        have hne : r * 2 + 1 ≠ r := by omega
+        have hlt : r < l.length := lt_length_of_getElem?_eq_some hro
+        rw [List.getElem?_set_ne hne]
+        rw [List.getElem?_set_self hlt]
+      intro s t x y hs ht htb hsx hsy
+      rcases InSubtree.child_or2 hs with hsr | hcs | hos
+      rw [hsr] at hs ht hsx
+      · have hxw : x = wc := Option.some.inj (hsx.symm.trans hRr)
+        rw [hxw]
+        rcases (by rcases ht with h | h <;> omega : t = r * 2 + 1 ∨ t = r * 2 + 1 + 1) with rfl | rfl
+        · obtain ⟨t', ht', htb', hl'⟩ :=
+            siftDown_mem_region bound (r * 2 + 1)
+              ((l.set r wc).set (r * 2 + 1) a) (r * 2 + 1) y
+              InSubtree.self htb hsy
+          by_cases heo : t' = r * 2 + 1
+          · rw [heo] at hl'
+            have hswa : ((l.set r wc).set (r * 2 + 1) a)[r * 2 + 1]? =
+                some a :=
+              List.getElem?_set_self (by
+                rw [List.length_set]
+                exact lt_length_of_getElem?_eq_some hwc)
+            have hya : a = y := Option.some.inj (hswa.symm.trans hl')
+            rw [← hya]
+            exact slt_of_nlt (by have := slt_lt_of_true hab; omega)
+          · have htr : t' ≠ r := by
+              intro e
+              have hge := ht'.ge
+              omega
+            have hswl : l[t']? = some y := by
+              have e1 : r ≠ t' := fun e => htr e.symm
+              have e2 : r * 2 + 1 ≠ t' := fun e => heo e.symm
+              rw [List.getElem?_set_ne e2] at hl'
+              rw [List.getElem?_set_ne e1] at hl'
+              exact hl'
+            exact HeapAt_all (h (r * 2 + 1) (by omega) hcb) hwc ht' htb' hswl
+        · exact False.elim (by omega)
+      · exact ihc s (hcs.ge) (by omega) s t x y InSubtree.self ht htb hsx hsy
+      · have hso := hos.ge
+        exact False.elim (by omega)
+    have hmid : ∀ j, r < j → j < r * 2 + 1 → j < bound →
+        HeapAt bound j
+          (siftDown bound (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a)) := by
+      intro j hjr hjc hjb s t x y hs ht htb hsx hsy
+      rcases Nat.lt_or_ge s (r * 2 + 1) with hlt | hge
+      · have hns : ¬ InSubtree (r * 2 + 1) s := by
+          intro hs'; have := hs'.ge; omega
+        have hnt : ¬ InSubtree (r * 2 + 1) t := by
+          intro ht'
+          exact hns (middle_child_closed (Or.inl (by omega)) hjr hjc hs ht' ht)
+        rw [siftDown_get_outside _ _ _ _ hns] at hsx
+        rw [siftDown_get_outside _ _ _ _ hnt] at hsy
+        have hSW : HeapAt bound j ((l.set r wc).set (r * 2 + 1) a) := by
+          apply HeapAt_set_ne
+            (not_mem_child_above (Or.inl rfl) hjr hjc)
+          apply HeapAt_set_ne (by intro hr'; have := hr'.ge; omega)
+          exact h j (by omega) hjb
+        exact hSW s t x y hs ht htb hsx hsy
+      · exact ihc s hge (by omega) s t x y InSubtree.self ht htb hsx hsy
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j; exact hroot
+    · by_cases hjc : j < r * 2 + 1
+      · exact hmid j (by omega) hjc hj2
+      · exact ihc j (by omega) hj2
+  · intro r l hcb wc hwc hob a hro hab hlen h
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j
+      intro s t x y hs ht htb hsx hsy
+      rcases InSubtree.child_or2 hs with hsr | hcs | hos
+      rw [hsr] at hs ht hsx
+      · rcases (by rcases ht with h | h <;> omega : t = r * 2 + 1 ∨ t = r * 2 + 1 + 1) with rfl | rfl
+        · have hx : x = a := Option.some.inj (hsx.symm.trans hro)
+          have hy : y = wc := Option.some.inj (hsy.symm.trans hwc)
+          rw [hx, hy]; exact (by simpa using hab)
+        · exact False.elim (by omega)
+      · exact h (r * 2 + 1) (by omega) hcb s t x y hcs ht htb hsx hsy
+      · have hso := hos.ge
+        exact False.elim (by omega)
+    · exact h j (by omega) hj2
+  · intro r l hcb wc hwc hob hro hlen h
+    have hlt : r < l.length := by omega
+    obtain ⟨w, hw⟩ := getElem?_some_of_lt_length (l := l) (k := r) hlt
+    rw [hro] at hw
+    simp at hw
+  · intro r l hcb hwc hlen h
+    have hlt : r * 2 + 1 < l.length := by omega
+    obtain ⟨w, hw⟩ := getElem?_some_of_lt_length (l := l)
+      (k := r * 2 + 1) hlt
+    rw [hwc] at hw
+    simp at hw
+  · intro r l hcb hlen h
+    unfold siftDown
+    simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+    intro j hj1 hj2
+    by_cases hjn : j = r
+    · subst j
+      intro s t x y hs ht htb hsx hsy
+      have hsn := hs.ge
+      rcases ht with rfl | rfl <;> omega
+    · exact h j (by omega) hj2
+
+
+/-- Sifting with bound never touches positions at or above the bound. -/
+theorem siftDown_get_ge (bound r : Nat) (l : List (BitVec 32))
+    (t : Nat) (hge : bound ≤ t) :
+    (siftDown bound r l)[t]? = l[t]? := by
+  refine siftDown.induct bound
+    (fun r l => bound ≤ t → (siftDown bound r l)[t]? = l[t]?)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ _ _ hge
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hne1 : r * 2 + 1 + 1 ≠ t := by omega
+    have hne2 : r ≠ t := by omega
+    rw [ih hge, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hne1 : r * 2 + 1 ≠ t := by omega
+    have hne2 : r ≠ t := by omega
+    rw [ih hge, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo hro hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob hwo hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hwo, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob a hro hab ih hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+    have hne1 : r * 2 + 1 ≠ t := by omega
+    have hne2 : r ≠ t := by omega
+    rw [ih hge, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
+  · intro r l hcb wc hwc hob a hro hab hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb wc hwc hob hro hge
+    unfold siftDown
+    simp only [hcb, hwc, hob, hro, dite_true, dite_false,
+      Bool.false_eq_true]
+  · intro r l hcb hwc hge
+    unfold siftDown
+    simp only [hcb, hwc, dite_true, dite_false, Bool.false_eq_true]
+  · intro r l hcb hge
+    unfold siftDown
+    simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+
+/-- Heapify establishes the heap: counting down from `i`, each
+    `siftDown` preserves heap-above, so position `0` ends ordered.
+    (Plain `Nat` induction; lengths survive via `siftDown_perm`.) -/
+theorem heapifyDown_heap (bound : Nat) : ∀ (i : Nat) (v : List (BitVec 32)),
+    bound ≤ v.length → HeapAbove bound i v →
+    HeapAbove bound 0 (heapifyDown bound i v) := by
+  intro i
+  induction i with
+  | zero => intro v hlen h; simpa [heapifyDown] using h
+  | succ n ih =>
+    intro v hlen h
+    simp only [heapifyDown]
+    have hlen' : bound ≤ (siftDown bound n v).length := by
+      have hpl := (siftDown_perm bound n v).length_eq
+      omega
+    have hs := sift_step bound n v hlen h
+    exact ih (siftDown bound n v) hlen' hs
+
+/-- Heapify from the top establishes `IsHeap` (the `i = length`
+    premise is vacuous: no `j ≥ length` sits below `bound`). -/
+theorem heapifyDown_isHeap (v : List (BitVec 32)) :
+    IsHeap v.length (heapifyDown v.length v.length v) := by
+  apply heapifyDown_heap
+  · exact Nat.le_refl _
+  · intro j hj1 hj2
+    omega
+
+/-- Index-wise ascending implies `List.Pairwise` ascending. -/
+theorem pairwise_of_indexed : ∀ (w : List (BitVec 32)),
+    (∀ k1 k2 z1 z2, k1 < k2 → k2 < w.length →
+      w[k1]? = some z1 → w[k2]? = some z2 → z2.slt z1 = false) →
+    List.Pairwise (fun a b => b.slt a = false) w := by
+  intro w
+  induction w with
+  | nil => intro; exact List.Pairwise.nil
+  | cons hd tl ih =>
+    intro hall
+    apply List.Pairwise.cons
+    · intro y hy
+      obtain ⟨n, hnlt, heq⟩ := List.mem_iff_getElem.mp hy
+      have hn : tl[n]? = some y := by
+        rw [List.getElem?_eq_getElem hnlt, heq]
+      exact hall 0 (n + 1) hd y (by omega)
+        (by have h := hnlt; simpa using Nat.succ_lt_succ h)
+        rfl (by simpa using hn)
+    · apply ih
+      intro k1 k2 z1 z2 h12 hlen h1 h2
+      exact hall (k1 + 1) (k2 + 1) z1 z2 (by omega)
+        (by simpa using hlen) (by simpa using h1) (by simpa using h2)
+
+/-- Extract invariant: heap on `[0, l)`, every heap value below the
+    sorted suffix `[l, len)`, suffix pairwise ascending (all in the
+    `¬(later < earlier)` GE-shape matching `HeapAt`). -/
+def ExtractInv (l : Nat) (w : List (BitVec 32)) : Prop :=
+  l ≤ w.length ∧
+  HeapAbove l 0 w ∧
+  (∀ i y, i < l → w[i]? = some y →
+    ∀ k z, l ≤ k → k < w.length → w[k]? = some z → z.slt y = false) ∧
+  (∀ k1 k2 z1 z2, l ≤ k1 → k1 < k2 → k2 < w.length →
+    w[k1]? = some z1 → w[k2]? = some z2 → z2.slt z1 = false)
+
+/-- The extract drain preserves the invariant, hence the final list
+    (`last = 0`) is pairwise sorted. Functional induction on
+    `extractDown`: the stopped case is discharged by `l ≤ length`
+    (the reads cannot miss), the swap case re-establishes heap-above
+    via `sift_step` and pushes the old root onto the suffix. -/
+theorem extractDown_sorted (bound : Nat) (last : Nat) (v : List (BitVec 32))
+    (hinv : ExtractInv last v) :
+    ExtractInv 0 (extractDown bound last v) := by
+  refine extractDown.induct
+    (fun last v => ExtractInv last v → ExtractInv 0 (extractDown bound last v))
+    ?_ ?_ ?_ last v hinv
+  · intro v hinv
+    exact hinv
+  · intro v F a b hbl ha0 ih hinv
+    obtain ⟨hlen, hheap, hle, hsorted⟩ := hinv
+    have hred : extractDown bound F.succ v =
+        extractDown bound F (siftDown F 0 ((v.set 0 b).set F a)) := by
+      conv => lhs; unfold extractDown
+      simp only [ha0, hbl]
+    rw [hred]
+    apply ih
+    have hwslen : ((v.set 0 b).set F a).length = v.length := by
+      rw [List.length_set, List.length_set]
+    have hlen_eq :
+        (siftDown F 0 ((v.set 0 b).set F a)).length = v.length := by
+      have hpl := (siftDown_perm F 0 ((v.set 0 b).set F a)).length_eq
+      omega
+    have hswap1 : HeapAbove F 1 ((v.set 0 b).set F a) := by
+      intro j hj1 hjF
+      have hbase : HeapAt (F + 1) j v := hheap j (by omega) (by omega)
+      intro s t x y hs ht htb hsx hsy
+      have hsge := hs.ge
+      have ht2 := ht
+      have hFs : s ≠ F := by
+        intro e; subst e
+        rcases ht2 with ht2 | ht2 <;> omega
+      have hs0 : s ≠ 0 := by omega
+      have ht0 : t ≠ 0 := by rcases ht2 with ht2 | ht2 <;> omega
+      have htF : t ≠ F := by omega
+      rw [List.getElem?_set_ne (Ne.symm hFs),
+        List.getElem?_set_ne (Ne.symm hs0)] at hsx
+      rw [List.getElem?_set_ne (Ne.symm htF),
+        List.getElem?_set_ne (Ne.symm ht0)] at hsy
+      exact hbase s t x y hs ht (by omega) hsx hsy
+    have hheap1 : HeapAbove F 0
+        (siftDown F 0 ((v.set 0 b).set F a)) :=
+      sift_step F 0 ((v.set 0 b).set F a) (by omega) hswap1
+    have hmax : ∀ jj xx, jj < F + 1 → v[jj]? = some xx → a.slt xx = false := by
+      intro jj xx hjb hx
+      exact HeapAt_all (hheap 0 (Nat.le_refl 0) (by omega)) ha0
+        (mem_subtree_zero jj) hjb hx
+    have hws_self : ((v.set 0 b).set F a)[F]? = some a :=
+      List.getElem?_set_self (by rw [List.length_set]; omega)
+    have hws_gt : ∀ k z, F < k → k < v.length →
+        ((v.set 0 b).set F a)[k]? = some z → v[k]? = some z := by
+      intro k z hkF hkv hkz
+      have h1 : k ≠ F := by omega
+      have h2 : k ≠ 0 := by omega
+      rw [List.getElem?_set_ne (Ne.symm h1),
+        List.getElem?_set_ne (Ne.symm h2)] at hkz
+      exact hkz
+    have hprov : ∀ i y, i < F →
+        (siftDown F 0 ((v.set 0 b).set F a))[i]? = some y →
+        y = b ∨ (∃ t', t' ≠ 0 ∧ t' < F + 1 ∧ v[t']? = some y) := by
+      intro i y hiF hy
+      obtain ⟨t', ht', htb', hsw⟩ :=
+        siftDown_mem_region F 0 ((v.set 0 b).set F a) i y
+          (mem_subtree_zero i) hiF hy
+      by_cases ht0 : t' = 0
+      · left
+        subst ht0
+        have hF0 : F ≠ (0 : Nat) := by omega
+        have hb0 : ((v.set 0 b).set F a)[0]? = some b := by
+          rw [List.getElem?_set_ne hF0,
+            List.getElem?_set_self (by omega)]
+        exact Option.some.inj (hsw.symm.trans hb0)
+      · right
+        have h1 : t' ≠ F := by omega
+        have h2 : v[t']? = some y := by
+          rw [List.getElem?_set_ne (Ne.symm h1),
+            List.getElem?_set_ne (Ne.symm ht0)] at hsw
+          exact hsw
+        exact ⟨t', ht0, by omega, h2⟩
+    have hle1 : ∀ i y, i < F →
+        (siftDown F 0 ((v.set 0 b).set F a))[i]? = some y →
+        ∀ k z, F ≤ k →
+        k < (siftDown F 0 ((v.set 0 b).set F a)).length →
+        (siftDown F 0 ((v.set 0 b).set F a))[k]? = some z →
+        z.slt y = false := by
+      intro i y hiF hy k z hkF hkw hkz
+      rw [siftDown_get_ge F 0 _ k hkF] at hkz
+      have hkv : k < v.length := by omega
+      rcases hprov i y hiF hy with hyb | ⟨t', ht0, htb1, hvy⟩
+      · rw [hyb]
+        by_cases hkFe : k = F
+        · rw [hkFe] at hkz
+          have hza : z = a := Option.some.inj (hkz.symm.trans hws_self)
+          rw [hza]
+          exact hmax F b (by omega) hbl
+        · have hkvz : v[k]? = some z := hws_gt k z (by omega) hkv hkz
+          exact hle F b (by omega) hbl k z (by omega) hkv hkvz
+      · by_cases hkFe : k = F
+        · rw [hkFe] at hkz
+          have hza : z = a := Option.some.inj (hkz.symm.trans hws_self)
+          rw [hza]
+          exact hmax t' y htb1 hvy
+        · have hkvz : v[k]? = some z := hws_gt k z (by omega) hkv hkz
+          exact hle t' y (by omega) hvy k z (by omega) hkv hkvz
+    have hsorted1 : ∀ k1 k2 z1 z2, F ≤ k1 → k1 < k2 →
+        k2 < (siftDown F 0 ((v.set 0 b).set F a)).length →
+        (siftDown F 0 ((v.set 0 b).set F a))[k1]? = some z1 →
+        (siftDown F 0 ((v.set 0 b).set F a))[k2]? = some z2 →
+        z2.slt z1 = false := by
+      intro k1 k2 z1 z2 hk1 h12 hkw2 hk1z hk2z
+      rw [siftDown_get_ge F 0 _ k1 hk1] at hk1z
+      rw [siftDown_get_ge F 0 _ k2 (by omega : F ≤ k2)] at hk2z
+      have hk1v : k1 < v.length := by omega
+      have hk2v : k2 < v.length := by omega
+      by_cases hk1F : k1 = F
+      · rw [hk1F] at hk1z
+        have hz1 : z1 = a := Option.some.inj (hk1z.symm.trans hws_self)
+        rw [hz1]
+        have hkv2 : v[k2]? = some z2 :=
+          hws_gt k2 z2 (by omega) hk2v hk2z
+        exact hle 0 a (by omega) ha0 k2 z2 (by omega) hk2v hkv2
+      · have hkv1 : v[k1]? = some z1 :=
+          hws_gt k1 z1 (by omega) hk1v hk1z
+        have hkv2 : v[k2]? = some z2 :=
+          hws_gt k2 z2 (by omega) hk2v hk2z
+        exact hsorted k1 k2 z1 z2 (by omega) h12 hk2v hkv1 hkv2
+    exact ⟨by omega, hheap1, hle1, hsorted1⟩
+  · intro v F hdead hinv
+    obtain ⟨hlen, _, _, _⟩ := hinv
+    obtain ⟨a, ha0⟩ := getElem?_some_of_lt_length (l := v) (k := 0) (by omega)
+    obtain ⟨b, hbl⟩ := getElem?_some_of_lt_length (l := v) (k := F) (by omega)
+    exact False.elim (hdead a b ha0 hbl)
+
+/-- Heapsort output is ascending. -/
+theorem heapSortList_sorted (v : List (BitVec 32)) :
+    (heapSortList v).Pairwise (fun a b => b.slt a = false) := by
+  unfold heapSortList
+  have hpl := (heapifyDown_perm v.length v.length v).length_eq
+  have hinv : ExtractInv v.length (heapifyDown v.length v.length v) := by
+    refine ⟨by omega, heapifyDown_isHeap v, ?_, ?_⟩
+    · intro i y hiF hy k z hkF hkw hkz
+      omega
+    · intro k1 k2 z1 z2 hk1 h12 hkw2 hk1z hk2z
+      omega
+  have hfin := extractDown_sorted v.length v.length _ hinv
+  obtain ⟨_, _, _, hsorted⟩ := hfin
+  exact pairwise_of_indexed _
+    (fun k1 k2 z1 z2 h12 hlen h1 h2 =>
+      hsorted k1 k2 z1 z2 (by omega) h12 hlen h1 h2)
+
+
