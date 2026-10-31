@@ -1270,6 +1270,26 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
     deliberately untouched. Encapsulation pins: no direct
     `operator[]` / `_M_range_check` / throw calls; `nsw`
     anywhere rejects. Verdict honestly `unknown` (single-ref).
+40. Raw-pointer in-place list reversal (L, first dynamic shape):
+    `list_reverse` (`Node*` head in, `Node*` new head out, nodes
+    caller-owned — the entry never allocates). The single
+    `while` (`cur != nullptr`) chases `cur` through `next`,
+    swinging each visited link to its predecessor (two
+    `cir.get_member` `[1]` projections: read `cur->next`, store
+    `cur->next`), one `cir.cmp` (`ne` on `!cir.ptr<!rec_Node>`
+    vs `#cir.ptr<null>`), two null consts, no `for`/`if`/
+    `ternary`/`casts`/`mul`/`add`/`sub` of its own, no `nsw`,
+    5 allocas / 10 loads / 8 stores, no calls at all (no
+    `at()`, no `new`/`delete` in the entry). Admission is one
+    fused entry Func: the drain condition plus the two link
+    projections (a null dereference is loud). Payloads are
+    deliberately untouched. Encapsulation pins: `!rec_Node`
+    pointee on the param/return (bare `!cir.ptr` without the
+    struct rejects); no `cir.call @malloc` / `@free(` /
+    `@_Znwm` / `@_ZdlPvm` in the entry (allocation lives in
+    the driver); `cir.try`/`cir.unreachable` reject.
+    Verdict honestly `unknown` (raw pointer, nullable by
+    design — the M2a attr triple does not apply).
 
 ## Admitted CIR ops (raw CIRGen shape)
 
