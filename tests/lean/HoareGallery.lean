@@ -17,6 +17,7 @@ import Circe.Transfer.VecSegReverse
 import Circe.Transfer.VecRotate
 import Circe.Emit.VecListRev
 import Circe.Emit.VecHeapSort
+import Circe.Emit.LinkedReverse
 
 namespace HoareGallery
 
@@ -707,6 +708,97 @@ example : ∃ F ρ' w, evalStmtFuel F heapSortFunc.body
     List.Perm w [3, 1, 2] :=
   heapSortFunc_sorted _ _ (by decide) (by decide)
 
+/-- 3-node gallery chain `[10,20,30]` (addrs 2,1,0; links rewired by
+    the chase; head `some 2`). -/
+def linkRevGalleryMem : Mem :=
+  (memAllocData (memAllocData (memAllocData emptyMem
+    [(30 : BitVec 32), 0]).1 [(20 : BitVec 32), 1]).1
+    [(10 : BitVec 32), 2]).1
+
+/-- The gallery chain is a segment. -/
+theorem linkRevGallerySeg :
+    ListSeg linkRevGalleryMem (some 2) [10, 20, 30] :=
+  ListSeg.cons
+    (by simp [nodeAt, cellsAt, linkRevGalleryMem, memAllocData,
+      memFind, emptyMem, linkWord] :
+      nodeAt linkRevGalleryMem 2 2 10 (some 1))
+    (ListSeg.cons
+      (by simp [nodeAt, cellsAt, linkRevGalleryMem, memAllocData,
+        memFind, emptyMem, linkWord] :
+        nodeAt linkRevGalleryMem 1 1 20 (some 0))
+      (ListSeg.cons
+        (by simp [nodeAt, cellsAt, linkRevGalleryMem, memAllocData,
+          memFind, emptyMem, linkWord] :
+          nodeAt linkRevGalleryMem 0 0 30 none)
+        ListSeg.nil))
+
+/-- Every allocated address is small. -/
+theorem linkRevGalleryHex : ∀ x,
+    (memFind linkRevGalleryMem x).isSome = true → x + 1 < 2 ^ 32 := by
+  intro x hx
+  have hnone : ∀ y, y ≠ 2 → y ≠ 1 → y ≠ 0 →
+      memFind linkRevGalleryMem y = none := by
+    intro y h2 h1 h0
+    simp [linkRevGalleryMem, memAllocData, memFind, emptyMem,
+      beq_iff_eq, h2, h1, h0]
+  by_cases h2 : x = 2
+  · subst h2
+    decide
+  · by_cases h1 : x = 1
+    · subst h1
+      decide
+    · by_cases h0 : x = 0
+      · subst h0
+        decide
+      · rw [hnone x h2 h1 h0] at hx
+        simp at hx
+
+/-- Reversal bridge instance: the chase forward on the gallery chain
+    returns the reversed segment. -/
+example : ∃ m' prev',
+    linkRevFwd 10 linkRevGalleryMem (some 2) = .ok (m', prev') ∧
+    ListSeg m' prev' [30, 20, 10] := by
+  obtain ⟨m', prev', hfwd⟩ :
+      ∃ m' prev', linkRevFwd 10 linkRevGalleryMem (some 2) =
+        .ok (m', prev') := by
+    have hok : (match linkRevFwd 10 linkRevGalleryMem (some 2) with
+      | .ok _ => true | .error _ => false) = true := by native_decide
+    cases h : linkRevFwd 10 linkRevGalleryMem (some 2) with
+    | ok p =>
+      obtain ⟨m', prev'⟩ := p
+      rw [← h]
+      exact ⟨m', prev', h⟩
+    | error e =>
+      rw [h] at hok
+      simp at hok
+  exact ⟨m', prev', hfwd,
+    linkRevFwd_correct 10 linkRevGalleryMem linkRevGalleryHex
+      (some 2) [10, 20, 30] m' prev' linkRevGallerySeg hfwd⟩
+
+/-- Entry triple instance: the seeded chase returns the reversal. -/
+example : ∃ ρ' m' prev',
+    memEvalStmtFuel 10 linkRevFunc.body
+      [("head", .ptrVal (some 2))] linkRevGalleryMem [] =
+      .ok ((ρ', m', []), .returned (.ptrVal prev')) ∧
+    ListSeg m' prev' [30, 20, 10] := by
+  obtain ⟨m', prev', hfwd⟩ :
+      ∃ m' prev', linkRevFwd 10 linkRevGalleryMem (some 2) =
+        .ok (m', prev') := by
+    have hok : (match linkRevFwd 10 linkRevGalleryMem (some 2) with
+      | .ok _ => true | .error _ => false) = true := by native_decide
+    cases h : linkRevFwd 10 linkRevGalleryMem (some 2) with
+    | ok p =>
+      obtain ⟨m', prev'⟩ := p
+      rw [← h]
+      exact ⟨m', prev', h⟩
+    | error e =>
+      rw [h] at hok
+      simp at hok
+  obtain ⟨ρ', heval, hlist⟩ := linkRevFunc_correct 10
+    linkRevGalleryMem [] linkRevGalleryHex (some 2) [10, 20, 30]
+    m' prev' linkRevGallerySeg hfwd
+  exact ⟨ρ', m', prev', heval, hlist⟩
+
 /-- Closed-instance runtime checks — executable shadows of the
     gallery triples at one point each (the proofs themselves are
     compile-gated): the two-cell incr, `alias_cond` under both
@@ -1018,6 +1110,20 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: heap dup entry failed: {(repr e).pretty}")
+  -- Raw-pointer reversal over `[10,20,30]` exits with the new head
+  -- (executable shadow of `linkRevFunc_correct`).
+  match memEvalStmtFuel 10 linkRevFunc.body
+      [("head", .ptrVal (some 2))] linkRevGalleryMem [] with
+  | .ok ((_, _, _), .returned (.ptrVal (some 0))) =>
+    passed := passed + 1
+  | .ok ((_, _, _), .returned v) =>
+    throw (IO.userError
+      s!"hoare-gallery: listrev got={(repr v).pretty}, want some 0")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: listrev want returned")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: listrev failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix
