@@ -67,6 +67,13 @@ globals only. Calls: S1 DAG into admitted leaves (recursion rejected).
    neither — singleton footprint + read-only CoreIR recover noalias
    from construction; writers and multi-pointer shapes still need
    attr text or a `noalias` verdict.)
+   (L-ptr exemption: an entry with exactly one live pointer param
+   that is bare (no `noalias` attr / triple / recovery) AND whose
+   verdict is honestly `unknown` needs neither — no uniqueness claim
+   exists anywhere to corroborate, so the shape arm decides
+   admission. A `noalias`/`mayAlias` verdict is itself a claim the
+   text must corroborate, and two or more live pointer params can
+   always alias: both keep the requirement.)
 2. No two live params may alias (oracle verdict required).
 3. No escaping, except the borrow-return pattern below.
 4. Indexing only as `p[i]` / `*(p+i)` with `0 <= i < n`, `n` a
