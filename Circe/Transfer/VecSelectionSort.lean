@@ -1184,20 +1184,14 @@ theorem valSelectionSortBody_ok (F G : Nat)
       "m" = some (.u64 (BitVec.ofNat 64 m)) :=
     envExtend_hit _ _ _
   have hi₁ : envLookup (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
-      "i" = some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "m" by decide)]
-    exact hi
+      "i" = some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi (by decide)
   have hv₁ : envLookup (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
-      "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "m" by decide)]
-    exact hv
+      "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv (by decide)
   have hn₁ : envLookup (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
-      "n" = some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("n" : String) ≠ "m" by decide)]
-    exact hn
+      "n" = some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hn (by decide)
   have hiVar₁ : evalExpr (.var "i")
       (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m))) =
       .ok (.u64 iB) :=
@@ -1215,22 +1209,16 @@ theorem valSelectionSortBody_ok (F G : Nat)
     (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m))) (.i32 x) hat
   have hm₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "m" =
-      some (.u64 (BitVec.ofNat 64 m)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "t" by decide)]
-    exact hm₁
+      some (.u64 (BitVec.ofNat 64 m)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₁ (by decide)
   have hi₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "i" =
-      some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "t" by decide)]
-    exact hi₁
+      some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₁ (by decide)
   have hn₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "n" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("n" : String) ≠ "t" by decide)]
-    exact hn₁
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hn₁ (by decide)
   have hiVar₂ : evalExpr (.var "i")
       (envExtend (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
         "t" (.i32 x)) = .ok (.u64 iB) :=
@@ -1243,10 +1231,8 @@ theorem valSelectionSortBody_ok (F G : Nat)
     rw [hmN]; exact hy
   have hv₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "v" =
-      some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "t" by decide)]
-    exact hv₁
+      some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hatM : evalExpr (.stdVecAt "v" (.var "m"))
       (envExtend (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
         "t" (.i32 x)) = .ok (.i32 y) :=
@@ -1579,20 +1565,14 @@ theorem memSelectionSortBody_ok (F G : Nat)
       "m" = some (.u64 (BitVec.ofNat 64 m)) :=
     envExtend_hit _ _ _
   have hi₁ : envLookup (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
-      "i" = some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "m" by decide)]
-    exact hi
+      "i" = some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi (by decide)
   have hv₁ : envLookup (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
-      "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "m" by decide)]
-    exact hv
+      "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv (by decide)
   have hn₁ : envLookup (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
-      "n" = some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("n" : String) ≠ "m" by decide)]
-    exact hnw
+      "n" = some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hnw (by decide)
 
   have hiVar₁ : evalExpr (.var "i")
       (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m))) =
@@ -1656,28 +1636,20 @@ theorem memSelectionSortBody_ok (F G : Nat)
     envExtend_hit _ _ _
   have hm₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "m" =
-      some (.u64 (BitVec.ofNat 64 m)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "t" by decide)]
-    exact hm₁
+      some (.u64 (BitVec.ofNat 64 m)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₁ (by decide)
   have hi₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "i" =
-      some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "t" by decide)]
-    exact hi₁
+      some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₁ (by decide)
   have hv₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "v" =
-      some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "t" by decide)]
-    exact hv₁
+      some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hn₂ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "n" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("n" : String) ≠ "t" by decide)]
-    exact hn₁
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hn₁ (by decide)
   have hiVar₂T : evalExpr (.var "i")
       (envExtend (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
         "t" (.i32 x)) = .ok (.u64 iB) :=

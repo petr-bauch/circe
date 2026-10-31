@@ -776,11 +776,11 @@ theorem siftSwap_swap (F : Nat) (vL : List (BitVec 32))
     (mkHeapEnv ((vL.set root.toNat b).set child.toNat a) n i last
       B root child other a b) _ _ hchild5 huRt
   rw [hbody]
-  exact ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignR).trans
-    ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignC).trans
+  exact (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignR
+    (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignC
       ((evalStmtFuel_if_true F _ _ _ _ hcond).trans
-        (((evalStmtFuel_seq_fallthrough F _ _ _ _ hsetR).trans
-          ((evalStmtFuel_seq_fallthrough F _ _ _ _ hsetC).trans
+        ((evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hsetR
+          (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hsetC
             hassignRt))))))
 
 /-- Swap skipped: heap order already holds (`broke`, binds kept). -/
@@ -857,8 +857,8 @@ theorem siftSwap_break (F : Nat) (vL : List (BitVec 32))
         .broke) := by
     cases F <;> simp [evalStmtFuel, evalStmtZero, evalStmtWith]
   rw [hbody]
-  exact ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignR).trans
-    ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignC).trans
+  exact (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignR
+    (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignC
       ((evalStmtFuel_if_false F _ _ _ _ hcond).trans hbrk)))
 
 /-- Swap misses on the root read. -/
@@ -958,7 +958,7 @@ theorem siftSwap_errC (F : Nat) (vL : List (BitVec 32))
       (mkHeapEnv vL n i last B root child other a aC) =
       .error .OOB :=
     evalStmtFuel_seq_err F _ _ _ _ herrS
-  exact (evalStmtFuel_seq_fallthrough F _ _ _ _ hassignR).trans hseq
+  exact evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignR hseq
 
 /-- Swap taken on aliased indices (`root = child`, the wraparound
     corner): both stores hit the same cell, the net effect is
@@ -1100,11 +1100,11 @@ theorem siftSwap_swap_alias (F : Nat) (vL : List (BitVec 32))
     (mkHeapEnv ((vL.set root.toNat b).set child.toNat a) n i last
       B root child other a b) _ _ hchild5 huRt
   rw [hbody]
-  exact ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignR).trans
-    ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignC).trans
+  exact (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignR
+    (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignC
       ((evalStmtFuel_if_true F _ _ _ _ hcond).trans
-        (((evalStmtFuel_seq_fallthrough F _ _ _ _ hsetR).trans
-          ((evalStmtFuel_seq_fallthrough F _ _ _ _ hsetC).trans
+        ((evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hsetR
+          (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hsetC
             hassignRt))))))
 
 /-! ## Sift loop agreement (ok direction) -/
@@ -1919,7 +1919,7 @@ theorem siftLoop_ok (F : Nat) (vL : List (BitVec 32))
               aR aC, .broke) :=
           (evalStmtFuel_if_false F _ _ _ _ hcb').trans hbrk
         rw [hunfold]
-        exact (evalStmtFuel_seq_fallthrough F _ _ _ _ hidx).trans hif
+        exact evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hidx hif
       have hstep : evalStmtFuel (F+1) heapSift
           (mkHeapEnv vL n i last B root child other aR aC) =
           .ok (mkHeapEnv vL n i last B root (root*2+1) (root*2+1+1)
@@ -2042,7 +2042,7 @@ theorem heapDrain_ok (F : Nat) (vL : List (BitVec 32))
                 aC) =
               .ok (mkHeapEnv v1 n (i - 1) last n r' c' o' ar' ac',
                 .fellThrough) :=
-            (evalStmtFuel_seq_fallthrough F _ _ _ _ hassignR).trans
+            evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignR
               hsiftok
           have hunfold : heapDrainBody =
               .seq (.assign "i" (.usub (.var "i") (.lit (.u64 1))))
@@ -2205,10 +2205,10 @@ theorem extrSwap_ok (F : Nat) (vL : List (BitVec 32))
     (mkHeapEnv ((vL.set 0 b).set last.toNat a) n i last B root
       child other a b) _ _ hlast3 huB
   rw [hbody]
-  exact ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignR).trans
-    ((evalStmtFuel_seq_fallthrough F _ _ _ _ hassignC).trans
-      ((evalStmtFuel_seq_fallthrough F _ _ _ _ hset0).trans
-        ((evalStmtFuel_seq_fallthrough F _ _ _ _ hsetL).trans
+  exact (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignR
+    (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hassignC
+      (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hset0
+        (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hsetL
           hassignB))))
 
 /-- The extract countdown agrees with the forward on success:
@@ -2506,13 +2506,13 @@ theorem heapSeed_ok (F : Nat) (vL : List (BitVec 32))
       (.i32 0))
     (.i32 0) h0i7
   rw [hbody]
-  exact ((evalStmtFuel_seq_fallthrough F _ _ _ _ li).trans
-    ((evalStmtFuel_seq_fallthrough F _ _ _ _ hlast).trans
-      ((evalStmtFuel_seq_fallthrough F _ _ _ _ hB).trans
-        ((evalStmtFuel_seq_fallthrough F _ _ _ _ hroot).trans
-          ((evalStmtFuel_seq_fallthrough F _ _ _ _ hchild).trans
-            ((evalStmtFuel_seq_fallthrough F _ _ _ _ hother).trans
-              ((evalStmtFuel_seq_fallthrough F _ _ _ _ haR).trans
+  exact (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ li
+    (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hlast
+      (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hB
+        (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hroot
+          (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hchild
+            (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hother
+              (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ haR
                 haC)))))))
 
 /-- Body-level entry: seed, heapify, extract, return. The two
@@ -2545,9 +2545,9 @@ theorem heapSort_body_ok (F : Nat) (vL : List (BitVec 32))
             (.return_ (.var "v"))))) := rfl
   rw [hfun]
   exact ⟨_,
-    ((evalStmtFuel_seq_fallthrough F _ _ _ _ hseed).trans
-      ((evalStmtFuel_seq_fallthrough F _ _ _ _ hdrain).trans
-        ((evalStmtFuel_seq_fallthrough F _ _ _ _ hextr).trans
+    (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hseed
+      (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hdrain
+        (evalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ hextr
           hret)))⟩
 
 /-! ## H4: pure heapsort mirror + sort contract.
@@ -2755,6 +2755,36 @@ def extractDown (bound last : Nat) (v : List (BitVec 32)) :
 def heapSortList (v : List (BitVec 32)) : List (BitVec 32) :=
   extractDown v.length v.length (heapifyDown v.length v.length v)
 
+/-- Functional-induction case closers for the `siftDown` mirror:
+    unfold, discharge the arm `dite`s with the named case
+    hypotheses, reduce booleans. Four shapes cover every site:
+    plain goal (`sift_case`), hypothesis (`sift_case_at`),
+    permutation goal (`sift_perm_case`, adds `List.Perm.refl`),
+    and `conv`-lhs goal (`sift_conv_case`). -/
+syntax "sift_case" " [" Lean.Parser.Tactic.simpLemma,* "]" : tactic
+syntax "sift_perm_case" " [" Lean.Parser.Tactic.simpLemma,* "]" : tactic
+syntax "sift_conv_case" " [" Lean.Parser.Tactic.simpLemma,* "]" : tactic
+macro_rules
+  | `(tactic| sift_case [$hs,*]) => `(tactic| (unfold siftDown; simp only [$hs,*, dite_true, dite_false, Bool.false_eq_true]))
+  | `(tactic| sift_perm_case [$hs,*]) => `(tactic| (unfold siftDown; simp only [$hs,*, dite_true, dite_false, Bool.false_eq_true, List.Perm.refl]))
+  | `(tactic| sift_conv_case [$hs,*]) => `(tactic| ((conv => lhs; unfold siftDown); simp only [$hs,*, dite_true, dite_false, Bool.false_eq_true]))
+
+/-- Hypothesis variant of `sift_case`: same discharge at `h`.
+    Implemented by string round-trip (the `at`-location node kind
+    cannot be spliced into a quotation), so the bracket list must
+    be plain identifiers. -/
+elab "sift_case_at" h:ident " [" hs:term,* "]" : tactic => do
+  let hstr := h.getId.toString
+  let mut names : Array String := #[]
+  for stx in hs.getElems do
+    let n := stx.raw.getId
+    if n == Lean.Name.anonymous then throwError "sift_case_at expects identifiers"
+    names := names.push n.toString
+  let src := s!"(unfold siftDown at {hstr}; simp only [{",".intercalate names.toList}, dite_true, dite_false, Bool.false_eq_true] at {hstr})"
+  match Lean.Parser.runParserCategory (← Lean.getEnv) `tactic src with
+  | .ok stx => Lean.Elab.Tactic.evalTactic stx
+  | .error e => throwError e
+
 /-- Sifting permutes (functional induction: stops/misses are `rfl`,
     swaps chain the swap lemma with the IH). -/
 theorem siftDown_perm (bound root : Nat) (v : List (BitVec 32)) :
@@ -2762,47 +2792,30 @@ theorem siftDown_perm (bound root : Nat) (v : List (BitVec 32)) :
   induction root, v using siftDown.induct with
   | bound => exact bound
   | case1 r l hcb wc hwc hob wo hwo a hro hcand hab ih =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     exact ih.trans (swapPerm l r (r * 2 + 1 + 1) a wo hro hwo)
   | case2 r l hcb wc hwc hob wo hwo a hro hcand hab =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hwo, hro, hcand, hab]
   | case3 r l hcb wc hwc hob wo hwo a hro hcand hab ih =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     exact ih.trans (swapPerm l r (r * 2 + 1) a wc hro hwc)
   | case4 r l hcb wc hwc hob wo hwo a hro hcand hab =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hwo, hro, hcand, hab]
   | case5 r l hcb wc hwc hob wo hwo hro =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hwo, hro]
   | case6 r l hcb wc hwc hob hwo =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, dite_true, dite_false, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hwo]
   | case7 r l hcb wc hwc hob a hro hab ih =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false, Bool.false_eq_true,
-      List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hro, hab]
     exact ih.trans (swapPerm l r (r * 2 + 1) a wc hro hwc)
   | case8 r l hcb wc hwc hob a hro hab =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false, Bool.false_eq_true,
-      List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hro, hab]
   | case9 r l hcb wc hwc hob hro =>
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, dite_true, dite_false, List.Perm.refl]
+    sift_perm_case [hcb, hwc, hob, hro]
   | case10 r l hcb hwc =>
-    unfold siftDown
-    simp only [hcb, hwc, dite_true, dite_false, List.Perm.refl]
+    sift_perm_case [hcb, hwc]
   | case11 r l hcb =>
-    unfold siftDown
-    simp only [hcb, dite_true, dite_false, List.Perm.refl]
+    sift_perm_case [hcb]
 
 /-- Heapify drain permutes: each sift permutes, chained by induction. -/
 theorem heapifyDown_perm (bound i : Nat) (v : List (BitVec 32)) :
@@ -2988,9 +3001,7 @@ theorem siftDown_get_outside (bound r : Nat) (l : List (BitVec 32))
     (fun r l => ¬ InSubtree r t → (siftDown bound r l)[t]? = l[t]?)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ _ _ ht
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     have hcr : InSubtree r (r * 2 + 1 + 1) := mem_child_right r
     have hct : ¬ InSubtree (r * 2 + 1 + 1) t :=
       fun hc' => ht (hcr.trans' hc')
@@ -3000,13 +3011,9 @@ theorem siftDown_get_outside (bound r : Nat) (l : List (BitVec 32))
       intro e; subst e; exact ht InSubtree.self
     rw [ih hct, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     have hcr : InSubtree r (r * 2 + 1) := mem_child_left r
     have hct : ¬ InSubtree (r * 2 + 1) t :=
       fun hc' => ht (hcr.trans' hc')
@@ -3016,21 +3023,13 @@ theorem siftDown_get_outside (bound r : Nat) (l : List (BitVec 32))
       intro e; subst e; exact ht InSubtree.self
     rw [ih hct, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
   · intro r l hcb wc hwc hob wo hwo hro ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro]
   · intro r l hcb wc hwc hob hwo ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo]
   · intro r l hcb wc hwc hob a hro hab ih ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro, hab]
     have hcr : InSubtree r (r * 2 + 1) := mem_child_left r
     have hct : ¬ InSubtree (r * 2 + 1) t :=
       fun hc' => ht (hcr.trans' hc')
@@ -3040,19 +3039,13 @@ theorem siftDown_get_outside (bound r : Nat) (l : List (BitVec 32))
       intro e; subst e; exact ht InSubtree.self
     rw [ih hct, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
   · intro r l hcb wc hwc hob a hro hab ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro, hab]
   · intro r l hcb wc hwc hob hro ht
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro]
   · intro r l hcb hwc ht
-    unfold siftDown
-    simp only [hcb, hwc, dite_true, dite_false, Bool.false_eq_true]
+    sift_case [hcb, hwc]
   · intro r l hcb ht
-    unfold siftDown
-    simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+    sift_case [hcb]
 
 /-- Values landing in-bound inside the sift region come from in-bound
     positions of the original region. -/
@@ -3066,9 +3059,7 @@ theorem siftDown_mem_region (bound r : Nat) (l : List (BitVec 32))
       ∃ t', InSubtree r t' ∧ t' < bound ∧ l[t']? = some x)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ r l t x htt htb hx
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hwo, hro, hcand, hab]
     rcases Classical.em (InSubtree (r * 2 + 1 + 1) t) with hmem | hmem
     · obtain ⟨t', ht', htb', hsw⟩ := ih t x hmem htb hx
       by_cases he2 : t' = r * 2 + 1 + 1
@@ -3110,14 +3101,10 @@ theorem siftDown_mem_region (bound r : Nat) (l : List (BitVec 32))
             exact hx
           exact ⟨t, htt, htb, hswl⟩
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hwo, hro, hcand, hab]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hwo, hro, hcand, hab]
     rcases Classical.em (InSubtree (r * 2 + 1) t) with hmem | hmem
     · obtain ⟨t', ht', htb', hsw⟩ := ih t x hmem htb hx
       by_cases he2 : t' = r * 2 + 1
@@ -3159,24 +3146,16 @@ theorem siftDown_mem_region (bound r : Nat) (l : List (BitVec 32))
             exact hx
           exact ⟨t, htt, htb, hswl⟩
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hwo, hro, hcand, hab]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb wc hwc hob wo hwo hro t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hwo, hro]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb wc hwc hob hwo t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hwo, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hwo]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb wc hwc hob a hro hab ih t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hro, hab]
     rcases Classical.em (InSubtree (r * 2 + 1) t) with hmem | hmem
     · obtain ⟨t', ht', htb', hsw⟩ := ih t x hmem htb hx
       by_cases he2 : t' = r * 2 + 1
@@ -3218,22 +3197,16 @@ theorem siftDown_mem_region (bound r : Nat) (l : List (BitVec 32))
             exact hx
           exact ⟨t, htt, htb, hswl⟩
   · intro r l hcb wc hwc hob a hro hab t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hro, hab]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb wc hwc hob hro t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, hob, hro, dite_true, dite_false,
-      Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc, hob, hro]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb hwc t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, hwc, dite_true, dite_false, Bool.false_eq_true] at hx
+    sift_case_at hx [hcb, hwc]
     exact ⟨t, htt, htb, hx⟩
   · intro r l hcb t x htt htb hx
-    unfold siftDown at hx
-    simp only [hcb, dite_true, dite_false, Bool.false_eq_true] at hx
+    sift_case_at hx [hcb]
     exact ⟨t, htt, htb, hx⟩
 
 /-- Subtree co-members are comparable by inclusion. -/
@@ -3322,9 +3295,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
       HeapAbove bound r (siftDown bound r l))
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ r l hlen h
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hlen h
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     have hlen' : bound ≤ ((l.set r wo).set (r * 2 + 1 + 1) a).length := by
       rwa [List.length_set, List.length_set]
     have hpres : HeapAbove bound (r * 2 + 1 + 1 + 1)
@@ -3443,9 +3414,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
       · exact hmid j (by omega) hjc hj2
       · exact ihc j (by omega) hj2
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab hlen h
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     intro j hj1 hj2
     by_cases hjn : j = r
     · subst j
@@ -3466,9 +3435,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
       · exact h (r * 2 + 1 + 1) (by omega) hob s t x y hos ht htb hsx hsy
     · exact h j (by omega) hj2
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hlen h
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     have hlen' : bound ≤ ((l.set r wc).set (r * 2 + 1) a).length := by
       rwa [List.length_set, List.length_set]
     have hpres : HeapAbove bound (r * 2 + 1 + 1)
@@ -3565,9 +3532,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
       · exact hmid j (by omega) hjc hj2
       · exact ihc j (by omega) hj2
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab hlen h
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     intro j hj1 hj2
     by_cases hjn : j = r
     · subst j
@@ -3599,9 +3564,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
     rw [hwo] at hw
     simp at hw
   · intro r l hcb wc hwc hob a hro hab ih hlen h
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro, hab]
     have hlen' : bound ≤ ((l.set r wc).set (r * 2 + 1) a).length := by
       rwa [List.length_set, List.length_set]
     have hpres : HeapAbove bound (r * 2 + 1 + 1)
@@ -3686,9 +3649,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
       · exact hmid j (by omega) hjc hj2
       · exact ihc j (by omega) hj2
   · intro r l hcb wc hwc hob a hro hab hlen h
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro, hab]
     intro j hj1 hj2
     by_cases hjn : j = r
     · subst j
@@ -3716,8 +3677,7 @@ theorem sift_step (bound r : Nat) (l : List (BitVec 32))
     rw [hwc] at hw
     simp at hw
   · intro r l hcb hlen h
-    unfold siftDown
-    simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+    sift_case [hcb]
     intro j hj1 hj2
     by_cases hjn : j = r
     · subst j
@@ -3735,56 +3695,36 @@ theorem siftDown_get_ge (bound r : Nat) (l : List (BitVec 32))
     (fun r l => bound ≤ t → (siftDown bound r l)[t]? = l[t]?)
     ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ _ _ hge
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     have hne1 : r * 2 + 1 + 1 ≠ t := by omega
     have hne2 : r ≠ t := by omega
     rw [ih hge, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     have hne1 : r * 2 + 1 ≠ t := by omega
     have hne2 : r ≠ t := by omega
     rw [ih hge, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
   · intro r l hcb wc hwc hob wo hwo a hro hcand hab hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro, hcand, hab]
   · intro r l hcb wc hwc hob wo hwo hro hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, hro, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo, hro]
   · intro r l hcb wc hwc hob hwo hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hwo, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hwo]
   · intro r l hcb wc hwc hob a hro hab ih hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro, hab]
     have hne1 : r * 2 + 1 ≠ t := by omega
     have hne2 : r ≠ t := by omega
     rw [ih hge, List.getElem?_set_ne hne1, List.getElem?_set_ne hne2]
   · intro r l hcb wc hwc hob a hro hab hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro, hab]
   · intro r l hcb wc hwc hob hro hge
-    unfold siftDown
-    simp only [hcb, hwc, hob, hro, dite_true, dite_false,
-      Bool.false_eq_true]
+    sift_case [hcb, hwc, hob, hro]
   · intro r l hcb hwc hge
-    unfold siftDown
-    simp only [hcb, hwc, dite_true, dite_false, Bool.false_eq_true]
+    sift_case [hcb, hwc]
   · intro r l hcb hge
-    unfold siftDown
-    simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+    sift_case [hcb]
 
 /-- Heapify establishes the heap: counting down from `i`, each
     `siftDown` preserves heap-above, so position `0` ends ordered.
@@ -3908,9 +3848,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       exact bv64_ult_true hlt'
     have hmir : siftDown bn r l =
         siftDown bn (r * 2 + 1 + 1) ((l.set r wo).set (r * 2 + 1 + 1) a) := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-        Bool.false_eq_true]
+      sift_conv_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     obtain ⟨F0, hF0⟩ := ih (root * 2 + 1 + 1) hother hob hbig
       (by rwa [List.length_set, List.length_set])
     refine ⟨F0.succ, ?_⟩
@@ -3936,9 +3874,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         rw [hother, hbn]; exact hob
       exact bv64_ult_true hlt'
     have hmir : siftDown bn r l = l := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-        Bool.false_eq_true]
+      sift_conv_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
     obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
@@ -3962,9 +3898,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       exact bv64_ult_true hlt'
     have hmir : siftDown bn r l =
         siftDown bn (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a) := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-        Bool.false_eq_true]
+      sift_conv_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     obtain ⟨F0, hF0⟩ := ih (root * 2 + 1) hchild hcb hbig
       (by rwa [List.length_set, List.length_set])
     refine ⟨F0.succ, ?_⟩
@@ -3990,9 +3924,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         rw [hother, hbn]; exact hob
       exact bv64_ult_true hlt'
     have hmir : siftDown bn r l = l := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
-        Bool.false_eq_true]
+      sift_conv_case [hcb, hwc, hob, hwo, hro, hcand, hab]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
     obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
@@ -4024,9 +3956,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       exact bv64_ult_false hlt'
     have hmir : siftDown bn r l =
         siftDown bn (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a) := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-        Bool.false_eq_true]
+      sift_conv_case [hcb, hwc, hob, hro, hab]
     obtain ⟨F0, hF0⟩ := ih (root * 2 + 1) hchild hcb hbig
       (by rwa [List.length_set, List.length_set])
     refine ⟨F0.succ, ?_⟩
@@ -4052,9 +3982,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         rw [hother, hbn]; exact hob
       exact bv64_ult_false hlt'
     have hmir : siftDown bn r l = l := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
-        Bool.false_eq_true]
+      sift_conv_case [hcb, hwc, hob, hro, hab]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
     obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
@@ -4079,8 +4007,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         rw [hchild, hbn]; exact hcb
       exact bv64_ult_false hlt'
     have hmir : siftDown bn r l = l := by
-      conv => lhs; unfold siftDown
-      simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+      sift_conv_case [hcb]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
     obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
@@ -4398,9 +4325,7 @@ theorem extractFwd_exists (last : Nat) (v : List (BitVec 32))
       subst hab0
       have hmir0 : siftDown 0 0 ((v.set 0 a).set 0 a) =
           (v.set 0 a).set 0 a := by
-        unfold siftDown
-        simp only [show ¬ 0 * 2 + 1 < 0 from by omega, dite_true, dite_false,
-          Bool.false_eq_true]
+        sift_case [show ¬ 0 * 2 + 1 < 0 from by omega]
       obtain ⟨Fs, hFs⟩ := siftFwd_nop 0 0 ((v.set 0 a).set 0 a) (llast - 1) 0
         hlast' (by decide) (by omega) (by omega) hmir0
       have hinv1 := extractDown_step_inv 0 v a a hbl ha0 hinv'

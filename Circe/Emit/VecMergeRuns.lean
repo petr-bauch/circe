@@ -491,10 +491,10 @@ theorem mergeRunsMainBody_hitI (prog : Prog) (F : Nat)
   have hincrI := runsIncrI prog F la (lt.set k.toNat x) lo mid hi i j k
   have hincrK := runsIncrK prog F la (lt.set k.toNat x) lo mid hi (i + 1) j k
   have hinner :=
-    (evalProgStmt_seq_fallthrough prog F _ _ _ _ hincrI).trans hincrK
+    evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hincrI hincrK
   have hwrite := ((evalProgStmt_if_true prog F _ _ .fail _ hcK).trans hvec)
   have hseq :=
-    (evalProgStmt_seq_fallthrough prog F _ _ _ _ hwrite).trans hinner
+    evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hwrite hinner
   rw [hbody]
   exact (evalProgStmt_if_true prog F _ _ _ _ hslt).trans hseq
 
@@ -543,10 +543,10 @@ theorem mergeRunsMainBody_hitJ (prog : Prog) (F : Nat)
   have hincrJ := runsIncrJ prog F la (lt.set k.toNat y) lo mid hi i j k
   have hincrK := runsIncrK prog F la (lt.set k.toNat y) lo mid hi i (j + 1) k
   have hinner :=
-    (evalProgStmt_seq_fallthrough prog F _ _ _ _ hincrJ).trans hincrK
+    evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hincrJ hincrK
   have hwrite := ((evalProgStmt_if_true prog F _ _ .fail _ hcK).trans hvec)
   have hseq :=
-    (evalProgStmt_seq_fallthrough prog F _ _ _ _ hwrite).trans hinner
+    evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hwrite hinner
   rw [hbody]
   exact (evalProgStmt_if_false prog F _ _ _ _ hslt).trans hseq
 
@@ -668,10 +668,10 @@ theorem mergeRunsDrainIBody_hit (prog : Prog) (F : Nat)
   have hincrI := runsIncrI prog F la (lt.set k.toNat x) lo mid hi i j k
   have hincrK := runsIncrK prog F la (lt.set k.toNat x) lo mid hi (i + 1) j k
   have hinner :=
-    (evalProgStmt_seq_fallthrough prog F _ _ _ _ hincrI).trans hincrK
+    evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hincrI hincrK
   have hwrite := ((evalProgStmt_if_true prog F _ _ .fail _ hcK).trans hvec)
   rw [hbody]
-  exact (evalProgStmt_seq_fallthrough prog F _ _ _ _ hwrite).trans hinner
+  exact evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hwrite hinner
 
 /-- Drain-`i` body miss: loud abort. -/
 theorem mergeRunsDrainIBody_miss (prog : Prog) (F : Nat)
@@ -726,10 +726,10 @@ theorem mergeRunsDrainJBody_hit (prog : Prog) (F : Nat)
   have hincrJ := runsIncrJ prog F la (lt.set k.toNat y) lo mid hi i j k
   have hincrK := runsIncrK prog F la (lt.set k.toNat y) lo mid hi i (j + 1) k
   have hinner :=
-    (evalProgStmt_seq_fallthrough prog F _ _ _ _ hincrJ).trans hincrK
+    evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hincrJ hincrK
   have hwrite := ((evalProgStmt_if_true prog F _ _ .fail _ hcK).trans hvec)
   rw [hbody]
-  exact (evalProgStmt_seq_fallthrough prog F _ _ _ _ hwrite).trans hinner
+  exact evalProgStmt_seq_fallthrough_trans prog F _ _ _ _ _ hwrite hinner
 
 /-- Drain-`j` body miss: loud abort. -/
 theorem mergeRunsDrainJBody_miss (prog : Prog) (F : Nat)

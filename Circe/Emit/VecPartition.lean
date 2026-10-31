@@ -183,25 +183,17 @@ theorem valPartitionBody_take (prog : Prog) (F : Nat)
       some (.i32 x) :=
     envExtend_hit _ _ _
   have hv₁ : envLookup (envExtend ρ "t" (.i32 x)) "v" =
-      some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "t" by decide)]
-    exact hv
+      some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv (by decide)
   have hi₁ : envLookup (envExtend ρ "t" (.i32 x)) "i" =
-      some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "t" by decide)]
-    exact hi
+      some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi (by decide)
   have hs₁ : envLookup (envExtend ρ "t" (.i32 x)) "s" =
-      some (.u64 sB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("s" : String) ≠ "t" by decide)]
-    exact hs
+      some (.u64 sB) :=
+    envLookup_extend_miss _ _ _ _ _ hs (by decide)
   have hpiv₁ : envLookup (envExtend ρ "t" (.i32 x)) "pivot" =
-      some (.i32 pivot) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("pivot" : String) ≠ "t" by decide)]
-    exact hpiv
+      some (.i32 pivot) :=
+    envLookup_extend_miss _ _ _ _ _ hpiv (by decide)
   have hiVar₁ : evalExpr (.var "i") (envExtend ρ "t" (.i32 x)) =
       .ok (.u64 iB) :=
     evalExpr_var_hit _ _ _ hi₁

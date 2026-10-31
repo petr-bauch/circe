@@ -165,6 +165,19 @@ theorem mkRoundEnv_x (s : List (BitVec 32)) (k : Nat)
     envLookup (mkRoundEnv s k cur) "x" = some (.arr32 cur) := by
   simp [mkRoundEnv, envLookup, show ("x" : String) ≠ "r" by decide]
 
+/-- `x[t]` lookup through a round env, from the env fact, the
+    `ofNat` computation, and the list read. Collapses the
+    per-coordinate prelude (the four initial reads plus two per
+    QR step, plus the OOB ok-legs): the value `v` is read off
+    the goal via the get-fact, so post-write states fit too. -/
+theorem evalXAt_of_get (ρ : Env) (arr : List (BitVec 32))
+    (t : Nat) (v : BitVec 32)
+    (ht : (BitVec.ofNat 64 t).toNat = t)
+    (hx : envLookup ρ "x" = some (.arr32 arr))
+    (hget : arr[t]? = some v) :
+    evalExpr (xAt t) ρ = .ok (.u32 v) := by
+  simp only [xAt, evalExpr, litVal, hx, ht, hget]
+
 theorem mkRoundEnv_state (s : List (BitVec 32)) (k : Nat)
     (cur : List (BitVec 32)) :
     envLookup (mkRoundEnv s k cur) "state" = some (.arr32 s) := by
@@ -313,14 +326,14 @@ theorem qrFrag_eval (F : Nat) (s : List (BitVec 32)) (k : Nat)
   have hgetc0 : cur[c]? = some cur[c] := List.getElem?_eq_getElem hc
   have hgetd0 : cur[d]? = some cur[d] := List.getElem?_eq_getElem hd
   have hxa0 := mkRoundEnv_x s k cur
-  have hixa : evalExpr (xAt a) (mkRoundEnv s k cur) = .ok (.u32 cur[a]) := by
-    simp only [xAt, evalExpr, litVal, hxa0, htoNat_a, hgeta0]
-  have hixb : evalExpr (xAt b) (mkRoundEnv s k cur) = .ok (.u32 cur[b]) := by
-    simp only [xAt, evalExpr, litVal, hxa0, htoNat_b, hgetb0]
-  have hixc : evalExpr (xAt c) (mkRoundEnv s k cur) = .ok (.u32 cur[c]) := by
-    simp only [xAt, evalExpr, litVal, hxa0, htoNat_c, hgetc0]
-  have hixd : evalExpr (xAt d) (mkRoundEnv s k cur) = .ok (.u32 cur[d]) := by
-    simp only [xAt, evalExpr, litVal, hxa0, htoNat_d, hgetd0]
+  have hixa : evalExpr (xAt a) (mkRoundEnv s k cur) = .ok (.u32 cur[a]) :=
+    evalXAt_of_get _ _ _ _ htoNat_a hxa0 hgeta0
+  have hixb : evalExpr (xAt b) (mkRoundEnv s k cur) = .ok (.u32 cur[b]) :=
+    evalXAt_of_get _ _ _ _ htoNat_b hxa0 hgetb0
+  have hixc : evalExpr (xAt c) (mkRoundEnv s k cur) = .ok (.u32 cur[c]) :=
+    evalXAt_of_get _ _ _ _ htoNat_c hxa0 hgetc0
+  have hixd : evalExpr (xAt d) (mkRoundEnv s k cur) = .ok (.u32 cur[d]) :=
+    evalXAt_of_get _ _ _ _ htoNat_d hxa0 hgetd0
   -- Step 1: `x[a] += x[b]`.
   have hv1 : evalExpr (.uadd (xAt a) (xAt b)) (mkRoundEnv s k cur) =
       .ok (.u32 (qrV1 cur[a] cur[b] cur[c] cur[d])) := by
@@ -337,12 +350,12 @@ theorem qrFrag_eval (F : Nat) (s : List (BitVec 32)) (k : Nat)
     (cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d]))
   have hix2d : evalExpr (xAt d)
         (mkRoundEnv s k (cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 cur[d]) := by
-    simp only [xAt, evalExpr, litVal, hx1, htoNat_d, hg2d]
+      .ok (.u32 cur[d]) :=
+    evalXAt_of_get _ _ _ _ htoNat_d hx1 hg2d
   have hix2a : evalExpr (xAt a)
         (mkRoundEnv s k (cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 (qrV1 cur[a] cur[b] cur[c] cur[d])) := by
-    simp only [xAt, evalExpr, litVal, hx1, htoNat_a, hg2a]
+      .ok (.u32 (qrV1 cur[a] cur[b] cur[c] cur[d])) :=
+    evalXAt_of_get _ _ _ _ htoNat_a hx1 hg2a
   have hv2 : evalExpr (.bxor (xAt d) (xAt a))
         (mkRoundEnv s k (cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d]))) =
       .ok (.u32 (qrV2 cur[a] cur[b] cur[c] cur[d])) := by
@@ -360,8 +373,8 @@ theorem qrFrag_eval (F : Nat) (s : List (BitVec 32)) (k : Nat)
   have hix3d : evalExpr (xAt d)
         (mkRoundEnv s k ((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 (qrV2 cur[a] cur[b] cur[c] cur[d])) := by
-    simp only [xAt, evalExpr, litVal, hx2, htoNat_d, hg3d]
+      .ok (.u32 (qrV2 cur[a] cur[b] cur[c] cur[d])) :=
+    evalXAt_of_get _ _ _ _ htoNat_d hx2 hg3d
   have hv3 : evalExpr (rotlAt d 16)
         (mkRoundEnv s k ((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d]))) =
@@ -389,14 +402,14 @@ theorem qrFrag_eval (F : Nat) (s : List (BitVec 32)) (k : Nat)
         (mkRoundEnv s k (((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV3 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 cur[c]) := by
-    simp only [xAt, evalExpr, litVal, hx3, htoNat_c, hg4c]
+      .ok (.u32 cur[c]) :=
+    evalXAt_of_get _ _ _ _ htoNat_c hx3 hg4c
   have hix4d : evalExpr (xAt d)
         (mkRoundEnv s k (((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV3 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 (qrV3 cur[a] cur[b] cur[c] cur[d])) := by
-    simp only [xAt, evalExpr, litVal, hx3, htoNat_d, hg4d]
+      .ok (.u32 (qrV3 cur[a] cur[b] cur[c] cur[d])) :=
+    evalXAt_of_get _ _ _ _ htoNat_d hx3 hg4d
   have hv4 : evalExpr (.uadd (xAt c) (xAt d))
         (mkRoundEnv s k (((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
@@ -428,15 +441,15 @@ theorem qrFrag_eval (F : Nat) (s : List (BitVec 32)) (k : Nat)
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV3 cur[a] cur[b] cur[c] cur[d])).set c
           (qrV4 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 cur[b]) := by
-    simp only [xAt, evalExpr, litVal, hx4, htoNat_b, hg5b]
+      .ok (.u32 cur[b]) :=
+    evalXAt_of_get _ _ _ _ htoNat_b hx4 hg5b
   have hix5c : evalExpr (xAt c)
         (mkRoundEnv s k ((((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV3 cur[a] cur[b] cur[c] cur[d])).set c
           (qrV4 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 (qrV4 cur[a] cur[b] cur[c] cur[d])) := by
-    simp only [xAt, evalExpr, litVal, hx4, htoNat_c, hg5c]
+      .ok (.u32 (qrV4 cur[a] cur[b] cur[c] cur[d])) :=
+    evalXAt_of_get _ _ _ _ htoNat_c hx4 hg5c
   have hv5 : evalExpr (.bxor (xAt b) (xAt c))
         (mkRoundEnv s k ((((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
@@ -466,8 +479,8 @@ theorem qrFrag_eval (F : Nat) (s : List (BitVec 32)) (k : Nat)
           (qrV3 cur[a] cur[b] cur[c] cur[d])).set c
           (qrV4 cur[a] cur[b] cur[c] cur[d])).set b
           (qrV5 cur[a] cur[b] cur[c] cur[d]))) =
-      .ok (.u32 (qrV5 cur[a] cur[b] cur[c] cur[d])) := by
-    simp only [xAt, evalExpr, litVal, hx5, htoNat_b, hg6b]
+      .ok (.u32 (qrV5 cur[a] cur[b] cur[c] cur[d])) :=
+    evalXAt_of_get _ _ _ _ htoNat_b hx5 hg6b
   have hv6 : evalExpr (rotlAt b 12)
         (mkRoundEnv s k (((((cur.set a (qrV1 cur[a] cur[b] cur[c] cur[d])).set d
           (qrV2 cur[a] cur[b] cur[c] cur[d])).set d
@@ -1502,8 +1515,8 @@ theorem qrFrag1_oob (F : Nat) (s : List (BitVec 32)) (k : Nat)
         List.getElem?_eq_getElem (by omega)
       have hgetb : cur[4]? = none := List.getElem?_eq_none (by omega)
       have hxa0 : evalExpr (xAt 0) (mkRoundEnv s k cur) =
-          .ok (.u32 cur[0]) := by
-        simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat0, hgeta]
+          .ok (.u32 cur[0]) :=
+        evalXAt_of_get _ _ _ _ htoNat0 (mkRoundEnv_x s k cur) hgeta
       have hxb4 : evalExpr (xAt 4) (mkRoundEnv s k cur) = .error .OOB := by
         simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat4, hgetb]
       have hval : evalExpr (.uadd (xAt 0) (xAt 4)) (mkRoundEnv s k cur) =
@@ -1523,13 +1536,11 @@ theorem qrFrag1_oob (F : Nat) (s : List (BitVec 32)) (k : Nat)
       have htoNat4 : (BitVec.ofNat 64 4).toNat = 4 :=
         ofNat64_toNat 4 (by decide)
       have hxa0 : evalExpr (xAt 0) (mkRoundEnv s k cur) =
-          .ok (.u32 cur[0]) := by
-        simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat0,
-          List.getElem?_eq_getElem (show 0 < cur.length by omega)]
+          .ok (.u32 cur[0]) :=
+        evalXAt_of_get _ _ _ _ htoNat0 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 0 < cur.length by omega))
       have hxb4 : evalExpr (xAt 4) (mkRoundEnv s k cur) =
-          .ok (.u32 cur[4]) := by
-        simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat4,
-          List.getElem?_eq_getElem (show 4 < cur.length by omega)]
+          .ok (.u32 cur[4]) :=
+        evalXAt_of_get _ _ _ _ htoNat4 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 4 < cur.length by omega))
       have hv1 : evalExpr (.uadd (xAt 0) (xAt 4)) (mkRoundEnv s k cur) =
           .ok (.u32 (cur[0] + cur[4])) := by
         simp only [evalExpr, hxa0, hxb4]
@@ -1568,13 +1579,11 @@ theorem qrFrag2_oob (F : Nat) (s : List (BitVec 32)) (k : Nat)
   have htoNat1 : (BitVec.ofNat 64 1).toNat = 1 := ofNat64_toNat 1 (by decide)
   have htoNat5 : (BitVec.ofNat 64 5).toNat = 5 := ofNat64_toNat 5 (by decide)
   have hxa1 : evalExpr (xAt 1) (mkRoundEnv s k cur) =
-      .ok (.u32 cur[1]) := by
-    simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat1,
-      List.getElem?_eq_getElem (show 1 < cur.length by omega)]
+      .ok (.u32 cur[1]) :=
+    evalXAt_of_get _ _ _ _ htoNat1 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 1 < cur.length by omega))
   have hxb5 : evalExpr (xAt 5) (mkRoundEnv s k cur) =
-      .ok (.u32 cur[5]) := by
-    simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat5,
-      List.getElem?_eq_getElem (show 5 < cur.length by omega)]
+      .ok (.u32 cur[5]) :=
+    evalXAt_of_get _ _ _ _ htoNat5 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 5 < cur.length by omega))
   have hv1 : evalExpr (.uadd (xAt 1) (xAt 5)) (mkRoundEnv s k cur) =
       .ok (.u32 (cur[1] + cur[5])) := by
     simp only [evalExpr, hxa1, hxb5]
@@ -1609,13 +1618,11 @@ theorem qrFrag3_oob (F : Nat) (s : List (BitVec 32)) (k : Nat)
   have htoNat2 : (BitVec.ofNat 64 2).toNat = 2 := ofNat64_toNat 2 (by decide)
   have htoNat6 : (BitVec.ofNat 64 6).toNat = 6 := ofNat64_toNat 6 (by decide)
   have hxa2 : evalExpr (xAt 2) (mkRoundEnv s k cur) =
-      .ok (.u32 cur[2]) := by
-    simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat2,
-      List.getElem?_eq_getElem (show 2 < cur.length by omega)]
+      .ok (.u32 cur[2]) :=
+    evalXAt_of_get _ _ _ _ htoNat2 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 2 < cur.length by omega))
   have hxb6 : evalExpr (xAt 6) (mkRoundEnv s k cur) =
-      .ok (.u32 cur[6]) := by
-    simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat6,
-      List.getElem?_eq_getElem (show 6 < cur.length by omega)]
+      .ok (.u32 cur[6]) :=
+    evalXAt_of_get _ _ _ _ htoNat6 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 6 < cur.length by omega))
   have hv1 : evalExpr (.uadd (xAt 2) (xAt 6)) (mkRoundEnv s k cur) =
       .ok (.u32 (cur[2] + cur[6])) := by
     simp only [evalExpr, hxa2, hxb6]
@@ -1650,13 +1657,11 @@ theorem qrFrag4_oob (F : Nat) (s : List (BitVec 32)) (k : Nat)
   have htoNat3 : (BitVec.ofNat 64 3).toNat = 3 := ofNat64_toNat 3 (by decide)
   have htoNat7 : (BitVec.ofNat 64 7).toNat = 7 := ofNat64_toNat 7 (by decide)
   have hxa3 : evalExpr (xAt 3) (mkRoundEnv s k cur) =
-      .ok (.u32 cur[3]) := by
-    simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat3,
-      List.getElem?_eq_getElem (show 3 < cur.length by omega)]
+      .ok (.u32 cur[3]) :=
+    evalXAt_of_get _ _ _ _ htoNat3 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 3 < cur.length by omega))
   have hxb7 : evalExpr (xAt 7) (mkRoundEnv s k cur) =
-      .ok (.u32 cur[7]) := by
-    simp only [xAt, evalExpr, litVal, mkRoundEnv_x, htoNat7,
-      List.getElem?_eq_getElem (show 7 < cur.length by omega)]
+      .ok (.u32 cur[7]) :=
+    evalXAt_of_get _ _ _ _ htoNat7 (mkRoundEnv_x s k cur) (List.getElem?_eq_getElem (show 7 < cur.length by omega))
   have hv1 : evalExpr (.uadd (xAt 3) (xAt 7)) (mkRoundEnv s k cur) =
       .ok (.u32 (cur[3] + cur[7])) := by
     simp only [evalExpr, hxa3, hxb7]

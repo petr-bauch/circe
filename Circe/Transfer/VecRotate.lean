@@ -104,22 +104,16 @@ theorem rotMemEvalProgFunc (F : Nat) (l : List (BitVec 32))
   have hm₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
       "z" (.u64 0)) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "z" by decide)]
-    exact hm₁
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₁ (by decide)
   have hv₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
-      "z" (.u64 0)) "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "z" by decide)]
-    exact hv₁
+      "z" (.u64 0)) "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hk₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
-      "z" (.u64 0)) "k" = some (.u64 kB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("k" : String) ≠ "z" by decide)]
-    exact hk₁
+      "z" (.u64 0)) "k" = some (.u64 kB) :=
+    envLookup_extend_miss _ _ _ _ _ hk₁ (by decide)
   -- First window `[0, k)`.
   have hF₁ : revIters 0 k + 1 ≤ G := by omega
   have hcall1 := segMemEvalProgFunc vecRotateProg G l 0 k
@@ -169,18 +163,14 @@ theorem rotMemEvalProgFunc (F : Nat) (l : List (BitVec 32))
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "k" =
-      some (.u64 kB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("k" : String) ≠ "v" by decide)]
-    exact hk₂
+      some (.u64 kB) :=
+    envLookup_extend_miss _ _ _ _ _ hk₂ (by decide)
   have hm₃ : envLookup (envExtend (envExtend (envExtend
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "v" by decide)]
-    exact hm₂
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₂ (by decide)
   -- Second window `[k, n)` (memory still untouched).
   have hlen1w : (segReverseWindow l 0 k).length = l.length :=
     segReverseWindow_length l 0 k (Nat.zero_le _) hk
@@ -250,19 +240,15 @@ theorem rotMemEvalProgFunc (F : Nat) (l : List (BitVec 32))
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "z" =
-      some (.u64 0) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("z" : String) ≠ "v" by decide)]
-    exact hz₂
+      some (.u64 0) :=
+    envLookup_extend_miss _ _ _ _ _ hz₂ (by decide)
   have hz₄ : envLookup (envExtend (envExtend (envExtend (envExtend
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "v"
       (.stdVecVal (segReverseWindow (segReverseWindow l 0 k)
-        k l.length))) "z" = some (.u64 0) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("z" : String) ≠ "v" by decide)]
-    exact hz₃
+        k l.length))) "z" = some (.u64 0) :=
+    envLookup_extend_miss _ _ _ _ _ hz₃ (by decide)
   have hk₄ : envLookup (envExtend (envExtend (envExtend (envExtend
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
@@ -284,10 +270,8 @@ theorem rotMemEvalProgFunc (F : Nat) (l : List (BitVec 32))
       (.stdVecVal (segReverseWindow l 0 k))) "v"
       (.stdVecVal (segReverseWindow (segReverseWindow l 0 k)
         k l.length))) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "v" by decide)]
-    exact hm₃
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₃ (by decide)
   -- Third window `[0, n)`.
   have hlen2w : (segReverseWindow (segReverseWindow l 0 k)
       k l.length).length = l.length := by
@@ -568,22 +552,16 @@ theorem hoare_rotateSpine_closed (G : Nat) (l : List (BitVec 32))
   have hm₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
       "z" (.u64 0)) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "z" by decide)]
-    exact hm₁
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₁ (by decide)
   have hv₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
-      "z" (.u64 0)) "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "z" by decide)]
-    exact hv₁
+      "z" (.u64 0)) "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hk₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
-      "z" (.u64 0)) "k" = some (.u64 kB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("k" : String) ≠ "z" by decide)]
-    exact hk₁
+      "z" (.u64 0)) "k" = some (.u64 kB) :=
+    envLookup_extend_miss _ _ _ _ _ hk₁ (by decide)
   -- First window `[0, k)`: transfer + U2 contract.
   have hcon1 : vecSegReverseFwd l 0 kB =
       .ok (.stdVecVal (segReverseWindow l 0 k)) := by
@@ -641,18 +619,14 @@ theorem hoare_rotateSpine_closed (G : Nat) (l : List (BitVec 32))
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "k" =
-      some (.u64 kB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("k" : String) ≠ "v" by decide)]
-    exact hk₂
+      some (.u64 kB) :=
+    envLookup_extend_miss _ _ _ _ _ hk₂ (by decide)
   have hm₃ : envLookup (envExtend (envExtend (envExtend
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "v" by decide)]
-    exact hm₂
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₂ (by decide)
   have hcon2 : vecSegReverseFwd (segReverseWindow l 0 k) kB
       (BitVec.ofNat 64 l.length) =
       .ok (.stdVecVal (segReverseWindow (segReverseWindow l 0 k)
@@ -728,19 +702,15 @@ theorem hoare_rotateSpine_closed (G : Nat) (l : List (BitVec 32))
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "z" =
-      some (.u64 0) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("z" : String) ≠ "v" by decide)]
-    exact hz₂
+      some (.u64 0) :=
+    envLookup_extend_miss _ _ _ _ _ hz₂ (by decide)
   have hz₄ : envLookup (envExtend (envExtend (envExtend (envExtend
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
       (.stdVecVal (segReverseWindow l 0 k))) "v"
       (.stdVecVal (segReverseWindow (segReverseWindow l 0 k)
-        k l.length))) "z" = some (.u64 0) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("z" : String) ≠ "v" by decide)]
-    exact hz₃
+        k l.length))) "z" = some (.u64 0) :=
+    envLookup_extend_miss _ _ _ _ _ hz₃ (by decide)
   have hk₄ : envLookup (envExtend (envExtend (envExtend (envExtend
       [("v", .stdVecVal l), ("k", .u64 kB)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "z" (.u64 0)) "v"
@@ -762,10 +732,8 @@ theorem hoare_rotateSpine_closed (G : Nat) (l : List (BitVec 32))
       (.stdVecVal (segReverseWindow l 0 k))) "v"
       (.stdVecVal (segReverseWindow (segReverseWindow l 0 k)
         k l.length))) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "v" by decide)]
-    exact hm₃
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₃ (by decide)
   have hcon3 : vecSegReverseFwd
       (segReverseWindow (segReverseWindow l 0 k) k l.length) 0
       (BitVec.ofNat 64 l.length) =
@@ -895,22 +863,16 @@ theorem hoare_segCall1_framed (G : Nat) (l : List (BitVec 32))
   have hm₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
       "z" (.u64 0)) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "z" by decide)]
-    exact hm₁
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₁ (by decide)
   have hv₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
-      "z" (.u64 0)) "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "z" by decide)]
-    exact hv₁
+      "z" (.u64 0)) "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hk₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
-      "z" (.u64 0)) "k" = some (.u64 kB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("k" : String) ≠ "z" by decide)]
-    exact hk₁
+      "z" (.u64 0)) "k" = some (.u64 kB) :=
+    envLookup_extend_miss _ _ _ _ _ hk₁ (by decide)
   have hcon1 : vecSegReverseFwd l 0 kB =
       .ok (.stdVecVal (segReverseWindow l 0 k)) := by
     have h := vecSegReverse_correct l 0 kB

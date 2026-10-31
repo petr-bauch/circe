@@ -1,4 +1,5 @@
 import Circe.Eval.Stmt
+import Circe.Emit.Fragment
 
 /-!
 # Short-read loop plumbing
@@ -57,9 +58,8 @@ theorem iterGuardT (bnd : CExpr) (ρ : Env) (iB : BitVec 64) (i N : Nat)
   have hN : (BitVec.ofNat 64 N).toNat = N := by
     rw [BitVec.toNat_ofNat]
     exact Nat.mod_eq_of_lt hN64
-  have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
-    rw [BitVec.ult_eq_decide, hi, hN]
-    exact decide_eq_true (by omega)
+  have htrue : iB.ult (BitVec.ofNat 64 N) = true :=
+    ult_ofNat_eq_true hi hN (by omega)
   have h := evalExpr_ult_u64 (.var "i") bnd _ iB (BitVec.ofNat 64 N)
     hivar hb
   rwa [htrue] at h

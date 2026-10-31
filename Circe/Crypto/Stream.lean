@@ -1109,9 +1109,8 @@ theorem xorLoopFrag_exit (prog : Prog) (F : Nat)
     chainLookup pre _ "i" _ hpre (by decide)
       (mkEncEnv_i key counter bB nonce msg nwords bN offN iB st)
   have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
-  have hfalse : iB.ult (BitVec.ofNat 64 N) = false := by
-    rw [BitVec.ult_eq_decide, hi, hN]
-    exact decide_eq_false (by omega)
+  have hfalse : iB.ult (BitVec.ofNat 64 N) = false :=
+    ult_ofNat_eq_false hi hN (by omega)
   have hguardF : evalExpr (.ult (.var "i") bnd)
       (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
       .ok (.b false) := by
@@ -1174,9 +1173,8 @@ theorem xorLoopFrag_correct (prog : Prog) (F : Nat)
           (mkEncEnv_i key counter bB nonce msg nwords bN offN iB st)
       have hivar := evalExpr_var_hit _ _ _ hiV
       have hN : (BitVec.ofNat 64 N).toNat = N := ofNat64_toNat N hN64
-      have htrue : iB.ult (BitVec.ofNat 64 N) = true := by
-        rw [BitVec.ult_eq_decide, hi, hN]
-        exact decide_eq_true (by omega)
+      have htrue : iB.ult (BitVec.ofNat 64 N) = true :=
+        ult_ofNat_eq_true hi hN (by omega)
       have hguardT : evalExpr (.ult (.var "i") bnd)
           (pre ++ mkEncEnv key counter bB nonce msg nwords bN offN iB st) =
           .ok (.b true) := by

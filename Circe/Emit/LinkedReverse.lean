@@ -218,13 +218,10 @@ theorem linkRevBody_ok (F : Nat) (m : Mem) (π : Layout)
   have hassignC := memEvalStmtFuel_assign F "cur" (.var "nxt")
     (mkLinkRevEnv head (some a) (some a) nxt) m' π _ _
     (memEvalExpr_var "nxt" _ _ _) hnxt huC
-  have htail := (memEvalStmtFuel_seq_fallthrough F _ _ _ _ _ _ _ _
-    hassignP).trans hassignC
-  have hmid := (memEvalStmtFuel_seq_fallthrough F _ _ _ _ _ _ _ _
-    hswing).trans htail
+  have htail := memEvalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ _ _ _ _ hassignP hassignC
+  have hmid := memEvalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ _ _ _ _ hswing htail
   rw [hbody]
-  exact (memEvalStmtFuel_seq_fallthrough F _ _ _ _ _ _ _ _
-    hassignN).trans hmid
+  exact memEvalStmtFuel_seq_fallthrough_trans F _ _ _ _ _ _ _ _ _ hassignN hmid
 
 /-- One chase iteration with a dangling cursor aborts loudly. -/
 theorem linkRevBody_miss (F : Nat) (m : Mem) (π : Layout)

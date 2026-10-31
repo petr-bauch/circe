@@ -126,6 +126,17 @@ theorem envExtend_miss (ρ : Env) (x y : String) (v : Value) (h : x ≠ y) :
     envLookup (envExtend ρ y v) x = envLookup ρ x := by
   simp [envExtend, envLookup, h]
 
+/-- Lookup through a shadowing `envExtend` in one step: rewrite
+    with `envExtend_miss`, close with the inner lookup. Collapses
+    the `rw [envExtend_miss ...]; exact h` ritual (the Quicksort
+    `qsCallPrelude`-style prelude blocks and friends); the
+    inequality side goal is usually `by decide`. Argument order
+    matches the pre-existing `VecDfsGrow` local it subsumes. -/
+theorem envLookup_extend_miss (ρ : Env) (x y : String) (v w : Value)
+    (hl : envLookup ρ x = some w) (hne : x ≠ y) :
+    envLookup (envExtend ρ y v) x = some w := by
+  rw [envExtend_miss ρ x y v hne, hl]
+
 theorem envWF_empty : EnvWF [] := by
   simp [EnvWF, envKeys]
 

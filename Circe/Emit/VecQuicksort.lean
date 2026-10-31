@@ -210,35 +210,23 @@ theorem valQsPartBody_take (prog : Prog) (F : Nat)
       some (.i32 x) :=
     envExtend_hit _ _ _
   have hv₁ : envLookup (envExtend ρ "t" (.i32 x)) "v" =
-      some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "t" by decide)]
-    exact hv
+      some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv (by decide)
   have hi₁ : envLookup (envExtend ρ "t" (.i32 x)) "i" =
-      some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "t" by decide)]
-    exact hi
+      some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi (by decide)
   have hs₁ : envLookup (envExtend ρ "t" (.i32 x)) "s" =
-      some (.u64 sB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("s" : String) ≠ "t" by decide)]
-    exact hs
+      some (.u64 sB) :=
+    envLookup_extend_miss _ _ _ _ _ hs (by decide)
   have hpiv₁ : envLookup (envExtend ρ "t" (.i32 x)) "pivot" =
-      some (.i32 pivot) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("pivot" : String) ≠ "t" by decide)]
-    exact hpiv
+      some (.i32 pivot) :=
+    envLookup_extend_miss _ _ _ _ _ hpiv (by decide)
   have hhi₁ : envLookup (envExtend ρ "t" (.i32 x)) "hi" =
-      some (.u64 hiB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("hi" : String) ≠ "t" by decide)]
-    exact hhi
+      some (.u64 hiB) :=
+    envLookup_extend_miss _ _ _ _ _ hhi (by decide)
   have hlo₁ : envLookup (envExtend ρ "t" (.i32 x)) "lo" =
-      some (.u64 loB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("lo" : String) ≠ "t" by decide)]
-    exact hlo
+      some (.u64 loB) :=
+    envLookup_extend_miss _ _ _ _ _ hlo (by decide)
   have hiVar₁ : evalExpr (.var "i") (envExtend ρ "t" (.i32 x)) =
       .ok (.u64 iB) :=
     evalExpr_var_hit _ _ _ hi₁
@@ -572,9 +560,8 @@ theorem valQsPartLoop_ok (prog : Prog) (F : Nat)
       have hsubN : (hiB - 1).toNat = hi - 1 := by
         rw [u64sub_toNat_exact _ _
           (by rw [h1B, hi64]; omega), h1B, hi64]
-      have hfalse : iB.ult (hiB - 1) = false := by
-        rw [BitVec.ult_eq_decide, hiN, hsubN]
-        exact decide_eq_false (by omega)
+      have hfalse : iB.ult (hiB - 1) = false :=
+        ult_ofNat_eq_false hiN hsubN (by omega)
       have hguardF : evalExpr (.ult (.var "i")
           (.usub (.var "hi") (.lit (.u64 (BitVec.ofNat 64 1))))) ρ = .ok (.b false) := by
         have h := evalExpr_ult_u64 (.var "i")
@@ -605,9 +592,8 @@ theorem valQsPartLoop_ok (prog : Prog) (F : Nat)
       have hsubN : (hiB - 1).toNat = hi - 1 := by
         rw [u64sub_toNat_exact _ _
           (by rw [h1B, hi64]; omega), h1B, hi64]
-      have htrue : iB.ult (hiB - 1) = true := by
-        rw [BitVec.ult_eq_decide, hiN, hsubN]
-        exact decide_eq_true (by omega)
+      have htrue : iB.ult (hiB - 1) = true :=
+        ult_ofNat_eq_true hiN hsubN (by omega)
       have hguardT : evalExpr (.ult (.var "i")
           (.usub (.var "hi") (.lit (.u64 (BitVec.ofNat 64 1))))) ρ = .ok (.b true) := by
         have h := evalExpr_ult_u64 (.var "i")
@@ -704,9 +690,8 @@ theorem valQsPartLoop_ok (prog : Prog) (F : Nat)
       have hsubN : (hiB - 1).toNat = hi - 1 := by
         rw [u64sub_toNat_exact _ _
           (by rw [h1B, hi64]; omega), h1B, hi64]
-      have hfalse : iB.ult (hiB - 1) = false := by
-        rw [BitVec.ult_eq_decide, hiN, hsubN]
-        exact decide_eq_false (by omega)
+      have hfalse : iB.ult (hiB - 1) = false :=
+        ult_ofNat_eq_false hiN hsubN (by omega)
       have hguardF : evalExpr (.ult (.var "i")
           (.usub (.var "hi") (.lit (.u64 (BitVec.ofNat 64 1))))) ρ = .ok (.b false) := by
         have h := evalExpr_ult_u64 (.var "i")
@@ -859,9 +844,8 @@ theorem valQsPartLoop_err (prog : Prog) (F : Nat)
       have hsubN : (hiB - 1).toNat = hi - 1 := by
         rw [u64sub_toNat_exact _ _
           (by rw [h1B, hi64]; omega), h1B, hi64]
-      have htrue : iB.ult (hiB - 1) = true := by
-        rw [BitVec.ult_eq_decide, hiN, hsubN]
-        exact decide_eq_true (by omega)
+      have htrue : iB.ult (hiB - 1) = true :=
+        ult_ofNat_eq_true hiN hsubN (by omega)
       have hguardT : evalExpr (.ult (.var "i")
           (.usub (.var "hi") (.lit (.u64 (BitVec.ofNat 64 1))))) ρ = .ok (.b true) := by
         have h := evalExpr_ult_u64 (.var "i")
@@ -892,9 +876,8 @@ theorem valQsPartLoop_err (prog : Prog) (F : Nat)
       have hsubN : (hiB - 1).toNat = hi - 1 := by
         rw [u64sub_toNat_exact _ _
           (by rw [h1B, hi64]; omega), h1B, hi64]
-      have htrue : iB.ult (hiB - 1) = true := by
-        rw [BitVec.ult_eq_decide, hiN, hsubN]
-        exact decide_eq_true (by omega)
+      have htrue : iB.ult (hiB - 1) = true :=
+        ult_ofNat_eq_true hiN hsubN (by omega)
       have hguardT : evalExpr (.ult (.var "i")
           (.usub (.var "hi") (.lit (.u64 (BitVec.ofNat 64 1))))) ρ = .ok (.b true) := by
         have h := evalExpr_ult_u64 (.var "i")
@@ -1102,9 +1085,8 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
         have hhiVar : evalExpr (.var "hi")
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-        have hltB : loB.ult hiB = true := by
-          rw [BitVec.ult_eq_decide, hloN, hhiN]
-          exact decide_eq_true h1
+        have hltB : loB.ult hiB = true :=
+          ult_ofNat_eq_true hloN hhiN h1
         have gloT : evalExpr (.ult (.var "lo") (.var "hi"))
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.b true) := by
@@ -1163,9 +1145,8 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
       have hhiVar : evalExpr (.var "hi")
           [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
           .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-      have hltB : loB.ult hiB = false := by
-        rw [BitVec.ult_eq_decide, hloN, hhiN]
-        exact decide_eq_false h1
+      have hltB : loB.ult hiB = false :=
+        ult_ofNat_eq_false hloN hhiN h1
       have gloF : evalExpr (.ult (.var "lo") (.var "hi"))
           [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
           .ok (.b false) := by
@@ -1237,9 +1218,8 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
           have hhiVar₀ : evalExpr (.var "hi")
               [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
               .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-          have hltB : loB.ult hiB = true := by
-            rw [BitVec.ult_eq_decide, hloN, hhiN]
-            exact decide_eq_true h1
+          have hltB : loB.ult hiB = true :=
+            ult_ofNat_eq_true hloN hhiN h1
           have gloT : evalExpr (.ult (.var "lo") (.var "hi"))
               [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
               .ok (.b true) := by
@@ -1463,19 +1443,16 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
               have hv₄ : envLookup
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v" =
                   some (.stdVecVal
-                    (((l₁.set (hi - 1) l₁[s₁])).set s₁ l[hi - 1])) := by
-                rw [envExtend_miss _ _ _ _ (by decide)]
-                exact hout₃
+                    (((l₁.set (hi - 1) l₁[s₁])).set s₁ l[hi - 1])) :=
+                envLookup_extend_miss _ _ _ _ _ hout₃ (by decide)
               have hlo₄ : envLookup
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "lo" =
-                  some (.u64 loB) := by
-                rw [envExtend_miss _ _ _ _ (by decide)]
-                exact hlo₃
+                  some (.u64 loB) :=
+                envLookup_extend_miss _ _ _ _ _ hlo₃ (by decide)
               have hs₄ : envLookup
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "s" =
-                  some (.u64 sB₁) := by
-                rw [envExtend_miss _ _ _ _ (by decide)]
-                exact hs₃
+                  some (.u64 sB₁) :=
+                envLookup_extend_miss _ _ _ _ _ hs₃ (by decide)
               have hargsL : lookupArgs
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) ["v", "lo", "s"] =
                   some [.stdVecVal
@@ -1508,23 +1485,20 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
                 hargsL hfind hLeval
               have hhi₄ : envLookup
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "hi" =
-                  some (.u64 hiB) := by
-                rw [envExtend_miss _ _ _ _ (by decide)]
-                exact hhi₃
+                  some (.u64 hiB) :=
+                envLookup_extend_miss _ _ _ _ _ hhi₃ (by decide)
               have hv₅ : envLookup (envExtend
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
                   (.stdVecVal l2)) "v" = some (.stdVecVal l2) :=
                 envExtend_hit _ _ _
               have hs1₅ : envLookup (envExtend
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
-                  (.stdVecVal l2)) "s1" = some (.u64 (sB₁ + 1)) := by
-                rw [envExtend_miss _ _ _ _ (by decide)]
-                exact hs1₄
+                  (.stdVecVal l2)) "s1" = some (.u64 (sB₁ + 1)) :=
+                envLookup_extend_miss _ _ _ _ _ hs1₄ (by decide)
               have hhi₅ : envLookup (envExtend
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
-                  (.stdVecVal l2)) "hi" = some (.u64 hiB) := by
-                rw [envExtend_miss _ _ _ _ (by decide)]
-                exact hhi₄
+                  (.stdVecVal l2)) "hi" = some (.u64 hiB) :=
+                envLookup_extend_miss _ _ _ _ _ hhi₄ (by decide)
               have hargsR : lookupArgs (envExtend
                   (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
                   (.stdVecVal l2)) ["v", "s1", "hi"] =
@@ -1609,9 +1583,8 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
         have hhiVar : evalExpr (.var "hi")
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-        have hltB : loB.ult hiB = true := by
-          rw [BitVec.ult_eq_decide, hloN, hhiN]
-          exact decide_eq_true h1
+        have hltB : loB.ult hiB = true :=
+          ult_ofNat_eq_true hloN hhiN h1
         have gloT : evalExpr (.ult (.var "lo") (.var "hi"))
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.b true) := by
@@ -1670,9 +1643,8 @@ theorem evalProgFunc_vecQuicksort_ok (F : Nat)
       have hhiVar : evalExpr (.var "hi")
           [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
           .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-      have hltB : loB.ult hiB = false := by
-        rw [BitVec.ult_eq_decide, hloN, hhiN]
-        exact decide_eq_false h1
+      have hltB : loB.ult hiB = false :=
+        ult_ofNat_eq_false hloN hhiN h1
       have gloF : evalExpr (.ult (.var "lo") (.var "hi"))
           [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
           .ok (.b false) := by
@@ -1748,9 +1720,8 @@ theorem evalProgFunc_vecQuicksort_err (F : Nat)
         have hhiVar₀ : evalExpr (.var "hi")
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-        have hltB : loB.ult hiB = true := by
-          rw [BitVec.ult_eq_decide, hloN, hhiN]
-          exact decide_eq_true h1
+        have hltB : loB.ult hiB = true :=
+          ult_ofNat_eq_true hloN hhiN h1
         have gloT : evalExpr (.ult (.var "lo") (.var "hi"))
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.b true) := by
@@ -1834,9 +1805,8 @@ theorem evalProgFunc_vecQuicksort_err (F : Nat)
               "pivot" (.i32 l[hi - 1])) "s" (.u64 loB)) "i" (.u64 loB)) =
             .ok (.u64 (hiB - 1)) :=
           evalExpr_u64_usub _ _ _ _ hhiVarL
-        have htrueL : loB.ult (hiB - 1) = true := by
-          rw [BitVec.ult_eq_decide, hloN, hsubN]
-          exact decide_eq_true (by omega)
+        have htrueL : loB.ult (hiB - 1) = true :=
+          ult_ofNat_eq_true hloN hsubN (by omega)
         have hguardT0 : evalExpr (.ult (.var "i")
             (.usub (.var "hi") (.lit (.u64 (BitVec.ofNat 64 1)))))
             (envExtend (envExtend (envExtend
@@ -1919,9 +1889,8 @@ theorem evalProgFunc_vecQuicksort_err (F : Nat)
         have hhiVar₀ : evalExpr (.var "hi")
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.u64 hiB) := evalExpr_var_hit _ _ _ (by rfl)
-        have hltB : loB.ult hiB = true := by
-          rw [BitVec.ult_eq_decide, hloN, hhiN]
-          exact decide_eq_true h1
+        have hltB : loB.ult hiB = true :=
+          ult_ofNat_eq_true hloN hhiN h1
         have gloT : evalExpr (.ult (.var "lo") (.var "hi"))
             [("v", .stdVecVal l), ("lo", .u64 loB), ("hi", .u64 hiB)] =
             .ok (.b true) := by
@@ -2174,19 +2143,16 @@ theorem evalProgFunc_vecQuicksort_err (F : Nat)
           have hv₄ : envLookup
               (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v" =
               some (.stdVecVal
-                (((l₁.set (hi - 1) l₁[s₁])).set s₁ l[hi - 1])) := by
-            rw [envExtend_miss _ _ _ _ (by decide)]
-            exact hout₃
+                (((l₁.set (hi - 1) l₁[s₁])).set s₁ l[hi - 1])) :=
+            envLookup_extend_miss _ _ _ _ _ hout₃ (by decide)
           have hlo₄ : envLookup
               (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "lo" =
-              some (.u64 loB) := by
-            rw [envExtend_miss _ _ _ _ (by decide)]
-            exact hlo₃
+              some (.u64 loB) :=
+            envLookup_extend_miss _ _ _ _ _ hlo₃ (by decide)
           have hs₄ : envLookup
               (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "s" =
-              some (.u64 sB₁) := by
-            rw [envExtend_miss _ _ _ _ (by decide)]
-            exact hs₃
+              some (.u64 sB₁) :=
+            envLookup_extend_miss _ _ _ _ _ hs₃ (by decide)
           have hargsL : lookupArgs
               (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) ["v", "lo", "s"] =
               some [.stdVecVal
@@ -2269,23 +2235,20 @@ theorem evalProgFunc_vecQuicksort_err (F : Nat)
               hargsL hfind hLeval
             have hhi₄ : envLookup
                 (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "hi" =
-                some (.u64 hiB) := by
-              rw [envExtend_miss _ _ _ _ (by decide)]
-              exact hhi₃
+                some (.u64 hiB) :=
+              envLookup_extend_miss _ _ _ _ _ hhi₃ (by decide)
             have hv₅ : envLookup (envExtend
                 (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
                 (.stdVecVal l2)) "v" = some (.stdVecVal l2) :=
               envExtend_hit _ _ _
             have hs1₅ : envLookup (envExtend
                 (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
-                (.stdVecVal l2)) "s1" = some (.u64 (sB₁ + 1)) := by
-              rw [envExtend_miss _ _ _ _ (by decide)]
-              exact hs1₄
+                (.stdVecVal l2)) "s1" = some (.u64 (sB₁ + 1)) :=
+              envLookup_extend_miss _ _ _ _ _ hs1₄ (by decide)
             have hhi₅ : envLookup (envExtend
                 (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
-                (.stdVecVal l2)) "hi" = some (.u64 hiB) := by
-              rw [envExtend_miss _ _ _ _ (by decide)]
-              exact hhi₄
+                (.stdVecVal l2)) "hi" = some (.u64 hiB) :=
+              envLookup_extend_miss _ _ _ _ _ hhi₄ (by decide)
             have hargsR : lookupArgs (envExtend
                 (envExtend ρ₃ "s1" (.u64 (sB₁ + 1))) "v"
                 (.stdVecVal l2)) ["v", "s1", "hi"] =

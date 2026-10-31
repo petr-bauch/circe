@@ -232,6 +232,18 @@ theorem memEvalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt) (ρ : Env)
     simp only [memEvalStmtFuel] at ha ⊢
     simp only [memEvalStmtWith, ha]
 
+/-- `seq` fall-through chained with the second statement's run
+    (Mem level): collapses the
+    `(memEvalStmtFuel_seq_fallthrough ...).trans h₂` pattern to
+    one application. -/
+theorem memEvalStmtFuel_seq_fallthrough_trans (f : Nat) (a b : CStmt)
+    (ρ : Env) (m : Mem) (π : Layout) (ρ₁ : Env) (m₁ : Mem)
+    (π₁ : Layout) (r : Result ((Env × Mem × Layout) × Outcome))
+    (h₁ : memEvalStmtFuel f a ρ m π = .ok ((ρ₁, m₁, π₁), .fellThrough))
+    (h₂ : memEvalStmtFuel f b ρ₁ m₁ π₁ = r) :
+    memEvalStmtFuel f (.seq a b) ρ m π = r :=
+  (memEvalStmtFuel_seq_fallthrough f a b ρ m π ρ₁ m₁ π₁ h₁).trans h₂
+
 /-- `seq` short-circuits on `returned` in the first component (any
     fuel): the second statement is skipped and the value propagates
     with the threaded state (mirrors `evalStmtFuel_seq_return`). -/

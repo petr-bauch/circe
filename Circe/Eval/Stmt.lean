@@ -946,6 +946,16 @@ theorem evalStmtFuel_seq_fallthrough (f : Nat) (a b : CStmt)
     simp only [evalStmtFuel] at h ⊢
     simp only [evalStmtWith, h]
 
+/-- `seq` fall-through chained with the second statement's run:
+    collapses the `(seq_fallthrough ...).trans h₂` pattern (12
+    HeapSort arm sites) to one application. -/
+theorem evalStmtFuel_seq_fallthrough_trans (f : Nat) (a b : CStmt)
+    (ρ ρ' : Env) (r : Result (Env × Outcome))
+    (h₁ : evalStmtFuel f a ρ = .ok (ρ', .fellThrough))
+    (h₂ : evalStmtFuel f b ρ' = r) :
+    evalStmtFuel f (.seq a b) ρ = r :=
+  (evalStmtFuel_seq_fallthrough f a b ρ ρ' h₁).trans h₂
+
 /-- `seq` short-circuits on `returned` in the first component (any
     fuel): the second statement is skipped and the value
     propagates. -/
@@ -1027,6 +1037,17 @@ theorem evalProgStmt_seq_fallthrough (prog : Prog) (fuel : Nat) (a b : CStmt)
     evalProgStmt prog fuel (.seq a b) ρ =
       evalProgStmt prog fuel b ρ' := by
   simp only [evalProgStmt, h]
+
+/-- `seq` fall-through chained with the second statement's run
+    (program level): collapses the
+    `(evalProgStmt_seq_fallthrough ...).trans h₂` pattern
+    (MergeRuns spine sites) to one application. -/
+theorem evalProgStmt_seq_fallthrough_trans (prog : Prog) (fuel : Nat)
+    (a b : CStmt) (ρ ρ' : Env) (r : Result (Env × Outcome))
+    (h₁ : evalProgStmt prog fuel a ρ = .ok (ρ', .fellThrough))
+    (h₂ : evalProgStmt prog fuel b ρ' = r) :
+    evalProgStmt prog fuel (.seq a b) ρ = r :=
+  (evalProgStmt_seq_fallthrough prog fuel a b ρ ρ' h₁).trans h₂
 
 /-- `seq` short-circuits on `returned` in the first component (N4b: the
     early-return branch of `scope_early`; the trailing statements never

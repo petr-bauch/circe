@@ -100,20 +100,14 @@ theorem segMemBody_hit (prog : Prog) (F : Nat) (ρ : Env) (m : Mem)
       some (.i32 a) :=
     envExtend_hit _ _ _
   have hv₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "v" =
-      some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "a" by decide)]
-    exact hv₁
+      some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hi₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "i" =
-      some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "a" by decide)]
-    exact hi₁
+      some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₁ (by decide)
   have hj₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "j" =
-      some (.u64 (jB - 1)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("j" : String) ≠ "a" by decide)]
-    exact hj₁
+      some (.u64 (jB - 1)) :=
+    envLookup_extend_miss _ _ _ _ _ hj₁ (by decide)
   -- `b ← at(v, j)` (`j` already decremented).
   have hpred : (jB - 1).toNat = j - 1 := by
     rw [revU64_pred_toNat jB (by omega), hjN]
@@ -138,25 +132,17 @@ theorem segMemBody_hit (prog : Prog) (F : Nat) (ρ : Env) (m : Mem)
       "b" = some (.i32 b) :=
     envExtend_hit _ _ _
   have hv₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "b" by decide)]
-    exact hv₂
+      "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₂ (by decide)
   have hi₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "i" = some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "b" by decide)]
-    exact hi₂
+      "i" = some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₂ (by decide)
   have hj₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "j" = some (.u64 (jB - 1)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("j" : String) ≠ "b" by decide)]
-    exact hj₂
+      "j" = some (.u64 (jB - 1)) :=
+    envLookup_extend_miss _ _ _ _ _ hj₂ (by decide)
   have ha₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "a" = some (.i32 a) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("a" : String) ≠ "b" by decide)]
-    exact ha₂
+      "a" = some (.i32 a) :=
+    envLookup_extend_miss _ _ _ _ _ ha₂ (by decide)
   -- `v[i] := b` (first shadowing store).
   obtain ⟨ρ₄, hu₄⟩ := envUpdate_some_of_lookup
     (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b)) "v"
@@ -545,10 +531,8 @@ theorem segMemEvalProgFunc (prog : Prog) (F : Nat)
     simp [envLookup]
   have hi₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("lo", .u64 loB), ("hi", .u64 hiB)] "i" (.u64 loB)) "j"
-      (.u64 hiB)) "i" = some (.u64 loB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "j" by decide)]
-    exact hi₁
+      (.u64 hiB)) "i" = some (.u64 loB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₁ (by decide)
   -- Loop from `(lo, hi)`.
   have hinv₀ : SegInv l l lo hi lo hi :=
     ⟨rfl, hlo, hhi, Nat.le_refl _, Nat.le_refl _, rfl,

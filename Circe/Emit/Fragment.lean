@@ -250,6 +250,19 @@ theorem u64sub_toNat_exact (x y : BitVec 64)
   have hy : y.toNat < 2 ^ 64 := y.isLt
   omega
 
+/-- `ult` through `toNat` equations: discharges the
+    `rw [BitVec.ult_eq_decide, hN₁, hN₂]; exact decide_eq_... h`
+    guard ritual (Quicksort arm guards and friends) in one step. -/
+theorem ult_ofNat_eq_true {xB yB : BitVec 64} {x y : Nat}
+    (hx : xB.toNat = x) (hy : yB.toNat = y) (h : x < y) :
+    xB.ult yB = true := by
+  rw [BitVec.ult_eq_decide, hx, hy]; exact decide_eq_true h
+
+theorem ult_ofNat_eq_false {xB yB : BitVec 64} {x y : Nat}
+    (hx : xB.toNat = x) (hy : yB.toNat = y) (h : ¬ x < y) :
+    xB.ult yB = false := by
+  rw [BitVec.ult_eq_decide, hx, hy]; exact decide_eq_false h
+
 /-- `(<$>)` on `Result` computes on both constructors (for the corollaries).
     Proved by `rfl` (needs default transparency to see through the
     `Functor` instance, so later proofs use `exact`, not `simp`). -/

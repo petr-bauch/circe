@@ -643,6 +643,21 @@ def dfsGrowFwd (F : Nat) (mL visL : List (BitVec 32))
     | .error e => .error e
     | .ok (_, _, _, _, _, count, _, _) => .ok (.u64 count)
 
+/-- Drain-step closer: unfold one `while_` iteration with the
+    evaluated guard, rewrite the body equation, close with the
+    step result. The row-drain sites share everything but
+    the body equation (`hBody`/`hBodyS`) and the result.
+    Implemented by string round-trip (same reason as
+    `sift_case_at`): the guard name is fixed (`hguardU`), the
+    body equation and result are identifiers. Call sites must
+    have the `exact` at the same indent as the `rw` (same
+    `by` block). -/
+elab "grow_drain_step" hb:ident hr:ident : tactic => do
+  let src := s!"(rw [evalProgStmt_while_true _ _ _ _ _ hguardU, {hb.getId}] ; exact {hr.getId})"
+  match Lean.Parser.runParserCategory (← Lean.getEnv) `tactic src with
+  | .ok stx => Lean.Elab.Tactic.evalTactic stx
+  | .error e => throwError e
+
 /-! ## Seed agreement -/
 
 /-- Seed agreement (ok leg): the guarded mark plus the source push
@@ -1061,13 +1076,6 @@ theorem evalProgStmt_skip (prog : Prog) (f : Nat) (ρ : Env) :
 theorem envLookup_extend_hit (ρ : Env) (x : String) (v : Value) :
     envLookup (envExtend ρ x v) x = some v := by
   simp [envLookup, envExtend]
-
-/-- Lookup of any other variable through an extension. -/
-theorem envLookup_extend_miss (ρ : Env) (x y : String) (v w : Value)
-    (h : envLookup ρ x = some v) (hne : x ≠ y) :
-    envLookup (envExtend ρ y w) x = some v := by
-  simp only [envLookup, envExtend, hne]
-  exact h
 
 /-- The `u`-advance assignment evaluates (any fuel): value fact,
     update, and the program-level bridge. Callers thread the other
@@ -2301,9 +2309,7 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                               ihV, ihTop, ihCount, ihU, ihFr, ihLe,
                               ihBuflen, ih64, ihCap, ihCnt, hmono,
                               hlock, ihTopLe⟩
-                            rw [evalProgStmt_while_true _ _ _ _ _
-                              hguardU, hBodyS]
-                            exact ihEval
+                            grow_drain_step hBodyS ihEval
                         · have htlF : top.ult
                               (BitVec.ofNat 64 len) = false :=
                             Bool.eq_false_of_ne_true htl
@@ -2557,9 +2563,7 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                                   ihV, ihTop, ihCount, ihU, ihFr, ihLe,
                                   ihBuflen, ih64, ihCap, ihCnt, hmono,
                                   hlock, ihTopLe⟩
-                                rw [evalProgStmt_while_true _ _ _ _ _
-                                  hguardU, hBody]
-                                exact ihEval
+                                grow_drain_step hBody ihEval
                           · simp only [hmaxC, ↓reduceIte] at hrow
                             cases hrow
                       · simp only [hw0] at hrow
@@ -2829,8 +2833,7 @@ theorem dfsGrowRow_ok (F : Nat) (mL visL : List (BitVec 32))
                 refine ⟨ρ', ?_, ihM, ihVis, ihSt, ihN, ihV, ihTop,
                   ihCount, ihU, ihFr, ihLe, ihBuflen, ih64, ihCap,
                   ihCnt, ihMono, ihLock, ihTopLe⟩
-                rw [evalProgStmt_while_true _ _ _ _ _ hguardU, hBody]
-                exact ihEval
+                grow_drain_step hBody ihEval
             · simp only [hltM, ↓reduceIte] at hrow
               cases hrow
         · simp only [hidxB] at hrow
@@ -3476,9 +3479,7 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                                 hbuflen2 hlen64 hcap64 hPgB hcntB
                                 hmaxB hnB hvB htopB hcountB huU herr
                             simp only [dfsGrowInner]
-                            rw [evalProgStmt_while_true _ _ _ _ _
-                              hguardU, hBodyS]
-                            exact hev
+                            grow_drain_step hBodyS hev
                         · have htlF : top.ult
                               (BitVec.ofNat 64 len) = false :=
                             Bool.eq_false_of_ne_true htl
@@ -3763,9 +3764,7 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                                 hbuflen2 h64_2 hcap2 hPgB hcntB
                                 hmaxB hnB hvB htopB hcountB huU herr
                             simp only [dfsGrowInner]
-                            rw [evalProgStmt_while_true _ _ _ _ _
-                              hguardU, hBody]
-                            exact hev
+                            grow_drain_step hBody hev
                       · -- Excluded by the maxdiff budget: `len ≤
                         -- maxdiff - 1` follows from `hcnt`, `ones ≤
                         -- length`, and `hmaxL0`.
@@ -4073,8 +4072,7 @@ theorem dfsGrowRow_err (F : Nat) (mL visL : List (BitVec 32))
                   hlen64 hcap64 hPgU hcnt hmaxL0 hnU hvU
                   htopU hcountU huU herr
               simp only [dfsGrowInner]
-              rw [evalProgStmt_while_true _ _ _ _ _ hguardU, hBody]
-              exact hev
+              grow_drain_step hBody hev
           · -- Vacuous: contradicts the `ult` guard fact.
             exact absurd (hltM_of hidxB) hltM
       · have hidxBF : (v * n + u).ult
@@ -4703,8 +4701,7 @@ theorem dfsGrowOuter_ok (F : Nat) (mL visL : List (BitVec 32))
               refine ⟨ρ', ?_, ihM, ihVis, ihSt, ihN, ihV, ihTop,
                 ihCount, ihU, ihFr, ihLe, ihBuflen, ih64, ihCap,
                 ihCnt, hmono, ihTopLe⟩
-              rw [evalProgStmt_while_true _ _ _ _ _ hguardU, hBody]
-              exact ihEval
+              grow_drain_step hBody ihEval
           · simp only [hltS, ↓reduceIte] at houter
             cases houter
       · simp only [hB, ↓reduceIte] at houter
@@ -5182,8 +5179,7 @@ theorem dfsGrowOuter_err (F : Nat) (mL visL : List (BitVec 32))
               have hev : evalProgStmt vecGrowProg (F + 1)
                   dfsGrowOuter ρ = .error e := by
                 simp only [dfsGrowOuter, dfsGrowOuterBody]
-                rw [evalProgStmt_while_true _ _ _ _ _ hguardU, hBody]
-                exact ihEval
+                grow_drain_step hBody ihEval
               exact hev
           · -- Vacuous: contradicts the `ult` guard fact.
             exact absurd (hult_of hB) hltS

@@ -349,20 +349,14 @@ theorem revBody_hit (F : Nat) (ρ : Env)
       some (.i32 a) :=
     envExtend_hit _ _ _
   have hv₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "v" =
-      some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "a" by decide)]
-    exact hv₁
+      some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₁ (by decide)
   have hi₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "i" =
-      some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "a" by decide)]
-    exact hi₁
+      some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₁ (by decide)
   have hj₂ : envLookup (envExtend ρ₁ "a" (.i32 a)) "j" =
-      some (.u64 (jB - 1)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("j" : String) ≠ "a" by decide)]
-    exact hj₁
+      some (.u64 (jB - 1)) :=
+    envLookup_extend_miss _ _ _ _ _ hj₁ (by decide)
   -- `b ← at(v, j)` (`j` already decremented).
   have hpred : (jB - 1).toNat = j - 1 := by
     rw [revU64_pred_toNat jB (by omega), hjN]
@@ -387,25 +381,17 @@ theorem revBody_hit (F : Nat) (ρ : Env)
       "b" = some (.i32 b) :=
     envExtend_hit _ _ _
   have hv₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "v" = some (.stdVecVal l) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("v" : String) ≠ "b" by decide)]
-    exact hv₂
+      "v" = some (.stdVecVal l) :=
+    envLookup_extend_miss _ _ _ _ _ hv₂ (by decide)
   have hi₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "i" = some (.u64 iB) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "b" by decide)]
-    exact hi₂
+      "i" = some (.u64 iB) :=
+    envLookup_extend_miss _ _ _ _ _ hi₂ (by decide)
   have hj₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "j" = some (.u64 (jB - 1)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("j" : String) ≠ "b" by decide)]
-    exact hj₂
+      "j" = some (.u64 (jB - 1)) :=
+    envLookup_extend_miss _ _ _ _ _ hj₂ (by decide)
   have ha₃ : envLookup (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b))
-      "a" = some (.i32 a) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("a" : String) ≠ "b" by decide)]
-    exact ha₂
+      "a" = some (.i32 a) :=
+    envLookup_extend_miss _ _ _ _ _ ha₂ (by decide)
   -- `v[i] := b`.
   obtain ⟨ρ₄, hu₄⟩ := envUpdate_some_of_lookup
     (envExtend (envExtend ρ₁ "a" (.i32 a)) "b" (.i32 b)) "v"
@@ -653,10 +639,8 @@ theorem evalProgFunc_vecReverse (F : Nat) (l : List (BitVec 32))
     envExtend_hit _ _ _
   have hm₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "i" (.u64 0)) "m" =
-      some (.u64 (BitVec.ofNat 64 l.length)) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("m" : String) ≠ "i" by decide)]
-    exact hm₁
+      some (.u64 (BitVec.ofNat 64 l.length)) :=
+    envLookup_extend_miss _ _ _ _ _ hm₁ (by decide)
   -- `j ← m`.
   have hstep_j := revLet vecReverseProg F "j" (.u 64) (.var "m")
     (envExtend (envExtend [("v", .stdVecVal l)] "m"
@@ -682,10 +666,8 @@ theorem evalProgFunc_vecReverse (F : Nat) (l : List (BitVec 32))
   have hi₃ : envLookup (envExtend (envExtend (envExtend
       [("v", .stdVecVal l)] "m" (.u64 (BitVec.ofNat 64 l.length)))
       "i" (.u64 0)) "j" (.u64 (BitVec.ofNat 64 l.length))) "i" =
-      some (.u64 0) := by
-    rw [envExtend_miss _ _ _ _
-      (show ("i" : String) ≠ "j" by decide)]
-    exact hi₂
+      some (.u64 0) :=
+    envLookup_extend_miss _ _ _ _ _ hi₂ (by decide)
   -- `t ← 0` (spill slot, pure `let_`).
   have hstep_t := revLet vecReverseProg F "t" (.i 32)
     (.lit (.i32 0)) (envExtend (envExtend (envExtend
