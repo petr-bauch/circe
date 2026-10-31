@@ -132,8 +132,9 @@ def checkBinSearchNotAtSet : IO Nat := do
       IO.println "PASS reject-vecatset vec_binary_search-not-atset [shape-exact]"
       pure 1
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @vwsbare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !u64i, %arg2: !s32i) attributes {\"nothrow\"} {\n"
   ++ "    cir.return\n  }\n}"
@@ -153,7 +154,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r4
   let r5 ← checkRejectVecAtSet "vwsbare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r5
   IO.println s!"GOLDENVECATSET-OK passed={passed}"
 

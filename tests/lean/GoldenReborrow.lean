@@ -91,11 +91,11 @@ def main : IO Unit := do
       IO.println "PASS reject-reborrow _Z10alias_condRiS_b [open-contract]"
       pure 1
   passed := passed + r3
-  -- Bare root pointer without the attr triple: the alias discipline
-  -- rejects before shapes are even consulted.
+  -- Bare root pointer without the attr triple: the single-pointer
+  -- exemption lifts alias discipline, so the shape/fragment gate rejects instead.
   let r4 ← checkRejectReborrow "_Z14alias_reborrowRi"
     (corpus.replace reborrowTriple "{llvm.noundef}") .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r4
   -- Shape-exactness the other way: the single-add `incr` leaf is not
   -- the two-add fusion.

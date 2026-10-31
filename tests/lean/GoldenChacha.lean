@@ -66,7 +66,7 @@ def checkRejectChacha (name text : String) (verdict : Verdict)
 def chachaBase : IO String :=
   IO.FS.readFile "tests/cir/chacha_block.cir"
 
-/-- Missing `__restrict__` on `state`: rule-1 param check. -/
+/-- Missing `__restrict__` on `state`: the single-pointer exemption lifts alias discipline, so the OOB gate (rule 4) rejects the unbounded indexing instead. -/
 def advNoRestrict : IO String := do
   let base ← chachaBase
   pure ((base.replace "@chacha20_block(" "@chnorestr(").replace
@@ -93,7 +93,7 @@ def main : IO Unit := do
   passed := passed + r1
   let v2 ← advNoRestrict
   let r2 ← checkRejectChacha "chnorestr" v2 .unknown
-    "alias-reject" "uniqueness cannot be established"
+    "oob-possible" "unbounded indexing cannot be functionalized"
   passed := passed + r2
   let v3 ← advTwoParams
   let r3 ← checkRejectChacha "ch2params" v3 .noalias

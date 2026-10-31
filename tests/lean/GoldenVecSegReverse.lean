@@ -106,8 +106,7 @@ def advRecursiveSeg : String :=
   ++ "    cir.return\n  }\n}"
 
 /-- Bare vector pointer (plus two `u64` params) without the attr
-    triple: the alias discipline rejects before shapes are even
-    consulted. -/
+    triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict), so the shape/fragment gate rejects instead. -/
 def advBareSegPtr : String :=
   "module {\n  cir.func @vwbareseg(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !u64i {llvm.noundef}, %arg2: !u64i {llvm.noundef}) attributes {\"nothrow\"} {\n"
   ++ "    cir.return\n  }\n}"
@@ -155,7 +154,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r7
   let r8 ← checkRejectSeg "vwbareseg" advBareSegPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r8
   IO.println s!"GOLDENVECSEGREVERSE-OK passed={passed}"
 

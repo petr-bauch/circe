@@ -136,8 +136,8 @@ def advSizeWrongArity : String :=
   ++ "    %b = cir.const #cir.int<0> : !s32i\n"
   ++ "    cir.return %b : !s32i\n  }\n}"
 
-/-- Bare span pointer without the attr triple: the alias discipline
-    rejects before shapes are even consulted. -/
+/-- Bare span pointer without the attr triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareSpanPtr : String :=
   "module {\n  cir.func @sbare(%arg0: !cir.ptr<" ++ spanRec ++ "> {llvm.noundef}) -> !u64i attributes {\"nothrow\"} {\n"
   ++ "    %r = cir.call @" ++ spanSizeEv ++ "(%arg0) : (!cir.ptr<" ++ spanRec ++ ">) -> !u64i\n"
@@ -173,7 +173,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::span` leaf"
   passed := passed + r4
   let r5 ← checkRejectSpan "sbare" advBareSpanPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "not with an admitted (name, arity, site-count) shape"
   passed := passed + r5
   let d1 ← checkRejectSpan "srange" advRangeFor .unknown
     "out-of-subset" "outside the admitted call shapes"

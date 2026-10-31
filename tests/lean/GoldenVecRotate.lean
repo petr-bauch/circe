@@ -116,8 +116,7 @@ def advRecursiveRot : String :=
   ++ "    cir.return\n  }\n}"
 
 /-- Bare vector pointer (plus one `u64` param) without the attr
-    triple: the alias discipline rejects before shapes are even
-    consulted. -/
+    triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict), so the shape/fragment gate rejects instead. -/
 def advBareRotPtr : String :=
   "module {\n  cir.func @vwbarerot(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !u64i {llvm.noundef}) attributes {\"nothrow\"} {\n"
   ++ "    cir.return\n  }\n}"
@@ -165,7 +164,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r7
   let r8 ← checkRejectRot "vwbarerot" advBareRotPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r8
   let r9 ← checkRejectPermuted
   passed := passed + r9

@@ -135,7 +135,7 @@ def main : IO Unit := do
     "out-of-subset" "nsw"
   passed := passed + c4
   let c5 ← checkRejectAcc "bacc" advBareAcc .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "outside the admitted"
   passed := passed + c5
   let c6 ← checkRejectAcc "tacc" advTryAcc .unknown
     "out-of-subset" "cir.try"

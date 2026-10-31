@@ -145,8 +145,9 @@ def advDirectRange : String :=
   ++ "    %v = cir.load %p : !cir.ptr<!s32i>, !s32i\n"
   ++ "    cir.return %v : !s32i\n  }\n}"
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @kbare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n"
   ++ "    %z = cir.const #cir.int<0> : !u64i\n"
@@ -169,7 +170,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r4
   let r5 ← checkRejectVecKadane "kbare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "not with an admitted (name, arity, site-count) shape"
   passed := passed + r5
   IO.println s!"GOLDENVECKADANE-OK passed={passed}"
 

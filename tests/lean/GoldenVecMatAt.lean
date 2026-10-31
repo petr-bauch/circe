@@ -123,8 +123,9 @@ def checkMatAtNotAtOne : IO Nat := do
       IO.println "PASS reject-vecmatat mat_at-not-atone [shape-exact]"
       pure 1
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @vmbare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !u64i, %arg2: !u64i, %arg3: !u64i) attributes {\"nothrow\"} {\n"
   ++ "    %z = cir.const #cir.int<0> : !s32i\n"
@@ -142,7 +143,7 @@ def main : IO Unit := do
   let r3 ← checkMatAtNotAtOne
   passed := passed + r3
   let r4 ← checkRejectVecMatAt "vmbare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r4
   IO.println s!"GOLDENVECMATAT-OK passed={passed}"
 

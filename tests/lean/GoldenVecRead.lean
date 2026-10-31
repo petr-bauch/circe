@@ -108,8 +108,9 @@ def advVecSizeWrongArity : String :=
   ++ "    %b = cir.const #cir.int<0> : !s32i\n"
   ++ "    cir.return %b : !s32i\n  }\n}"
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @vbare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}) -> !u64i attributes {\"nothrow\"} {\n"
   ++ "    %r = cir.call @" ++ vecSizeEv ++ "(%arg0) : (!cir.ptr<" ++ vecRec ++ ">) -> !u64i\n"
@@ -140,7 +141,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r4
   let r5 ← checkRejectVecRead "vbare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "not with an admitted (name, arity, site-count) shape"
   passed := passed + r5
   let d1 ← checkRejectVecRead "vpush" advPushBack .unknown
     "out-of-subset" "N4d-iv-b2 growth composer"

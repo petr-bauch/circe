@@ -138,8 +138,9 @@ def advEntryUnchecked : String :=
   ++ "    %p = cir.call @" ++ vecIndexEv ++ "(%arg0, %z) : (!cir.ptr<" ++ vecRec ++ ">, !u64i) -> !cir.ptr<!s32i>\n"
   ++ "    %v = cir.load %p : !cir.ptr<!s32i>, !s32i\n    cir.return %v : !s32i\n  }\n}"
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @vbare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !u64i {llvm.noundef}) -> !s32i attributes {\"nothrow\"} {\n"
   ++ "    %p = cir.call @" ++ vecAtEv ++ "(%arg0, %arg1) : (!cir.ptr<" ++ vecRec ++ ">, !u64i) -> !cir.ptr<!s32i>\n"
@@ -165,7 +166,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r5
   let r6 ← checkRejectVecAt "vbare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "not with an admitted (name, arity, site-count) shape"
   passed := passed + r6
   IO.println s!"GOLDENVECAT-OK passed={passed}"
 

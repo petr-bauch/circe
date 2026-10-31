@@ -146,8 +146,9 @@ def checkBinSearchNotTwoSum : IO Nat := do
       IO.println "PASS reject-vectwosum vec_binary_search-not-twosum [shape-exact]"
       pure 1
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @v2bare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !s32i) -> " ++ iPairRec ++ " attributes {\"nothrow\"} {\n"
   ++ "    %r = cir.alloca \"__retval\" align(4) : !cir.ptr<" ++ iPairRec ++ ">\n"
@@ -174,7 +175,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r4
   let r5 ← checkRejectVecTwoSum "v2bare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "outside the admitted"
   passed := passed + r5
   IO.println s!"GOLDENVECTWOSUM-OK passed={passed}"
 

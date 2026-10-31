@@ -178,8 +178,8 @@ def advHasValueWrongArity : String :=
   "module {\n  cir.func @oarod(%arg0: !cir.ptr<!rec_std3A3Aoptional3Cint3E> " ++ optTriple8 ++ ", %arg1: !cir.ptr<!rec_std3A3Aoptional3Cint3E> " ++ optTriple8 ++ ") -> !cir.bool attributes {\"nothrow\"} {\n"
   ++ "    %r = cir.call @_ZNKSt8optionalIiE9has_valueEv(%arg0) : (!cir.ptr<!rec_std3A3Aoptional3Cint3E>) -> !cir.bool\n    cir.return %r : !cir.bool\n  }\n}"
 
-/-- Bare optional pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare optional pointer without the attr triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareOptPtr : String :=
   "module {\n  cir.func @obare(%arg0: !cir.ptr<!rec_std3A3Aoptional3Cint3E> {llvm.noundef}) -> !cir.bool attributes {\"nothrow\"} {\n"
   ++ "    %r = cir.call @_ZNKSt8optionalIiE9has_valueEv(%arg0) : (!cir.ptr<!rec_std3A3Aoptional3Cint3E>) -> !cir.bool\n    cir.return %r : !cir.bool\n  }\n}"
@@ -249,7 +249,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::optional` leaf"
   passed := passed + r4
   let r5 ← checkRejectOptional "obare" advBareOptPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "not with an admitted (name, arity, site-count) shape"
   passed := passed + r5
   let r6 ← checkRejectOptional "ovalue" advUnguardedValue .unknown
     "out-of-subset" "no `has_value` guard"

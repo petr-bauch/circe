@@ -1209,6 +1209,16 @@ theorem recoveredNoalias_single_oracle (raw : RawFunc)
 def isRecoveredParam (raw : RawFunc) (p : RawParam) : Bool :=
   recoveredNoalias raw && decide (p ∈ oracleParams raw)
 
+/-- Exactly one live pointer param carrying no uniqueness evidence
+    (`noalias` attr, single-reference triple, recovered/erased
+    shapes): nothing to alias with and no claim to confirm. -/
+def singleBarePointer (raw : RawFunc) : Bool :=
+  match oracleParams raw with
+  | [p] =>
+    !p.noalias && !p.singleRef &&
+    !isRecoveredParam raw p && !isVecGrowErasedParam raw p
+  | _ => false
+
 /-! ## M2b: value-ctor scope exemption (`acc_two` entry) -/
 
 /-- The M2b `Acc` struct type: CIRGen's `!rec_Acc` alias (long-form
@@ -1683,15 +1693,34 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     reject raw.name .outOfSubset
       s!"out-of-subset: function '{raw.name}' uses {what}, outside the v0.1 Ownable-C subset (see docs/CIR_SUBSET.md)"
   | none =>
-    match raw.params.find? (fun p =>
-      isPtrType p.ctype && !p.noalias && !p.singleRef &&
-      !isRecoveredParam raw p && !isVecGrowErasedParam raw p) with
+    -- Single-pointer exemption (L-ptr): one BARE live pointer with an
+    -- `unknown` verdict carries no uniqueness claim anywhere (no attr
+    -- text, no verdict), so there is nothing to corroborate — the
+    -- restrict/triple demand is lifted and the shape arm decides
+    -- admission. A `noalias`/`mayAlias` verdict IS a claim the text
+    -- must corroborate, and two or more live pointer params can
+    -- always alias: both keep the loud demand below.
+    let offender :=
+      if 2 ≤ (oracleParams raw).length ||
+          !singleBarePointer raw || oracle.verdict != .unknown then
+        raw.params.find? (fun p =>
+          isPtrType p.ctype && !p.noalias && !p.singleRef &&
+          !isRecoveredParam raw p && !isVecGrowErasedParam raw p)
+      else none
+    match offender with
     | some p =>
       reject raw.name .aliasReject
         s!"alias-reject: function '{raw.name}': param '{p.name}' has pointer type '{p.ctype}' without `__restrict__` (no `llvm.noalias`) or the full C++ single-reference triple (`nonnull + dereferenceable + noundef`): uniqueness cannot be established (see docs/SUBSET.md rule 1)"
     | none =>
-      if !(oracleParams raw).isEmpty && !verdictAdmits oracle.verdict &&
-          !recoveredNoalias raw then
+      -- Single-pointer exemption (L-ptr): one BARE live pointer cannot
+      -- alias itself, and there is no uniqueness claim (attr text or
+      -- otherwise) for the verdict to confirm — so the honest
+      -- `unknown` verdict suffices and the shape arm decides
+      -- admission. A single pointer WITH attr text (`__restrict__`,
+      -- recovered/erased shapes) keeps the verdict demand: the attr
+      -- is a uniqueness claim the oracle must confirm.
+      if !(oracleParams raw).isEmpty && !singleBarePointer raw &&
+          !verdictAdmits oracle.verdict && !recoveredNoalias raw then
         let why := match oracle.verdict with
           | .mayAlias => "reports `mayAlias`"
           | .unknown => "is inconclusive (`unknown`)"
@@ -2090,7 +2119,10 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
     param (M2a method/entry defs, M2b `Acc` leaf defs): their uniqueness
     comes from the `nonnull + dereferenceable + noundef` attrs in the
     CIR text itself, so they validate under a synthetic `unknown` fact.
-    (The M2b int-only entry needs its fact, like every int-only func.) -/
+    (The M2b int-only entry needs its fact, like every int-only func.)
+    Single-pointer entries (exactly one live pointer param, L-ptr
+    exemption) likewise validate under a synthetic `unknown` fact:
+    with nothing to alias, `unknown` is the honest verdict. -/
 def validateModule (text : String) (facts : List OracleFact) :
     List (String × Validation) :=
   match parseModule text with
@@ -2100,7 +2132,8 @@ def validateModule (text : String) (facts : List OracleFact) :
   | some ir => (ir.funcs.filter isFuncDef).map (fun raw =>
       match lookupOracle facts raw.name with
       | none =>
-        if raw.params.any (fun p => isPtrType p.ctype && p.singleRef) then
+        if raw.params.any (fun p => isPtrType p.ctype && p.singleRef) ||
+            (oracleParams raw).length == 1 then
           (raw.name, validate raw ⟨raw.name, .unknown⟩)
         else
           (raw.name, reject raw.name .outOfSubset

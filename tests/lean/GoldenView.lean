@@ -127,8 +127,8 @@ def advMissingSext : String :=
   ++ "    %w = cir.load %t : !cir.ptr<!s32i>, !s32i\n"
   ++ "    cir.return %w : !s32i\n  }\n}"
 
-/-- Bare view pointer without the attr triple: the alias discipline
-    rejects before shapes are even consulted. -/
+/-- Bare view pointer without the attr triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareViewPtr : String :=
   "module {\n  cir.func @vbare(%arg0: !cir.ptr<" ++ viewRec ++ "> {llvm.noundef}) -> !cir.ptr<!s8i> attributes {\"nothrow\"} {\n"
   ++ "    %r = cir.call @" ++ viewBeginEv ++ "(%arg0) : (!cir.ptr<" ++ viewRec ++ ">) -> !cir.ptr<!s8i>\n"
@@ -154,7 +154,7 @@ def main : IO Unit := do
     "out-of-subset" "uses 8/16-bit integers"
   passed := passed + r5
   let r6 ← checkRejectView "vbare" advBareViewPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "not with an admitted (name, arity, site-count) shape"
   passed := passed + r6
   IO.println s!"GOLDENVIEW-OK passed={passed}"
 

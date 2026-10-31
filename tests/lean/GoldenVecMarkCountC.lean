@@ -145,8 +145,8 @@ def checkCharNotIntMark : IO Nat := do
       IO.println "PASS reject-vecmarkcountc mark_count_c-not-intmark [shape-exact]"
       pure 1
 
-/-- Bare char vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare char vector pointer without the attr triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtrC : String :=
   "module {\n  cir.func @vmcbare(%arg0: !cir.ptr<" ++ vecRecC ++ "> {llvm.noundef}, %arg1: !cir.ptr<" ++ vecRecC ++ "> " ++ vecTriple ++ ", %arg2: !u64i) -> !s32i attributes {\"nothrow\"} {\n"
   ++ "    %z = cir.const #cir.int<0> : !s32i\n"
@@ -164,7 +164,7 @@ def main : IO Unit := do
   let r3 ← checkCharNotIntMark
   passed := passed + r3
   let r4 ← checkRejectVecMarkCountC "vmcbare" advBareVecPtrC .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r4
   IO.println s!"GOLDENVECMARKCOUNTC-OK passed={passed}"
 

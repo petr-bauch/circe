@@ -103,7 +103,7 @@ def main : IO Unit := do
     "out-of-subset" "outside the admitted `translate` shape"
   passed := passed + c4
   let c5 ← checkRejectMethod "bptr" advBarePtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "outside the admitted"
   passed := passed + c5
   let c6 ← checkRejectMethod "dref" advDoubleCall .unknown
     "out-of-subset" "outside the admitted call shapes"

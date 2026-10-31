@@ -106,8 +106,7 @@ def advThreeSites : String :=
   ++ "    %c = cir.call @_ZNKSt5arrayIiLm4EEixEm(%arg0, %c2) : (!cir.ptr<!rec_std3A3Aarray3Cint2C_4UL3E>, !u64i) -> !cir.ptr<!s32i>\n"
   ++ "    %v = cir.load %a : !cir.ptr<!s32i>, !s32i\n    %w = cir.load %b : !cir.ptr<!s32i>, !s32i\n    %x = cir.load %c : !cir.ptr<!s32i>, !s32i\n    %s = cir.add nsw %v, %w : !s32i\n    %t = cir.add nsw %s, %x : !s32i\n    cir.return %t : !s32i\n  }\n}"
 
-/-- Bare array pointer without the attr triple: the alias discipline
-    rejects before shapes are even consulted. -/
+/-- Bare array pointer without the attr triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict), so the escape gate (rule 6) rejects the returned pointer instead. -/
 def advBareArrayPtr : String :=
   "module {\n  cir.func @abare(%arg0: !cir.ptr<!cir.array<!s32i x 4>> {llvm.noundef}, %arg1: !u64i {llvm.noundef}) -> !cir.ptr<!s32i> attributes {\"nothrow\"} {\n"
   ++ "    %e = cir.get_element %arg0[%arg1 : !u64i] : !cir.ptr<!cir.array<!s32i x 4>> -> !cir.ptr<!s32i>\n    cir.return %e : !cir.ptr<!s32i>\n  }\n}"
@@ -151,7 +150,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::array` leaf"
   passed := passed + r5
   let r6 ← checkRejectArray "abare" advBareArrayPtr .unknown
-    "alias-reject" "single-reference triple"
+    "escape-reject" "outside the borrow-return"
   passed := passed + r6
   let d1 ← checkRejectArray "otrap" advOptTrap .unknown
     "out-of-subset" "trap (`cir.trap`"

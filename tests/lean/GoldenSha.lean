@@ -67,7 +67,7 @@ def checkRejectSha (name text : String) (verdict : Verdict)
 def shaBase : IO String :=
   IO.FS.readFile "tests/cir/sha256_compress.cir"
 
-/-- Missing `__restrict__` on `st`: rule-1 param check. -/
+/-- Missing `__restrict__` on `st`: the single-pointer exemption lifts alias discipline, so the OOB gate (rule 4) rejects the unbounded indexing instead. -/
 def advNoRestrict : IO String := do
   let base ← shaBase
   pure ((base.replace "@sha256_compress(" "@shanorestr(").replace
@@ -94,7 +94,7 @@ def main : IO Unit := do
   passed := passed + r1
   let v2 ← advNoRestrict
   let r2 ← checkRejectSha "shanorestr" v2 .unknown
-    "alias-reject" "uniqueness cannot be established"
+    "oob-possible" "unbounded indexing cannot be functionalized"
   passed := passed + r2
   let v3 ← advTwoParams
   let r3 ← checkRejectSha "sh2params" v3 .noalias

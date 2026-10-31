@@ -67,7 +67,7 @@ def checkRejectAliasCond (name text : String) (verdict : Verdict)
 def aliasCondBase : IO String :=
   IO.FS.readFile "tests/cir/alias_cond.cir"
 
-/-- Missing triple on writer `p`: rule-1 param check. -/
+/-- Missing triple on writer `p`: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict), so the shape arm misses and the fragment gate rejects. -/
 def advNoTripleP : IO String := do
   let base ← aliasCondBase
   pure (base.replace
@@ -132,7 +132,7 @@ def main : IO Unit := do
     passed := passed + 1
   let v1 ← advNoTripleP
   let r1 ← checkRejectAliasCond "_Z10alias_condRiS_b" v1 .unknown
-    "alias-reject" "uniqueness cannot be established"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r1
   let v2 ← advWrappingAdds
   let r2 ← checkRejectAliasCond "_Z10alias_condRiS_b" v2 .unknown

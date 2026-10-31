@@ -105,8 +105,8 @@ def advRecursiveRev : String :=
   ++ "    cir.call @vwrecrev(%arg0) : (!cir.ptr<" ++ vecRec ++ ">) -> ()\n"
   ++ "    cir.return\n  }\n}"
 
-/-- Bare vector pointers without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointers without the attr triple: the single-pointer exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareRevPtr : String :=
   "module {\n  cir.func @vwbarerev(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}) attributes {\"nothrow\"} {\n"
   ++ "    cir.return\n  }\n}"
@@ -154,7 +154,7 @@ def main : IO Unit := do
     "out-of-subset" "calls a known `std::vector` leaf"
   passed := passed + r7
   let r8 ← checkRejectRev "vwbarerev" advBareRevPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r8
   IO.println s!"GOLDENVECREVERSE-OK passed={passed}"
 

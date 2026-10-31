@@ -93,7 +93,7 @@ def main : IO Unit := do
   -- Bare root pointer without the attr triple.
   let r3 ← checkRejectReborrow34 "_Z16alias_reborrow34Ri"
     (corpus.replace reborrowTriple "{llvm.noundef}") .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r3
   -- Cross-exactness: the F1 entry is not 34-shaped and vice versa.
   let r4 ← checkShape34 "tests/cir/alias_reborrow.cir" "_Z14alias_reborrowRi"

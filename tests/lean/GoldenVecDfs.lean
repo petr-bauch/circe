@@ -148,8 +148,9 @@ def advRecursive : String :=
   ++ "    %z = cir.const #cir.int<0> : !u64i\n"
   ++ "    cir.return %z : !u64i\n  }\n}"
 
-/-- Bare vector pointer without the attr triple: the alias
-    discipline rejects before shapes are even consulted. -/
+/-- Bare vector pointer without the attr triple: the single-pointer
+    exemption lifts alias discipline (one bare pointer, unknown verdict),
+    so the shape/fragment gate rejects instead. -/
 def advBareVecPtr : String :=
   "module {\n  cir.func @vdbare(%arg0: !cir.ptr<" ++ vecRec ++ "> {llvm.noundef}, %arg1: !u64i) -> !u64i attributes {\"nothrow\"} {\n"
   ++ "    %z = cir.const #cir.int<0> : !u64i\n"
@@ -170,7 +171,7 @@ def main : IO Unit := do
     "out-of-subset" "calls itself"
   passed := passed + r4
   let r5 ← checkRejectVecDfs "vdbare" advBareVecPtr .unknown
-    "alias-reject" "single-reference triple"
+    "out-of-subset" "admitted Phase-4 fragment"
   passed := passed + r5
   IO.println s!"GOLDENVECDFS-OK passed={passed}"
 
