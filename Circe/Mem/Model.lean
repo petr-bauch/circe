@@ -8,11 +8,12 @@ import Circe.Base
 import Circe.CoreIR
 import Circe.Eval
 
-/-! ## Addresses, blocks, memory -/
+/-! ## Addresses, blocks, memory
 
-/-- Addresses are a flat counter (no pointer arithmetic in the subset:
-    the only indexing is length-paired stride, checked per access). -/
-abbrev Addr := Nat
+Addresses are a flat counter (`Addr` lives in `CoreIR`: the
+`L`-slice node capability carries one). No pointer arithmetic in
+the subset: the only indexing is length-paired stride, checked
+per access; node links decode through `linkWord`/`addrOfWord`. -/
 
 /-- A heap block: allocating-epoch tag + live flag + words. `live`
     mirrors the value-level affine token (`Vec32.freed = !live`;
@@ -168,6 +169,70 @@ theorem memFind_alloc64_miss (m : Mem) (data : List (BitVec 64)) (a : Addr) :
   obtain ⟨n, bs, g64⟩ := m
   simp only [memAllocData64]
   exact memFind_next_irrelevant _ _ _ _ _ _
+
+/-! ## Link-word codec (L-slice node links) -/
+
+/-- Link encoding: null is the zero word; a live link `a` is the
+    word `a + 1` (so every live link word is nonzero below
+    `2 ^ 32). Exactness (`a + 1 < 2 ^ 32`) is an explicit side
+    condition on every consumer. -/
+def linkWord : Option Addr → BitVec 32
+  | none => 0
+  | some a => BitVec.ofNat 32 (a + 1)
+
+theorem linkWord_none : linkWord none = 0 := rfl
+
+theorem linkWord_some (a : Addr) :
+    linkWord (some a) = BitVec.ofNat 32 (a + 1) := rfl
+
+/-- A live link word is nonzero (exactness side condition). -/
+theorem linkWord_some_ne_zero {a : Addr} (h : a + 1 < 2 ^ 32) :
+    linkWord (some a) ≠ 0 := by
+  rw [linkWord_some]
+  intro heq
+  have hto := congrArg BitVec.toNat heq
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h] at hto
+  have hz : BitVec.toNat (0 : BitVec 32) = 0 := by decide
+  rw [hz] at hto
+  omega
+
+/-- Link words are injective on in-range addresses. -/
+theorem linkWord_some_inj {a b : Addr}
+    (ha : a + 1 < 2 ^ 32) (hb : b + 1 < 2 ^ 32)
+    (h : linkWord (some a) = linkWord (some b)) : a = b := by
+  rw [linkWord_some, linkWord_some] at h
+  have hto := congrArg BitVec.toNat h
+  rw [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt ha,
+    Nat.mod_eq_of_lt hb] at hto
+  exact Nat.add_right_cancel hto
+
+/-- Null never collides with a live link. -/
+theorem linkWord_none_ne_some {a : Addr} (h : a + 1 < 2 ^ 32) :
+    linkWord none ≠ linkWord (some a) := by
+  rw [linkWord_none]
+  exact Ne.symm (linkWord_some_ne_zero h)
+
+/-- Link decoding: the zero word is null, anything else is the
+    address one below the word value (total; the inverse of
+    `linkWord` only under the exactness side condition). -/
+def addrOfWord (w : BitVec 32) : Option Addr :=
+  if w = 0 then none else some (w.toNat - 1)
+
+/-- Decoding inverts encoding on in-range addresses. -/
+theorem addrOfWord_linkWord_some {a : Addr} (h : a + 1 < 2 ^ 32) :
+    addrOfWord (linkWord (some a)) = some a := by
+  have hne : BitVec.ofNat 32 (a + 1) ≠ 0 :=
+    linkWord_some_ne_zero h
+  have hto : (BitVec.ofNat 32 (a + 1)).toNat = a + 1 := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
+  rw [linkWord_some, addrOfWord, ite_eq_right hne, hto,
+    Nat.add_sub_cancel]
+
+/-- Decoding inverts encoding on null, unconditionally. -/
+theorem addrOfWord_linkWord_none :
+    addrOfWord (linkWord none) = none := by
+  rw [linkWord_none, addrOfWord]
+  exact ite_eq_left rfl
 
 /-- Checked load: the block must exist, carry the expected tag (the
     borrow check), be live (no use-after-free), and cover `i`
@@ -516,6 +581,7 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x == y))
     | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x == y))
     | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x == y))
+    | .ok (.ptrVal x), .ok (.ptrVal y) => .ok (.b (x == y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -525,6 +591,7 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x != y))
     | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x != y))
     | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x != y))
+    | .ok (.ptrVal x), .ok (.ptrVal y) => .ok (.b (x != y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -648,6 +715,17 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | .error e => .error e
       | .ok _ => .error .AssertFail
       | .error e => .error e
+  | .pgetNext e, ρ, m, π =>
+    match memEvalExpr e ρ m π with
+    | .ok (.ptrVal (some a)) =>
+      match memFind m a with
+      | none => .error .AssertFail
+      | some b =>
+        match memLoad m a b.tag 1 with
+        | .ok w => .ok (.ptrVal (addrOfWord w))
+        | .error e => .error e
+    | .ok _ => .error .AssertFail
+    | .error err => .error err
   | .stdVecLen s, ρ, m, π =>
     match layoutLookup π s with
     | none => .error .AssertFail
@@ -1042,6 +1120,45 @@ theorem memEvalExpr_mload_err (s : String) (ie : CExpr) (ρ : Env)
     memEvalExpr (.mload s ie) ρ m π = .error e := by
   simp only [memEvalExpr, hlay, hi, hmem]
 
+/-- `pgetNext` on a live node reads the link word at index 1 and
+    decodes it (L3a: the block's own tag is used, so no layout pin
+    is needed). -/
+theorem memEvalExpr_pgetNext_hit (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr) (w : BitVec 32)
+    (b : Block)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hmem : memLoad m a b.tag 1 = .ok w) :
+    memEvalExpr (.pgetNext e) ρ m π =
+      .ok (.ptrVal (addrOfWord w)) := by
+  simp only [memEvalExpr, he, hfind, hmem]
+
+/-- `pgetNext` on null is loud (L3a: the null miss — dereferencing
+    `nullptr` is `AssertFail`, never a silent default). -/
+theorem memEvalExpr_pgetNext_null (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal none)) :
+    memEvalExpr (.pgetNext e) ρ m π = .error .AssertFail := by
+  simp only [memEvalExpr, he]
+
+/-- `pgetNext` on a missing block is loud. -/
+theorem memEvalExpr_pgetNext_miss (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = none) :
+    memEvalExpr (.pgetNext e) ρ m π = .error .AssertFail := by
+  simp only [memEvalExpr, he, hfind]
+
+/-- `pgetNext` propagates `memLoad` errors (dead block, short read). -/
+theorem memEvalExpr_pgetNext_err (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr)
+    (b : Block) (werr : Panic)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hmem : memLoad m a b.tag 1 = .error werr) :
+    memEvalExpr (.pgetNext e) ρ m π = .error werr := by
+  simp only [memEvalExpr, he, hfind, hmem]
+
 /-- `spanAt` OOB agreement: the memory load itself fails `OOB`
     past the reified words, so both sides fail `OOB` loudly
     (mirrors `memEvalExpr_idxi_oob`). -/
@@ -1279,6 +1396,24 @@ theorem memEvalExpr_une_agree (a b : CExpr) (ρ : Env) (m : Mem)
     memEvalExpr (.une a b) ρ m π = evalExpr (.une a b) ρ := by
   simp only [memEvalExpr, evalExpr, ha, hb]
   rfl
+
+/-- `une` on two node capabilities in `Mem` space (L3a: the
+    list-chase `cur != nullptr` guard — value-level, never a
+    dereference). -/
+theorem memEvalExpr_une_ptrVal (a b : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (x y : Option Addr)
+    (h₁ : memEvalExpr a ρ m π = .ok (.ptrVal x))
+    (h₂ : memEvalExpr b ρ m π = .ok (.ptrVal y)) :
+    memEvalExpr (.une a b) ρ m π = .ok (.b (x != y)) := by
+  simp only [memEvalExpr, h₁, h₂]
+
+/-- `ueq` on two node capabilities in `Mem` space (L3a). -/
+theorem memEvalExpr_ueq_ptrVal (a b : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (x y : Option Addr)
+    (h₁ : memEvalExpr a ρ m π = .ok (.ptrVal x))
+    (h₂ : memEvalExpr b ρ m π = .ok (.ptrVal y)) :
+    memEvalExpr (.ueq a b) ρ m π = .ok (.b (x == y)) := by
+  simp only [memEvalExpr, h₁, h₂]
 
 /-- `ueq` agreement: both sides compare the same words
     (N7c: the const-iterator `operator==`). -/
@@ -1638,6 +1773,18 @@ def memEvalStmtWith
     | .ok _, .ok _, _ => .error .AssertFail
     | .error e, _, _ => .error e
     | _, .error e, _ => .error e
+  | .psetNext dst link, ρ, m, π =>
+    match memEvalExpr dst ρ m π, memEvalExpr link ρ m π with
+    | .ok (.ptrVal (some a)), .ok (.ptrVal n) =>
+      match memFind m a with
+      | none => .error .AssertFail
+      | some b =>
+        match memStore m a b.tag 1 (linkWord n) with
+        | .error e => .error e
+        | .ok m' => .ok ((ρ, m', π), .fellThrough)
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .vgrowFree x, ρ, m, π =>
     match envLookup ρ x, layoutLookup π x with
     | some (.stdVecOwned b len cap), some (a, t) =>

@@ -24,6 +24,7 @@ import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
 import Circe.Emit.VecRotate
 import Circe.Emit.VecListRev
+import Circe.Emit.LinkedReverse
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -947,6 +948,21 @@ def matchFrag : Func → Option FragKind
                 (.assign "cur" (.var "nxt_cur"))))))
           (.return_ (.var "prev"))))⟩ =>
     some .vecListRev
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.seq (.let_ "prev" (.struct "Node" [.i 32, .u 32])
+                (.lit .nullptr))
+              (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32])
+                (.var "head"))
+                (.let_ "nxt" (.struct "Node" [.i 32, .u 32])
+                  (.lit .nullptr))))
+        (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+                (.seq (.assign "nxt" (.pgetNext (.var "cur")))
+                (.seq (.psetNext (.var "cur") (.var "prev"))
+                (.seq (.assign "prev" (.var "cur"))
+                  (.assign "cur" (.var "nxt"))))))
+          (.return_ (.var "prev"))))⟩ =>
+    some .linkedReverse
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2105,6 +2121,8 @@ theorem matchFrag_vecRotate :
     matchFrag vecRotateFunc = some .vecRotate := rfl
 theorem matchFrag_vecListRev :
     matchFrag listRevFunc = some .vecListRev := rfl
+theorem matchFrag_linkedReverse :
+    matchFrag linkRevFunc = some .linkedReverse := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :

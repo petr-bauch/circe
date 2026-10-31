@@ -26,6 +26,7 @@ import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
 import Circe.Emit.VecRotate
 import Circe.Emit.VecListRev
+import Circe.Emit.LinkedReverse
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecTransformAdd
@@ -1887,6 +1888,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecRotateFunc with name := raw.name }
       else if isListRevShape raw then
         .ok { listRevFunc with name := raw.name }
+      else if isLinkedReverseShape raw then
+        .ok { linkRevFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then

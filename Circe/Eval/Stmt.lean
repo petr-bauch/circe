@@ -225,6 +225,11 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .psetNext dst link, ρ =>
+    match evalExpr dst ρ, evalExpr link ρ with
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .vgrowFree x, ρ =>
     match envLookup ρ x with
     | none => .error .Uninit
@@ -489,6 +494,17 @@ theorem evalStmtFuel_mstore (f : Nat) (s : String) (ie ve : CExpr)
     evalStmtFuel f (.mstore s ie ve) ρ = .error .AssertFail := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hi, hv]
+
+/-- `psetNext` has no value mirror (L3a: link stores are `Mem`-space,
+    so the pure evaluator reports `AssertFail` on any evaluated
+    address and link, as `mstore`). -/
+theorem evalStmtFuel_psetNext (f : Nat) (dst link : CExpr)
+    (ρ : Env) (d l : Value)
+    (hd : evalExpr dst ρ = .ok d)
+    (hl : evalExpr link ρ = .ok l) :
+    evalStmtFuel f (.psetNext dst link) ρ = .error .AssertFail := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd, hl]
 
 /-- `vgrowFree` consumes the triple's buffer token and updates the
     binding, keeping `len`/`cap` (any fuel; N4d-iv-b1:

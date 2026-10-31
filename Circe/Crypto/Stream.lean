@@ -2370,6 +2370,7 @@ theorem encLoopFwd_eq_list (F : Nat)
         | .vecVal64 _ => rfl
         | .boxVal _ => rfl
         | .structVal _ _ => rfl
+        | .ptrVal _ => rfl
         | .optVal _ => rfl
         | .spanVal _ => rfl
         | .viewVal _ => rfl

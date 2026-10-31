@@ -930,6 +930,38 @@ def emitVecListRevText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok (_, prev, _) => .ok prev\n"
 
+/-- Render the `list_reverse` entry forward definition: the raw-pointer
+    chase over `Mem` (link load, link swing to the predecessor;
+    null, missing, dead, or short reads are `AssertFail`; cyclic input
+    exhausts fuel). -/
+def emitLinkedReverseText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (raw-pointer in-place reversal over `Mem`; the predecessor is the accumulator). -/\n"
+  ++ s!"def {name}_rev_outer_fwd (F : Nat) (m : Mem) (prev cur : Option Addr) :\n"
+  ++ "    Result (Mem × Option Addr) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    match cur with\n"
+  ++ "    | none => .ok (m, prev)\n"
+  ++ "    | some _ => .error .AssertFail\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    match cur with\n"
+  ++ "    | none => .ok (m, prev)\n"
+  ++ "    | some a =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 1 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          match memStore m a b.tag 1 (linkWord prev) with\n"
+  ++ "          | .error e => .error e\n"
+  ++ s!"          | .ok m' => {name}_rev_outer_fwd F m' cur (addrOfWord w)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr) : Result (Mem × Option Addr) :=\n"
+  ++ s!"  {name}_rev_outer_fwd F m none head\n"
+
 /-- Render the `vec_seg_reverse` entry forward definition: window
     reversal over the reified words (`take`/`drop` saturate, so the
     mirror agrees with native on every in-bounds `[lo, hi)`). -/

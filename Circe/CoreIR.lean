@@ -3,9 +3,16 @@ Circe.CoreIR — verified core IR for the Ownable-C subset.
 
 `CoreIR` is the trust boundary output: unverified parser text can never
 reach `Emit` without passing `validate : RawIR → Option Func`.
-Pointers do not appear as values; they become ownership roles
-(`BorrowRole`), per docs/SUBSET.md and docs/PIPELINE.md.
+Pointers appear as values only through the L-slice node capability
+(`Value.ptrVal`, an opaque `Option Addr` with `none` for null):
+equality, link load (`pgetNext`), and link store (`psetNext`) only —
+no arithmetic, no int↔pointer casts (pointer arithmetic stays out of
+scope). All other pointers become ownership roles (`BorrowRole`),
+per docs/SUBSET.md and docs/PIPELINE.md.
 -/
+
+/-- Addresses into `Mem` (the `L`-slice node capability payload). -/
+abbrev Addr := Nat
 
 /-- C types admitted (see docs/SUBSET.md). Widths are in bits. -/
 inductive CType : Type
@@ -48,6 +55,7 @@ inductive CLit : Type
   | u64 : BitVec 64 → CLit
   | b : Bool → CLit
   | arr32 : List (BitVec 32) → CLit
+  | nullptr : CLit
   deriving DecidableEq, Repr
 
 /-- C expressions for the admitted fragment. `add` is signed `nsw`-checked
@@ -131,6 +139,11 @@ inductive CLit : Type
     `s` (address + tag from the `Layout` pin; unpinned slot, tag
     mismatch, dead block, or short read is loud). The pure
     evaluator reports `AssertFail` (no value mirror, as `mstore`).
+    `pgetNext e` (L3a) loads the link of the node `e` points to:
+    `e` must evaluate to a `ptrVal` (the block's own tag is used,
+    so no layout pin is needed; null, missing, dead, or short
+    block is loud). The pure evaluator reports `AssertFail` (no
+    value mirror, as `mload`).
     `boxNew e` is `new Box{…}` (`cir.call @_Znwm` + bitcast + field
     store fused: `e` must be an `i32`); `boxGet b` is `p->x`
     (`cir.get_member` + `cir.load` fused: `b` must be a `boxVal`;
@@ -190,6 +203,7 @@ inductive CExpr : Type
   | i32ofU64 : CExpr → CExpr
   | u64ofI32 : CExpr → CExpr
   | mload : String → CExpr → CExpr
+  | pgetNext : CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and
@@ -245,7 +259,13 @@ inductive CExpr : Type
     `Mem`-space). The pure evaluator reports `AssertFail`
     (value-only by design: incompleteness, never unsoundness,
     mirroring `break_`/`continue_` outside loops); G3 open
-    contracts are proved directly in `Mem` space. -/
+    contracts are proved directly in `Mem` space. L-slice link
+    store (L3a): `psetNext dst link` stores the encoded link `link`
+    (`ptrVal`, `none` writes null) into the next field of the node
+    `dst` points to (`dst` must be a live `ptrVal`; the block's own
+    tag is used, so no layout pin is needed; null destination,
+    missing, dead, or short block is loud). The pure evaluator
+    reports `AssertFail` (value-only by design, as `mstore`). -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
@@ -261,6 +281,7 @@ inductive CStmt : Type
   | arrSet (arr : String) (idx val : CExpr)
   | vecSet (s : String) (idx val : CExpr)
   | mstore (slot : String) (idx val : CExpr)
+  | psetNext (dst link : CExpr)
   | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)

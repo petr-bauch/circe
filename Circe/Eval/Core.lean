@@ -43,6 +43,7 @@ inductive Value : Type
   | vecVal64 : Vec64 → Value
   | boxVal : Box32 → Value
   | structVal : String → List (String × BitVec 32) → Value
+  | ptrVal : Option Addr → Value
   | optVal : Option (BitVec 32) → Value
   | spanVal : List (BitVec 32) → Value
   | viewVal : List (BitVec 8) → Value
@@ -307,7 +308,8 @@ theorem loanWF_endRegion (s : LoanState) (r : Nat)
 
 /-! ## Expression evaluator (pure, over `Circe.Base`) -/
 
-/-- Literal denotation: no addresses, just values. -/
+/-- Literal denotation: values only (no dereferenceable address;
+    `nullptr` denotes the null node capability). -/
 def litVal : CLit → Value
   | .i32 v => .i32 v
   | .u32 v => .u32 v
@@ -315,6 +317,7 @@ def litVal : CLit → Value
   | .u64 v => .u64 v
   | .b v => .b v
   | .arr32 l => .arr32 l
+  | .nullptr => .ptrVal none
 
 /-- Field lookup in a flat struct value (fields are `BitVec 32`;
     S2 `Point` is `i32`-only). Missing field is `none` (loud
@@ -473,6 +476,7 @@ def evalExpr : CExpr → Env → Result Value
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x == y))
     | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x == y))
     | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x == y))
+    | .ok (.ptrVal x), .ok (.ptrVal y) => .ok (.b (x == y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -482,6 +486,7 @@ def evalExpr : CExpr → Env → Result Value
     | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x != y))
     | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x != y))
     | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x != y))
+    | .ok (.ptrVal x), .ok (.ptrVal y) => .ok (.b (x != y))
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
@@ -571,6 +576,10 @@ def evalExpr : CExpr → Env → Result Value
   | .mload _ ie, ρ =>
     match evalExpr ie ρ with
     | .error e => .error e
+    | .ok _ => .error .AssertFail
+  | .pgetNext e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
     | .ok _ => .error .AssertFail
   | .stdVecLen s, ρ =>
     match envLookup ρ s with
@@ -804,6 +813,25 @@ theorem evalExpr_une_u64 (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
     (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
     (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
     evalExpr (.une e₁ e₂) ρ = .ok (.b (x != y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `une` on two node capabilities (L3a: the list-chase
+    `cur != nullptr` guard — pointer comparison is value-level,
+    never a dereference). -/
+theorem evalExpr_une_ptrVal (e₁ e₂ : CExpr) (ρ : Env)
+    (x y : Option Addr)
+    (h₁ : evalExpr e₁ ρ = .ok (.ptrVal x))
+    (h₂ : evalExpr e₂ ρ = .ok (.ptrVal y)) :
+    evalExpr (.une e₁ e₂) ρ = .ok (.b (x != y)) := by
+  simp [evalExpr, h₁, h₂]
+
+/-- `ueq` on two node capabilities (L3a: `cur == nullptr` — same
+    value-level status as `une`). -/
+theorem evalExpr_ueq_ptrVal (e₁ e₂ : CExpr) (ρ : Env)
+    (x y : Option Addr)
+    (h₁ : evalExpr e₁ ρ = .ok (.ptrVal x))
+    (h₂ : evalExpr e₂ ρ = .ok (.ptrVal y)) :
+    evalExpr (.ueq e₁ e₂) ρ = .ok (.b (x == y)) := by
   simp [evalExpr, h₁, h₂]
 
 /-- `ueq` on two `i32`-valued expressions (G5a: the unvisited
@@ -1202,6 +1230,14 @@ theorem evalExpr_mload (s : String) (ie : CExpr) (ρ : Env) (v : Value)
     (hi : evalExpr ie ρ = .ok v) :
     evalExpr (.mload s ie) ρ = .error .AssertFail := by
   simp [evalExpr, hi]
+
+/-- `pgetNext` has no value mirror (L3a: the link lives in `Mem`,
+    so the pure evaluator reports `AssertFail` on any evaluated
+    address, as `mload`). -/
+theorem evalExpr_pgetNext (e : CExpr) (ρ : Env) (v : Value)
+    (he : evalExpr e ρ = .ok v) :
+    evalExpr (.pgetNext e) ρ = .error .AssertFail := by
+  simp [evalExpr, he]
 
 /-- `spanAt` of a non-span is rejected, never silently modeled. -/
 theorem evalExpr_spanAt_notval (s : String) (ie : CExpr) (v : BitVec 32)

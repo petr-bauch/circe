@@ -32,6 +32,7 @@ import Circe.Emit.VecReverse
 import Circe.Emit.VecSegReverse
 import Circe.Emit.VecRotate
 import Circe.Emit.VecListRev
+import Circe.Emit.LinkedReverse
 import Circe.Emit.Reborrow
 import Circe.Emit.Reborrow34
 import Circe.Emit.WrPair
@@ -178,6 +179,7 @@ def main : IO Unit := do
   let vecSegReverse ← emitOrDie vecSegReverseFunc
   let vecRotate ← emitOrDie vecRotateFunc
   let vecListRev ← emitOrDie listRevFunc
+  let linkedReverse ← emitOrDie linkRevFunc
   let vecIndexMut ← emitOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
   let vecAtMut ← emitOrDie { stdVecAtFunc with name := stdVecAtMutName }
   let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
@@ -332,6 +334,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecSegReverse.lean" (emitFileText (.ok vecSegReverse))
   IO.FS.writeFile "out/VecRotate.lean" (emitFileText (.ok vecRotate))
   IO.FS.writeFile "out/VecListRev.lean" (emitFileText (.ok vecListRev))
+  IO.FS.writeFile "out/LinkedReverse.lean" (emitFileText (.ok linkedReverse))
   IO.FS.writeFile "out/VecIndexMut.lean" (emitFileText (.ok vecIndexMut))
   IO.FS.writeFile "out/VecAtMut.lean" (emitFileText (.ok vecAtMut))
   IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
@@ -486,6 +489,7 @@ def main : IO Unit := do
   let vecSegReverseSpec ← specOrDie vecSegReverseFunc
   let vecRotateSpec ← specOrDie vecRotateFunc
   let vecListRevSpec ← specOrDie listRevFunc
+  let linkedReverseSpec ← specOrDie linkRevFunc
   let vecIndexMutSpec ← specOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
   let vecAtMutSpec ← specOrDie { stdVecAtFunc with name := stdVecAtMutName }
   let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
@@ -640,6 +644,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecSegReverse_Spec.lean" vecSegReverseSpec
   IO.FS.writeFile "out/VecRotate_Spec.lean" vecRotateSpec
   IO.FS.writeFile "out/VecListRev_Spec.lean" vecListRevSpec
+  IO.FS.writeFile "out/LinkedReverse_Spec.lean" linkedReverseSpec
   IO.FS.writeFile "out/VecIndexMut_Spec.lean" vecIndexMutSpec
   IO.FS.writeFile "out/VecAtMut_Spec.lean" vecAtMutSpec
   IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec

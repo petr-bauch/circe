@@ -534,6 +534,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecRotate_Spec.lean", "out/VecRotate_Spec.lean"),
    ("tests/golden/VecListRev.lean", "out/VecListRev.lean"),
    ("tests/golden/VecListRev_Spec.lean", "out/VecListRev_Spec.lean"),
+   ("tests/golden/LinkedReverse.lean", "out/LinkedReverse.lean"),
+   ("tests/golden/LinkedReverse_Spec.lean", "out/LinkedReverse_Spec.lean"),
    ("tests/golden/VecAtMut.lean", "out/VecAtMut.lean"),
    ("tests/golden/VecAtMut_Spec.lean", "out/VecAtMut_Spec.lean"),
    ("tests/golden/VecIndexMut.lean", "out/VecIndexMut.lean"),
@@ -719,6 +721,7 @@ def emittedTypechecks : List String :=
    "out/VecSegReverse.lean",
    "out/VecRotate.lean",
    "out/VecListRev.lean",
+   "out/LinkedReverse.lean",
    "out/VecAtMut.lean",
    "out/VecIndexMut.lean",
    "out/VecCharSize.lean",
@@ -2130,8 +2133,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 154 then
-    throw (IO.userError s!"expected 154 spec stubs, found {stubs.length}")
+  if stubs.length != 155 then
+    throw (IO.userError s!"expected 155 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with

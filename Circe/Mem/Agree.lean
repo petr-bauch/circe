@@ -315,6 +315,55 @@ theorem memEvalStmtFuel_mstore_err (f : Nat) (s : String) (ie ve : CExpr)
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
       hi, hv, hlay, hstore]
 
+/-- `psetNext` stores the encoded link at index 1 (L3a: the link
+    swing — the value env and layout are untouched, as `mstore`;
+    any fuel). -/
+theorem memEvalStmtFuel_psetNext_ok (f : Nat) (dst link : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (n : Option Addr) (b : Block) (m' : Mem)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hl : memEvalExpr link ρ m π = .ok (.ptrVal n))
+    (hfind : memFind m a = some b)
+    (hstore : memStore m a b.tag 1 (linkWord n) = .ok m') :
+    memEvalStmtFuel f (.psetNext dst link) ρ m π =
+      .ok (((ρ, m', π)), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hl, hfind, hstore]
+
+/-- `assign` of a `Mem`-space value (any fuel): the general form of
+    `memEvalStmtFuel_assign` without the pure-agreement hypothesis,
+    for right-hand sides with no value mirror (`pgetNext`). -/
+theorem memEvalStmtFuel_assign_mem (f : Nat) (x : String) (e : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (v : Value) (ρ' : Env)
+    (hv : memEvalExpr e ρ m π = .ok v)
+    (hu : envUpdate ρ x v = some ρ') :
+    memEvalStmtFuel f (.assign x e) ρ m π =
+      .ok ((ρ', m, π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, hv, hu]
+
+/-- `assign` propagates right-hand-side errors (any fuel). -/
+theorem memEvalStmtFuel_assign_err (f : Nat) (x : String) (e : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout) (err : Panic)
+    (he : memEvalExpr e ρ m π = .error err) :
+    memEvalStmtFuel f (.assign x e) ρ m π = .error err := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, he]
+
+/-- `psetNext` propagates `memStore` errors (any fuel). -/
+theorem memEvalStmtFuel_psetNext_err (f : Nat) (dst link : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (n : Option Addr) (b : Block) (e : Panic)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hl : memEvalExpr link ρ m π = .ok (.ptrVal n))
+    (hfind : memFind m a = some b)
+    (hstore : memStore m a b.tag 1 (linkWord n) = .error e) :
+    memEvalStmtFuel f (.psetNext dst link) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hl, hfind, hstore]
+
 /-- Allocating `let_` (`vnew`): the value side runs `vecNew`, the
     memory side additionally pins a fresh block holding the same words,
     extending the layout. -/

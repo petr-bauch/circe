@@ -306,6 +306,7 @@ theorem markGate_eval (mL visL : List (BitVec 32)) (u : BitVec 64)
       | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x != y))
       | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x != y))
       | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x != y))
+      | .ok (.ptrVal x), .ok (.ptrVal y) => .ok (.b (x != y))
       | .ok _, .ok _ => .error .AssertFail
       | .error e, _ => .error e
       | _, .error e => .error e := rfl
@@ -611,6 +612,7 @@ theorem markBody_mOob (F : Nat) (mL visL : List (BitVec 32))
       | .ok (.u64 x), .ok (.u64 y) => .ok (.b (x != y))
       | .ok (.i32 x), .ok (.i32 y) => .ok (.b (x != y))
       | .ok (.i64 x), .ok (.i64 y) => .ok (.b (x != y))
+      | .ok (.ptrVal x), .ok (.ptrVal y) => .ok (.b (x != y))
       | .ok _, .ok _ => .error .AssertFail
       | .error e, _ => .error e
       | _, .error e => .error e := rfl
