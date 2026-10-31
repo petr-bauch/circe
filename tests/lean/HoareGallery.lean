@@ -688,6 +688,25 @@ def incrLoopBody : CStmt :=
               (.add (.mload "arr" (.var "i")) (.lit (.i32 1))))
           (.assign "i" (.uadd (.var "i") (.lit (.u64 1)))))
 
+/-- Heap bridge instances: the H fuel-threaded and emitted-entry
+    specs pinned on the gallery's concrete `[3,1,2]` input
+    (compile-gated; the executable entry checks in `main` shadow
+    the behavior). -/
+example : ∃ F w, heapSortFwd F ([3, 1, 2] : List (BitVec 32))
+    (BitVec.ofNat 64 3) =
+    .ok (.stdVecVal w) ∧
+    w.Pairwise (fun a b => b.slt a = false) ∧
+    List.Perm w [3, 1, 2] :=
+  heapSortFwd_sorted _ _ (by decide) (by decide)
+
+example : ∃ F ρ' w, evalStmtFuel F heapSortFunc.body
+    [("v", .stdVecVal ([3, 1, 2] : List (BitVec 32))),
+      ("n", .u64 (BitVec.ofNat 64 3))] =
+    .ok (ρ', .returned (.stdVecVal w)) ∧
+    w.Pairwise (fun a b => b.slt a = false) ∧
+    List.Perm w [3, 1, 2] :=
+  heapSortFunc_sorted _ _ (by decide) (by decide)
+
 /-- Closed-instance runtime checks — executable shadows of the
     gallery triples at one point each (the proofs themselves are
     compile-gated): the two-cell incr, `alias_cond` under both
@@ -983,6 +1002,22 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: heap entry failed: {(repr e).pretty}")
+  -- Whole entry over `[4,1,3,1,2]` (duplicates) exits with
+  -- `v=[1,1,2,3,4]` (executable shadow of `heapSortFunc_sorted`:
+  -- ascending with equal neighbors admitted).
+  match evalProgFunc heapSortProg 200 heapSortFunc
+      [.stdVecVal ([4, 1, 3, 1, 2] : List (BitVec 32)),
+        .u64 (BitVec.ofNat 64 5)] with
+  | .ok (.stdVecVal got) =>
+    if got != [1, 1, 2, 3, 4] then
+      throw (IO.userError
+        s!"hoare-gallery: heap dup entry got={got.map (·.toInt)}, want [1,1,2,3,4]")
+    else passed := passed + 1
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: heap dup entry want stdVecVal")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: heap dup entry failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix

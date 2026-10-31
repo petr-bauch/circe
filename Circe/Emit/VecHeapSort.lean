@@ -3812,6 +3812,331 @@ theorem heapifyDown_isHeap (v : List (BitVec 32)) :
   · intro j hj1 hj2
     omega
 
+/-- `(root * 2 + 1).toNat` is exact below `2^63`. -/
+theorem bv64_child_toNat (root : BitVec 64) (rn : Nat)
+    (h : root.toNat = rn) (hlt : rn < 2 ^ 63) :
+    (root * 2 + 1).toNat = rn * 2 + 1 := by
+  have h2 : (2 : BitVec 64).toNat = 2 := by decide
+  have h1 : (1 : BitVec 64).toNat = 1 := by decide
+  rw [BitVec.toNat_add, BitVec.toNat_mul, h, h2, h1,
+    Nat.mod_eq_of_lt (by omega : rn * 2 < 2 ^ 64),
+    Nat.mod_eq_of_lt (by omega : rn * 2 + 1 < 2 ^ 64)]
+
+/-- `(child + 1).toNat` is exact when it fits in 64 bits. -/
+theorem bv64_other_toNat (child : BitVec 64) (cn : Nat)
+    (h : child.toNat = cn) (hlt : cn + 1 < 2 ^ 64) :
+    (child + 1).toNat = cn + 1 := by
+  have h1 : (1 : BitVec 64).toNat = 1 := by decide
+  rw [BitVec.toNat_add, h, h1, Nat.mod_eq_of_lt hlt]
+
+/-- `(i - 1).toNat` for a positive cursor. -/
+theorem bv64_sub1_toNat (i : BitVec 64) (inn : Nat)
+    (h : i.toNat = inn) (hpos : 0 < inn) :
+    (i - 1).toNat = inn - 1 := by
+  have h1 : (1 : BitVec 64).toNat = 1 := by decide
+  have hlt : inn < 2 ^ 64 := by
+    have hi := i.isLt
+    omega
+  rw [BitVec.toNat_sub, h, h1]
+  omega
+
+/-- `ult` reflects `toNat` order (via `ult_eq_decide`). -/
+theorem bv64_ult_true {a b : BitVec 64} (h : a.toNat < b.toNat) :
+    a.ult b = true := by
+  rw [BitVec.ult_eq_decide, decide_eq_true_eq]
+  exact h
+
+theorem bv64_ult_false {a b : BitVec 64} (h : ¬ a.toNat < b.toNat) :
+    a.ult b = false := by
+  rw [BitVec.ult_eq_decide]
+  simpa using h
+
+/-- A zero cursor tests false against `!= 0`. -/
+theorem bv64_ne_zero_false {i : BitVec 64} (h : i.toNat = 0) :
+    (i != 0) = false := by
+  have h0 : (0 : BitVec 64).toNat = 0 := by decide
+  have hi : i = 0 := BitVec.toNat_inj.mp (h.trans h0.symm)
+  rw [hi]
+  decide
+
+/-- A nonzero cursor tests true against `!= 0`. -/
+theorem bv64_ne_zero_true {i : BitVec 64} (h : i.toNat ≠ 0) :
+    (i != 0) = true := by
+  rw [bne_iff_ne]
+  intro heq
+  rw [heq] at h
+  exact h (by decide : (0 : BitVec 64).toNat = 0)
+
+/-- A missed read contradicts the length bound. -/
+theorem len_le_of_getElem?_eq_none {l : List (BitVec 32)} {i : Nat}
+    (h : l[i]? = none) : l.length ≤ i := by
+  by_cases hc : i < l.length
+  · obtain ⟨x, hx⟩ := getElem?_some_of_lt_length hc
+    rw [hx] at h
+    simp at h
+  · omega
+
+/-- The fuel-threaded sift computes the pure sift: some fuel always
+    suffices (mirror induction; missed reads are impossible under
+    `bn ≤ length`, and `2^63` keeps every cursor exact). -/
+theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
+    (bound root : BitVec 64) (hbn : bound.toNat = bn)
+    (hrn : root.toNat = rn) (hlt : rn < bn) (hbig : bn ≤ 2 ^ 63)
+    (hlen : bn ≤ v.length) :
+    ∃ F, ∀ F', F ≤ F' →
+      siftFwd F' v bound root = .ok (siftDown bn rn v) := by
+  refine siftDown.induct bn
+    (fun rn v => ∀ (root : BitVec 64), root.toNat = rn → rn < bn →
+      bn ≤ 2 ^ 63 → bn ≤ v.length →
+      ∃ F, ∀ F', F ≤ F' →
+      siftFwd F' v bound root = .ok (siftDown bn rn v))
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ rn v root hrn hlt hbig hlen
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hother : (root * 2 + 1 + 1).toNat = r * 2 + 1 + 1 :=
+      bv64_other_toNat (root * 2 + 1) (r * 2 + 1) hchild (by omega)
+    have hcu : (root * 2 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_true hlt'
+    have hou : (root * 2 + 1 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1 + 1).toNat < bound.toNat := by
+        rw [hother, hbn]; exact hob
+      exact bv64_ult_true hlt'
+    have hmir : siftDown bn r l =
+        siftDown bn (r * 2 + 1 + 1) ((l.set r wo).set (r * 2 + 1 + 1) a) := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+        Bool.false_eq_true]
+    obtain ⟨F0, hF0⟩ := ih (root * 2 + 1 + 1) hother hob hbig
+      (by rwa [List.length_set, List.length_set])
+    refine ⟨F0.succ, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    have hrec := hF0 F'' (by omega)
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, hou, hchild, hother, hwc, hwo, hrn, hcand, hro, hab, hrec, if_true, if_false, Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hother : (root * 2 + 1 + 1).toNat = r * 2 + 1 + 1 :=
+      bv64_other_toNat (root * 2 + 1) (r * 2 + 1) hchild (by omega)
+    have hcu : (root * 2 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_true hlt'
+    have hou : (root * 2 + 1 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1 + 1).toNat < bound.toNat := by
+        rw [hother, hbn]; exact hob
+      exact bv64_ult_true hlt'
+    have hmir : siftDown bn r l = l := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+        Bool.false_eq_true]
+    refine ⟨Nat.succ Nat.zero, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, hou, hchild, hother, hwc, hwo, hrn, hcand, hro, hab, if_true, if_false, Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab ih
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hother : (root * 2 + 1 + 1).toNat = r * 2 + 1 + 1 :=
+      bv64_other_toNat (root * 2 + 1) (r * 2 + 1) hchild (by omega)
+    have hcu : (root * 2 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_true hlt'
+    have hou : (root * 2 + 1 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1 + 1).toNat < bound.toNat := by
+        rw [hother, hbn]; exact hob
+      exact bv64_ult_true hlt'
+    have hmir : siftDown bn r l =
+        siftDown bn (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a) := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+        Bool.false_eq_true]
+    obtain ⟨F0, hF0⟩ := ih (root * 2 + 1) hchild hcb hbig
+      (by rwa [List.length_set, List.length_set])
+    refine ⟨F0.succ, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    have hrec := hF0 F'' (by omega)
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, hou, hchild, hother, hwc, hwo, hrn, hcand, hro, hab, hrec, if_true, if_false, Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo a hro hcand hab
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hother : (root * 2 + 1 + 1).toNat = r * 2 + 1 + 1 :=
+      bv64_other_toNat (root * 2 + 1) (r * 2 + 1) hchild (by omega)
+    have hcu : (root * 2 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_true hlt'
+    have hou : (root * 2 + 1 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1 + 1).toNat < bound.toNat := by
+        rw [hother, hbn]; exact hob
+      exact bv64_ult_true hlt'
+    have hmir : siftDown bn r l = l := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, hwc, hob, hwo, hro, hcand, hab, dite_true, dite_false,
+        Bool.false_eq_true]
+    refine ⟨Nat.succ Nat.zero, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, hou, hchild, hother, hwc, hwo, hrn, hcand, hro, hab, if_true, if_false, Bool.false_eq_true]
+  · intro r l hcb wc hwc hob wo hwo hro
+      root hrn hlt hbig hlen
+    have hc := len_le_of_getElem?_eq_none hro
+    omega
+  · intro r l hcb wc hwc hob hwo
+      root hrn hlt hbig hlen
+    have hc := len_le_of_getElem?_eq_none hwo
+    omega
+  · intro r l hcb wc hwc hob a hro hab ih
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hother : (root * 2 + 1 + 1).toNat = r * 2 + 1 + 1 :=
+      bv64_other_toNat (root * 2 + 1) (r * 2 + 1) hchild (by omega)
+    have hcu : (root * 2 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_true hlt'
+    have hou : (root * 2 + 1 + 1).ult bound = false := by
+      have hlt' : ¬ (root * 2 + 1 + 1).toNat < bound.toNat := by
+        rw [hother, hbn]; exact hob
+      exact bv64_ult_false hlt'
+    have hmir : siftDown bn r l =
+        siftDown bn (r * 2 + 1) ((l.set r wc).set (r * 2 + 1) a) := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+        Bool.false_eq_true]
+    obtain ⟨F0, hF0⟩ := ih (root * 2 + 1) hchild hcb hbig
+      (by rwa [List.length_set, List.length_set])
+    refine ⟨F0.succ, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    have hrec := hF0 F'' (by omega)
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, hou, hchild, hwc, hrn, hro, hab, hrec, if_true, if_false, Bool.false_eq_true]
+  · intro r l hcb wc hwc hob a hro hab
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hother : (root * 2 + 1 + 1).toNat = r * 2 + 1 + 1 :=
+      bv64_other_toNat (root * 2 + 1) (r * 2 + 1) hchild (by omega)
+    have hcu : (root * 2 + 1).ult bound = true := by
+      have hlt' : (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_true hlt'
+    have hou : (root * 2 + 1 + 1).ult bound = false := by
+      have hlt' : ¬ (root * 2 + 1 + 1).toNat < bound.toNat := by
+        rw [hother, hbn]; exact hob
+      exact bv64_ult_false hlt'
+    have hmir : siftDown bn r l = l := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, hwc, hob, hro, hab, dite_true, dite_false,
+        Bool.false_eq_true]
+    refine ⟨Nat.succ Nat.zero, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, hou, hchild, hwc, hrn, hro, hab, if_true, if_false, Bool.false_eq_true]
+  · intro r l hcb wc hwc hob hro
+      root hrn hlt hbig hlen
+    have hc := len_le_of_getElem?_eq_none hro
+    omega
+  · intro r l hcb hwc
+      root hrn hlt hbig hlen
+    have hc := len_le_of_getElem?_eq_none hwc
+    omega
+  · intro r l hcb
+      root hrn hlt hbig hlen
+    have hchild : (root * 2 + 1).toNat = r * 2 + 1 :=
+      bv64_child_toNat root r hrn (by omega)
+    have hcu : (root * 2 + 1).ult bound = false := by
+      have hlt' : ¬ (root * 2 + 1).toNat < bound.toNat := by
+        rw [hchild, hbn]; exact hcb
+      exact bv64_ult_false hlt'
+    have hmir : siftDown bn r l = l := by
+      conv => lhs; unfold siftDown
+      simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
+    refine ⟨Nat.succ Nat.zero, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    rw [hmir]
+    unfold siftFwd
+    simp only [hcu, if_true, if_false, Bool.false_eq_true]
+
+/-- The fuel-threaded heapify computes the pure heapify: some fuel
+    always suffices (plain induction on `i`; the sift at each level
+    takes the uniform-fuel simulation). -/
+theorem heapifyFwd_exists (bn : Nat) : ∀ (i : Nat) (v : List (BitVec 32))
+    (n ni : BitVec 64), n.toNat = bn → ni.toNat = i → i ≤ bn →
+    bn ≤ v.length → v.length ≤ 2 ^ 63 →
+    ∃ F, ∀ F', F ≤ F' → heapifyFwd F' v n ni = .ok (heapifyDown bn i v) := by
+  intro i
+  induction i with
+  | zero =>
+    intro v n ni hbn hni hle hlen hbig
+    have hmir : heapifyDown bn 0 v = v := by simp only [heapifyDown]
+    have hni0 : (ni != 0) = false := bv64_ne_zero_false hni
+    refine ⟨Nat.succ Nat.zero, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    rw [hmir]
+    unfold heapifyFwd
+    simp only [hni0, if_true, if_false, Bool.false_eq_true]
+  | succ i ih =>
+    intro v n ni hbn hni hle hlen hbig
+    have hsub : (ni - 1).toNat = i := by
+      have h1 := bv64_sub1_toNat ni (i + 1) hni (by omega)
+      omega
+    obtain ⟨Fs, hFs⟩ := siftFwd_exists bn i v n (ni - 1) hbn hsub
+      (by omega) (by omega) hlen
+    have hlen' : bn ≤ (siftDown bn i v).length := by
+      have hpl := (siftDown_perm bn i v).length_eq
+      omega
+    have hbig' : (siftDown bn i v).length ≤ 2 ^ 63 := by
+      have hpl := (siftDown_perm bn i v).length_eq
+      omega
+    obtain ⟨Fr, hFr⟩ := ih (siftDown bn i v) n (ni - 1) hbn hsub
+      (by omega) hlen' hbig'
+    have hmir : heapifyDown bn (i + 1) v =
+        heapifyDown bn i (siftDown bn i v) := by
+      simp only [heapifyDown]
+    refine ⟨Fs + Fr + 1, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    have hsift := hFs F'' (by omega)
+    have hrest := hFr F'' (by omega)
+    have hni1 : (ni != 0) = true := bv64_ne_zero_true (by omega)
+    rw [hmir]
+    unfold heapifyFwd
+    simp only [hni1, hsift, hrest, if_true, if_false, Bool.false_eq_true]
+
 /-- Index-wise ascending implies `List.Pairwise` ascending. -/
 theorem pairwise_of_indexed : ∀ (w : List (BitVec 32)),
     (∀ k1 k2 z1 z2, k1 < k2 → k2 < w.length →
@@ -3846,6 +4171,125 @@ def ExtractInv (l : Nat) (w : List (BitVec 32)) : Prop :=
   (∀ k1 k2 z1 z2, l ≤ k1 → k1 < k2 → k2 < w.length →
     w[k1]? = some z1 → w[k2]? = some z2 → z2.slt z1 = false)
 
+/-- One extract step preserves the invariant: swapping the root
+    max into place and re-sifting the shrunk heap. Shared by the
+    pure sortedness proof and the fuel-threaded bridge. -/
+theorem extractDown_step_inv (F : Nat) (v : List (BitVec 32))
+    (a b : BitVec 32) (hbl : v[F]? = some b) (ha0 : v[0]? = some a)
+    (hinv : ExtractInv (F + 1) v) :
+    ExtractInv F (siftDown F 0 ((v.set 0 b).set F a)) := by
+  obtain ⟨hlen, hheap, hle, hsorted⟩ := hinv
+  have hwslen : ((v.set 0 b).set F a).length = v.length := by
+    rw [List.length_set, List.length_set]
+  have hlen_eq :
+      (siftDown F 0 ((v.set 0 b).set F a)).length = v.length := by
+    have hpl := (siftDown_perm F 0 ((v.set 0 b).set F a)).length_eq
+    omega
+  have hswap1 : HeapAbove F 1 ((v.set 0 b).set F a) := by
+    intro j hj1 hjF
+    have hbase : HeapAt (F + 1) j v := hheap j (by omega) (by omega)
+    intro s t x y hs ht htb hsx hsy
+    have hsge := hs.ge
+    have ht2 := ht
+    have hFs : s ≠ F := by
+      intro e; subst e
+      rcases ht2 with ht2 | ht2 <;> omega
+    have hs0 : s ≠ 0 := by omega
+    have ht0 : t ≠ 0 := by rcases ht2 with ht2 | ht2 <;> omega
+    have htF : t ≠ F := by omega
+    rw [List.getElem?_set_ne (Ne.symm hFs),
+      List.getElem?_set_ne (Ne.symm hs0)] at hsx
+    rw [List.getElem?_set_ne (Ne.symm htF),
+      List.getElem?_set_ne (Ne.symm ht0)] at hsy
+    exact hbase s t x y hs ht (by omega) hsx hsy
+  have hheap1 : HeapAbove F 0
+      (siftDown F 0 ((v.set 0 b).set F a)) :=
+    sift_step F 0 ((v.set 0 b).set F a) (by omega) hswap1
+  have hmax : ∀ jj xx, jj < F + 1 → v[jj]? = some xx → a.slt xx = false := by
+    intro jj xx hjb hx
+    exact HeapAt_all (hheap 0 (Nat.le_refl 0) (by omega)) ha0
+      (mem_subtree_zero jj) hjb hx
+  have hws_self : ((v.set 0 b).set F a)[F]? = some a :=
+    List.getElem?_set_self (by rw [List.length_set]; omega)
+  have hws_gt : ∀ k z, F < k → k < v.length →
+      ((v.set 0 b).set F a)[k]? = some z → v[k]? = some z := by
+    intro k z hkF hkv hkz
+    have h1 : k ≠ F := by omega
+    have h2 : k ≠ 0 := by omega
+    rw [List.getElem?_set_ne (Ne.symm h1),
+      List.getElem?_set_ne (Ne.symm h2)] at hkz
+    exact hkz
+  have hprov : ∀ i y, i < F →
+      (siftDown F 0 ((v.set 0 b).set F a))[i]? = some y →
+      y = b ∨ (∃ t', t' ≠ 0 ∧ t' < F + 1 ∧ v[t']? = some y) := by
+    intro i y hiF hy
+    obtain ⟨t', ht', htb', hsw⟩ :=
+      siftDown_mem_region F 0 ((v.set 0 b).set F a) i y
+        (mem_subtree_zero i) hiF hy
+    by_cases ht0 : t' = 0
+    · left
+      subst ht0
+      have hF0 : F ≠ (0 : Nat) := by omega
+      have hb0 : ((v.set 0 b).set F a)[0]? = some b := by
+        rw [List.getElem?_set_ne hF0,
+          List.getElem?_set_self (by omega)]
+      exact Option.some.inj (hsw.symm.trans hb0)
+    · right
+      have h1 : t' ≠ F := by omega
+      have h2 : v[t']? = some y := by
+        rw [List.getElem?_set_ne (Ne.symm h1),
+          List.getElem?_set_ne (Ne.symm ht0)] at hsw
+        exact hsw
+      exact ⟨t', ht0, by omega, h2⟩
+  have hle1 : ∀ i y, i < F →
+      (siftDown F 0 ((v.set 0 b).set F a))[i]? = some y →
+      ∀ k z, F ≤ k →
+      k < (siftDown F 0 ((v.set 0 b).set F a)).length →
+      (siftDown F 0 ((v.set 0 b).set F a))[k]? = some z →
+      z.slt y = false := by
+    intro i y hiF hy k z hkF hkw hkz
+    rw [siftDown_get_ge F 0 _ k hkF] at hkz
+    have hkv : k < v.length := by omega
+    rcases hprov i y hiF hy with hyb | ⟨t', ht0, htb1, hvy⟩
+    · rw [hyb]
+      by_cases hkFe : k = F
+      · rw [hkFe] at hkz
+        have hza : z = a := Option.some.inj (hkz.symm.trans hws_self)
+        rw [hza]
+        exact hmax F b (by omega) hbl
+      · have hkvz : v[k]? = some z := hws_gt k z (by omega) hkv hkz
+        exact hle F b (by omega) hbl k z (by omega) hkv hkvz
+    · by_cases hkFe : k = F
+      · rw [hkFe] at hkz
+        have hza : z = a := Option.some.inj (hkz.symm.trans hws_self)
+        rw [hza]
+        exact hmax t' y htb1 hvy
+      · have hkvz : v[k]? = some z := hws_gt k z (by omega) hkv hkz
+        exact hle t' y (by omega) hvy k z (by omega) hkv hkvz
+  have hsorted1 : ∀ k1 k2 z1 z2, F ≤ k1 → k1 < k2 →
+      k2 < (siftDown F 0 ((v.set 0 b).set F a)).length →
+      (siftDown F 0 ((v.set 0 b).set F a))[k1]? = some z1 →
+      (siftDown F 0 ((v.set 0 b).set F a))[k2]? = some z2 →
+      z2.slt z1 = false := by
+    intro k1 k2 z1 z2 hk1 h12 hkw2 hk1z hk2z
+    rw [siftDown_get_ge F 0 _ k1 hk1] at hk1z
+    rw [siftDown_get_ge F 0 _ k2 (by omega : F ≤ k2)] at hk2z
+    have hk1v : k1 < v.length := by omega
+    have hk2v : k2 < v.length := by omega
+    by_cases hk1F : k1 = F
+    · rw [hk1F] at hk1z
+      have hz1 : z1 = a := Option.some.inj (hk1z.symm.trans hws_self)
+      rw [hz1]
+      have hkv2 : v[k2]? = some z2 :=
+        hws_gt k2 z2 (by omega) hk2v hk2z
+      exact hle 0 a (by omega) ha0 k2 z2 (by omega) hk2v hkv2
+    · have hkv1 : v[k1]? = some z1 :=
+        hws_gt k1 z1 (by omega) hk1v hk1z
+      have hkv2 : v[k2]? = some z2 :=
+        hws_gt k2 z2 (by omega) hk2v hk2z
+      exact hsorted k1 k2 z1 z2 (by omega) h12 hk2v hkv1 hkv2
+  exact ⟨by omega, hheap1, hle1, hsorted1⟩
+
 /-- The extract drain preserves the invariant, hence the final list
     (`last = 0`) is pairwise sorted. Functional induction on
     `extractDown`: the stopped case is discharged by `l ≤ length`
@@ -3860,123 +4304,13 @@ theorem extractDown_sorted (bound : Nat) (last : Nat) (v : List (BitVec 32))
   · intro v hinv
     exact hinv
   · intro v F a b hbl ha0 ih hinv
-    obtain ⟨hlen, hheap, hle, hsorted⟩ := hinv
+    have hinv' : ExtractInv (F + 1) v := hinv
     have hred : extractDown bound F.succ v =
         extractDown bound F (siftDown F 0 ((v.set 0 b).set F a)) := by
       conv => lhs; unfold extractDown
       simp only [ha0, hbl]
     rw [hred]
-    apply ih
-    have hwslen : ((v.set 0 b).set F a).length = v.length := by
-      rw [List.length_set, List.length_set]
-    have hlen_eq :
-        (siftDown F 0 ((v.set 0 b).set F a)).length = v.length := by
-      have hpl := (siftDown_perm F 0 ((v.set 0 b).set F a)).length_eq
-      omega
-    have hswap1 : HeapAbove F 1 ((v.set 0 b).set F a) := by
-      intro j hj1 hjF
-      have hbase : HeapAt (F + 1) j v := hheap j (by omega) (by omega)
-      intro s t x y hs ht htb hsx hsy
-      have hsge := hs.ge
-      have ht2 := ht
-      have hFs : s ≠ F := by
-        intro e; subst e
-        rcases ht2 with ht2 | ht2 <;> omega
-      have hs0 : s ≠ 0 := by omega
-      have ht0 : t ≠ 0 := by rcases ht2 with ht2 | ht2 <;> omega
-      have htF : t ≠ F := by omega
-      rw [List.getElem?_set_ne (Ne.symm hFs),
-        List.getElem?_set_ne (Ne.symm hs0)] at hsx
-      rw [List.getElem?_set_ne (Ne.symm htF),
-        List.getElem?_set_ne (Ne.symm ht0)] at hsy
-      exact hbase s t x y hs ht (by omega) hsx hsy
-    have hheap1 : HeapAbove F 0
-        (siftDown F 0 ((v.set 0 b).set F a)) :=
-      sift_step F 0 ((v.set 0 b).set F a) (by omega) hswap1
-    have hmax : ∀ jj xx, jj < F + 1 → v[jj]? = some xx → a.slt xx = false := by
-      intro jj xx hjb hx
-      exact HeapAt_all (hheap 0 (Nat.le_refl 0) (by omega)) ha0
-        (mem_subtree_zero jj) hjb hx
-    have hws_self : ((v.set 0 b).set F a)[F]? = some a :=
-      List.getElem?_set_self (by rw [List.length_set]; omega)
-    have hws_gt : ∀ k z, F < k → k < v.length →
-        ((v.set 0 b).set F a)[k]? = some z → v[k]? = some z := by
-      intro k z hkF hkv hkz
-      have h1 : k ≠ F := by omega
-      have h2 : k ≠ 0 := by omega
-      rw [List.getElem?_set_ne (Ne.symm h1),
-        List.getElem?_set_ne (Ne.symm h2)] at hkz
-      exact hkz
-    have hprov : ∀ i y, i < F →
-        (siftDown F 0 ((v.set 0 b).set F a))[i]? = some y →
-        y = b ∨ (∃ t', t' ≠ 0 ∧ t' < F + 1 ∧ v[t']? = some y) := by
-      intro i y hiF hy
-      obtain ⟨t', ht', htb', hsw⟩ :=
-        siftDown_mem_region F 0 ((v.set 0 b).set F a) i y
-          (mem_subtree_zero i) hiF hy
-      by_cases ht0 : t' = 0
-      · left
-        subst ht0
-        have hF0 : F ≠ (0 : Nat) := by omega
-        have hb0 : ((v.set 0 b).set F a)[0]? = some b := by
-          rw [List.getElem?_set_ne hF0,
-            List.getElem?_set_self (by omega)]
-        exact Option.some.inj (hsw.symm.trans hb0)
-      · right
-        have h1 : t' ≠ F := by omega
-        have h2 : v[t']? = some y := by
-          rw [List.getElem?_set_ne (Ne.symm h1),
-            List.getElem?_set_ne (Ne.symm ht0)] at hsw
-          exact hsw
-        exact ⟨t', ht0, by omega, h2⟩
-    have hle1 : ∀ i y, i < F →
-        (siftDown F 0 ((v.set 0 b).set F a))[i]? = some y →
-        ∀ k z, F ≤ k →
-        k < (siftDown F 0 ((v.set 0 b).set F a)).length →
-        (siftDown F 0 ((v.set 0 b).set F a))[k]? = some z →
-        z.slt y = false := by
-      intro i y hiF hy k z hkF hkw hkz
-      rw [siftDown_get_ge F 0 _ k hkF] at hkz
-      have hkv : k < v.length := by omega
-      rcases hprov i y hiF hy with hyb | ⟨t', ht0, htb1, hvy⟩
-      · rw [hyb]
-        by_cases hkFe : k = F
-        · rw [hkFe] at hkz
-          have hza : z = a := Option.some.inj (hkz.symm.trans hws_self)
-          rw [hza]
-          exact hmax F b (by omega) hbl
-        · have hkvz : v[k]? = some z := hws_gt k z (by omega) hkv hkz
-          exact hle F b (by omega) hbl k z (by omega) hkv hkvz
-      · by_cases hkFe : k = F
-        · rw [hkFe] at hkz
-          have hza : z = a := Option.some.inj (hkz.symm.trans hws_self)
-          rw [hza]
-          exact hmax t' y htb1 hvy
-        · have hkvz : v[k]? = some z := hws_gt k z (by omega) hkv hkz
-          exact hle t' y (by omega) hvy k z (by omega) hkv hkvz
-    have hsorted1 : ∀ k1 k2 z1 z2, F ≤ k1 → k1 < k2 →
-        k2 < (siftDown F 0 ((v.set 0 b).set F a)).length →
-        (siftDown F 0 ((v.set 0 b).set F a))[k1]? = some z1 →
-        (siftDown F 0 ((v.set 0 b).set F a))[k2]? = some z2 →
-        z2.slt z1 = false := by
-      intro k1 k2 z1 z2 hk1 h12 hkw2 hk1z hk2z
-      rw [siftDown_get_ge F 0 _ k1 hk1] at hk1z
-      rw [siftDown_get_ge F 0 _ k2 (by omega : F ≤ k2)] at hk2z
-      have hk1v : k1 < v.length := by omega
-      have hk2v : k2 < v.length := by omega
-      by_cases hk1F : k1 = F
-      · rw [hk1F] at hk1z
-        have hz1 : z1 = a := Option.some.inj (hk1z.symm.trans hws_self)
-        rw [hz1]
-        have hkv2 : v[k2]? = some z2 :=
-          hws_gt k2 z2 (by omega) hk2v hk2z
-        exact hle 0 a (by omega) ha0 k2 z2 (by omega) hk2v hkv2
-      · have hkv1 : v[k1]? = some z1 :=
-          hws_gt k1 z1 (by omega) hk1v hk1z
-        have hkv2 : v[k2]? = some z2 :=
-          hws_gt k2 z2 (by omega) hk2v hk2z
-        exact hsorted k1 k2 z1 z2 (by omega) h12 hk2v hkv1 hkv2
-    exact ⟨by omega, hheap1, hle1, hsorted1⟩
+    exact ih (extractDown_step_inv F v a b hbl ha0 hinv')
   · intro v F hdead hinv
     obtain ⟨hlen, _, _, _⟩ := hinv
     obtain ⟨a, ha0⟩ := getElem?_some_of_lt_length (l := v) (k := 0) (by omega)
@@ -4000,4 +4334,200 @@ theorem heapSortList_sorted (v : List (BitVec 32)) :
     (fun k1 k2 z1 z2 h12 hlen h1 h2 =>
       hsorted k1 k2 z1 z2 (by omega) h12 hlen h1 h2)
 
+
+
+
+
+/-- A sift whose root is already at/below the bound is a no-op (some
+    fuel always suffices). Covers the extract's final singleton sift
+    where the general simulation's `0 < F` premise fails. -/
+theorem siftFwd_nop (bn rn : Nat) (v : List (BitVec 32))
+    (bound root : BitVec 64) (hbn : bound.toNat = bn)
+    (hrn : root.toNat = rn) (hle : bn ≤ rn * 2 + 1) (hrn63 : rn < 2 ^ 63)
+    (hmir : siftDown bn rn v = v) :
+    ∃ F, ∀ F', F ≤ F' → siftFwd F' v bound root = .ok (siftDown bn rn v) := by
+  refine ⟨Nat.succ Nat.zero, ?_⟩
+  intro F' hF'
+  obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+  subst hF''
+  rw [hmir]
+  have hchild : (root * 2 + 1).toNat = rn * 2 + 1 :=
+    bv64_child_toNat root rn hrn hrn63
+  have hcu : (root * 2 + 1).ult bound = false := by
+    have hlt' : ¬ (root * 2 + 1).toNat < bound.toNat := by
+      rw [hchild, hbn]; omega
+    exact bv64_ult_false hlt'
+  unfold siftFwd
+  simp only [hcu, if_true, if_false, Bool.false_eq_true]
+
+/-- The fuel-threaded extract drain computes the pure extract drain:
+    some fuel always suffices (mirror induction; the swap case
+    reuses the invariant step, the singleton sift uses the no-op). -/
+theorem extractFwd_exists (last : Nat) (v : List (BitVec 32))
+    (n llast : BitVec 64) (hll : llast.toNat = last)
+    (hlen : last ≤ v.length) (hbig : v.length ≤ 2 ^ 63)
+    (hinv : ExtractInv last v) :
+    ∃ F, ∀ F', F ≤ F' →
+      extractFwd F' v n llast = .ok (extractDown n.toNat last v) := by
+  refine extractDown.induct
+    (fun last v => ExtractInv last v → ∀ (n llast : BitVec 64),
+      llast.toNat = last → last ≤ v.length → v.length ≤ 2 ^ 63 →
+      ∃ F, ∀ F', F ≤ F' →
+        extractFwd F' v n llast = .ok (extractDown n.toNat last v))
+    ?_ ?_ ?_ last v hinv n llast hll hlen hbig
+  · intro v hinv n llast hll hlen hbig
+    have hmir : extractDown n.toNat 0 v = v := by simp only [extractDown]
+    have hll0 : (llast != 0) = false := bv64_ne_zero_false hll
+    refine ⟨Nat.succ Nat.zero, ?_⟩
+    intro F' hF'
+    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    subst hF''
+    rw [hmir]
+    unfold extractFwd
+    simp only [hll0, if_true, if_false, Bool.false_eq_true]
+  · intro v F a b hbl ha0 ih hinv n llast hll hlen hbig
+    have hinv' : ExtractInv (F + 1) v := hinv
+    have hlast' : (llast - 1).toNat = F := by
+      have h1 := bv64_sub1_toNat llast (F + 1) hll (by omega)
+      omega
+    have hll0 : (llast != 0) = true := bv64_ne_zero_true (by omega)
+    by_cases hF0 : F = 0
+    · subst hF0
+      have hab0 : a = b := Option.some.inj (ha0.symm.trans hbl)
+      subst hab0
+      have hmir0 : siftDown 0 0 ((v.set 0 a).set 0 a) =
+          (v.set 0 a).set 0 a := by
+        unfold siftDown
+        simp only [show ¬ 0 * 2 + 1 < 0 from by omega, dite_true, dite_false,
+          Bool.false_eq_true]
+      obtain ⟨Fs, hFs⟩ := siftFwd_nop 0 0 ((v.set 0 a).set 0 a) (llast - 1) 0
+        hlast' (by decide) (by omega) (by omega) hmir0
+      have hinv1 := extractDown_step_inv 0 v a a hbl ha0 hinv'
+      have hlen1 : (0 : Nat) ≤
+          (siftDown 0 0 ((v.set 0 a).set 0 a)).length := by
+        rw [hmir0]; omega
+      have hbig1 : (siftDown 0 0 ((v.set 0 a).set 0 a)).length ≤ 2 ^ 63 := by
+        rw [hmir0, List.length_set, List.length_set]; omega
+      obtain ⟨Fe, hFe⟩ := ih hinv1 n (llast - 1) hlast' hlen1 hbig1
+      refine ⟨Fs + Fe + 1, ?_⟩
+      intro F' hF'
+      obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+      subst hF''
+      have hsift := hFs F'' (by omega)
+      have hrest := hFe F'' (by omega)
+      have hmir : extractDown n.toNat (0 + 1) v =
+          extractDown n.toNat 0 (siftDown 0 0 ((v.set 0 a).set 0 a)) := by
+        conv => lhs; unfold extractDown
+        simp only [ha0]
+      rw [hmir]
+      unfold extractFwd
+      simp only [hll0, hlast', ha0, hsift, hrest, if_true, if_false,
+        Bool.false_eq_true]
+    · have hwslen : ((v.set 0 b).set F a).length = v.length := by
+        rw [List.length_set, List.length_set]
+      obtain ⟨Fs, hFs⟩ := siftFwd_exists F 0 ((v.set 0 b).set F a)
+        (llast - 1) 0
+        hlast' (by decide) (by omega) (by omega) (by omega)
+      have hinv1 := extractDown_step_inv F v a b hbl ha0 hinv'
+      have hlen1 : F ≤ (siftDown F 0 ((v.set 0 b).set F a)).length := by
+        have hpl := (siftDown_perm F 0 ((v.set 0 b).set F a)).length_eq
+        omega
+      have hbig1 : (siftDown F 0 ((v.set 0 b).set F a)).length ≤ 2 ^ 63 := by
+        have hpl := (siftDown_perm F 0 ((v.set 0 b).set F a)).length_eq
+        omega
+      obtain ⟨Fe, hFe⟩ := ih hinv1 n (llast - 1) hlast' hlen1 hbig1
+      refine ⟨Fs + Fe + 1, ?_⟩
+      intro F' hF'
+      obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+      subst hF''
+      have hsift := hFs F'' (by omega)
+      have hrest := hFe F'' (by omega)
+      have hmir : extractDown n.toNat (F + 1) v =
+          extractDown n.toNat F (siftDown F 0 ((v.set 0 b).set F a)) := by
+        conv => lhs; unfold extractDown
+        simp only [ha0, hbl]
+      rw [hmir]
+      unfold extractFwd
+      simp only [hll0, hlast', ha0, hbl, hsift, hrest, if_true, if_false,
+        Bool.false_eq_true]
+  · intro v F hdead hinv n llast hll hlen hbig
+    obtain ⟨a, ha0⟩ := getElem?_some_of_lt_length (l := v) (k := 0) (by omega)
+    obtain ⟨b, hbl⟩ := getElem?_some_of_lt_length (l := v) (k := F) (by omega)
+    exact False.elim (hdead a b ha0 hbl)
+
+
+/-- The entry mirror computes heapsort: some fuel always suffices
+    (heapify then extract at uniform fuel). -/
+theorem heapSortFwd_exists (v : List (BitVec 32)) (n : BitVec 64)
+    (hn : n.toNat = v.length) (hlen : v.length ≤ 2 ^ 63) :
+    ∃ F, ∀ F', F ≤ F' →
+      heapSortFwd F' v n = .ok (.stdVecVal (heapSortList v)) := by
+  obtain ⟨Fh, hFh⟩ := heapifyFwd_exists v.length v.length v n n hn hn
+    (Nat.le_refl _) (Nat.le_refl _) hlen
+  have hpl : (heapifyDown v.length v.length v).length = v.length :=
+    (heapifyDown_perm v.length v.length v).length_eq
+  have hinv : ExtractInv v.length (heapifyDown v.length v.length v) := by
+    refine ⟨by omega, heapifyDown_isHeap v, ?_, ?_⟩
+    · intro i y hiF hy k z hkF hkw hkz
+      omega
+    · intro k1 k2 z1 z2 hk1 h12 hkw2 hk1z hk2z
+      omega
+  obtain ⟨Fe, hFe⟩ := extractFwd_exists v.length
+    (heapifyDown v.length v.length v) n n hn (by omega) (by omega) hinv
+  refine ⟨Fh + Fe + 1, ?_⟩
+  intro F' hF'
+  obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+  subst hF''
+  have hH := hFh (F''.succ) (by omega)
+  have hE := hFe (F''.succ) (by omega)
+  unfold heapSortFwd
+  simp only [hH, hE, hn, heapSortList, if_true, if_false, Bool.false_eq_true]
+
+/-- The entry point sorts: some fuel computes an ascending permutation
+    of the input. The firewall between the fuel-threaded forward and
+    the pure contract (`heapSortList_sorted`/`perm`). -/
+theorem heapSortFwd_sorted (v : List (BitVec 32)) (n : BitVec 64)
+    (hn : n.toNat = v.length) (hlen : v.length ≤ 2 ^ 63) :
+    ∃ F w, heapSortFwd F v n = .ok (.stdVecVal w) ∧
+      w.Pairwise (fun a b => b.slt a = false) ∧ List.Perm w v := by
+  obtain ⟨F, hF⟩ := heapSortFwd_exists v n hn hlen
+  exact ⟨F, _, hF F (Nat.le_refl _), heapSortList_sorted v,
+    heapSortList_perm v⟩
+
+/-- The emitted entry sorts: for some fuel the `heap_sort` body
+    returns an ascending permutation of the input vector. Feeds the
+    fuel-threaded drain equations into `heapSort_body_ok`, then the
+    pure contract. -/
+theorem heapSortFunc_sorted (vL : List (BitVec 32)) (N : BitVec 64)
+    (hn : N.toNat = vL.length) (hlen : vL.length ≤ 2 ^ 63) :
+    ∃ F ρ' w, evalStmtFuel F heapSortFunc.body
+      [("v", .stdVecVal vL), ("n", .u64 N)] =
+      .ok (ρ', .returned (.stdVecVal w)) ∧
+      w.Pairwise (fun a b => b.slt a = false) ∧ List.Perm w vL := by
+  obtain ⟨Fh, hFh⟩ := heapifyFwd_exists vL.length vL.length vL N N hn hn
+    (Nat.le_refl _) (Nat.le_refl _) hlen
+  have hpl : (heapifyDown vL.length vL.length vL).length = vL.length :=
+    (heapifyDown_perm vL.length vL.length vL).length_eq
+  have hinv : ExtractInv vL.length (heapifyDown vL.length vL.length vL) := by
+    refine ⟨by omega, heapifyDown_isHeap vL, ?_, ?_⟩
+    · intro i y hiF hy k z hkF hkw hkz
+      omega
+    · intro k1 k2 z1 z2 hk1 h12 hkw2 hk1z hk2z
+      omega
+  obtain ⟨Fe, hFe⟩ := extractFwd_exists vL.length
+    (heapifyDown vL.length vL.length vL) N N hn (by omega) (by omega) hinv
+  have hH := hFh (Fh + Fe + 1) (by omega)
+  have hE := hFe (Fh + Fe + 1) (by omega)
+  obtain ⟨ρ', hbody⟩ := heapSort_body_ok (Fh + Fe + 1) vL N _ _ hH hE
+  refine ⟨Fh + Fe + 1, ρ', _, hbody, ?_, ?_⟩
+  · obtain ⟨_, _, _, hsorted⟩ := extractDown_sorted N.toNat vL.length _ hinv
+    exact pairwise_of_indexed _
+      (fun k1 k2 z1 z2 h12 hlen h1 h2 =>
+        hsorted k1 k2 z1 z2 (by omega) h12 hlen h1 h2)
+  · have hweq : extractDown N.toNat vL.length
+        (heapifyDown vL.length vL.length vL) = heapSortList vL := by
+      unfold heapSortList
+      rw [hn]
+    rw [hweq]
+    exact heapSortList_perm vL
 
