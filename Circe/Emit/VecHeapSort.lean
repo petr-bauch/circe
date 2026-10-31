@@ -30,6 +30,7 @@ length) misses loud at the first out-of-range `at()`.
 import Circe.Emit.VecListRev
 import Circe.Emit.VecSelectionSort
 import Circe.Lemmas.CheckedIx
+import Circe.Eval.Stmt
 
 /-! ## H: `heap_sort` entry -/
 
@@ -3914,7 +3915,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       (by rwa [List.length_set, List.length_set])
     refine ⟨F0.succ, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     have hrec := hF0 F'' (by omega)
     rw [hmir]
@@ -3940,7 +3941,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         Bool.false_eq_true]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     rw [hmir]
     unfold siftFwd
@@ -3968,7 +3969,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       (by rwa [List.length_set, List.length_set])
     refine ⟨F0.succ, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     have hrec := hF0 F'' (by omega)
     rw [hmir]
@@ -3994,7 +3995,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         Bool.false_eq_true]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     rw [hmir]
     unfold siftFwd
@@ -4030,7 +4031,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       (by rwa [List.length_set, List.length_set])
     refine ⟨F0.succ, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     have hrec := hF0 F'' (by omega)
     rw [hmir]
@@ -4056,7 +4057,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
         Bool.false_eq_true]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     rw [hmir]
     unfold siftFwd
@@ -4082,7 +4083,7 @@ theorem siftFwd_exists (bn rn : Nat) (v : List (BitVec 32))
       simp only [hcb, dite_true, dite_false, Bool.false_eq_true]
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     rw [hmir]
     unfold siftFwd
@@ -4103,7 +4104,7 @@ theorem heapifyFwd_exists (bn : Nat) : ∀ (i : Nat) (v : List (BitVec 32))
     have hni0 : (ni != 0) = false := bv64_ne_zero_false hni
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     rw [hmir]
     unfold heapifyFwd
@@ -4128,7 +4129,7 @@ theorem heapifyFwd_exists (bn : Nat) : ∀ (i : Nat) (v : List (BitVec 32))
       simp only [heapifyDown]
     refine ⟨Fs + Fr + 1, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     have hsift := hFs F'' (by omega)
     have hrest := hFr F'' (by omega)
@@ -4348,7 +4349,7 @@ theorem siftFwd_nop (bn rn : Nat) (v : List (BitVec 32))
     ∃ F, ∀ F', F ≤ F' → siftFwd F' v bound root = .ok (siftDown bn rn v) := by
   refine ⟨Nat.succ Nat.zero, ?_⟩
   intro F' hF'
-  obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+  obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
   subst hF''
   rw [hmir]
   have hchild : (root * 2 + 1).toNat = rn * 2 + 1 :=
@@ -4380,7 +4381,7 @@ theorem extractFwd_exists (last : Nat) (v : List (BitVec 32))
     have hll0 : (llast != 0) = false := bv64_ne_zero_false hll
     refine ⟨Nat.succ Nat.zero, ?_⟩
     intro F' hF'
-    obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+    obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
     subst hF''
     rw [hmir]
     unfold extractFwd
@@ -4411,7 +4412,7 @@ theorem extractFwd_exists (last : Nat) (v : List (BitVec 32))
       obtain ⟨Fe, hFe⟩ := ih hinv1 n (llast - 1) hlast' hlen1 hbig1
       refine ⟨Fs + Fe + 1, ?_⟩
       intro F' hF'
-      obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+      obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
       subst hF''
       have hsift := hFs F'' (by omega)
       have hrest := hFe F'' (by omega)
@@ -4438,7 +4439,7 @@ theorem extractFwd_exists (last : Nat) (v : List (BitVec 32))
       obtain ⟨Fe, hFe⟩ := ih hinv1 n (llast - 1) hlast' hlen1 hbig1
       refine ⟨Fs + Fe + 1, ?_⟩
       intro F' hF'
-      obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+      obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
       subst hF''
       have hsift := hFs F'' (by omega)
       have hrest := hFe F'' (by omega)
@@ -4476,7 +4477,7 @@ theorem heapSortFwd_exists (v : List (BitVec 32)) (n : BitVec 64)
     (heapifyDown v.length v.length v) n n hn (by omega) (by omega) hinv
   refine ⟨Fh + Fe + 1, ?_⟩
   intro F' hF'
-  obtain ⟨F'', hF''⟩ := Nat.exists_eq_succ_of_ne_zero (show F' ≠ 0 by omega)
+  obtain ⟨F'', hF'', -⟩ := fuel_step_down _ hF'
   subst hF''
   have hH := hFh (F''.succ) (by omega)
   have hE := hFe (F''.succ) (by omega)
