@@ -2083,3 +2083,101 @@ with zero proof changes. `htriple_seq` /
 pointing at the new rules; ROADMAP P3 triggers and VERIFYING
 references updated likewise.
 - Acceptance: CHECK-OK.
+
+### J. Index-linked in-place reversal (`list_rev`) — DONE (2026-10-29)
+
+Reversal over an index-linked list held in two parallel
+`vector<int>`s (payloads + successor links, `u64` head + node
+count / end sentinel in, `u64` new head out) — the first slice
+whose loop chases links instead of counting up. J1: corpus +
+real CIRGen + SUBSET-38 + `isListRevShape` (the seed binds
+the sentinels: the `nxt_cur = 0` init is a `cir.const`
+`s32`/`u64` pair, the G5a init-all-loop-vars convention —
+recalibrated once when the seed shape drifted; the single
+`while` (`cur != n`) chases `cur` through `nxt`, rewiring
+each visited link to its predecessor with a widening read
+and a narrowing store; two mut-`at()` sites, two
+`cir.cast integral`, 9 allocas / 14 loads / 12 stores).
+J2: `listRevFunc` emitter + fuel-threaded chase forwards
+(`revOuterFwd` over the link vector, `revFwd`) with
+`revBody_ok` (ok leg) + `revBody_missR` (miss leg) and Gate
+dispatch beside the heap arm. J3: goldens `VecListRev.lean`
+(+`_Spec`, whose edges pin the rewired link chain and the
+untouched payloads) + `DiffVecListRev` (eval/fwd composition
++ exit-4 loud legs) + `GoldenVecListRev` (pipeline +
+rejections) + roster. P3 (gallery): `listrev step` (one
+rewire over `[3,2,3]`) + `listrev chase` (drain to
+`[3,0,1]`) executable instances in `HoareGallery.lean`.
+- Acceptance: CHECK-OK (`2aed7aa`, `73050fd`, `be9b28f`,
+  `805b579`, `ee4f636`).
+
+### H. In-place ascending heapsort (`heap_sort`) — DONE (2026-10-29..31)
+
+The largest single-algorithm slice so far: down-counting
+heapify from `n` (`usub`, leaves are no-ops — no `n/2`, no
+division, the H division-free discipline) plus extract-max,
+each sifting with `child = 2*root+1` (`umul`/`uadd`).
+H1: corpus + real CIRGen + SUBSET-39 + `isHeapSortShape`
+(twenty mut-`at()` sites, four `cir.while` — two drains +
+two sifts — six `cir.if`, two `cir.ternary`, four
+`cir.break`, ten `cir.cmp`, `mul` 2 / `add` 4 / `sub` 2, no
+`nsw`, 30 consts, no `cir.cast`, 13 allocas / 78 loads / 25
+stores; the tail past `n` is deliberately untouched).
+H2: `heapSortFunc`/`heapSortProg` emitter + level forwards
+(`siftFwd` / `heapifyFwd` / `extractFwd` / `heapSortFwd`)
+with ok + err legs per level (`siftIdx_ok`,
+`siftPick_take/skipO/skipC/errO/errC`,
+`siftSwap_swap/break/errR/errC/swap_alias`, `heapDrain_ok`,
+`extrSwap_ok`, `extrDrain_ok`, `heapSeed_ok`) and entry
+theorem `heapSort_body_ok`, plus the Gate arm. H3: goldens
+`VecHeapSort.lean` (+`_Spec`) + `DiffVecHeapSort` +
+`GoldenVecHeapSort` + roster + first gallery instances.
+H4: pure-Math mirror (`siftDown` / `heapifyDown` /
+`extractDown` / `heapSortList`) with the permutation +
+sortedness contract (`swapPerm`, `siftDown_perm`,
+`extractDown_sorted`, `heapSortList_sorted` — pairwise
+ascending over the sorted suffix) + the fuel-threaded
+bridge tying the mirror to `heapSortFwd` + entry spec +
+gallery wiring (`heap sift` over `[3,1,2]`, `heap entry`
+over `[4,1,3,1,2]`, `heap dup entry` over `[1,1,2,3,4]`).
+- Acceptance: CHECK-OK (`f3b7373`, `967e59f`, `f008187`,
+  `29393ee`, `8d2a361`).
+
+### L-ptr. Raw-pointer in-place list reversal (`list_reverse`) — DONE (2026-10-31)
+
+Label note: this reuses the L1–L4 slice labels of the
+earlier lifetime-evidence track ("L." above, 2026-10-04..16)
+for a different subject — the first dynamic (pointer-chasing)
+shape. The two tracks share nothing but the letter; commit
+hashes below disambiguate. `Node {val, next}` lists,
+caller-owned (no allocation in the entry), null miss loud.
+L1: corpus + real CIRGen + SUBSET-40 + `isLinkedReverseShape`
+(single `while` over `cur != nullptr`, two `cir.get_member`
+`[1]` projections, one `cir.cmp` `ne` on
+`!cir.ptr<!rec_Node>` vs null, 5 allocas / 10 loads / 8
+stores, no calls at all; the corpus `Node* head` param
+carries no `__restrict__`/triple, so the pipeline
+`aliasReject` fires before the shape arm — recorded as the
+(L4-open) single-pointer-exemption question, recommendation:
+exempt one-pointer entries rather than `__restrict__` +
+re-CIRGen on a frozen corpus). L2: linked-list `Mem` layer
+(`linkWord`/`addrOfWord`, `nodeAt` cells, `SegMem` block
+snapshots, `ListSeg`/`chaseN`, `linkRevOuterFwd`/`linkRevFwd`
+pure `Nat` mirror, `linkRevOuter_agree` bridge;
+`SegMem_store_avoid`/`chaseN_store_other`/
+`chaseN_seg_none` frame kit; `fuel_step_down` uniform-fuel
+bridge) — acyclicity is chase-counting, not a `List Addr`
+visited set (L-track decision, kept). L3: contract
+(`linkRevFwd_correct`), emitter + Gate wiring, goldens
+`LinkedReverse.lean` (+`_Spec`) with `spec_check true`.
+L4: entry Hoare triple `linkRevFunc_correct` + `listrev`
+linkedrev executable gallery instance (raw-pointer reversal
+over `[10,20,30]`) + linkedrev gate pins. Adjacent fix
+(`7a79b9b`): the pre-existing `exists_eq_succ_of_ne_zero`
+name collision in `VecHeapSort.lean` (n5), repaired by
+adopting `fuel_step_down` at 14 sites + importing
+`Circe.Eval.Stmt`.
+- Acceptance: CHECK-OK (`b93095b`, `8dd87c7`, `634e17e`,
+  `26eeb5c`, `7a79b9b`); full gate 526/526 TEST-OK, gallery
+  18/18 counted passes (16 check sites, two iterating over
+  both cond arms).

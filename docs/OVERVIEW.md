@@ -96,24 +96,27 @@ A viable verification platform for modern C++: the subset of C++ that
 is amenable to Aeneas-style translation to Lean (value semantics +
 affine tokens, no aliasing in the common case), with tactic and
 spec-scaffolding support for proving properties of the emitted code.
-Delivered so far: S0–S5, M1–M3, N1–N7 (proof ergonomics,
+Delivered so far: S0–S5, M1–M3, N1–N9 (proof ergonomics,
 arithmetic + switch gaps, `string_view` range-for and the full
-`reserve`/`insert`/`erase` STD growth), N8 (closed-evaluation
-kernel: `cir_eval_closed` + adoption), N9 (`std::array<uint32_t,4>`
-insertion-sort case study: forward-as-fold, Sorted/Permutation
-spec, `DiffSort` fuzz), plus L1 lifetime evidence (extract-only).
-Orthogonal proof-ergonomics track: H1–H3 (Hoare triple library
-over the `Mem` equations + `alias_cond`/`countdown`/`cond_pair`
-galleries), A (`cellsAt` whole-list assertions + read-only sum
-loop), B (in-place increment loop) — 8 closed-instance
-`hoare-gallery` jobs, all in `DELIVERED.md`. Newer since: the
-`std::vector<int>` algorithm run (V1 binary search, V2 two-sum, W
-checked store, M merge kernel, C bottom-up merge sort with
-calls-in-loop-bodies, M8 quicksort), K1–K6 crypto programs
-(K6: ChaCha20 stream + input-OOB proof twins + `LoopOob`
-short-read-loop bricks), N11–N14 writer and
-multi-output admissions, L-track closure (L–L5), and the Iris/F2/S0–S4
-report dispositions — all in `DELIVERED.md`.
+`reserve`/`insert`/`erase` STD growth, closed-evaluation kernel,
+`std::array` insertion-sort case study), lifetime evidence
+(L–L5, extract-only plus admissions), the `std::vector<int>`
+algorithm run (V1 binary search, V2 two-sum, W checked store,
+M merge kernel, C bottom-up merge sort with
+calls-in-loop-bodies, P2-M2–M8 transform/partition/sort stack
+with contracts, R/S/T reverse family, J index-linked reversal,
+H heapsort with perm + sortedness contract), K1–K6 crypto
+programs (K6: ChaCha20 stream + input-OOB proof twins +
+`LoopOob` bricks), N11–N14 writer and multi-output admissions,
+G-track vector idioms (G1/G1b/G2/G3/G5a/G4), Kadane scan,
+visit-order BFS (B), the first raw-pointer shape (L-ptr
+`list_reverse` with `ListSeg`/`chaseN` kit + entry Hoare
+triple), and the Iris/F2/S0–S4 report dispositions.
+Orthogonal proof-ergonomics track: H1–H3 + P3a–f (Hoare rule
+library over the `Mem` equations, program-level rules, U1–U3
+tactics/harness/packs, T1 fold-end) with per-shape galleries —
+18 counted `hoare-gallery` passes over 16 check sites — all
+in `DELIVERED.md`.
 Details in `DELIVERED.md`; active work in `ROADMAP.md`, now
 organized under four pillars (C completeness, STD algorithms,
 human-writable proofs, Iris separation logic).

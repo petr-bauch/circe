@@ -462,9 +462,12 @@ named). Galleries (`tests/lean/HoareGallery.lean`):
 `alias_cond` under both guards over the real emitted body
 (first `if`-rule exercise, both cases proved), and a `u32`
 countdown (`n ≤ F` at fuel `F`, exact decrement via
-`BitVec.toNat_sub`); runtime closed instances (incr +
-`alias_cond` × 2 + countdown) ride the existing
-`hoare-gallery` driver job. Tactic note: nested `obtain`
+`BitVec.toNat_sub`); runtime closed instances ride the
+existing `hoare-gallery` driver job — 18 counted passes over
+16 check sites (H1–H3 cells/alias/cond-pair/countdown/sum/incr,
+R reverse-swap/loop, S seg-window, T rotate, J rewire/chase,
+H sift/entry/dup-entry, L-ptr linkedrev; both cond arms
+iterate). Tactic note: nested `obtain`
 with `rfl` keeps the inner-binder side — the outer names are
 gone after substitution, so inner applications must use the
 fresh names.
