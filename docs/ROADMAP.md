@@ -26,26 +26,27 @@ the first two-live-pointer shape admitted by exact listing
 rather than exemption (L-ptr2; label note — this reuses
 the L1–L4 slice labels of the lifetime track for a
 different subject, see `DELIVERED.md` "L-ptr."). The C
-core is complete within the standing non-goals, plus three
+core is complete within the standing non-goals, plus four
 dynamic shapes (read-only traversal, caller-node writer,
-caller-allocated writer).
+caller-allocated writer, first deallocating shape).
 
 Next: nothing open — the single-pointer exemption
-(`a393fa6`), the L-ptr2 slice, and the P1-push slice are
-all closed. Iris policy stays at pillar 4 (native first,
-Iris on fallback). See `DELIVERED.md` §§ M3/N1, S3, N6,
-L–L5, L-ptr, L-ptr2, P1-push, O1/O2, Iris, P4, K6.
+(`a393fa6`), the L-ptr2 slice, the P1-push slice, and the
+P1-erase slice are all closed. Iris policy stays at
+pillar 4 (native first, Iris on fallback). See
+`DELIVERED.md` §§ M3/N1, S3, N6, L–L5, L-ptr, L-ptr2,
+P1-push, P1-erase, O1/O2, Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Node unlink with `free`: the first
-   deallocating shape (`list_erase`) — dangling-loud
-   discipline, the freed cell unusable afterwards.
-2. A third traversal consumer reusing the chase kit before
-   new mechanism (e.g. `list_find` or sorted insert) — kit
-   reuse first, new shapes after.
-3. Deep copy (`list_copy`): allocation inside a traversal
+1. (Recommended) A third traversal consumer reusing the
+   chase kit before new mechanism (e.g. `list_find` or
+   sorted insert) — kit reuse first, new shapes after.
+2. Deep copy (`list_copy`): allocation inside a traversal
    loop — per-element `malloc` composed with the chase,
    fuel + allocator freshness together.
+3. Whole-chain free (`list_clear`): loop + `free`
+   composition — the dangling-loud discipline at scale,
+   freed-set tracking across iterations.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 

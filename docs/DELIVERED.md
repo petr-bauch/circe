@@ -2305,3 +2305,73 @@ contract).
   (`GOLDENPUSHFRONT-OK passed=8`); gallery examples
   compile-gated (`lake env lean`), counted passes
   unchanged.
+
+### P1-erase. First-match erase with `free` (`list_erase`) — DONE (2026-11-01)
+
+Pillar-1 proposed goal #2: the first deallocating shape —
+`Node *list_erase(Node *head, int val)` unlinks the first
+`Node` holding `val`, frees it, and returns the (possibly
+new) head; a miss returns the head untouched, dangling
+links abort loudly. Corpus `tests/cpp/list_erase.cpp` +
+real CIRGen `tests/cir/list_erase.cir` (2 params `Node*` +
+`i32`, `Node*` out; 5 allocas / 19 loads / 10 stores, one
+`while`, two `cir.if`, 3 `cir.cmp`, 5 `cir.get_member`
+(`[0]` payload / `[1]` link), 3 `cir.const` (loop/unlink
+guards), 1 `cast`, 1 `cir.call @free` + `get_global`).
+`isListEraseShape` pins exactly that (plus no `nsw`, no
+`ptr_stride`, no `new`/`delete`/`try`); Gate arm admitted
+via the existing single-pointer exemption (`a393fa6`)
+with an honest `unknown` oracle verdict — no
+blessed-listing change (one bare `Node*` cannot alias
+itself); the returned possibly-new head bypasses the
+escape-reject branches exactly like the admitted writers
+before it.
+
+New mechanism (first checked deallocation):
+`CStmt.nfree` (raw-pointer twin of `boxFree`: tag via
+`memFind`, liveness consumed, contents kept; pure side
+rejects as `AssertFail`) with statement-level
+`memEvalStmtFuel_nfree` (ok/err) and the two Mem/Agree
+lemmas; `CExpr.pgetVal` (offset-0 payload twin of
+`pgetNext`: the erase compare reads `Mem`) with
+`memEvalExpr_pgetVal` (hit/null/miss/err) — both
+constructors threaded through every exhaustive match in
+the tree. Shared kit: `PrefixChain` (cons-view,
+head-first) with `PrefixChain.transport_erase`
+(remove-first surgery for the unlink),
+`ListSeg.free_other` (free rides past other blocks),
+`memFind_memFree_dead`, `nodeStoreNext` (link-swing
+store leg), `linkWord_addrOfWord` (Model),
+`ListSeg_head_notin_tail` (predecessor/victim
+disequality for the store-then-free composition).
+`Circe/Emit/ListErase.lean`: `listEraseChase` (each visit
+consumes fuel like the evaluator — a hit needs fuel
+too), `listEraseFwd` mirror, `listEraseChase_invariant`
+(fused chase + contract), `listEraseFwd_correct`
+(`ListSeg m' hd' (vs.erase v)` plus the victim-dead
+clause), `listEraseLoop_agree` (miss falls through, hit
+unlinks/frees/returns with the head-case vs
+interior-case equations, both carrying the link-decode
+roundtrip), `listEraseChase_mem` (the chase never
+writes), entry triple `listEraseFunc_correct` (seed lets
++ loop agree + final return, forward equations identify
+`(m', hd')` per leg).
+
+Emitter + Gate wiring (`FragKind.listErase`,
+`matchFrag_listErase`, spec/render texts, `Emit.lean`
+arms, Gate shape arm); goldens
+`tests/golden/ListErase.lean` (+`_Spec`, 7-edge
+`spec_check` true by `#eval`: head-hit, interior-hit,
+miss, empty, singleton-hit, singleton-miss, missing
+head); `GoldenListErase` pipeline (with `unknown`
+oracle fact) + rejection gates (three-pointer variant
+still `alias-reject`; double-free variant
+`out-of-subset` — heap blocks are freed at most once;
+shape-exactness both directions vs `list_append`/
+`list_length`/`linked_reverse`/`list_rev`/`push_front`;
+9 checks); gallery instance (module import,
+compile-gated).
+- Acceptance: full gate 543/543 TEST-OK
+  (`GOLDENLISTERASE-OK passed=9`,
+  `GOLDENPUSHFRONT-OK passed=8` unchanged); gallery
+  compiles (`lake build HoareGallery`).
