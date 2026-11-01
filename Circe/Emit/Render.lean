@@ -1021,6 +1021,38 @@ def emitListEraseText (name : String) : String :=
   ++ "                | .error e => .error e\n"
   ++ "                | .ok m3 => .ok (m3, head)\n"
 
+/-- Render the `list_find` entry forward definition: the
+    first-match chase over `Mem` (payload load, link decode);
+    the hit cursor is returned, a miss returns null, dangling
+    links are `AssertFail`, cyclic input exhausts fuel. The
+    chain is never written. -/
+def emitListFindText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (first-match query over `Mem`; the chain is never modified). -/\n"
+  ++ s!"def {name}_find_fwd (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (v : BitVec 32) : Result (Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok none\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          if w == v then .ok (some a)\n"
+  ++ "          else match memLoad m a b.tag 1 with\n"
+  ++ "               | .error e => .error e\n"
+  ++ s!"               | .ok w' => {name}_find_fwd F m (addrOfWord w') v\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr)\n"
+  ++ "    (v : BitVec 32) : Result (Option Addr) :=\n"
+  ++ s!"  {name}_find_fwd F m head v\n"
+
 /-- Render the `list_length` entry forward definition: the
     read-only node count over `Mem` (link load only; null,
     missing, or short reads are `AssertFail`; cyclic input

@@ -150,6 +150,7 @@ inductive FragKind : Type
   | listAppend
   | pushFront
   | listErase
+  | listFind
   | vecMergeInto
   | vecMergeRuns
   | vecMergeSort

@@ -29,6 +29,7 @@ import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
+import Circe.Emit.ListFind
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -1021,6 +1022,17 @@ def matchFrag : Func → Option FragKind
                       (.assign "cur" (.pgetNext (.var "cur"))))))
             (.return_ (.var "head")))))⟩ =>
     some .listErase
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩,
+         ⟨"val", .i 32, .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32]) (.var "head"))
+        (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+                (.seq (.if_ (.ueq (.pgetVal (.var "cur")) (.var "val"))
+                        (.return_ (.var "cur"))
+                        .skip)
+                  (.assign "cur" (.pgetNext (.var "cur")))))
+          (.return_ (.lit .nullptr))))⟩ =>
+    some .listFind
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2189,6 +2201,8 @@ theorem matchFrag_pushFront :
     matchFrag pushFrontFunc = some .pushFront := rfl
 theorem matchFrag_listErase :
     matchFrag listEraseFunc = some .listErase := rfl
+theorem matchFrag_listFind :
+    matchFrag listFindFunc = some .listFind := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :

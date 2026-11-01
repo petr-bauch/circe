@@ -2087,6 +2087,63 @@ def emitListEraseSpecText (name : String) : String :=
   ++ "    | .error _, none => true\n"
   ++ "    | _, _ => false\n"
 
+/-- Spec stub for the `list_find` entry. The mirror chases to the
+    first payload hit and returns it (null on miss); the chain is
+    never written (cf. emitted `{name}_fwd`, `listFindFwd` for the
+    entry leg). Edges pin the found address AND its payload on
+    head-hit, interior-hit, miss, empty, and singleton chains,
+    plus the loud leg: missing head. -/
+def emitListFindSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- C++ signature: `{name}(head, v)` returns the first `Node` holding `v` in the `head`-rooted chain, or null if absent; the chain is never modified. Base body reference: the same payload chase (cf. emitted `{name}_fwd`, `listFindFwd` for the entry leg). Misses on a valid chain return null; dangling links abort loudly; cyclic input exhausts fuel. -/\n"
+  ++ s!"def {name}_spec_find (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (v : BitVec 32) : Result (Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok none\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          if w == v then .ok (some a)\n"
+  ++ "          else match memLoad m a b.tag 1 with\n"
+  ++ "               | .error e => .error e\n"
+  ++ s!"               | .ok w' => {name}_spec_find F m (addrOfWord w') v\n"
+  ++ "\n"
+  ++ s!"def {name}_spec_fwd (F : Nat) (m : Mem) (head : Option Addr)\n"
+  ++ "    (v : BitVec 32) : Result (Option Addr) :=\n"
+  ++ s!"  {name}_spec_find F m head v\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: head-hit, interior-hit, miss, empty, singleton-hit, singleton-miss, missing head. -/\n"
+  ++ s!"def {name}_spec_edges : List (Nat × Mem × Option Addr × BitVec 32 × Option (Option Addr)) :=\n"
+  ++ "  [(10, (memAllocData (memAllocData (memAllocData emptyMem [(30 : BitVec 32), 0]).1 [(20 : BitVec 32), 1]).1 [(10 : BitVec 32), 2]).1, some 2, (10 : BitVec 32), some (some 2)),\n"
+  ++ "   (10, (memAllocData (memAllocData (memAllocData emptyMem [(30 : BitVec 32), 0]).1 [(20 : BitVec 32), 1]).1 [(10 : BitVec 32), 2]).1, some 2, (20 : BitVec 32), some (some 1)),\n"
+  ++ "   (10, (memAllocData (memAllocData (memAllocData emptyMem [(30 : BitVec 32), 0]).1 [(20 : BitVec 32), 1]).1 [(10 : BitVec 32), 2]).1, some 2, (99 : BitVec 32), some none),\n"
+  ++ "   (10, emptyMem, none, (5 : BitVec 32), some none),\n"
+  ++ "   (10, (memAllocData emptyMem [(7 : BitVec 32), 0]).1, some 0, (7 : BitVec 32), some (some 0)),\n"
+  ++ "   (10, (memAllocData emptyMem [(7 : BitVec 32), 0]).1, some 0, (5 : BitVec 32), some none),\n"
+  ++ "   (10, emptyMem, some 5, (5 : BitVec 32), none)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge (found address matches, and a hit points at the payload). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match {name}_spec_fwd t.1 t.2.1 t.2.2.1 t.2.2.2.1, t.2.2.2.2 with\n"
+  ++ "    | .ok p', some q' =>\n"
+  ++ "      p' == q' && match p' with\n"
+  ++ "        | none => true\n"
+  ++ "        | some a =>\n"
+  ++ "          match memFind t.2.1 a with\n"
+  ++ "          | some b => b.data[0]? == some t.2.2.2.1\n"
+  ++ "          | none => false\n"
+  ++ "    | .error _, none => true\n"
+  ++ "    | _, _ => false\n"
+
 /-- Spec stub for the `list_reverse` entry. The mirror is the same
     raw-pointer chase over `Mem` (cf. emitted `{name}_fwd`); edges pin
     the new head AND the payload order (chased through the rewired

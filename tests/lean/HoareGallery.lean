@@ -22,6 +22,7 @@ import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
+import Circe.Emit.ListFind
 
 namespace HoareGallery
 
