@@ -2433,3 +2433,70 @@ import, compile-gated).
   (`GOLDENLISTFIND-OK passed=10`,
   `GOLDENLISTERASE-OK passed=9` unchanged); gallery
   compiles (`lake build HoareGallery`).
+
+### P1-copy. Deep copy with per-element `malloc` (`list_copy`) — DONE (2026-11-01)
+
+Pillar-1 proposed goal #1: the first allocation-inside-traversal
+shape — `Node *list_copy(Node *head)` chases with a single
+cursor, `malloc`-ing one fresh 2-word cell per node, copying the
+payload, clearing the fresh link, and appending to the new tail
+(head-case seeds the new head, interior-case swings the old
+tail link); `nullptr` on empty input. The input chain is never
+written — only fresh cells and the previous fresh tail are
+stored. Corpus `tests/cpp/list_copy.cpp` + real CIRGen
+`tests/cir/list_copy.cir` (146 lines; 6 allocas / 15 loads /
+12 stores, one `while`, one `cir.if`, 2 `cir.cmp` (`ne` guard
++ null `eq`), 5 `cir.get_member` (`[0]`x2 / `[1]`x3), 6
+`cir.const` (5 nulls + 16 size), 1 cast (bitcast of the malloc
+decl), 1 `cir.call @malloc`, 0 `cir.call @free`, 1
+`get_global`, 1 `cir.return` (single tail return), 1 `yield`;
+`cir-opt --verify-each` clean). `isListCopyShape` pins exactly
+that (single `Node*` in / `Node*` out; the `malloc` call +
+bitcast + null-`eq` separate it from the read-only
+`list_find`; zero `free` separates it from `list_erase`);
+Gate arm admitted via the existing single-pointer exemption
+with an honest `unknown` oracle verdict — the returned fresh
+head (not input) bypasses the escape-reject branches exactly
+like the admitted shapes before it.
+
+No new CoreIR (E2 reuse verdict): the same `malloc`+bitcast
+constructors as `pushFront`. `Circe/Mem/LinkedList.lean` gains
+the copy kit: `Mark` (high-water mark — the single freshness
+fact, no `MemWF` needed), `live_lt_of_memFind`,
+`freshAbove_alloc`/`freshAbove_store`, `ListSeg.store_other_mem`,
+`ListSeg.swing_snoc` (destination snoc with tail replacement).
+`Circe/Emit/ListCopy.lean`: `BoundedSeg` (per-node footprint
+bound bundled into the derivation — transports never need
+cross-memory alignment), `SegMem_alloc_stores_other_fwd`,
+`BoundedSeg.store_other_sep`, `SegMem_swing_replace`,
+`memLoad_tag` (successful load pins the tag),
+`listCopyChase`/`listCopyFwd` mirrors, `CopyInv` (full/dest/
+source segments + tail reachability + mark + exactness + fuel
++ split + coherence), `copy_step_none` (head-case seed),
+`copy_step_some` (interior-case swing),
+`listCopyChase_ok` (chase exhausts the source, leaves the full
+destination), `listCopyFwd_correct` (dest holds the payloads
+in order, input untouched, every returned cell at/above the
+entry mark, chains disjoint), `listCopyLoop_agree`
+(evaluator runs the loop to fall-through threading the `nd`
+shadows), entry triple `listCopyFunc_correct`.
+
+Emitter + Gate wiring (`FragKind.listCopy`,
+`matchFrag_listCopy`, spec/render texts, `Emit.lean` arms,
+Gate shape arm, `GenOut`); goldens
+`tests/golden/ListCopy.lean` (+`_Spec`, 5-edge
+`spec_check` true by `#eval`: 3-node copy (fresh-chain AND
+input payloads match), singleton, empty, missing head, short
+block); `GoldenListCopy` pipeline (with `unknown` oracle
+fact) + rejection gates (three-pointer variant still
+`alias-reject`; free-added variant `escape-reject` — the
+fresh head is freed, then returned; shape-exactness both
+directions vs `list_erase`/`list_append`/`list_length`/
+`linked_reverse`/`list_rev`/`push_front`/`list_find`;
+10 checks).
+- Acceptance: full gate 553/553 TEST-OK
+  (`GOLDENLISTCOPY-OK passed=10`,
+  `GOLDENLISTFIND-OK passed=10` unchanged); goldens
+  typecheck (`lake env lean out/ListCopy.lean
+  out/ListCopy_Spec.lean`); gallery compiles unchanged
+  (`lake build HoareGallery`).

@@ -26,29 +26,31 @@ the first two-live-pointer shape admitted by exact listing
 rather than exemption (L-ptr2; label note — this reuses
 the L1–L4 slice labels of the lifetime track for a
 different subject, see `DELIVERED.md` "L-ptr."). The C
-core is complete within the standing non-goals, plus five
+core is complete within the standing non-goals, plus six
 dynamic shapes (read-only traversal, caller-node writer,
 caller-allocated writer, first deallocating shape,
-read-only query).
+read-only query, allocating deep copy with per-element
+`malloc` — P1-copy, whose `Mark` high-water mark + `BoundedSeg`
+bundled-bound kit generalizes the chase transports).
 
 Next: nothing open — the single-pointer exemption
 (`a393fa6`), the L-ptr2 slice, and the P1-push, P1-erase,
-and P1-find slices are all closed. Iris policy stays at
+P1-find, and P1-copy slices are all closed. Iris policy stays at
 pillar 4 (native first, Iris on fallback). See
 `DELIVERED.md` §§ M3/N1, S3, N6, L–L5, L-ptr, L-ptr2,
-P1-push, P1-erase, P1-find, O1/O2, Iris, P4, K6.
+P1-push, P1-erase, P1-find, P1-copy, O1/O2, Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Deep copy (`list_copy`): allocation
-   inside a traversal loop — per-element `malloc`
-   composed with the chase, fuel + allocator freshness
-   together.
-2. Whole-chain free (`list_clear`): loop + `free`
-   composition — the dangling-loud discipline at scale,
-   freed-set tracking across iterations.
-3. Sorted insert: `find` + link swing composition — the
+1. (Recommended) Whole-chain free (`list_clear`): loop +
+   `free` composition — the dangling-loud discipline at
+   scale, freed-set tracking across iterations.
+2. Sorted insert: `find` + link swing composition — the
    first ordered structure, reusing the query and writer
    kits with no new mechanism.
+3. Sorted merge of two chains (`list_merge`): two-cursor
+   chase with tail-append — reuses the copy kit's swing +
+   step structure with no new mechanism; the first
+   multi-input traversal.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
