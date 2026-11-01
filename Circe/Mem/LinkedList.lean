@@ -539,6 +539,28 @@ theorem ListSeg.free_other {m m' : Mem} {s : Option Addr}
       (nodeAt_free_other hnode hfree (hout _ (.here hnode)))
       (ih (fun c hc => hout c (.there hnode hc)))
 
+/-- Reachability rides a free at an outside address (forward
+    twin of `SegMem_of_store` — the whole-chain-free chase:
+    each remaining node is live, hence distinct from the
+    freed one). -/
+theorem SegMem_free_other {m m' : Mem} {s : Option Addr}
+    {b : Addr} {a' : Addr} {t : Nat}
+    (h : SegMem (m := m) s b)
+    (hfree : memFree m a' t = .ok m')
+    (hout : ∀ c, SegMem (m := m) s c → c ≠ a') :
+    SegMem (m := m') s b := by
+  revert hout
+  induction h with
+  | here hnode =>
+    intro hout
+    have hne : _ ≠ a' := hout _ (.here hnode)
+    exact .here (nodeAt_free_other hnode hfree hne)
+  | there hnode hmem ih =>
+    intro hout
+    have hne : _ ≠ a' := hout _ (.here hnode)
+    exact .there (nodeAt_free_other hnode hfree hne)
+      (ih (fun c hc => hout c (.there hnode hc)))
+
 /-- Visited-prefix chain for the erase chase: `nodes` leads from
     `s` to `e`, recording each visited node's address, tag, and
     payload. A `ListSeg` with a named end — the chase extends it

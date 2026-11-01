@@ -2498,6 +2498,52 @@ def isListCopyShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `list_clear`: whole-chain free — a single `Node *` head
+    pointer in, a `Node *` out (the now-empty head, always
+    null), one `while`, no `cir.if`, one `cir.cmp` (`ne`
+    guard), one `cir.get_member` (the `[1]` link — the payload
+    is never read), one `cir.call @free` with its `bitcast`,
+    no `malloc`, and a single tail `cir.return`. -/
+def isListClearShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [head] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType head.ctype && ptrInner head.ctype == some "!rec_Node" &&
+    isPtrType raw.ret && ptrInner raw.ret == some "!rec_Node" &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 0 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.get_member" == 1 &&
+    containsSubstr raw.text "[1]" &&
+    !containsSubstr raw.text "[0]" &&
+    opCount raw.text "cir.const" == 2 &&
+    opCount raw.text "cir.cast" == 1 &&
+    containsSubstr raw.text "bitcast" &&
+    opCount raw.text "cir.mul" == 0 &&
+    opCount raw.text "cir.add" == 0 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.load" == 7 &&
+    opCount raw.text "cir.store" == 5 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.yield" == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    freeCallCount raw.text == 1 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.break" == 0 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.call @malloc(" &&
+    !containsSubstr raw.text "cir.call @_Znwm" &&
+    !containsSubstr raw.text "cir.call @_ZdlPvm" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

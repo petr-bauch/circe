@@ -39,6 +39,7 @@ import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
+import Circe.Emit.ListClear
 import Circe.Emit.Reborrow
 import Circe.Emit.Reborrow34
 import Circe.Emit.WrPair
@@ -192,6 +193,7 @@ def main : IO Unit := do
   let listErase ← emitOrDie listEraseFunc
   let listFind ← emitOrDie listFindFunc
   let listCopy ← emitOrDie listCopyFunc
+  let listClear ← emitOrDie listClearFunc
   let vecIndexMut ← emitOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
   let vecAtMut ← emitOrDie { stdVecAtFunc with name := stdVecAtMutName }
   let vecEmptyCtor ← emitOrDie stdVecEmptyCtorFunc
@@ -353,6 +355,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListErase.lean" (emitFileText (.ok listErase))
   IO.FS.writeFile "out/ListFind.lean" (emitFileText (.ok listFind))
   IO.FS.writeFile "out/ListCopy.lean" (emitFileText (.ok listCopy))
+  IO.FS.writeFile "out/ListClear.lean" (emitFileText (.ok listClear))
   IO.FS.writeFile "out/VecIndexMut.lean" (emitFileText (.ok vecIndexMut))
   IO.FS.writeFile "out/VecAtMut.lean" (emitFileText (.ok vecAtMut))
   IO.FS.writeFile "out/VecGrowEmptyCtor.lean" (emitFileText (.ok vecEmptyCtor))
@@ -514,6 +517,7 @@ def main : IO Unit := do
   let listEraseSpec ← specOrDie listEraseFunc
   let listFindSpec ← specOrDie listFindFunc
   let listCopySpec ← specOrDie listCopyFunc
+  let listClearSpec ← specOrDie listClearFunc
   let vecIndexMutSpec ← specOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
   let vecAtMutSpec ← specOrDie { stdVecAtFunc with name := stdVecAtMutName }
   let vecEmptyCtorSpec ← specOrDie stdVecEmptyCtorFunc
@@ -675,6 +679,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListErase_Spec.lean" listEraseSpec
   IO.FS.writeFile "out/ListFind_Spec.lean" listFindSpec
   IO.FS.writeFile "out/ListCopy_Spec.lean" listCopySpec
+  IO.FS.writeFile "out/ListClear_Spec.lean" listClearSpec
   IO.FS.writeFile "out/VecIndexMut_Spec.lean" vecIndexMutSpec
   IO.FS.writeFile "out/VecAtMut_Spec.lean" vecAtMutSpec
   IO.FS.writeFile "out/VecGrowEmptyCtor_Spec.lean" vecEmptyCtorSpec

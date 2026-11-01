@@ -1103,6 +1103,40 @@ def emitListCopyText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok (m', nh', _) => .ok (m', nh')\n"
 
+/-- Render the `list_clear` entry forward definition: the
+    free-the-whole-chain chase over `Mem` (the link is saved
+    before each free; every node is freed exactly once, the
+    payload is never read; null, missing, or short links are
+    `AssertFail`; cyclic input exhausts fuel). The entry mirror
+    returns `(m', none)` — the chain is gone, the return is null. -/
+def emitListClearText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (free the whole `head`-rooted chain over `Mem`; every node is freed exactly once, payload never read). -/\n"
+  ++ s!"def {name}_clear_fwd (F : Nat) (m : Mem) (cur : Option Addr) :\n"
+  ++ "    Result Mem :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok m\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 1 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w' =>\n"
+  ++ "          match memFree m a b.tag with\n"
+  ++ "          | .error e => .error e\n"
+  ++ s!"          | .ok m' => {name}_clear_fwd F m' (addrOfWord w')\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr)\n"
+  ++ "    : Result (Mem × Option Addr) :=\n"
+  ++ s!"  match {name}_clear_fwd F m head with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok m' => .ok (m', none)\n"
+
 /-- Render the `list_length` entry forward definition: the
     read-only node count over `Mem` (link load only; null,
     missing, or short reads are `AssertFail`; cyclic input

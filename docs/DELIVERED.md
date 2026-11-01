@@ -2500,3 +2500,77 @@ directions vs `list_erase`/`list_append`/`list_length`/
   typecheck (`lake env lean out/ListCopy.lean
   out/ListCopy_Spec.lean`); gallery compiles unchanged
   (`lake build HoareGallery`).
+
+### P1-clear. Whole-chain free (`list_clear`) — DONE (2026-11-01)
+
+Pillar-1 proposed goal #1: the free leg at chain scale —
+`Node *list_clear(Node *head)` chases a single cursor, saves
+the link before each `free(cur)`, frees every node exactly
+once, and returns `nullptr`. The payload is never read and no
+cell is ever stored: the mirror walks with `.pgetNext` and
+frees with `.nfree`. Corpus `tests/cpp/list_clear.cpp` + real
+CIRGen `tests/cir/list_clear.cir` (79 lines; 4 allocas /
+7 loads / 5 stores, one `while`, no `cir.if`, 1 `cir.cmp`
+(`ne` guard), 1 `cir.get_member` (`[1]` link only), 2
+`cir.const` (both nulls), 1 cast (bitcast of the free decl),
+1 `cir.call @free`, 0 `cir.call @malloc`, 1 `get_global`,
+1 `cir.return`, 1 `yield`; `cir-opt --verify-each` clean).
+`isListClearShape` pins exactly that (single `Node*` in /
+`Node*` out; `free` with no `cir.if` and a single link load
+separates it from `list_erase`'s value-compare unlink, zero
+`malloc` from `list_copy`); Gate arm admitted via the
+existing single-pointer exemption with an honest `unknown`
+oracle verdict — the always-null return bypasses the
+escape-reject branches exactly like the admitted shapes
+before it.
+
+No new CoreIR (E-erase reuse verdict): the same
+`free`+bitcast constructors as `list_erase`. Kit:
+`SegMem_free_other` joins `ListSeg.free_other` in
+`Circe/Mem/LinkedList.lean` (the segment outside the freed
+head is untouched); the erase kit (`nodeAt_free_other`,
+`memFind_memFree_dead`, `memFind_memFree_other`,
+`memEvalStmtFuel_nfree_ok`, `PrefixChain.transport_erase`)
+carries over unchanged. `Circe/Emit/ListClear.lean`
+(`_Z10list_clearP4Node`): because the loop body holds no
+`let`, the environment is the fixed 3-slot
+`mkListClearEnv head cur nxt` (the link spare is seeded by an
+entry `let`; assigns rewrite slots in place — no shadow
+threading). `listClearChase`/`listClearFwd` mirrors;
+`ClearInv` bundles the live suffix segment, the freed-prefix
+contents (entry live block ↦ exit dead block, same tag /
+payload / link), the untouched rest, the entry-chain triage
+(every entry-chain address is freed or still reachable from
+the cursor — this discharges the all-dead conclusion when
+the cursor runs out), acyclicity, and fuel. `clear_step`
+(loads the link, frees the cursor, grows the freed prefix) +
+`ClearInv.liftF`; `listClearChase_ok` (the chase ends at the
+null cursor); `listClearFwd_correct` (every input node is
+dead on exit with its contents kept; every other cell is
+untouched, or freed carrying its contents);
+`listClearLoop_agree` (the evaluator runs the loop to
+fall-through); entry triple `listClearFunc_correct` (seed
+`let`s + loop + return null: the full contract at the
+boundary).
+
+Emitter + Gate wiring (`FragKind.listClear`,
+`matchFrag_listClear`, spec/render texts, `Emit.lean`
+arms, Gate shape arm, `GenOut`; spec-stub pin 161 → 162);
+goldens `tests/golden/ListClear.lean` (+`_Spec`, 5-edge
+`spec_check` true by `#eval`: 3-node free (every node dead,
+payloads still reading back through the dead chain),
+singleton, empty (null in → null out, memory untouched),
+missing head (loud), short block (loud));
+`GoldenListClear` pipeline (with `unknown` oracle fact) +
+rejection gates (three-pointer variant `alias-reject`;
+return-the-freed-head variant `escape-reject`; double-free
+variant `out-of-subset` — heap blocks are freed at most
+once; shape-exactness both directions vs `list_copy` /
+`list_find` / `list_erase` / `list_append` / `list_length` /
+`linked_reverse` / `list_rev` / `push_front`; 13 checks).
+- Acceptance: full gate 557/557 TEST-OK
+  (`GOLDENLISTCLEAR-OK passed=13`,
+  `GOLDENLISTCOPY-OK passed=10` unchanged); goldens
+  typecheck (`lake env lean out/ListClear.lean
+  out/ListClear_Spec.lean`); gallery compiles unchanged
+  (`lake build HoareGallery`).
