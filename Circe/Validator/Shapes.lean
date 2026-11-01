@@ -2438,6 +2438,66 @@ def isListFindShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Deep copy (P1 fourth shape, allocation inside a traversal
+    loop — the `list_copy` shape): single `Node*` head in,
+    `Node*` out (fresh head, null on empty input). One
+    `cir.while` chasing `cur` while `cur != nullptr` (one `ne`
+    guard `cir.cmp`); one `cir.if` on the new-tail null test
+    (head-case vs interior-case append, one `eq` `cir.cmp`).
+    Per iteration: one `cir.call @malloc` (16-byte cells) +
+    bitcast, two `[0]` `cir.get_member` (fresh payload slot,
+    source payload), three `[1]` (fresh link clear, tail-link
+    swing, source link read). 6 allocas / 15 loads /
+    12 stores / 6 consts (five nulls + the 16 size) /
+    1 cast / 1 return (single tail return, no early exit).
+    The single `cir.call @` is the `malloc` (no `free`:
+    `freeCallCount` is 0, no `get_global @free`); the single
+    `get_global` is the `malloc` declaration. Encapsulation
+    pins: one head param pointing at `!rec_Node`, the return
+    is `Node*`; no `free` / operator-`new` / `delete` /
+    `try` / `unreachable` in the entry. -/
+def isListCopyShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [head] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType head.ctype && ptrInner head.ctype == some "!rec_Node" &&
+    isPtrType raw.ret && ptrInner raw.ret == some "!rec_Node" &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    opCount raw.text "cir.get_member" == 5 &&
+    containsSubstr raw.text "[0]" &&
+    containsSubstr raw.text "[1]" &&
+    opCount raw.text "cir.const" == 6 &&
+    opCount raw.text "cir.cast" == 1 &&
+    containsSubstr raw.text "bitcast" &&
+    opCount raw.text "cir.mul" == 0 &&
+    opCount raw.text "cir.add" == 0 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 15 &&
+    opCount raw.text "cir.store" == 12 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.yield" == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    opCount raw.text "cir.call @malloc" == 1 &&
+    freeCallCount raw.text == 0 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.break" == 0 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.call @_Znwm" &&
+    !containsSubstr raw.text "cir.call @_ZdlPvm" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

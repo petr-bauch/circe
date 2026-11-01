@@ -30,6 +30,7 @@ import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
+import Circe.Emit.ListCopy
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -1033,6 +1034,31 @@ def matchFrag : Func → Option FragKind
                   (.assign "cur" (.pgetNext (.var "cur")))))
           (.return_ (.lit .nullptr))))⟩ =>
     some .listFind
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.let_ "new_head" (.struct "Node" [.i 32, .u 32])
+              (.lit .nullptr))
+        (.seq (.let_ "tail" (.struct "Node" [.i 32, .u 32])
+                (.lit .nullptr))
+          (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32])
+                  (.var "head"))
+            (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+                    (.seq (.let_ "nd"
+                            (.struct "Node" [.i 32, .u 32]) .nnew)
+                      (.seq (.psetVal (.var "nd")
+                              (.pgetVal (.var "cur")))
+                        (.seq (.psetNext (.var "nd")
+                                (.lit .nullptr))
+                          (.seq (.if_ (.ueq (.var "tail")
+                                        (.lit .nullptr))
+                                  (.assign "new_head" (.var "nd"))
+                                  (.psetNext (.var "tail")
+                                    (.var "nd")))
+                            (.seq (.assign "tail" (.var "nd"))
+                              (.assign "cur"
+                                (.pgetNext (.var "cur")))))))))
+              (.return_ (.var "new_head"))))))⟩ =>
+    some .listCopy
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2203,6 +2229,8 @@ theorem matchFrag_listErase :
     matchFrag listEraseFunc = some .listErase := rfl
 theorem matchFrag_listFind :
     matchFrag listFindFunc = some .listFind := rfl
+theorem matchFrag_listCopy :
+    matchFrag listCopyFunc = some .listCopy := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :

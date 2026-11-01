@@ -32,6 +32,7 @@ import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
+import Circe.Emit.ListCopy
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecTransformAdd
@@ -1935,6 +1936,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { listEraseFunc with name := raw.name }
       else if isListFindShape raw then
         .ok { listFindFunc with name := raw.name }
+      else if isListCopyShape raw then
+        .ok { listCopyFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then

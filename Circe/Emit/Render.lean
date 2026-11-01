@@ -1053,6 +1053,56 @@ def emitListFindText (name : String) : String :=
   ++ "    (v : BitVec 32) : Result (Option Addr) :=\n"
   ++ s!"  {name}_find_fwd F m head v\n"
 
+/-- Render the `list_copy` entry forward definition: the
+    allocating deep copy over `Mem` (one fresh 2-word cell per
+    node, payload copied, fresh link cleared, appended to the
+    new tail); the input chain is never written. -/
+def emitListCopyText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (allocating deep copy over `Mem`; the input chain is never modified). -/\n"
+  ++ s!"def {name}_copy_fwd (F : Nat) (m : Mem) (cur nh tail : Option Addr)\n"
+  ++ "    : Result (Mem × Option Addr × Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok (m, nh, tail)\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          match memLoad m a b.tag 1 with\n"
+  ++ "          | .error e => .error e\n"
+  ++ "          | .ok w' =>\n"
+  ++ "            let (m1, nd) := memAlloc m 2\n"
+  ++ "            match memStore m1 nd nd 0 w with\n"
+  ++ "            | .error e => .error e\n"
+  ++ "            | .ok m2 =>\n"
+  ++ "              match memStore m2 nd nd 1 (linkWord none) with\n"
+  ++ "              | .error e => .error e\n"
+  ++ "              | .ok m3 =>\n"
+  ++ "                match tail with\n"
+  ++ "                | none =>\n"
+  ++ s!"                  {name}_copy_fwd F m3 (addrOfWord w') (some nd) (some nd)\n"
+  ++ "                | some p =>\n"
+  ++ "                  match memFind m3 p with\n"
+  ++ "                  | none => .error .AssertFail\n"
+  ++ "                  | some bp =>\n"
+  ++ "                    match memStore m3 p bp.tag 1 (linkWord (some nd)) with\n"
+  ++ "                    | .error e => .error e\n"
+  ++ "                    | .ok m4 =>\n"
+  ++ s!"                      {name}_copy_fwd F m4 (addrOfWord w') nh (some nd)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr)\n"
+  ++ "    : Result (Mem × Option Addr) :=\n"
+  ++ s!"  match {name}_copy_fwd F m head none none with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (m', nh', _) => .ok (m', nh')\n"
+
 /-- Render the `list_length` entry forward definition: the
     read-only node count over `Mem` (link load only; null,
     missing, or short reads are `AssertFail`; cyclic input

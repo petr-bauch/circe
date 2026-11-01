@@ -115,6 +115,16 @@ theorem ListSeg_head_alloc {m : Mem} {c : Addr}
     unfold nodeAt cellsAt at h3
     simp [h3]
 
+/-- A segment's start allocates its one-step targets (the
+    `nodeAt_link_unique` side condition without naming the
+    link). -/
+theorem ListSeg_start_alloc {m : Mem} {s : Option Addr}
+    {vs : List (BitVec 32)} (h : ListSeg m s vs) :
+    ∀ c, s = some c → (memFind m c).isSome := by
+  intro c hc
+  subst hc
+  exact ListSeg_head_alloc h
+
 /-- A reachability derivation starting at `some c` allocates `c`
     (both constructors carry a points-to at the head). -/
 theorem SegMem_head_alloc {m : Mem} {s : Option Addr} {b : Addr}
@@ -987,3 +997,177 @@ theorem PrefixChain.transport_erase {m m2 m3 : Mem} {s e : Option Addr}
       nodeAt_store_other_fwd hnodeB hstore hneP
     have hnB3 : nodeAt m3 _ _ _ _ := nodeAt_free_other hnB2 hfree hneC
     exact PrefixChain.cons hnB3 (ih he)
+
+/-! ## Copy kit (pillar-1 goal #4: the allocator high-water mark
+    and destination snoc) -/
+
+/-- The allocator high-water mark: every address at or above
+    `next` is free. Loop-allocated cells are exactly the
+    successive `next` values, so a segment that never touches
+    them rides every copy step; the mark is the single fact the
+    per-store side conditions reduce to. -/
+def Mark (m : Mem) : Prop :=
+  ∀ a, m.next ≤ a → memFind m a = none
+
+/-- Live blocks sit strictly below the high-water mark. -/
+theorem live_lt_of_memFind {m : Mem} {a : Addr} {b : Block}
+    (hmark : Mark m) (h : memFind m a = some b) : a < m.next := by
+  by_cases hlt : a < m.next
+  · exact hlt
+  · have hge : m.next ≤ a := Nat.le_of_not_lt hlt
+    have hnone := hmark a hge
+    rw [h] at hnone
+    simp at hnone
+
+/-- Allocation preserves the mark (the fresh cell sits exactly
+    at the old `next`; everything above the bumped `next` was
+    already free). -/
+theorem freshAbove_alloc (m : Mem) (n : Nat) (h : Mark m) :
+    Mark (memAlloc m n).1 := by
+  intro a ha
+  have h1 : (memAlloc m n).1 =
+      ⟨m.next + 1, (m.next, ⟨(memAlloc m n).2, true,
+        List.replicate n 0⟩) :: m.blocks, m.blocks64⟩ := rfl
+  have hnn : (memAlloc m n).1.next = m.next + 1 := rfl
+  have hne : a ≠ m.next := by omega
+  rw [h1, memFind_cons_miss _ _ _ _ _ _ hne,
+    show memFind ⟨m.next + 1, m.blocks, m.blocks64⟩ a =
+      memFind ⟨m.next, m.blocks, m.blocks64⟩ a from
+      memFind_next_irrelevant _ _ _ _ _ _]
+  exact h a (by omega)
+
+/-- Stores preserve the mark (the address set never changes;
+    the stored address is live, hence below `next`). -/
+theorem freshAbove_store {m m' : Mem} {p : Addr} {tp i : Nat}
+    {x : BitVec 32} (h : Mark m)
+    (hstore : memStore m p tp i x = .ok m') : Mark m' := by
+  have hex1 : ∃ b, memFind m p = some b := by
+    unfold memStore at hstore
+    cases hF : memFind m p with
+    | none => simp [hF] at hstore
+    | some b => exact ⟨b, rfl⟩
+  obtain ⟨b, hF⟩ := hex1
+  have hplt : p < m.next := live_lt_of_memFind h hF
+  have hnext : m'.next = m.next := by
+    unfold memStore at hstore
+    rw [hF] at hstore
+    dsimp only at hstore
+    split at hstore
+    · simp at hstore
+    · split at hstore
+      · simp at hstore
+      · split at hstore
+        · simp only [Except.ok.injEq] at hstore
+          cases hstore
+          rfl
+        · simp at hstore
+  intro a ha
+  rw [hnext] at ha
+  have hlt : p < a := Nat.lt_of_lt_of_le hplt ha
+  have hne : a ≠ p := by
+    intro heq
+    subst heq
+    simp at hlt
+  have heq := memFind_memStore_other m m' p a tp i x hstore hne
+  rw [heq]
+  exact h a ha
+
+/-- A segment rides a store at an address outside its
+    footprint (the copy source over link swings and fresh-cell
+    stores alike): induction with the footprint router — the
+    `there` case re-routes membership, the `nil` case is
+    vacuous. -/
+theorem ListSeg.store_other_mem {m m' : Mem} {s : Option Addr}
+    {vs : List (BitVec 32)} {p : Addr} {tp i : Nat}
+    {x : BitVec 32}
+    (h : ListSeg m s vs) (hmem : ∀ q, SegMem (m := m) s q → q ≠ p)
+    (hstore : memStore m p tp i x = .ok m') : ListSeg m' s vs := by
+  revert hmem
+  induction h with
+  | nil =>
+    intro _
+    exact .nil
+  | cons hnode t2 ih =>
+    intro hmem
+    exact .cons
+      (nodeAt_store_other_fwd hnode hstore (hmem _ (SegMem.here hnode)))
+      (ih (fun q hq => hmem q (SegMem.there hnode hq)))
+
+/-- Destination snoc over a tail-link swing (the copy append):
+    the old tail `p` (link `none`) swings to the fresh `nd`
+    (link `none`), extending the payload list. Induction on the
+    destination with footprint routing: the `here` case is the
+    construction site (empty tail), the `there` case rides the
+    head via outsideness (`head_notin_tail` — the head links
+    into the tail, the tail links nowhere, so they differ). -/
+theorem ListSeg.swing_snoc {m m' : Mem} {s : Option Addr}
+    {pref : List (BitVec 32)} {p nd : Addr} {tp tnd : Nat}
+    {wp wnd : BitVec 32}
+    (h : ListSeg m s pref) (hmem : SegMem (m := m) s p)
+    (hlast : nodeAt m p tp wp none)
+    (hnd : nodeAt m nd tnd wnd none)
+    (hndfresh : memFind m nd = none)
+    (hstore : memStore m p tp 1 (linkWord (some nd)) = .ok m')
+    (hex : ∀ x, (memFind m x).isSome = true → x + 1 < 2 ^ 32) :
+    ListSeg m' s (pref ++ [wnd]) := by
+  have hfindP : memFind m p = some _ := hlast
+  have hne : nd ≠ p := by
+    intro heq
+    rw [heq] at hndfresh
+    rw [hfindP] at hndfresh
+    simp at hndfresh
+  have hnd' : nodeAt m' nd tnd wnd none :=
+    nodeAt_store_other_fwd hnd hstore hne
+  have hcell : cellsAt m p tp [wp, linkWord none] := hlast
+  have hswing : cellsAt m' p tp [wp, linkWord (some nd)] := by
+    have h := memFind_cellsAt_store m p tp 1 [wp, linkWord none]
+      (linkWord (some nd)) m' hcell (by simp) hstore
+    simpa using h
+  revert hmem
+  induction h with
+  | nil =>
+    intro hmem
+    cases hmem
+  | cons hnode t2 ih =>
+    intro hmem
+    cases hmem with
+    | here _ =>
+      -- The head is the tail: same address as `hlast`, so the
+      -- payloads agree by lookup functionality (no allocation
+      -- facts needed for data).
+      have h1 := hnode
+      have h2 := hlast
+      unfold nodeAt cellsAt at h1 h2
+      have h := h1.symm.trans h2
+      simp only [Option.some.injEq, Block.mk.injEq,
+        List.cons.injEq] at h
+      cases ht2 : t2 with
+      | nil =>
+        -- Tail is empty: the head link unified to `none`,
+        -- `pref` to a singleton — rewrite the payload and
+        -- rebuild head and fresh tail directly.
+        have hvw : _ = wp := h.2.2.1
+        rw [hvw]
+        exact .cons hswing (.cons hnd' .nil)
+      | cons h3 t3 =>
+        -- Nonempty tail contradicts the tail link being `none`:
+        -- the cons pattern forced the head link to `some`,
+        -- but it agrees with `hlast`'s `none`.
+        have hmem3 : (memFind m _) = some (⟨_, _, _⟩ : Block) := h3
+        exact False.elim
+          (linkWord_none_ne_some (hex _ (by rw [hmem3]; rfl)) h.2.2.2.1.symm)
+    | there hnodeQ hmem' =>
+      -- The head differs from the tail: align the two head
+      -- ascriptions (same address) by link determinism — the
+      -- head side allocates via the tail segment, the member
+      -- side via the membership witness — then route via
+      -- outsideness.
+      have heq : _ = _ :=
+        nodeAt_link_unique hnode hnodeQ hex
+          (ListSeg_start_alloc t2) (SegMem_head_alloc hmem')
+      rw [← heq] at hmem'
+      have hneQ : _ ≠ p :=
+        Ne.symm (ListSeg_head_notin_tail hnode t2 hex p hmem')
+      exact .cons
+        (nodeAt_store_other_fwd hnode hstore hneQ)
+        (ih hmem')
