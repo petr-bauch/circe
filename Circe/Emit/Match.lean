@@ -25,6 +25,8 @@ import Circe.Emit.VecSegReverse
 import Circe.Emit.VecRotate
 import Circe.Emit.VecListRev
 import Circe.Emit.LinkedReverse
+import Circe.Emit.ListLength
+import Circe.Emit.ListAppend
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -963,6 +965,33 @@ def matchFrag : Func → Option FragKind
                   (.assign "cur" (.var "nxt"))))))
           (.return_ (.var "prev"))))⟩ =>
     some .linkedReverse
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
+      .u 64,
+      (.seq (.seq (.let_ "n" (.u 64) (.lit (.u64 z0)))
+              (.let_ "cur" (.struct "Node" [.i 32, .u 32])
+                (.var "head")))
+        (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+                (.seq (.assign "cur" (.pgetNext (.var "cur")))
+                  (.assign "n" (.uadd (.var "n")
+                    (.lit (.u64 one))))))
+          (.return_ (.var "n"))))⟩ =>
+    if z0 == BitVec.ofNat 64 0 && one == BitVec.ofNat 64 1 then
+      some .listLength
+    else none
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩,
+         ⟨"nd", .struct "Node" [.i 32, .u 32], .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.psetNext (.var "nd") (.lit .nullptr))
+        (.seq (.if_ (.ueq (.var "head") (.lit .nullptr))
+                (.return_ (.var "nd"))
+                .skip)
+          (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32])
+                  (.var "head"))
+            (.seq (.while_ (.une (.pgetNext (.var "cur")) (.lit .nullptr))
+                    (.assign "cur" (.pgetNext (.var "cur"))))
+              (.seq (.psetNext (.var "cur") (.var "nd"))
+                (.return_ (.var "head")))))))⟩ =>
+    some .listAppend
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2123,6 +2152,10 @@ theorem matchFrag_vecListRev :
     matchFrag listRevFunc = some .vecListRev := rfl
 theorem matchFrag_linkedReverse :
     matchFrag linkRevFunc = some .linkedReverse := rfl
+theorem matchFrag_listLength :
+    matchFrag listLengthFunc = some .listLength := rfl
+theorem matchFrag_listAppend :
+    matchFrag listAppendFunc = some .listAppend := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :

@@ -18,6 +18,8 @@ import Circe.Transfer.VecRotate
 import Circe.Emit.VecListRev
 import Circe.Emit.VecHeapSort
 import Circe.Emit.LinkedReverse
+import Circe.Emit.ListLength
+import Circe.Emit.ListAppend
 
 namespace HoareGallery
 
@@ -798,6 +800,109 @@ example : ∃ ρ' m' prev',
     linkRevGalleryMem [] linkRevGalleryHex (some 2) [10, 20, 30]
     m' prev' linkRevGallerySeg hfwd
   exact ⟨ρ', m', prev', heval, hlist⟩
+
+/-- Count bridge instance: the count forward on the gallery chain
+    returns 3, memory untouched. -/
+example : ∃ m' n',
+    listLengthFwd 10 linkRevGalleryMem (some 2) = .ok (m', n') ∧
+    m' = linkRevGalleryMem ∧ n' = 3 := by
+  obtain ⟨m', n', hfwd⟩ :
+      ∃ m' n', listLengthFwd 10 linkRevGalleryMem (some 2) =
+        .ok (m', n') := by
+    have hok : (match listLengthFwd 10 linkRevGalleryMem (some 2) with
+      | .ok _ => true | .error _ => false) = true := by native_decide
+    cases h : listLengthFwd 10 linkRevGalleryMem (some 2) with
+    | ok p =>
+      obtain ⟨m', n'⟩ := p
+      rw [← h]
+      exact ⟨m', n', h⟩
+    | error e =>
+      rw [h] at hok
+      simp at hok
+  have hcorr := listLengthFwd_correct 10 linkRevGalleryMem
+    linkRevGalleryHex (some 2) [10, 20, 30] m' n'
+    linkRevGallerySeg (by decide) hfwd
+  exact ⟨m', n', hfwd, hcorr.1, by simpa using hcorr.2⟩
+
+/-- Entry triple instance: the seeded chase returns the count. -/
+example : ∃ ρ' m' v',
+    memEvalStmtFuel 10 listLengthFunc.body
+      [("head", .ptrVal (some 2))] linkRevGalleryMem [] =
+      .ok ((ρ', m', []), .returned v') ∧
+    m' = linkRevGalleryMem ∧
+    v' = .u64 (BitVec.ofNat 64 3) := by
+  obtain ⟨m', n', hfwd⟩ :
+      ∃ m' n', listLengthFwd 10 linkRevGalleryMem (some 2) =
+        .ok (m', n') := by
+    have hok : (match listLengthFwd 10 linkRevGalleryMem (some 2) with
+      | .ok _ => true | .error _ => false) = true := by native_decide
+    cases h : listLengthFwd 10 linkRevGalleryMem (some 2) with
+    | ok p =>
+      obtain ⟨m', n'⟩ := p
+      rw [← h]
+      exact ⟨m', n', h⟩
+    | error e =>
+      rw [h] at hok
+      simp at hok
+  obtain ⟨ρ', heval, hm, _⟩ := listLengthFunc_correct 10
+    linkRevGalleryMem [] linkRevGalleryHex (some 2) [10, 20, 30]
+    m' n' linkRevGallerySeg (by decide) hfwd
+  have heval3 : memEvalStmtFuel 10 listLengthFunc.body
+      [("head", .ptrVal (some 2))] linkRevGalleryMem [] =
+      .ok ((ρ', m', []),
+        .returned (.u64 (BitVec.ofNat 64 3))) := heval
+  exact ⟨ρ', m', _, heval3, hm, rfl⟩
+
+/-- Append-tail bridge instance: chasing the gallery chain ends at
+    cell 0 with memory untouched. -/
+example : (match listAppendTailFwd 10 linkRevGalleryMem (some 2) with
+    | .ok (m', t) => decide (m' = linkRevGalleryMem) && t == some 0
+    | .error _ => false) = true := by
+  native_decide
+
+/-- Append node gallery: a single caller-owned cell. -/
+def listAppendGalleryMem : Mem :=
+  (memAllocData emptyMem [(5 : BitVec 32), 0]).1
+
+theorem listAppendGalleryHex : ∀ x,
+    (memFind listAppendGalleryMem x).isSome = true → x + 1 < 2 ^ 32 := by
+  intro x hx
+  by_cases h0 : x = 0
+  · subst h0
+    decide
+  · simp [listAppendGalleryMem, memAllocData, memFind, emptyMem,
+      beq_iff_eq, h0] at hx
+
+theorem listAppendGalleryNode :
+    nodeAt listAppendGalleryMem 0 0 5 none := by
+  simp [nodeAt, cellsAt, listAppendGalleryMem, memAllocData,
+    memFind, emptyMem, linkWord]
+
+/-- Entry triple instance: appending to the empty chain returns the
+    node with its link normalized. -/
+example : ∃ ρ' m' hd', memEvalStmtFuel 10 listAppendFunc.body
+    [("head", .ptrVal none), ("nd", .ptrVal (some 0))]
+    listAppendGalleryMem [] =
+    .ok ((ρ', m', []), .returned (.ptrVal hd')) ∧
+    ListSeg m' hd' [5] := by
+  obtain ⟨m', hd', hfwd⟩ :
+      ∃ m' hd', listAppendFwd 10 listAppendGalleryMem none (some 0) =
+        .ok (m', hd') := by
+    have hok : (match listAppendFwd 10 listAppendGalleryMem none (some 0) with
+      | .ok _ => true | .error _ => false) = true := by native_decide
+    cases h : listAppendFwd 10 listAppendGalleryMem none (some 0) with
+    | ok p =>
+      obtain ⟨m', hd'⟩ := p
+      rw [← h]
+      exact ⟨m', hd', h⟩
+    | error e =>
+      rw [h] at hok
+      simp at hok
+  obtain ⟨ρ', heval, hlist⟩ := listAppendFunc_correct 10
+    listAppendGalleryMem [] listAppendGalleryHex none 0 [] 5 0 none
+    m' hd' ListSeg.nil listAppendGalleryNode (fun b hb => nomatch hb)
+    (by decide) hfwd
+  exact ⟨ρ', m', hd', heval, hlist⟩
 
 /-- Closed-instance runtime checks — executable shadows of the
     gallery triples at one point each (the proofs themselves are

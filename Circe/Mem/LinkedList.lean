@@ -433,6 +433,17 @@ theorem nodeAt_store_other {m m' : Mem} {a' c : Addr} {t ti i : Nat}
   rw [memFind_memStore_other _ _ _ _ _ _ _ hstore hne] at h
   exact h
 
+/-- A points-to fact survives a store elsewhere (forward:
+    other-address stores preserve the cell). -/
+theorem nodeAt_store_other_fwd {m m' : Mem} {c a' : Addr} {t ti i : Nat}
+    {v x : BitVec 32} {n : Option Addr}
+    (h : nodeAt m c t v n)
+    (hstore : memStore m a' ti i x = .ok m') (hne : c ≠ a') :
+    nodeAt m' c t v n := by
+  unfold nodeAt cellsAt at h ⊢
+  rw [memFind_memStore_other m m' a' c ti i x hstore hne]
+  exact h
+
 /-- Membership survives a store elsewhere (twin-segment
     transport: the same segment before and after). -/
 theorem SegMem_of_store {m m' : Mem} {s : Option Addr}

@@ -962,6 +962,89 @@ def emitLinkedReverseText (name : String) : String :=
   ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr) : Result (Mem × Option Addr) :=\n"
   ++ s!"  {name}_rev_outer_fwd F m none head\n"
 
+/-- Render the `list_length` entry forward definition: the
+    read-only node count over `Mem` (link load only; null,
+    missing, or short reads are `AssertFail`; cyclic input
+    exhausts fuel). -/
+def emitListLengthText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (read-only node count over `Mem`; the counter starts at zero). -/\n"
+  ++ s!"def {name}_len_outer_fwd (F : Nat) (m : Mem) (cur : Option Addr) (n : Nat) :\n"
+  ++ "    Result (Mem × Nat) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 =>\n"
+  ++ "    match cur with\n"
+  ++ "    | none => .ok (m, n)\n"
+  ++ "    | some _ => .error .AssertFail\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    match cur with\n"
+  ++ "    | none => .ok (m, n)\n"
+  ++ "    | some a =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 1 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ s!"        | .ok w => {name}_len_outer_fwd F m (addrOfWord w) (n + 1)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr) : Result (Mem × Nat) :=\n"
+  ++ s!"  {name}_len_outer_fwd F m head 0\n"
+
+/-- Render the `list_append` entry forward definition: the
+    normalize-then-swing tail insertion over `Mem` (the node link
+    is normalized first, the tail is chased with the same
+    guard-first link read as the entry leg, then the tail link
+    swings to the node; null, missing, or short links are
+    `AssertFail`; cyclic input exhausts fuel). -/
+def emitListAppendText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (tail insertion over `Mem`; the node link is normalized first). -/\n"
+  ++ s!"def {name}_append_tail_fwd (F : Nat) (m : Mem) (cur : Option Addr) :\n"
+  ++ "    Result (Mem × Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "  | some a =>\n"
+  ++ "    match memFind m a with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some b =>\n"
+  ++ "      match memLoad m a b.tag 1 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok w =>\n"
+  ++ "        match addrOfWord w with\n"
+  ++ "        | none => .ok (m, some a)\n"
+  ++ "        | some n =>\n"
+  ++ "          match F with\n"
+  ++ "          | 0 => .error .AssertFail\n"
+  ++ s!"          | F + 1 => {name}_append_tail_fwd F m (some n)\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head nd : Option Addr) : Result (Mem × Option Addr) :=\n"
+  ++ "  match nd with\n"
+  ++ "  | none => .error .AssertFail\n"
+  ++ "  | some d =>\n"
+  ++ "    match memFind m d with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some bd =>\n"
+  ++ "      match memStore m d bd.tag 1 (linkWord none) with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok m1 =>\n"
+  ++ "        match head with\n"
+  ++ "        | none => .ok (m1, nd)\n"
+  ++ "        | some _ =>\n"
+  ++ s!"          match {name}_append_tail_fwd F m1 head with\n"
+  ++ "          | .error e => .error e\n"
+  ++ "          | .ok (m2, tail) =>\n"
+  ++ "            match tail with\n"
+  ++ "            | none => .error .AssertFail\n"
+  ++ "            | some t =>\n"
+  ++ "              match memFind m2 t with\n"
+  ++ "              | none => .error .AssertFail\n"
+  ++ "              | some bt =>\n"
+  ++ "                match memStore m2 t bt.tag 1 (linkWord nd) with\n"
+  ++ "                | .error e => .error e\n"
+  ++ "                | .ok m3 => .ok (m3, head)\n"
+
 /-- Render the `vec_seg_reverse` entry forward definition: window
     reversal over the reified words (`take`/`drop` saturate, so the
     mirror agrees with native on every in-bounds `[lo, hi)`). -/
