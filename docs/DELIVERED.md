@@ -2375,3 +2375,61 @@ compile-gated).
   (`GOLDENLISTERASE-OK passed=9`,
   `GOLDENPUSHFRONT-OK passed=8` unchanged); gallery
   compiles (`lake build HoareGallery`).
+
+### P1-find. First-match query (`list_find`) — DONE (2026-11-01)
+
+Pillar-1 proposed goal #3: the third traversal consumer,
+reusing the chase kit before new mechanism —
+`Node *list_find(Node *head, int val)` chases with a
+single cursor and returns the first node holding `val`
+(`nullptr` on miss or empty input). Read-only by design:
+no chain stores, no `malloc`, no `free`. Corpus
+`tests/cpp/list_find.cpp` + real CIRGen
+`tests/cir/list_find.cir` (2 params `Node*` + `i32`,
+`Node*` out; 4 allocas / 10 loads / 6 stores, one
+`while`, one `cir.if`, 2 `cir.cmp` (guard `ne` +
+payload `eq`), 2 `cir.get_member` (`[0]` payload /
+`[1]` link), 2 `cir.const`, no casts, no calls at all).
+`isListFindShape` pins exactly that (the `[0]`
+projection separates it from the payload-blind
+`list_length`/`linked_reverse` chases; zero `cir.call @` /
+`freeCallCount` separates it from the mutating
+`list_erase`); Gate arm admitted via the existing
+single-pointer exemption with an honest `unknown` oracle
+verdict — no blessed-listing change; the returned node
+(or null) bypasses the escape-reject branches exactly
+like the admitted shapes before it.
+
+No new mechanism (E2 reuse verdict): the payload compare
+rides the P1-erase `CExpr.pgetVal` kit, the loop on the
+existing `while`/`if_`/`return`/`assign` dischargers —
+no CoreIR constructor added, no exhaustive match touched.
+`Circe/Emit/ListFind.lean`: `listFindChase` (read-only,
+hit needs fuel too), `listFindFwd` mirror (entry is the
+chase — forward identification is direct, no unlink
+equations), `listFindFwd_correct` (hit returns a chain
+node holding the payload, miss means absence — direct
+induction, no surgery), `listFindLoop_agree` (miss falls
+through with the cursor at null, hit early-returns the
+cursor), entry triple `listFindFunc_correct` (seed let +
+loop agree + final null return).
+
+Emitter + Gate wiring (`FragKind.listFind`,
+`matchFrag_listFind`, spec/render texts, `Emit.lean`
+arms, Gate shape arm); goldens
+`tests/golden/ListFind.lean` (+`_Spec`, 7-edge
+`spec_check` true by `#eval`: head-hit, interior-hit
+(with payload check on the found node), miss, empty,
+singleton-hit, singleton-miss, missing head);
+`GoldenListFind` pipeline (with `unknown` oracle fact) +
+rejection gates (three-pointer variant still
+`alias-reject`; free-added variant `escape-reject` — the
+read-only chain is freed, then its node returned;
+shape-exactness both directions vs `list_erase`/
+`list_append`/`list_length`/`linked_reverse`/`list_rev`/
+`push_front`; 10 checks); gallery instance (module
+import, compile-gated).
+- Acceptance: full gate 547/547 TEST-OK
+  (`GOLDENLISTFIND-OK passed=10`,
+  `GOLDENLISTERASE-OK passed=9` unchanged); gallery
+  compiles (`lake build HoareGallery`).
