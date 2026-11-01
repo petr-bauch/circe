@@ -314,14 +314,15 @@ theorem htriple_return (e : CExpr)
     memEvalStmtFuel_return F e ρ₀ m₀ π₀ v h hv, rfl, rfl⟩
 
 /-- `let_` binds a pure value, extending the environment. The
-    allocating arms (`vnew` / `boxNew` / `vgrowNew`) are excluded
-    by hypotheses — the caller discharges them per concrete RHS
-    (each is a constructor discrimination). -/
+    allocating arms (`vnew` / `boxNew` / `vgrowNew` / `nnew`) are
+    excluded by hypotheses — the caller discharges them per concrete
+    RHS (each is a constructor discrimination). -/
 theorem htriple_let (x : String) (ty : CType) (e : CExpr)
     (ρ : Env) (m : Mem) (π : Layout) (v : Value)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
     (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
+    (hnotN : e ≠ .nnew)
     (h : memEvalExpr e ρ m π = evalExpr e ρ)
     (hv : evalExpr e ρ = .ok v) :
     HTriple (fun st => st = (ρ, m, π)) (.let_ x ty e)
@@ -330,7 +331,7 @@ theorem htriple_let (x : String) (ty : CType) (e : CExpr)
   simp only [Prod.mk.injEq] at hP
   obtain ⟨rfl, rfl, rfl⟩ := hP
   exact ⟨_, _, _, _, memEvalStmtFuel_let_pure F x ty e ρ₀ m₀ π₀ v
-    hnot hnotBox hnotGrow h hv, rfl, rfl⟩
+    hnot hnotBox hnotGrow hnotN h hv, rfl, rfl⟩
 
 /-- `assign` updates the environment binding, memory untouched. -/
 theorem htriple_assign (x : String) (e : CExpr)

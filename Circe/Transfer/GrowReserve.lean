@@ -185,7 +185,7 @@ theorem memEvalProgFunc_stdVecReserve (F : Nat) (b : Vec32) (len cap : Nat)
               tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) := by
         rw [memEvalProgStmt_let_fb]
         exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
           hmemZero hzero
       have htLen : envLookup (envExtend
             [("t", .stdVecOwned b len cap), ("n", .u64 n)]
@@ -221,7 +221,7 @@ theorem memEvalProgFunc_stdVecReserve (F : Nat) (b : Vec32) (len cap : Nat)
             tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) := by
         rw [memEvalProgStmt_let_fb]
         exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
           hlenOldMem hlenOldEval
       have htCap2 : envLookup (envExtend (envExtend
             [("t", .stdVecOwned b len cap), ("n", .u64 n)]
@@ -260,7 +260,7 @@ theorem memEvalProgFunc_stdVecReserve (F : Nat) (b : Vec32) (len cap : Nat)
             tripleMem b len cap, [("t", 0, 0)]), .fellThrough)) := by
         rw [memEvalProgStmt_let_fb]
         exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
           hcapOldMem hcapOldEval
       have hcallAl : memEvalFuncFuel F stdVecAllocFunc [.u64 n] =
           stdVecAllocFwd n :=

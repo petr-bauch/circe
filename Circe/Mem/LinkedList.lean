@@ -643,6 +643,60 @@ theorem SegMem_store_avoid {m m'' : Mem} {a' : Addr} {t i : Nat}
         rw [hm] at hnone
         exact absurd hnone (by simp)
 
+/-- A points-to fact survives allocation elsewhere: the fresh
+    binding sits at the head of the block list, so a different
+    address keeps its old lookup. -/
+theorem nodeAt_alloc_other {m : Mem} {c t : Nat} {v : BitVec 32}
+    {n : Option Addr} (h : nodeAt m c t v n) (d : List (BitVec 32))
+    (hne : c ≠ m.next) :
+    nodeAt (memAllocData m d).1 c t v n := by
+  unfold nodeAt cellsAt at h ⊢
+  rw [memFind_memAllocData_other m d c hne]
+  exact h
+
+/-- A segment rides an allocation followed by two stores to the
+    fresh cell (the `push_front` shape: payload then link):
+    induction on the original segment — each node carries its own
+    lookup, so each node differs from the fresh address (a live
+    lookup contradicts freshness), and the three transport legs
+    (`alloc_other`, then `store_other_fwd` twice) apply node by
+    node. No membership reasoning: the fresh cell is never a
+    segment member in the pre-state. -/
+theorem ListSeg.alloc_stores_other {m : Mem} {s : Option Addr}
+    {vs : List (BitVec 32)} (h : ListSeg m s vs)
+    (hmfresh : memFind m m.next = none)
+    {m1 m2 m3 : Mem} {a' : Addr}
+    {t1 i1 : Nat} {x1 : BitVec 32}
+    {t2 i2 : Nat} {x2 : BitVec 32}
+    (ha' : a' = m.next)
+    (halloc : m1 = (memAlloc m 2).1)
+    (hstore1 : memStore m1 a' t1 i1 x1 = .ok m2)
+    (hstore2 : memStore m2 a' t2 i2 x2 = .ok m3) :
+    ListSeg m3 s vs := by
+  have hdiff : ∀ (c t : Nat) (v : BitVec 32) (n : Option Addr),
+      nodeAt m c t v n → c ≠ m.next := by
+    intro c t v n hc heq
+    have hfind : memFind m c = some _ := hc
+    rw [heq] at hfind
+    rw [hmfresh] at hfind
+    simp at hfind
+  have hbridge : (memAlloc m 2).1 =
+      (memAllocData m (List.replicate 2 0)).1 := rfl
+  induction h with
+  | nil => exact .nil
+  | cons hnode _ ih =>
+      have h1 := nodeAt_alloc_other hnode (List.replicate 2 0)
+        (hdiff _ _ _ _ hnode)
+      rw [← hbridge, ← halloc] at h1
+      have h2 := nodeAt_store_other_fwd h1 hstore1 (by
+        rw [ha']
+        exact hdiff _ _ _ _ hnode)
+      exact .cons
+        (nodeAt_store_other_fwd h2 hstore2 (by
+          rw [ha']
+          exact hdiff _ _ _ _ hnode))
+        ih
+
 /-- Segments are acyclic: chase visits are unique, and no head is
     reachable from its own tail. -/
 theorem ListSeg_acyclic_aux (k : Nat) :

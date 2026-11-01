@@ -866,7 +866,7 @@ theorem memEvalFuncFuel_stdVecShiftBack (F : Nat) (b : Vec32)
     memEvalStmtFuel_let_pure F "k" (.u 64)
       (.usub (.var "last") (.var "first")) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) mhnEval0 hnEval0
+      (by intro ce h; cases h) (by intro h; cases h) mhnEval0 hnEval0
   have hlast1 : evalExpr (.var "last")
       [(("k", .u64 (BitVec.ofNat 64 (last.toNat - first.toNat)))),
         ("t", .stdVecOwned b len cap),
@@ -934,7 +934,7 @@ theorem memEvalFuncFuel_stdVecShiftBack (F : Nat) (b : Vec32)
     memEvalStmtFuel_let_pure F "n" (.u 64)
       (.usub (.var "last") (.var "first")) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) mhnEval1 hnEval1
+      (by intro ce h; cases h) (by intro h; cases h) mhnEval1 hnEval1
   have hres : evalExpr (.var "result")
       [(("n", .u64 (last - first))),
         (("k", .u64 (BitVec.ofNat 64 (last.toNat - first.toNat)))),
@@ -1009,7 +1009,7 @@ theorem memEvalFuncFuel_stdVecShiftBack (F : Nat) (b : Vec32)
     memEvalStmtFuel_let_pure F "doff" (.u 64)
       (.usub (.var "result") (.var "n")) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) mhdoffEval hdoffEval
+      (by intro ce h; cases h) (by intro h; cases h) mhdoffEval hdoffEval
   have hF0 : last.toNat - first.toNat + 1 ≤ F := hF
   have hdofft0 : result.toNat - (last.toNat - first.toNat) =
       (result - (last - first)).toNat := by

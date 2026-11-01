@@ -497,7 +497,7 @@ theorem segMemEvalProgFunc (prog : Prog) (F : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ [("v", 0, 0)]
     (.u64 loB)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) (memEvalExpr_var _ _ _ _)
+    (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_var _ _ _ _)
     (evalExpr_var_hit _ _ _ hlo₀)
   have hi₁ : envLookup (envExtend [("v", .stdVecVal l), ("lo", .u64 loB),
       ("hi", .u64 hiB)] "i" (.u64 loB)) "i" = some (.u64 loB) :=
@@ -515,7 +515,7 @@ theorem segMemEvalProgFunc (prog : Prog) (F : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ [("v", 0, 0)]
     (.u64 hiB)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) (memEvalExpr_var _ _ _ _)
+    (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_var _ _ _ _)
     (evalExpr_var_hit _ _ _ hhi₀)
   have hj₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("lo", .u64 loB), ("hi", .u64 hiB)] "i" (.u64 loB)) "j"

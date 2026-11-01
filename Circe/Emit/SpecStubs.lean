@@ -1938,6 +1938,60 @@ def emitListAppendSpecText (name : String) : String :=
   ++ "    | .error _, none => true\n"
   ++ "    | _, _ => false\n"
 
+/-- Spec stub for the `push_front` entry. The mirror allocates the
+    fresh cell and conses it (cf. emitted `{name}_fwd`,
+    `pushFrontFwd` for the entry leg). Edges pin the fresh address
+    AND the payload order (chased through the new link), plus the
+    firewall leg: a dangling head still succeeds (never
+    dereferenced). Total — no error edges; the fuel slot is unused
+    (the mirror takes no fuel). -/
+def emitPushFrontSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- C++ signature: `{name}(head, v)` prepends a fresh `Node` holding `v` to the `head`-rooted chain, returning the fresh cell. Base body reference: the same allocate-store-store-return (cf. emitted `{name}_fwd`, `pushFrontFwd` for the entry leg). Allocation is infallible; the old list is never read. -/\n"
+  ++ s!"def {name}_spec_fwd (m : Mem) (head : Option Addr) (v : BitVec 32) :\n"
+  ++ "    Result (Mem × Option Addr) :=\n"
+  ++ "  match memStore (memAlloc m 2).1 (memAlloc m 2).2\n"
+  ++ "      (memAlloc m 2).2 0 v with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok m2 =>\n"
+  ++ "    match memStore m2 (memAlloc m 2).2 (memAlloc m 2).2 1\n"
+  ++ "        (linkWord head) with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok m3 => .ok (m3, some (memAlloc m 2).2)\n"
+  ++ "\n"
+  ++ s!"/-- Payloads chased from a head (fuel-bounded; link words decode through `addrOfWord`). -/\n"
+  ++ s!"def {name}_chainVals (m : Mem) (head : Option Addr) (F : Nat) : List (BitVec 32) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 => []\n"
+  ++ "  | F + 1 =>\n"
+  ++ "    match head with\n"
+  ++ "    | none => []\n"
+  ++ "    | some a =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => []\n"
+  ++ "      | some b =>\n"
+  ++ "        match b.data[0]? with\n"
+  ++ "        | none => []\n"
+  ++ s!"        | some v => v :: {name}_chainVals m (addrOfWord ((b.data[1]?.getD 0))) F\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: 2-chain prepend, singleton prepend, empty-head prepend, dangling-head prepend (never dereferenced), zero payload. -/\n"
+  ++ s!"def {name}_spec_edges : List (Nat × Mem × Option Addr × BitVec 32 × Option (Option Addr × List (BitVec 32))) :=\n"
+  ++ "  [(10, (memAllocData (memAllocData emptyMem [(10 : BitVec 32), 2]).1 [(20 : BitVec 32), 0]).1, some 0, (7 : BitVec 32), some (some 2, [7, 10, 20])),\n"
+  ++ "   (10, (memAllocData emptyMem [(7 : BitVec 32), 0]).1, some 0, (5 : BitVec 32), some (some 1, [5, 7])),\n"
+  ++ "   (10, emptyMem, none, (9 : BitVec 32), some (some 0, [9])),\n"
+  ++ "   (10, (memAllocData emptyMem [(7 : BitVec 32), 0]).1, some 5, (5 : BitVec 32), some (some 1, [5])),\n"
+  ++ "   (10, emptyMem, none, (0 : BitVec 32), some (some 0, [0]))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge (the fuel slot is unused: the total mirror takes no fuel). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match {name}_spec_fwd t.2.1 t.2.2.1 t.2.2.2.1, t.2.2.2.2 with\n"
+  ++ "    | .ok (m', p'), some (q', vs) =>\n"
+  ++ s!"      p' == q' && {name}_chainVals m' p' 32 == vs\n"
+  ++ "    | .error _, none => true\n"
+  ++ "    | _, _ => false\n"
+
 /-- Spec stub for the `list_reverse` entry. The mirror is the same
     raw-pointer chase over `Mem` (cf. emitted `{name}_fwd`); edges pin
     the new head AND the payload order (chased through the rewired

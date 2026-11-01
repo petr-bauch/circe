@@ -1045,6 +1045,25 @@ def emitListAppendText (name : String) : String :=
   ++ "                | .error e => .error e\n"
   ++ "                | .ok m3 => .ok (m3, head)\n"
 
+/-- Render the `push_front` entry forward definition: allocate the
+    fresh 2-word cell, store the payload at `[0]` and the head link
+    at `[1]`, return the fresh address (total — every step succeeds
+    on the fresh live block). -/
+def emitPushFrontText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (node prepend over `Mem`; the cell is freshly allocated). -/\n"
+  ++ s!"def {name}_fwd (m : Mem) (head : Option Addr) (v : BitVec 32) :\n"
+  ++ "    Result (Mem × Option Addr) :=\n"
+  ++ "  match memStore (memAlloc m 2).1 (memAlloc m 2).2\n"
+  ++ "      (memAlloc m 2).2 0 v with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok m2 =>\n"
+  ++ "    match memStore m2 (memAlloc m 2).2 (memAlloc m 2).2 1\n"
+  ++ "        (linkWord head) with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok m3 => .ok (m3, some (memAlloc m 2).2)\n"
+
 /-- Render the `vec_seg_reverse` entry forward definition: window
     reversal over the reified words (`take`/`drop` saturate, so the
     mirror agrees with native on every in-bounds `[lo, hi)`). -/

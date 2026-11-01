@@ -909,7 +909,7 @@ theorem memEvalFuncFuel_boxThrough (F : Nat) (x : BitVec 32) :
         .fellThrough) :=
     memEvalStmtFuel_let_pure F "r" _ _ _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) hagree hgetEval
+      (by intro ce h; cases h) (by intro h; cases h) hagree hgetEval
   have hfree0 : boxFree (⟨x, false⟩ : Box32) = .ok ⟨x, true⟩ :=
     boxFree_ok _ rfl
   obtain ⟨mFree, hmfree, _hfindFree⟩ := vboxFree_lockstep

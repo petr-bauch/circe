@@ -1150,7 +1150,7 @@ theorem memEvalProgFunc_vecTransformAdd_ok (F : Nat)
       (BitVec.ofNat 32 lo.length) :: lo⟩)], []⟩
     [("in", 1, 1), ("out", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlitM hlitV
+    (by intro ce h; cases h) (by intro h; cases h) hlitM hlitV
   have hiN : (BitVec.ofNat 64 0).toNat = 0 := by
     simp [BitVec.toNat_ofNat]
   have hin₁ : envLookup (envExtend
@@ -1267,7 +1267,7 @@ theorem memEvalProgFunc_vecTransformAdd_err_short (F : Nat)
       (BitVec.ofNat 32 lo.length) :: lo⟩)], []⟩
     [("in", 1, 1), ("out", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlitM hlitV
+    (by intro ce h; cases h) (by intro h; cases h) hlitM hlitV
   have hiN : (BitVec.ofNat 64 0).toNat = 0 := by
     simp [BitVec.toNat_ofNat]
   have hin₁ : envLookup (envExtend
@@ -1378,7 +1378,7 @@ theorem memEvalProgFunc_vecTransformAdd_err_add (F : Nat)
       (BitVec.ofNat 32 lo.length) :: lo⟩)], []⟩
     [("in", 1, 1), ("out", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlitM hlitV
+    (by intro ce h; cases h) (by intro h; cases h) hlitM hlitV
   have hiN : (BitVec.ofNat 64 0).toNat = 0 := by
     simp [BitVec.toNat_ofNat]
   have hin₁ : envLookup (envExtend

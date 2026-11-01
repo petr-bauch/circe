@@ -639,7 +639,7 @@ theorem linkRevFunc_correct (F : Nat) (m : Mem) (π : Layout)
         .ok (.ptrVal none) := by simp [evalExpr, litVal]
     have hL1 := memEvalStmtFuel_let_pure F "prev" nodeTy
       (.lit .nullptr) _ _ _ (.ptrVal none)
-      (by simp) (by simp) (by simp) eP vP
+      (by simp) (by simp) (by simp) (by simp) eP vP
     have eC : memEvalExpr (.var "head")
         [("prev", .ptrVal none), ("head", .ptrVal head)] m π =
         evalExpr (.var "head")
@@ -650,7 +650,7 @@ theorem linkRevFunc_correct (F : Nat) (m : Mem) (π : Layout)
         .ok (.ptrVal head) :=
       evalExpr_var_hit _ _ _ (by simp [envLookup])
     have hL2 := memEvalStmtFuel_let_pure F "cur" nodeTy (.var "head")
-      _ _ _ (.ptrVal head) (by simp) (by simp) (by simp) eC vC
+      _ _ _ (.ptrVal head) (by simp) (by simp) (by simp) (by simp) eC vC
     have eN : memEvalExpr (.lit .nullptr)
         [("cur", .ptrVal head), ("prev", .ptrVal none),
           ("head", .ptrVal head)] m π =
@@ -663,7 +663,7 @@ theorem linkRevFunc_correct (F : Nat) (m : Mem) (π : Layout)
           ("head", .ptrVal head)] = .ok (.ptrVal none) := by
       simp [evalExpr, litVal]
     have hL3 := memEvalStmtFuel_let_pure F "nxt" nodeTy (.lit .nullptr)
-      _ _ _ (.ptrVal none) (by simp) (by simp) (by simp) eN vN
+      _ _ _ (.ptrVal none) (by simp) (by simp) (by simp) (by simp) eN vN
     have s1 := memEvalStmtFuel_seq_fallthrough F
       (.let_ "prev" nodeTy (.lit .nullptr))
       (.seq (.let_ "cur" nodeTy (.var "head"))

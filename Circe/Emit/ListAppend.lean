@@ -904,7 +904,7 @@ theorem listAppendFunc_correct (F : Nat) (m : Mem) (π : Layout)
           have hL := memEvalStmtFuel_let_pure F "cur" nodeTy
             (.var "head")
             [("head", .ptrVal (some a)), ("nd", .ptrVal (some d))] m1 π
-            (.ptrVal (some a)) (by simp) (by simp) (by simp)
+            (.ptrVal (some a)) (by simp) (by simp) (by simp) (by simp)
             hseedE hseedV
           simpa [listAppendSeed, mkListAppendEnv] using hL
         -- Chase: the bridge fires the tail forward.

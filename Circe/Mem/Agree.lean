@@ -264,12 +264,14 @@ theorem memEvalStmtFuel_seq_return (f : Nat) (a b : CStmt) (ρ : Env)
 /-- Pure `let_` agrees when the bound expression does (`vnew` takes
     the allocating arm instead — see `memEvalStmtFuel_let_vnew`;
     `boxNew` takes its own allocating arm — see
-    `memEvalStmtFuel_let_boxNew`). -/
+    `memEvalStmtFuel_let_boxNew`; `nnew` takes its own allocating
+    arm — see `memEvalStmtFuel_let_nnew`). -/
 theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
     (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (v : Value)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
     (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
+    (hnotN : e ≠ .nnew)
     (h : memEvalExpr e ρ m π = evalExpr e ρ)
     (hv : evalExpr e ρ = .ok v) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π =
@@ -278,6 +280,7 @@ theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
   | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
+  | .nnew => exact absurd rfl hnotN
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv]
 
@@ -289,12 +292,14 @@ theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
     (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
+    (hnotN : e ≠ .nnew)
     (h : memEvalExpr e ρ m π = .error err) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π = .error err := by
   match e with
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
   | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
+  | .nnew => exact absurd rfl hnotN
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
 
@@ -376,6 +381,35 @@ theorem memEvalStmtFuel_psetNext_err (f : Nat) (dst link : CExpr)
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
       hd, hl, hfind, hstore]
 
+/-- `psetVal` stores the payload at index 0 (the `memEvalStmtFuel`
+    twin of `psetNext_ok`: value env and layout untouched; any
+    fuel). -/
+theorem memEvalStmtFuel_psetVal_ok (f : Nat) (dst ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (x : BitVec 32) (b : Block) (m' : Mem)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 x))
+    (hfind : memFind m a = some b)
+    (hstore : memStore m a b.tag 0 x = .ok m') :
+    memEvalStmtFuel f (.psetVal dst ve) ρ m π =
+      .ok (((ρ, m', π)), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hv, hfind, hstore]
+
+/-- `psetVal` propagates `memStore` errors (any fuel). -/
+theorem memEvalStmtFuel_psetVal_err (f : Nat) (dst ve : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (x : BitVec 32) (b : Block) (e : Panic)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hv : memEvalExpr ve ρ m π = .ok (.i32 x))
+    (hfind : memFind m a = some b)
+    (hstore : memStore m a b.tag 0 x = .error e) :
+    memEvalStmtFuel f (.psetVal dst ve) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hv, hfind, hstore]
+
 /-- Allocating `let_` (`vnew`): the value side runs `vecNew`, the
     memory side additionally pins a fresh block holding the same words,
     extending the layout. -/
@@ -419,6 +453,17 @@ theorem memEvalStmtFuel_let_boxNew (f : Nat) (x : String) (ty : CType)
       .ok (((x, .boxVal b) :: ρ, m', (x, a, a) :: π), .fellThrough) := by
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse, hnew]
+
+/-- Allocating `let_` (`nnew`: the raw 2-word `malloc` node cell):
+    the memory side pins a fresh zeroed 2-word block and binds the
+    fresh address as a raw pointer; the layout is untouched (there is
+    no value mirror for raw pointers). -/
+theorem memEvalStmtFuel_let_nnew (f : Nat) (x : String) (ty : CType)
+    (ρ : Env) (m : Mem) (π : Layout) :
+    memEvalStmtFuel f (.let_ x ty .nnew) ρ m π =
+      let (m', a) := memAlloc m 2
+      .ok (((x, .ptrVal (some a)) :: ρ, m', π), .fellThrough) := by
+  cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
 
 /-- Allocating `let_` (`vgrowNew` over a `u64` capacity): the value
     side builds the empty triple over fresh zeroed storage, the memory
@@ -469,6 +514,19 @@ theorem memFind_cons_miss (n : Nat) (bs : List (Nat × Block))
     | true => exact absurd (beq_iff_eq.mp heq) h
     | false => rfl
   simp [memFind, hbe]
+
+/-- Allocation preserves every other lookup (the fresh binding
+    sits at the head of the block list, so a different address
+    skips it; the bumped counter is irrelevant to lookup). -/
+theorem memFind_memAllocData_other (m : Mem) (d : List (BitVec 32))
+    (a : Addr) (hne : a ≠ m.next) :
+    memFind (memAllocData m d).1 a = memFind m a := by
+  obtain ⟨n, bs, g⟩ := m
+  have hne' : a ≠ n := hne
+  have e1 : (memAllocData ⟨n, bs, g⟩ d).1 =
+      ⟨n + 1, (n, ⟨n, true, d⟩) :: bs, g⟩ := rfl
+  rw [e1, memFind_cons_miss _ _ _ _ _ _ hne']
+  exact memFind_next_irrelevant _ _ _ _ _ _
 
 /-- Shadowing 64-bit updates hit. -/
 theorem memFind64_cons_hit (n : Nat) (bs : List (Nat × Block))

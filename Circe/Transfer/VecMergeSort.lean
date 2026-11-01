@@ -1837,7 +1837,7 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 (BitVec.ofNat 64 la.length))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     hlenAg hlen_n
   have hone : evalExpr (.lit (.u64 (BitVec.ofNat 64 1)))
       ([("n", .u64 (BitVec.ofNat 64 la.length)),
@@ -1861,7 +1861,7 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 (BitVec.ofNat 64 1))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     honeAg hone
   have hzero_e : ∀ (ρ : Env),
       evalExpr (.lit (.u64 (BitVec.ofNat 64 0))) ρ =
@@ -1881,7 +1881,7 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (hzeroAg _) (hzero_e _)
   have hlet_mid := memRevLet vecMergeSortProg F "mid" (.u 64)
     (.lit (.u64 (BitVec.ofNat 64 0)))
@@ -1890,7 +1890,7 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (hzeroAg _) (hzero_e _)
   have hlet_hi := memRevLet vecMergeSortProg F "hi" (.u 64)
     (.lit (.u64 (BitVec.ofNat 64 0)))
@@ -1899,7 +1899,7 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (hzeroAg _) (hzero_e _)
   have hlet_t := memRevLet vecMergeSortProg F "t" (.u 64)
     (.lit (.u64 (BitVec.ofNat 64 0)))
@@ -1908,7 +1908,7 @@ theorem memEvalProgFunc_vecMergeSort (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (hzeroAg _) (hzero_e _)
   have henv : (envExtend (envExtend (envExtend (envExtend (envExtend
       (envExtend [("a", .stdVecVal la), ("tmp", .stdVecVal lt)]

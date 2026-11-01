@@ -248,7 +248,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i0" (.u 64) _ _ _ _
-      (.u64 0) (by simp) (by simp) (by simp) rfl
+      (.u64 0) (by simp) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs0 : lookupArgs (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0))
       ["a", "i0"] = some [.arr32 [a, b, c, d], .u64 0] := by
@@ -271,7 +271,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i1" (.u 64) _ _ _ _
-      (.u64 (1 : BitVec 64)) (by simp) (by simp) (by simp) rfl
+      (.u64 (1 : BitVec 64)) (by simp) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs1 : lookupArgs (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1))
       ["a", "i1"] = some [.arr32 [a, b, c, d], .u64 1] := by
@@ -294,7 +294,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i2" (.u 64) _ _ _ _
-      (.u64 (2 : BitVec 64)) (by simp) (by simp) (by simp) rfl
+      (.u64 (2 : BitVec 64)) (by simp) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs2 : lookupArgs (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2))
       ["a", "i2"] = some [.arr32 [a, b, c, d], .u64 2] := by
@@ -317,7 +317,7 @@ theorem memEvalProgFunc_arraySum (F : Nat) (a b c d : BitVec 32) :
       .ok (((envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3)), ⟨1, [(0, ⟨0, true, [a, b, c, d]⟩)], []⟩, [("a", 0, 0)]), .fellThrough) := by
     simp only [memEvalProgStmt]
     exact memEvalStmtFuel_let_pure F "i3" (.u 64) _ _ _ _
-      (.u64 (3 : BitVec 64)) (by simp) (by simp) (by simp) rfl
+      (.u64 (3 : BitVec 64)) (by simp) (by simp) (by simp) (by simp) rfl
       (by simp [evalExpr, litVal])
   have hargs3 : lookupArgs (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend (envExtend [("a", .arr32 [a, b, c, d])] "i0" (.u64 0)) "e0" (.i32 a)) "i1" (.u64 1)) "e1" (.i32 b)) "i2" (.u64 2)) "e2" (.i32 c)) "i3" (.u64 3))
       ["a", "i3"] = some [.arr32 [a, b, c, d], .u64 3] := by
@@ -3153,7 +3153,7 @@ theorem memEvalFuncFuel_reborrow (F : Nat) (x : BitVec 32) :
       rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hx, h1]
       exact i32_map_error e
     have hlet := memEvalStmtFuel_let_err F "t" (.i 32) _ _ _ _ e
-      (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) hme
+      (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) (fun h => by cases h) hme
     rw [memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet]
     exact (reborrowFwd_err1 x e h1).symm
   | ok t =>
@@ -3167,7 +3167,7 @@ theorem memEvalFuncFuel_reborrow (F : Nat) (x : BitVec 32) :
       rw [evalExpr_add_var_lit _ _ _ _ hx, h1]
       exact i32_map_ok t
     have hlet := memEvalStmtFuel_let_pure F "t" (.i 32) _ _ _ _
-      (.i32 t) (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h)
+      (.i32 t) (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) (fun h => by cases h)
       hagree hv
     have ht : envLookup [("t", .i32 t), ("x", .i32 x)] "t" =
         some (.i32 t) :=
@@ -3241,7 +3241,7 @@ theorem memEvalFuncFuel_reborrow34 (F : Nat) (x : BitVec 32) :
       rw [memEvalExpr_add_var_lit _ _ _ _ _ _ hx, h1]
       exact i32_map_error e
     have hlet := memEvalStmtFuel_let_err F "t" (.i 32) _ _ _ _ e
-      (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) hme
+      (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) (fun h => by cases h) hme
     rw [memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet]
     exact (reborrow34Fwd_err1 x e h1).symm
   | ok t =>
@@ -3255,7 +3255,7 @@ theorem memEvalFuncFuel_reborrow34 (F : Nat) (x : BitVec 32) :
       rw [evalExpr_add_var_lit _ _ _ _ hx, h1]
       exact i32_map_ok t
     have hlet := memEvalStmtFuel_let_pure F "t" (.i 32) _ _ _ _
-      (.i32 t) (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h)
+      (.i32 t) (fun _ h => by cases h) (fun _ h => by cases h) (fun _ h => by cases h) (fun h => by cases h)
       hagree hv
     have ht : envLookup [("t", .i32 t), ("x", .i32 x)] "t" =
         some (.i32 t) :=
@@ -3335,7 +3335,7 @@ theorem memEvalFuncFuel_wrPair (F : Nat) (p q : BitVec 32) :
       exact i32_map_error e
     have hlet := memEvalStmtFuel_let_err F "a" (.i 32) _ _ _ _ e
       (fun _ h => by cases h) (fun _ h => by cases h)
-      (fun _ h => by cases h) hme
+      (fun _ h => by cases h) (fun h => by cases h) hme
     rw [memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet]
     exact (wrPairFwd_err1 p q e h1).symm
   | ok a =>
@@ -3351,7 +3351,7 @@ theorem memEvalFuncFuel_wrPair (F : Nat) (p q : BitVec 32) :
       exact i32_map_ok a
     have hlet := memEvalStmtFuel_let_pure F "a" (.i 32) _ _ _ _
       (.i32 a) (fun _ h => by cases h) (fun _ h => by cases h)
-      (fun _ h => by cases h) hagree hv
+      (fun _ h => by cases h) (fun h => by cases h) hagree hv
     -- NOTE: `memEvalStmtFuel_let_pure` concludes with `::`-cons
     -- envs (not `envExtend`), so every fact below the first `let`
     -- uses the literal cons form (F1 precedent).
@@ -3367,7 +3367,7 @@ theorem memEvalFuncFuel_wrPair (F : Nat) (p q : BitVec 32) :
         exact i32_map_error e
       have hlet2 := memEvalStmtFuel_let_err F "b" (.i 32) _ _ _ _ e
         (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hme2
+        (fun _ h => by cases h) (fun h => by cases h) hme2
       rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
         memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet2]
       exact (wrPairFwd_err2 p q a e h1 h2).symm
@@ -3386,7 +3386,7 @@ theorem memEvalFuncFuel_wrPair (F : Nat) (p q : BitVec 32) :
         exact i32_map_ok b
       have hlet2 := memEvalStmtFuel_let_pure F "b" (.i 32) _ _ _ _
         (.i32 b) (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hagree2 hv2
+        (fun _ h => by cases h) (fun h => by cases h) hagree2 hv2
       have ha2 : envLookup [("b", .i32 b), ("a", .i32 a),
           ("p", .i32 p), ("q", .i32 q)] "a" = some (.i32 a) := by
         simp [envLookup, show ("a" : String) ≠ "b" by decide]
@@ -3496,7 +3496,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
         exact i32_map_error e
       have hlet := memEvalStmtFuel_let_err F "a" (.i 32) _ _ _ _ e
         (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hme
+        (fun _ h => by cases h) (fun h => by cases h) hme
       rw [memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet]
       exact (condPairFwd_err_p p q e h1).symm
     | ok a =>
@@ -3514,7 +3514,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
           (evalExpr_var_hit _ _ _ hc0), hvT]
       have hlet := memEvalStmtFuel_let_pure F "a" (.i 32) _ _ _ _
         (.i32 a) (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hagree hv
+        (fun _ h => by cases h) (fun h => by cases h) hagree hv
       have hq : envLookup [("a", .i32 a), ("p", .i32 p),
           ("q", .i32 q), ("c", .b true)] "q" = some (.i32 q) := by
         simp [envLookup, show ("q" : String) ≠ "a" by decide]
@@ -3527,7 +3527,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
           exact i32_map_error e
         have hlet2 := memEvalStmtFuel_let_err F "b" (.i 32) _ _ _ _ e
           (fun _ h => by cases h) (fun _ h => by cases h)
-          (fun _ h => by cases h) hme2
+          (fun _ h => by cases h) (fun h => by cases h) hme2
         rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
           memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet2]
         exact (condPairFwd_err_q_true p q a e h1 h2).symm
@@ -3547,7 +3547,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
           exact i32_map_ok b
         have hlet2 := memEvalStmtFuel_let_pure F "b" (.i 32) _ _ _ _
           (.i32 b) (fun _ h => by cases h) (fun _ h => by cases h)
-          (fun _ h => by cases h) hagree2 hv2
+          (fun _ h => by cases h) (fun h => by cases h) hagree2 hv2
         have ha2 : envLookup [("b", .i32 b), ("a", .i32 a),
             ("p", .i32 p), ("q", .i32 q), ("c", .b true)] "a" =
             some (.i32 a) := by
@@ -3619,7 +3619,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
         (evalExpr_var_hit _ _ _ hc0), hpE]
     have hlet := memEvalStmtFuel_let_pure F "a" (.i 32) _ _ _ _
       (.i32 p) (fun _ h => by cases h) (fun _ h => by cases h)
-      (fun _ h => by cases h) hagree hv
+      (fun _ h => by cases h) (fun h => by cases h) hagree hv
     have hq : envLookup [("a", .i32 p), ("p", .i32 p),
         ("q", .i32 q), ("c", .b false)] "q" = some (.i32 q) := by
       simp [envLookup, show ("q" : String) ≠ "a" by decide]
@@ -3632,7 +3632,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
         exact i32_map_error e
       have hlet2 := memEvalStmtFuel_let_err F "b" (.i 32) _ _ _ _ e
         (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hme2
+        (fun _ h => by cases h) (fun h => by cases h) hme2
       rw [memEvalStmtFuel_seq_fallthrough _ _ _ _ _ _ _ _ _ hlet,
         memEvalStmtFuel_seq_err _ _ _ _ _ _ _ hlet2]
       exact (condPairFwd_err_q_false p q e h2).symm
@@ -3652,7 +3652,7 @@ theorem memEvalFuncFuel_condPair (F : Nat) (p q : BitVec 32)
         exact i32_map_ok b
       have hlet2 := memEvalStmtFuel_let_pure F "b" (.i 32) _ _ _ _
         (.i32 b) (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hagree2 hv2
+        (fun _ h => by cases h) (fun h => by cases h) hagree2 hv2
       have ha2 : envLookup [("b", .i32 b), ("a", .i32 p),
           ("p", .i32 p), ("q", .i32 q), ("c", .b false)] "a" =
           some (.i32 p) := by

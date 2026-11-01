@@ -230,6 +230,11 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .psetVal dst val, ρ =>
+    match evalExpr dst ρ, evalExpr val ρ with
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .vgrowFree x, ρ =>
     match envLookup ρ x with
     | none => .error .Uninit
@@ -505,6 +510,16 @@ theorem evalStmtFuel_psetNext (f : Nat) (dst link : CExpr)
     evalStmtFuel f (.psetNext dst link) ρ = .error .AssertFail := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd, hl]
+
+/-- `psetVal` has no value mirror (payload stores are `Mem`-space,
+    like link stores — see `evalStmtFuel_psetNext`). -/
+theorem evalStmtFuel_psetVal (f : Nat) (dst val : CExpr)
+    (ρ : Env) (d v : Value)
+    (hd : evalExpr dst ρ = .ok d)
+    (hv : evalExpr val ρ = .ok v) :
+    evalStmtFuel f (.psetVal dst val) ρ = .error .AssertFail := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd, hv]
 
 /-- `vgrowFree` consumes the triple's buffer token and updates the
     binding, keeping `len`/`cap` (any fuel; N4d-iv-b1:

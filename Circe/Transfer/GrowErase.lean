@@ -632,7 +632,7 @@ theorem memEvalFuncFuel_stdVecShiftDown (F : Nat) (b : Vec32)
     memEvalStmtFuel_let_pure F "k" (.u 64)
       (.lit (.u64 (BitVec.ofNat 64 0))) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) mhlit0 hlit0
+      (by intro ce h; cases h) (by intro h; cases h) mhlit0 hlit0
   have hlast1 : evalExpr (.var "last")
       [(("k", .u64 (BitVec.ofNat 64 0))),
         ("t", .stdVecOwned b len cap),
@@ -697,7 +697,7 @@ theorem memEvalFuncFuel_stdVecShiftDown (F : Nat) (b : Vec32)
     memEvalStmtFuel_let_pure F "n" (.u 64)
       (.usub (.var "last") (.var "first")) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) mhnEval1 hnEval1
+      (by intro ce h; cases h) (by intro h; cases h) mhnEval1 hnEval1
   have hF0 : (last - first).toNat - 0 + 1 ≤ F := by omega
   have hlay₀ : layoutLookup [("t", 0, 0)] "t" = some (0, 0) := by
     simp [layoutLookup]
@@ -1003,7 +1003,7 @@ theorem memEvalProgFunc_stdVecEraseCore (F : Nat) (b : Vec32)
         tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
     rw [memEvalProgStmt_let_fb]
     exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
       mhlenE hlenE
   have hposV : evalExpr (.var "pos")
       [((("len", .u64 (BitVec.ofNat 64 len)))),
@@ -1069,7 +1069,7 @@ theorem memEvalProgFunc_stdVecEraseCore (F : Nat) (b : Vec32)
         .fellThrough) := by
     rw [memEvalProgStmt_let_fb]
     exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
       mhnposE hnposE
   have hnposV : evalExpr (.var "npos")
       [((("npos", .u64 (pos + BitVec.ofNat 64 1)))),
@@ -1340,7 +1340,7 @@ theorem memEvalProgFunc_stdVecEraseCore (F : Nat) (b : Vec32)
           .fellThrough) := by
       rw [memEvalProgStmt_let_fb]
       exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-        (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+        (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
         mhsetE hsetE
     have hvar : evalExpr (.var "t3")
         [((("t3", .stdVecOwned b (len - 1) cap))),
@@ -1617,7 +1617,7 @@ theorem memEvalProgFunc_stdVecEraseCore (F : Nat) (b : Vec32)
             .fellThrough) := by
         rw [memEvalProgStmt_let_fb]
         exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
           mhsetE hsetE
       have hvar : evalExpr (.var "t2")
           [((("t2", .stdVecOwned b' (len - 1) cap))),

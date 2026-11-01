@@ -1758,7 +1758,7 @@ theorem memEvalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
       (.add (.var "a") (.var "b"))
       [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] e
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) hmemv1
+      (by intro ce h; cases h) (by intro h; cases h) hmemv1
     have hseq := memEvalStmtFuel_seq_err F
       (.let_ "t" (.i 32) (.add (.var "a") (.var "b")))
       (.return_ (.add (.var "t") (.var "c")))
@@ -1774,7 +1774,7 @@ theorem memEvalFuncFuel_add3 (F : Nat) (x y z : BitVec 32) :
       (.add (.var "a") (.var "b"))
       [("a", .i32 x), ("b", .i32 y), ("c", .i32 z)] emptyMem [] (.i32 t)
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) hmem1 hv1
+      (by intro ce h; cases h) (by intro h; cases h) hmem1 hv1
     have ht : envLookup (envExtend [("a", .i32 x), ("b", .i32 y),
         ("c", .i32 z)] "t" (.i32 t)) "t" = some (.i32 t) :=
       envExtend_hit _ _ _

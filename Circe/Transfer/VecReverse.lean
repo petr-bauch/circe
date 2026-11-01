@@ -34,13 +34,14 @@ theorem memRevLet (prog : Prog) (F : Nat) (x : String) (ty : CType)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
     (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
+    (hnotN : e ≠ .nnew)
     (h : memEvalExpr e ρ m π = evalExpr e ρ)
     (hv : evalExpr e ρ = .ok v) :
     memEvalProgStmt prog F (.let_ x ty e) ρ m π =
       .ok ((envExtend ρ x v, m, π), .fellThrough) := by
   rw [memEvalProgStmt_let_fb prog F x ty e ρ m π]
   exact memEvalStmtFuel_let_pure F x ty e ρ m π v
-    hnot hnotBox hnotGrow h hv
+    hnot hnotBox hnotGrow hnotN h hv
 
 /-- Program-level memory borrowed store (leaves delegate). -/
 theorem memRevVecSet (prog : Prog) (F : Nat) (x : String) (ie ve : CExpr)
@@ -545,7 +546,7 @@ theorem memEvalProgFunc_vecReverse (F : Nat) (l : List (BitVec 32))
     ⟨1, [(0, ⟨0, true,
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ [("v", 0, 0)]
     (.u64 0) (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) (memEvalExpr_lit _ _ _ _)
+    (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_lit _ _ _ _)
     (by simp [evalExpr, litVal])
   have hm₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l)] "m"
       (.u64 (BitVec.ofNat 64 l.length))) "i" (.u64 0)) "m" =
@@ -560,7 +561,7 @@ theorem memEvalProgFunc_vecReverse (F : Nat) (l : List (BitVec 32))
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ [("v", 0, 0)]
     (.u64 (BitVec.ofNat 64 l.length))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) (memEvalExpr_var _ _ _ _)
+    (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_var _ _ _ _)
     (evalExpr_var_hit _ _ _ hm₂)
   have hstep_t := memRevLet vecReverseProg F "t" (.i 32)
     (.lit (.i32 0)) (envExtend (envExtend (envExtend
@@ -569,7 +570,7 @@ theorem memEvalProgFunc_vecReverse (F : Nat) (l : List (BitVec 32))
     ⟨1, [(0, ⟨0, true,
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ [("v", 0, 0)]
     (.i32 0) (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) (memEvalExpr_lit _ _ _ _)
+    (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_lit _ _ _ _)
     (by simp [evalExpr, litVal])
   -- Loop from `(0, n)`.
   have hjN : (BitVec.ofNat 64 l.length).toNat = l.length := by

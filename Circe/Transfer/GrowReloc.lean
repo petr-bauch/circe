@@ -705,7 +705,7 @@ theorem memEvalFuncFuel_stdVecReloc (F : Nat) (bS : Vec32)
     memEvalStmtFuel_let_pure F "k" (.u 64)
       (.lit (.u64 (BitVec.ofNat 64 0))) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) hmlitk hlitk
+      (by intro ce h; cases h) (by intro h; cases h) hmlitk hlitk
   have hlastK : evalExpr (.var "last")
       [("k", .u64 (BitVec.ofNat 64 0)),
         ("src", .stdVecOwned bS lenS capS),
@@ -784,7 +784,7 @@ theorem memEvalFuncFuel_stdVecReloc (F : Nat) (bS : Vec32)
     memEvalStmtFuel_let_pure F "n" (.u 64)
       (.usub (.var "last") (.var "first")) _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) mhnEval hnEval
+      (by intro ce h; cases h) (by intro h; cases h) mhnEval hnEval
   have hF0 : last.toNat - first.toNat - 0 + 1 ≤ F := hF
   have hlayS₀ : layoutLookup [("src", 1, 1), ("dst", 0, 0)] "src" =
       some (1, 1) := by

@@ -154,7 +154,7 @@ theorem memPartitionBody_take (prog : Prog) (F : Nat)
   have hlet := memRevLet prog F "t" (.i 32)
     (.stdVecAt "v" (.var "i")) ρ m π (.i32 x)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hatM_ag hat
+    (by intro ce h; cases h) (by intro h; cases h) hatM_ag hat
   have ht : envLookup (envExtend ρ "t" (.i32 x)) "t" =
       some (.i32 x) :=
     envExtend_hit _ _ _
@@ -947,7 +947,7 @@ theorem memEvalProgFunc_vecPartition_ok (F : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
     [("v", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlitM hlitV
+    (by intro ce h; cases h) (by intro h; cases h) hlitM hlitV
   have hlitIM : memEvalExpr
       (.lit (.u64 (BitVec.ofNat 64 0)))
       (envExtend [("v", .stdVecVal l), ("pivot", .i32 pivot)]
@@ -971,7 +971,7 @@ theorem memEvalProgFunc_vecPartition_ok (F : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
     [("v", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlitIM hlitIV
+    (by intro ce h; cases h) (by intro h; cases h) hlitIM hlitIV
   have hiN : (BitVec.ofNat 64 0).toNat = 0 := by
     simp [BitVec.toNat_ofNat]
   have hv₁ : envLookup (envExtend (envExtend

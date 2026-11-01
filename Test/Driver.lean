@@ -128,6 +128,7 @@ import GoldenVecListRev
 import GoldenLinkedReverse
 import GoldenListLength
 import GoldenListAppend
+import GoldenPushFront
 import GoldenReborrow
 import GoldenReborrow34
 import GoldenVecRead
@@ -543,6 +544,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ListLength_Spec.lean", "out/ListLength_Spec.lean"),
    ("tests/golden/ListAppend.lean", "out/ListAppend.lean"),
    ("tests/golden/ListAppend_Spec.lean", "out/ListAppend_Spec.lean"),
+   ("tests/golden/PushFront.lean", "out/PushFront.lean"),
+   ("tests/golden/PushFront_Spec.lean", "out/PushFront_Spec.lean"),
    ("tests/golden/VecAtMut.lean", "out/VecAtMut.lean"),
    ("tests/golden/VecAtMut_Spec.lean", "out/VecAtMut_Spec.lean"),
    ("tests/golden/VecIndexMut.lean", "out/VecIndexMut.lean"),
@@ -731,6 +734,7 @@ def emittedTypechecks : List String :=
    "out/LinkedReverse.lean",
    "out/ListLength.lean",
    "out/ListAppend.lean",
+   "out/PushFront.lean",
    "out/VecAtMut.lean",
    "out/VecIndexMut.lean",
    "out/VecCharSize.lean",
@@ -1850,6 +1854,21 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Mem/LinkedList.lean", "theorem nodeAt_store_other_fwd"),
      ("out/ListAppend.lean", "_Z11list_appendP4NodeS0__fwd"),
      ("tests/golden/ListAppend.lean", "_Z11list_appendP4NodeS0__fwd")]),
+   ("pushfront-links",
+    [("Circe/Emit/PushFront.lean", "theorem pushFrontFwd_correct"),
+     ("Circe/Emit/PushFront.lean", "theorem pushFront_body_agree"),
+     ("Circe/Emit/PushFront.lean", "theorem pushFrontFunc_correct"),
+     ("Circe/Emit/PushFront.lean", "def pushFrontFwd"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_pushFront"),
+     ("Circe/Emit/Render.lean", "def emitPushFrontText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitPushFrontSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isPushFrontShape"),
+     ("Circe/Validator/Gate.lean", "isPushFrontShape raw"),
+     ("Circe/Mem/LinkedList.lean", "theorem ListSeg.alloc_stores_other"),
+     ("Circe/Mem/Agree.lean", "theorem memEvalStmtFuel_let_nnew"),
+     ("Circe/Mem/Agree.lean", "theorem memEvalStmtFuel_psetVal_ok"),
+     ("out/PushFront.lean", "_Z10push_frontP4Nodei_fwd"),
+     ("tests/golden/PushFront.lean", "_Z10push_frontP4Nodei_fwd")]),
    ("linkedrev-links",
     [("Circe/Emit/LinkedReverse.lean", "theorem linkRevBody_ok"),
      ("Circe/Emit/LinkedReverse.lean", "theorem linkRevOuterFwd_invariant"),
@@ -2193,8 +2212,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 157 then
-    throw (IO.userError s!"expected 157 spec stubs, found {stubs.length}")
+  if stubs.length != 158 then
+    throw (IO.userError s!"expected 158 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2337,6 +2356,7 @@ def checkSuites : List Job :=
    ("golden-linkedreverse", GoldenLinkedReverse.main),
    ("golden-listlength", GoldenListLength.main),
    ("golden-listappend", GoldenListAppend.main),
+   ("golden-pushfront", GoldenPushFront.main),
    ("golden-reborrow", GoldenReborrow.main),
    ("golden-reborrow34", GoldenReborrow34.main),
    ("golden-wrpair", GoldenWrPair.main),
@@ -2366,7 +2386,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

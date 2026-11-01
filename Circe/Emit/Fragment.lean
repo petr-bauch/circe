@@ -148,6 +148,7 @@ inductive FragKind : Type
   | linkedReverse
   | listLength
   | listAppend
+  | pushFront
   | vecMergeInto
   | vecMergeRuns
   | vecMergeSort

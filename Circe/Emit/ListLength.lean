@@ -471,7 +471,7 @@ theorem listLengthFunc_correct (F : Nat) (m : Mem) (π : Layout)
     have hL1 := memEvalStmtFuel_let_pure F "n" (.u 64)
       (.lit (.u64 (BitVec.ofNat 64 0)))
       _ _ _ (.u64 (BitVec.ofNat 64 0))
-      (by simp) (by simp) (by simp) eN vN
+      (by simp) (by simp) (by simp) (by simp) eN vN
     have eC : memEvalExpr (.var "head")
         [("n", .u64 (BitVec.ofNat 64 0)), ("head", .ptrVal head)]
         m π =
@@ -483,7 +483,7 @@ theorem listLengthFunc_correct (F : Nat) (m : Mem) (π : Layout)
         .ok (.ptrVal head) :=
       evalExpr_var_hit _ _ _ (by simp [envLookup])
     have hL2 := memEvalStmtFuel_let_pure F "cur" nodeTy (.var "head")
-      _ _ _ (.ptrVal head) (by simp) (by simp) (by simp) eC vC
+      _ _ _ (.ptrVal head) (by simp) (by simp) (by simp) (by simp) eC vC
     have s1 := memEvalStmtFuel_seq_fallthrough F
       (.let_ "n" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
       (.let_ "cur" nodeTy (.var "head"))

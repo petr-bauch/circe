@@ -229,7 +229,7 @@ theorem memSortSwapBody_step (N : Nat) (F : Nat) (ρ : Env) (m : Mem) (π : Layo
       .ok (((("t", .u32 l[j]) :: ρ, m, π)), .fellThrough) :=
     memEvalStmtFuel_let_pure F _ _ _ _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) magree_readj e_readj
+      (by intro ce h; cases h) (by intro h; cases h) magree_readj e_readj
   have ha₁ : envLookup ((("t", .u32 l[j]) :: ρ)) "a" =
       some (.arr32 l) := by
     simp [envLookup, show ("a" : String) ≠ "t" by decide, ha]
@@ -618,7 +618,7 @@ theorem memSortOuterBody_step (N : Nat) (F : Nat) (ρ : Env) (m : Mem) (π : Lay
         .fellThrough) :=
     memEvalStmtFuel_let_pure F _ _ _ _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h) (memEvalExpr_var _ _ _ _) e_i
+      (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_var _ _ _ _) e_i
   have ha₁ : envLookup ((("j", .u64 (BitVec.ofNat 64 i)) :: ρ)) "a" =
       some (.arr32 l) := by
     simp [envLookup, show ("a" : String) ≠ "j" by decide, ha]
@@ -825,7 +825,7 @@ theorem memEvalFuncFuel_insertionSort (N : Nat) (F : Nat) (l : List (BitVec 32))
         ⟨1, [(0, ⟨0, true, l⟩)], []⟩, [("a", 0, 0)])), .fellThrough) :=
     memEvalStmtFuel_let_pure F _ _ _ _ _ _ _
       (by intro se h; cases h) (by intro se h; cases h)
-      (by intro ce h; cases h)
+      (by intro ce h; cases h) (by intro h; cases h)
       (memEvalExpr_lit (.u64 (BitVec.ofNat 64 1)) _ _ _) ve_one
   have ha₁ : envLookup
       ((("i", .u64 (BitVec.ofNat 64 1)) :: ("a", .arr32 l) :: [])) "a" =

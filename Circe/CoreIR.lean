@@ -194,6 +194,7 @@ inductive CExpr : Type
   | idxi : String → CExpr → CExpr
   | idxu : String → CExpr → CExpr
   | vnew : CExpr → CExpr
+  | nnew : CExpr
   | vget : String → CExpr → CExpr
   | boxNew : CExpr → CExpr
   | boxGet : String → CExpr
@@ -282,6 +283,7 @@ inductive CStmt : Type
   | vecSet (s : String) (idx val : CExpr)
   | mstore (slot : String) (idx val : CExpr)
   | psetNext (dst link : CExpr)
+  | psetVal (dst val : CExpr)
   | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)

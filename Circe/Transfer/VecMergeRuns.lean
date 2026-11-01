@@ -2722,7 +2722,7 @@ theorem memEvalProgFunc_mergeRuns (prog : Prog) (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 lo)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (memEvalExpr_var _ _ _ _) hvar_lo
   have hmid1 : envLookup
       (envExtend [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
@@ -2745,7 +2745,7 @@ theorem memEvalProgFunc_mergeRuns (prog : Prog) (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 mid)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (memEvalExpr_var _ _ _ _) hvar_mid
   have hlo2 : envLookup
       (envExtend (envExtend
@@ -2772,7 +2772,7 @@ theorem memEvalProgFunc_mergeRuns (prog : Prog) (F : Nat)
       (0, ⟨0, true, (BitVec.ofNat 32 lt.length) :: lt⟩)], []⟩
     [("a", 1, 1), ("tmp", 0, 0)] (.u64 lo)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (memEvalExpr_var _ _ _ _) hvar_lo2
   have hi3 : envLookup
       (envExtend (envExtend (envExtend
@@ -3123,7 +3123,7 @@ theorem memEvalProgFuncOn_mergeRuns (prog : Prog) (F : Nat)
     ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
     [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] (.u64 lo)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (memEvalExpr_var _ _ _ _) hvar_lo
   have hmid1 : envLookup
       (envExtend [("a", .stdVecVal la), ("tmp", .stdVecVal lt),
@@ -3145,7 +3145,7 @@ theorem memEvalProgFuncOn_mergeRuns (prog : Prog) (F : Nat)
     ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
     [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] (.u64 mid)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (memEvalExpr_var _ _ _ _) hvar_mid
   have hlo2 : envLookup
       (envExtend (envExtend
@@ -3171,7 +3171,7 @@ theorem memEvalProgFuncOn_mergeRuns (prog : Prog) (F : Nat)
     ⟨m₀.next + 2, (m₀.next + 1, ⟨m₀.next + 1, true, (BitVec.ofNat 32 la.length) :: la⟩) :: (m₀.next, ⟨m₀.next, true, (BitVec.ofNat 32 lt.length) :: lt⟩) :: m₀.blocks, m₀.blocks64⟩
     [("a", m₀.next + 1, m₀.next + 1), ("tmp", m₀.next, m₀.next)] (.u64 lo)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h)
+    (by intro ce h; cases h) (by intro h; cases h)
     (memEvalExpr_var _ _ _ _) hvar_lo2
   have hi3 : envLookup
       (envExtend (envExtend (envExtend

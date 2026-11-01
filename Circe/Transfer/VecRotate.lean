@@ -95,7 +95,7 @@ theorem rotMemEvalProgFunc (F : Nat) (l : List (BitVec 32))
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩ [("v", 0, 0)]
     (.u64 0)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) (memEvalExpr_lit _ _ _ _)
+    (by intro ce h; cases h) (by intro h; cases h) (memEvalExpr_lit _ _ _ _)
     (by simp [evalExpr, litVal])
   have hz₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),
       ("k", .u64 kB)] "m" (.u64 (BitVec.ofNat 64 l.length)))
@@ -542,7 +542,7 @@ theorem hoare_rotateSpine_closed (G : Nat) (l : List (BitVec 32))
       memRevLet vecRotateProg (G + 1) "z" (.u 64) (.lit (.u64 0))
         _ _ _ (.u64 0)
         (by intro se h; cases h) (by intro se h; cases h)
-        (by intro ce h; cases h)
+        (by intro ce h; cases h) (by intro h; cases h)
         (memEvalExpr_lit _ _ _ _) (by simp [evalExpr, litVal]),
       rfl, rfl⟩
   have hz₂ : envLookup (envExtend (envExtend [("v", .stdVecVal l),

@@ -1010,7 +1010,7 @@ theorem memEvalFuncFuel_minIndex_ok (F G : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
     [("a", 0, 0)] (.u64 loB)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hloA hloV
+    (by intro ce h; cases h) (by intro h; cases h) hloA hloV
   have hevJ : evalExpr
       (.uadd (.var "lo") (.lit (.u64 (BitVec.ofNat 64 1))))
       (envExtend [("a", .stdVecVal l), ("lo", .u64 loB)]
@@ -1050,7 +1050,7 @@ theorem memEvalFuncFuel_minIndex_ok (F G : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
     [("a", 0, 0)] (.u64 (loB + 1))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hevJA hevJ
+    (by intro ce h; cases h) (by intro h; cases h) hevJA hevJ
   have hiN : (loB + 1).toNat = lo + 1 := by
     have h1 : (1 : BitVec 64).toNat = 1 := rfl
     rw [BitVec.toNat_add, h1, hloN]
@@ -1629,7 +1629,7 @@ theorem memSelectionSortBody_ok (F G : Nat)
     (.stdVecAt "v" (.var "i"))
     (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m))) mm π (.i32 x)
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hatM_ag hat
+    (by intro ce h; cases h) (by intro h; cases h) hatM_ag hat
   have ht₁ : envLookup (envExtend (envExtend ρ "m"
       (.u64 (BitVec.ofNat 64 m))) "t" (.i32 x)) "t" =
       some (.i32 x) :=
@@ -2186,7 +2186,7 @@ theorem memEvalProgFunc_vecSelectionSort_ok (F G : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
     [("v", 0, 0)] (.u64 (BitVec.ofNat 64 l.length))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlenM hlenV
+    (by intro ce h; cases h) (by intro h; cases h) hlenM hlenV
   have hlitM : memEvalExpr
       (.lit (.u64 (BitVec.ofNat 64 0)))
       (envExtend [("v", .stdVecVal l)]
@@ -2210,7 +2210,7 @@ theorem memEvalProgFunc_vecSelectionSort_ok (F G : Nat)
       (BitVec.ofNat 32 l.length) :: l⟩)], []⟩
     [("v", 0, 0)] (.u64 (BitVec.ofNat 64 0))
     (by intro se h; cases h) (by intro se h; cases h)
-    (by intro ce h; cases h) hlitM hlitV
+    (by intro ce h; cases h) (by intro h; cases h) hlitM hlitV
   have hiN : (BitVec.ofNat 64 0).toNat = 0 := by
     simp [BitVec.toNat_ofNat]
   have hv₁ : envLookup (envExtend (envExtend

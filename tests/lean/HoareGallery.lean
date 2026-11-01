@@ -20,6 +20,7 @@ import Circe.Emit.VecHeapSort
 import Circe.Emit.LinkedReverse
 import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
+import Circe.Emit.PushFront
 
 namespace HoareGallery
 
@@ -482,7 +483,7 @@ theorem hoare_condPair_true (ρ : Env) (m : Mem) (π : Layout)
         o = .fellThrough) :=
     htriple_let "a" (.i 32) _ ρ m π (.i32 a)
       (fun _ h => by cases h) (fun _ h => by cases h)
-      (fun _ h => by cases h) htif_agree htif_val
+      (fun _ h => by cases h) (fun h => by cases h) htif_agree htif_val
   have hseqA : HTriple (fun st => st = (ρ, m, π))
       (.let_ "a" (.i 32) (.tif (.var "c")
         (.add (.var "p") (.lit (.i32 1))) (.var "p")))
@@ -520,7 +521,7 @@ theorem hoare_condPair_true (ρ : Env) (m : Mem) (π : Layout)
       obtain ⟨rfl, rfl, rfl⟩ := hP
       exact htriple_let "b" (.i 32) _ _ _ _ (.i32 b)
         (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hadd_agree1 hadd_val1
+        (fun _ h => by cases h) (fun h => by cases h) hadd_agree1 hadd_val1
         F _ _ _ rfl
     have hseqB : HTriple
         (fun st => st = ((("a", .i32 a) :: ρ, m, π)))
@@ -594,7 +595,7 @@ theorem hoare_condPair_false (ρ : Env) (m : Mem) (π : Layout)
         o = .fellThrough) :=
     htriple_let "a" (.i 32) _ ρ m π (.i32 p)
       (fun _ h => by cases h) (fun _ h => by cases h)
-      (fun _ h => by cases h) htif_agree htif_val
+      (fun _ h => by cases h) (fun h => by cases h) htif_agree htif_val
   have hseqA : HTriple (fun st => st = (ρ, m, π))
       (.let_ "a" (.i 32) (.tif (.var "c")
         (.add (.var "p") (.lit (.i32 1))) (.var "p")))
@@ -632,7 +633,7 @@ theorem hoare_condPair_false (ρ : Env) (m : Mem) (π : Layout)
       obtain ⟨rfl, rfl, rfl⟩ := hP
       exact htriple_let "b" (.i 32) _ _ _ _ (.i32 b)
         (fun _ h => by cases h) (fun _ h => by cases h)
-        (fun _ h => by cases h) hadd_agree1 hadd_val1
+        (fun _ h => by cases h) (fun h => by cases h) hadd_agree1 hadd_val1
         F _ _ _ rfl
     have hseqB : HTriple
         (fun st => st = ((("a", .i32 p) :: ρ, m, π)))
@@ -902,6 +903,38 @@ example : ∃ ρ' m' hd', memEvalStmtFuel 10 listAppendFunc.body
     listAppendGalleryMem [] listAppendGalleryHex none 0 [] 5 0 none
     m' hd' ListSeg.nil listAppendGalleryNode (fun b hb => nomatch hb)
     (by decide) hfwd
+  exact ⟨ρ', m', hd', heval, hlist⟩
+
+/-- Push-front gallery: prepending 7 to the empty chain allocates
+    cell 0 holding the payload null-linked. -/
+def pushFrontGalleryMem : Mem := emptyMem
+
+/-- Entry triple instance: pushing onto the empty chain returns the
+    fresh cell with the payload consed. -/
+example : ∃ ρ' m' hd', memEvalStmtFuel 10 pushFrontFunc.body
+    [("head", .ptrVal none), ("val", .i32 7)]
+    pushFrontGalleryMem [] =
+    .ok ((ρ', m', []), .returned (.ptrVal hd')) ∧
+    ListSeg m' hd' [7] := by
+  obtain ⟨m', hd', hfwd⟩ :
+      ∃ m' hd', pushFrontFwd pushFrontGalleryMem none 7 =
+        .ok (m', hd') := by
+    have hok : (match pushFrontFwd pushFrontGalleryMem none 7 with
+      | .ok _ => true | .error _ => false) = true := by native_decide
+    cases h : pushFrontFwd pushFrontGalleryMem none 7 with
+    | ok p =>
+      obtain ⟨m', hd'⟩ := p
+      rw [← h]
+      exact ⟨m', hd', h⟩
+    | error e =>
+      rw [h] at hok
+      simp at hok
+  have hmfresh : memFind pushFrontGalleryMem pushFrontGalleryMem.next =
+      none := by
+    simp [pushFrontGalleryMem, emptyMem, memFind]
+  obtain ⟨ρ', heval, hlist⟩ := pushFrontFunc_correct 10
+    pushFrontGalleryMem [] none 7 [] m' hd'
+    ListSeg.nil hmfresh hfwd
   exact ⟨ρ', m', hd', heval, hlist⟩
 
 /-- Closed-instance runtime checks — executable shadows of the

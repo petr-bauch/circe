@@ -47,7 +47,7 @@ elab "find_leaf" prog:ident : tactic => do
     as one application.) -/
 macro "let_pure_step" "(" hM:term "," hE:term ")" : tactic =>
   `(tactic| exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-    (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) $hM $hE)
+    (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp) $hM $hE)
 
 /-- Fold-end script: unfold a suffix fold one step on the left
     (`conv => lhs` + the drop equation), then discharge the lookup

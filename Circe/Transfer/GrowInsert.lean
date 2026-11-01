@@ -98,7 +98,7 @@ theorem memEvalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
         tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
     rw [memEvalProgStmt_let_fb]
     exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
       mhlenE hlenE
   have hlenV : evalExpr (.var "len")
       [(("len", .u64 (BitVec.ofNat 64 len))),
@@ -160,7 +160,7 @@ theorem memEvalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
         tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
     rw [memEvalProgStmt_let_fb, ← hlastB]
     exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
       mhlastE hlastE
   cases hget0 : b.val[len - 1]? with
   | none =>
@@ -224,7 +224,7 @@ theorem memEvalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
         (tripleMem b len cap) [("t", 0, 0)] = .error .OOB := by
       rw [memEvalProgStmt_let_fb]
       exact memEvalStmtFuel_let_err _ _ _ _ _ _ _ _
-        (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+        (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
         mlwE_ok
     have hidxE : stdVecGrowIndexFwd b len
         (BitVec.ofNat 64 (len - 1)) = .error .OOB := by
@@ -314,7 +314,7 @@ theorem memEvalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
           tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
       rw [memEvalProgStmt_let_fb]
       exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-        (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+        (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
         mhlw hlw
     have hlt' : len - 1 < len := by omega
     have hidx : stdVecGrowIndexFwd b len
@@ -474,7 +474,7 @@ theorem memEvalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
             tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
         rw [memEvalProgStmt_let_fb]
         exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
           mhlenp1E hlenp1E
       have ht1V : evalExpr (.var "t1")
           [(("lenp1", .u64 (BitVec.ofNat 64 (len + 1)))),
@@ -592,7 +592,7 @@ theorem memEvalProgFunc_stdVecInsertAux (F : Nat) (b : Vec32)
             tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
         rw [memEvalProgStmt_let_fb]
         exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+          (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
           mht2agree ht2E
       have hargsT3 : lookupArgs
           [(("t2", .stdVecOwned b1 (len + 1) cap)),
@@ -952,7 +952,7 @@ theorem memEvalProgFunc_stdVecInsertRval (F : Nat) (b : Vec32)
         tripleMem b len cap, [("t", 0, 0)])), .fellThrough) := by
     rw [memEvalProgStmt_let_fb]
     exact memEvalStmtFuel_let_pure _ _ _ _ _ _ _ _
-      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp)
+      (fun _ => by simp) (fun _ => by simp) (fun _ => by simp) (by simp)
       mhlenE hlenE
   have htL : envLookup
       [(("len", .u64 (BitVec.ofNat 64 len))),

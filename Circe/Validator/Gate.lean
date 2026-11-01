@@ -29,6 +29,7 @@ import Circe.Emit.VecListRev
 import Circe.Emit.LinkedReverse
 import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
+import Circe.Emit.PushFront
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecTransformAdd
@@ -1926,6 +1927,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { listLengthFunc with name := raw.name }
       else if isListAppendShape raw then
         .ok { listAppendFunc with name := raw.name }
+      else if isPushFrontShape raw then
+        .ok { pushFrontFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then
