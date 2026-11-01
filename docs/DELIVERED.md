@@ -2181,3 +2181,63 @@ adopting `fuel_step_down` at 14 sites + importing
   `26eeb5c`, `7a79b9b`); full gate 526/526 TEST-OK, gallery
   18/18 counted passes (16 check sites, two iterating over
   both cond arms).
+
+### L-ptr2. Second dynamic shape reusing the `ListSeg`/`chaseN` kit — DONE (2026-11-01)
+
+Phase A (read-only leg): `list_length` traversal over
+caller-owned `Node {val, next}` — third-use test of the
+chase bridge. Corpus `tests/cpp/list_length.cpp` + real
+CIRGen `tests/cir/list_length.cir`; `isListLengthShape`
+(single `while` chasing `cur != nullptr`, no store at all);
+Gate arm admitted via the existing single-pointer exemption
+(`a393fa6`); `Circe/Emit/ListLength.lean`
+(`listLengthFwd`/`listLengthOuterFwd` mirror,
+`listLengthOuterFwd_invariant`, `listLengthFwd_correct`
+contract, `listLengthOuter_agree` bridge, entry Hoare
+triple); emitter + Gate wiring; goldens
+`tests/golden/ListLength.lean` (+`_Spec`, `spec_check`
+true); `GoldenListLength` pipeline + rejection gates (5
+checks); gallery instance (count over `[10,20,30]`).
+
+Phase B (writer leg): `list_append` tail insertion — the
+first two-live-pointer shape admitted by exact listing
+rather than exemption. Corpus
+`tests/cpp/list_append.cpp` + real CIRGen
+`tests/cir/list_append.cir` (`head` + caller-owned `nd`,
+both `__restrict__`/`noalias`, `Node*` out; normalize
+store, null-head early `cir.if`, single `cir.while`
+chasing `cur->next != nullptr`; four `cir.get_member`
+`[1]` projections and no `[0]` — payloads ride along
+untouched; 4 allocas / 13 loads / 8 stores / 3 consts, no
+calls). `isListAppendShape` pins exactly that (1 while, 1
+if, 2 `cir.cmp` (`ne` + `eq`), no `nsw`, no heap ops);
+Gate arm + blessed multi-pointer listing (the verdict gate
+corroborates the `__restrict__` claims against the
+`noalias` oracle verdict — the single-pointer exemption
+stays single-pointer-only). `Circe/Emit/ListAppend.lean`:
+guard-first `listAppendTailFwd` (zero-fuel deref guard
+evaluated before the fuel check, so dangling/short links
+abort loudly at any fuel), `listAppendTailFwd_invariant`
+(length-bound rules out fuel exhaustion on acyclic input),
+`ListSeg_swing_snoc` induction (the store leg, with
+`SegMem_store_avoid` transport; `nodeAt_store_other_fwd`
+added to the `Mem` layer), `listAppendFwd_correct`
+contract, guard-first `listAppendTail_agree` reset +
+reproved, entry Hoare triple `listAppendFunc_correct`
+(thin sugar over normalize/if/seed/chase/swing/return).
+Emitter + Gate wiring; goldens
+`tests/golden/ListAppend.lean` (+`_Spec`, 7-edge
+`spec_check` true: 2-chain/singleton/empty appends plus
+null-node/missing-head/missing-node/short-block loud
+legs); `GoldenListAppend` pipeline (with `noalias`
+oracle fact) + rejection gates (three-pointer variant
+still `aliasReject` — the listing is exact; one-pointer
+void still out-of-subset; shape-exactness both
+directions vs `list_rev`/`linked_reverse`/`list_length`;
+5 checks); gallery instances (tail-chase to cell 0 with
+memory untouched by `native_decide`; empty-chain entry
+triple via the contract).
+- Acceptance: full gate 535/535 TEST-OK
+  (`GOLDENLISTAPPEND-OK passed=5`); gallery examples
+  compile-gated (`lake env lean`), counted passes
+  unchanged.

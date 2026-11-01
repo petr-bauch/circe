@@ -19,35 +19,33 @@ vestigial-by-design, L3 roots extract-only), and the
 ChaCha20-stream guiding program (K6: `chacha20_encrypt`
 admission + full proof + input-OOB proof twins for short
 key/nonce/message; `LoopOob` short-read-loop bricks shared
-by the xor regimes). Newest: the first dynamic
-(pointer-chasing) shape — raw-pointer in-place `list_reverse`
-over caller-owned `Node {val, next}` (L-ptr L1–L4:
-SUBSET-40, `ListSeg`/`chaseN` Mem layer, contract, emitter,
-entry Hoare triple; label note — this reuses the L1–L4 slice
-labels of the lifetime track for a different subject, see
-`DELIVERED.md` "L-ptr."). The C core is
-complete within the standing non-goals, plus one dynamic
-shape.
+by the xor regimes). Newest: the second dynamic shape
+reusing the `ListSeg`/`chaseN` kit — read-only
+`list_length` traversal plus `list_append` tail insertion,
+the first two-live-pointer shape admitted by exact listing
+rather than exemption (L-ptr2; label note — this reuses
+the L1–L4 slice labels of the lifetime track for a
+different subject, see `DELIVERED.md` "L-ptr."). The C
+core is complete within the standing non-goals, plus two
+dynamic shapes.
 
-Next: one open point — the L-ptr corpus `Node* head` param
-carries no `__restrict__`/triple, so the pipeline
-`aliasReject` fires before the shape arm (recommendation:
-single-pointer exemption, not `__restrict__` + re-CIRGen on
-a frozen corpus). Iris policy moved
-to pillar 4 (native first, Iris on fallback). See
-`DELIVERED.md` §§ M3/N1, S3, N6, L–L5, L-ptr, O1/O2, Iris,
-P4, K6.
+Next: nothing open — the single-pointer exemption
+(`a393fa6`) and the L-ptr2 slice are both closed. Iris
+policy stays at pillar 4 (native first, Iris on
+fallback). See `DELIVERED.md` §§ M3/N1, S3, N6, L–L5,
+L-ptr, L-ptr2, O1/O2, Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Single-pointer alias exemption: admit
-   one-pointer entries past `aliasReject` (shape arm still
-   rejects true aliasing) — closes the L-ptr open point
-   without touching the frozen corpus.
-2. Second dynamic shape reusing the `ListSeg`/`chaseN` kit
-   (read-only `list_length` traversal first — third-use test
-   of the chase bridge; `list_append` after).
-3. Caller-allocated node construction (admit a
-   `push_front`-style shape with `malloc` in the driver).
+1. (Recommended) Caller-allocated node construction: admit
+   a `push_front`-style shape with `malloc` in the driver —
+   the first allocating shape (entry-grown heap,
+   allocation failure loud).
+2. Node unlink with `free`: the first deallocating shape
+   (`list_erase`) — dangling-loud discipline, the freed
+   cell unusable afterwards.
+3. A third traversal consumer reusing the chase kit before
+   new mechanism (e.g. `list_find` or sorted insert) — kit
+   reuse first, new shapes after.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
