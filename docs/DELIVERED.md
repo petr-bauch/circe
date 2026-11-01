@@ -2241,3 +2241,67 @@ triple via the contract).
   (`GOLDENLISTAPPEND-OK passed=5`); gallery examples
   compile-gated (`lake env lean`), counted passes
   unchanged.
+
+### P1-push. Caller-allocated node construction (`push_front`) — DONE (2026-11-01)
+
+Pillar-1 proposed goal #1: the first allocating shape —
+`Node *push_front(Node *head, int val)` prepends a fresh
+`malloc` cell to a caller-owned chain. Corpus
+`tests/cpp/push_front.cpp` + real CIRGen
+`tests/cir/push_front.cir` (2 params `Node*` + `i32`,
+`Node*` out; 1 `cir.call @malloc` + 1 `cir.get_global`, 1
+`u64` const (16), 1 `bitcast`, 2 `cir.get_member` (`[0]`
+payload, `[1]` link), 4 allocas / 6 loads / 6 stores, no
+`cmp`/`while`/`for`/`if` — no null-check arm by design).
+`isPushFrontShape` pins exactly that (plus no `nsw`, no
+`ptr_stride`, no `free`/`new`/`delete`/`try`); Gate arm
+admitted via the existing single-pointer exemption
+(`a393fa6`) with an honest `unknown` oracle verdict — no
+blessed-listing change (one bare `Node*` cannot alias
+itself); the returned fresh address bypasses the
+escape-reject branches exactly like the admitted writers
+before it.
+
+New mechanism (first allocation inside an entry):
+`CExpr.nnew` (nullary raw 2-word `malloc` cell; pure sides
+reject as `AssertFail`) with statement-level
+`memEvalStmtFuel_let_nnew` (binds `ptrVal (some a)`,
+layout untouched — no value mirror); `CStmt.psetVal`
+(offset-0 twin of `psetNext`) with
+`memEvalStmtFuel_psetVal_ok/err`; the four pure-`let_`
+lemmas (`let_pure`, `let_err`, `htriple_let`,
+`memRevLet`) gained an `hnotN` exclusion, all call sites
+updated (five discharger styles across the tree). Shared transports:
+`memFind_memAllocData_other`,
+`nodeAt_alloc_other`, `ListSeg.alloc_stores_other`
+(allocation + two fresh-cell stores ride the original
+segment node by node — no membership reasoning).
+`Circe/Emit/PushFront.lean`: `pushFrontFwd` mirror
+(total — alloc + payload store + link store + return;
+error legs structurally present but unreachable),
+`pushFrontFwd_correct` cons contract
+(`ListSeg m' hd' (v :: vs)`), `pushFront_body_agree`
+evaluator bridge, entry triple `pushFrontFunc_correct`
+(no fuel hypothesis — straight-line; no exactness
+hypothesis — no link decoded; only the allocator
+freshness `memFind m m.next = none` the runtime
+maintains). The entry never reads the old list, so even
+a dangling head cannot fault (firewall edge in the
+spec).
+
+Emitter + Gate wiring; goldens
+`tests/golden/PushFront.lean` (+`_Spec`, 5-edge
+`spec_check` true: 2-chain/singleton/empty-head
+prepends, dangling-head firewall leg, zero payload);
+`GoldenPushFront` pipeline (with `unknown` oracle fact)
++ rejection gates (three-pointer variant still
+`alias-reject`; free-after-alloc variant
+`escape-reject` borrow-after-free; shape-exactness both
+directions vs `list_append`/`list_length`/
+`linked_reverse`/`list_rev`; 8 checks); gallery
+instance (prepend onto the empty chain via the
+contract).
+- Acceptance: full gate 539/539 TEST-OK
+  (`GOLDENPUSHFRONT-OK passed=8`); gallery examples
+  compile-gated (`lake env lean`), counted passes
+  unchanged.
