@@ -21,6 +21,7 @@ import Circe.Emit.LinkedReverse
 import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
+import Circe.Emit.ListErase
 
 namespace HoareGallery
 

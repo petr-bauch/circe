@@ -592,6 +592,10 @@ def evalExpr : CExpr → Env → Result Value
     match evalExpr e ρ with
     | .error err => .error err
     | .ok _ => .error .AssertFail
+  | .pgetVal e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok _ => .error .AssertFail
   | .stdVecLen s, ρ =>
     match envLookup ρ s with
     | none => .error .Uninit
@@ -1249,6 +1253,13 @@ theorem evalExpr_mload (s : String) (ie : CExpr) (ρ : Env) (v : Value)
 theorem evalExpr_pgetNext (e : CExpr) (ρ : Env) (v : Value)
     (he : evalExpr e ρ = .ok v) :
     evalExpr (.pgetNext e) ρ = .error .AssertFail := by
+  simp [evalExpr, he]
+
+/-- `pgetVal` has no value mirror (payloads live in `Mem`, like
+    links — see `evalExpr_pgetNext`). -/
+theorem evalExpr_pgetVal (e : CExpr) (ρ : Env) (v : Value)
+    (he : evalExpr e ρ = .ok v) :
+    evalExpr (.pgetVal e) ρ = .error .AssertFail := by
   simp [evalExpr, he]
 
 /-- `spanAt` of a non-span is rejected, never silently modeled. -/

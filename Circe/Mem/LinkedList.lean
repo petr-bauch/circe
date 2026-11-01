@@ -486,6 +486,130 @@ theorem nodeAt_tag {m : Mem} {a : Addr} {t : Nat} {v : BitVec 32}
     {n : Option Addr} (h : nodeAt m a t v n) : ∃ t', t' = t :=
   ⟨t, rfl⟩
 
+/-! ## Erase support (pillar-1 goal #2: `list_erase` unlinks and
+    frees the first payload hit; the survivors ride the unlink
+    store and the free, told apart by acyclicity) -/
+
+/-- A points-to fact survives a free elsewhere (forward:
+    other-address frees preserve the cell). -/
+theorem nodeAt_free_other {m m' : Mem} {c a' : Addr} {t t' : Nat}
+    {v : BitVec 32} {n : Option Addr}
+    (h : nodeAt m c t v n)
+    (hfree : memFree m a' t' = .ok m') (hne : c ≠ a') :
+    nodeAt m' c t v n := by
+  unfold nodeAt cellsAt at h ⊢
+  rw [memFind_memFree_other m m' a' c t' hfree hne]
+  exact h
+
+/-- A freed cell stays present but dead: `memFree` clears the
+    live flag and keeps the tag and contents (the erase victim
+    is unusable afterwards, so any later dereference misses
+    loudly). -/
+theorem memFind_memFree_dead {m m' : Mem} {c : Addr} {t : Nat}
+    {v : BitVec 32} {n : Option Addr}
+    (hnode : nodeAt m c t v n)
+    (hfree : memFree m c t = .ok m') :
+    memFind m' c = some ⟨t, false, [v, linkWord n]⟩ := by
+  have hfind : memFind m c = some _ := hnode
+  simp [memFree, hfind] at hfree
+  cases hfree
+  simp [memFind]
+
+/-- A segment rides a free elsewhere. -/
+theorem ListSeg.free_other {m m' : Mem} {s : Option Addr}
+    {vs : List (BitVec 32)} (h : ListSeg m s vs)
+    {a' : Addr} {t : Nat}
+    (hfree : memFree m a' t = .ok m')
+    (hout : ∀ b, SegMem (m := m) s b → b ≠ a') :
+    ListSeg m' s vs := by
+  induction h with
+  | nil => exact .nil
+  | cons hnode _ ih =>
+    exact .cons
+      (nodeAt_free_other hnode hfree (hout _ (.here hnode)))
+      (ih (fun c hc => hout c (.there hnode hc)))
+
+/-- Visited-prefix chain for the erase chase: `nodes` leads from
+    `s` to `e`, recording each visited node's address, tag, and
+    payload. A `ListSeg` with a named end — the chase extends it
+    by snoc, the contract splits and transports it head-first,
+    and every outsideness fact follows from
+    `ListSeg_head_notin_tail` over its suffixes. -/
+inductive PrefixChain (m : Mem) : Option Addr →
+    List (Addr × Nat × BitVec 32) → Option Addr → Prop
+  | nil {s} : PrefixChain m s [] s
+  | cons {n e rest a t w} : nodeAt m a t w n →
+      PrefixChain m n rest e → PrefixChain m (some a) ((a, t, w) :: rest) e
+
+/-- Payloads of a prefix chain. -/
+def preVals (nodes : List (Addr × Nat × BitVec 32)) : List (BitVec 32) :=
+  nodes.map (·.2.2)
+
+/-- Splitting a chain at a value-list boundary (the contract
+    separates the strict prefix before the predecessor from the
+    predecessor cell itself). -/
+theorem PrefixChain.split {m : Mem} {s e : Option Addr}
+    {l₁ l₂ : List (Addr × Nat × BitVec 32)}
+    (h : PrefixChain m s (l₁ ++ l₂) e) :
+    ∃ mid, PrefixChain m s l₁ mid ∧ PrefixChain m mid l₂ e := by
+  induction l₁ generalizing s with
+  | nil => exact ⟨s, .nil, h⟩
+  | cons hd tl ih =>
+    cases h with
+    | cons hnode hrest =>
+      obtain ⟨mid, h1, h2⟩ := ih hrest
+      exact ⟨mid, .cons hnode h1, h2⟩
+
+/-- Extending a chain by one visited node (the chase advance
+    step: snoc at the value level). -/
+theorem PrefixChain.snoc_extend {m : Mem} {s mid e : Option Addr}
+    {nodes : List (Addr × Nat × BitVec 32)} {a t w n}
+    (h : PrefixChain m s nodes mid) (hnode : nodeAt m a t w n)
+    (hmid : mid = some a) (hn : n = e) :
+    PrefixChain m s (nodes ++ [(a, t, w)]) e := by
+  induction h with
+  | nil =>
+    subst hmid
+    subst hn
+    exact .cons hnode .nil
+  | cons hnodeB hrest ih =>
+    exact .cons hnodeB (ih hmid)
+
+/-- Membership rides a chain backward (from the chain end back
+    to its start: the outsideness arguments feed tail footprints
+    through this). -/
+theorem PrefixChain.back {m : Mem} {s e : Option Addr}
+    {nodes : List (Addr × Nat × BitVec 32)}
+    (h : PrefixChain m s nodes e) (x : Addr)
+    (hmem : SegMem (m := m) e x) : SegMem (m := m) s x := by
+  induction h with
+  | nil => exact hmem
+  | cons hnodeB _ ih =>
+    exact .there hnodeB (ih hmem)
+
+/-- A chain followed by a segment is a segment (the contract
+    assembles the result segment by chaining the transported
+    prefix, the relinked predecessor, and the suffix). -/
+theorem PrefixChain.appendSeg {m : Mem} {s mid : Option Addr}
+    {nodes : List (Addr × Nat × BitVec 32)} {ls : List (BitVec 32)}
+    (h : PrefixChain m s nodes mid) (hseg : ListSeg m mid ls) :
+    ListSeg m s (preVals nodes ++ ls) := by
+  induction h with
+  | nil => simpa [preVals] using hseg
+  | cons hnodeB _ ih =>
+    simpa [preVals] using ListSeg.cons hnodeB (ih hseg)
+
+/-- Membership below the victim lifts past it: suffix members
+    of the victim's tail are members of the victim's own
+    footprint (the unlink's outsideness argument for the
+    store at the predecessor). -/
+theorem SegMem.victimCons {m : Mem} {n : Option Addr} {b : Addr}
+    (hmem : SegMem (m := m) n b)
+    {c : Addr} {t : Nat} {v : BitVec 32}
+    (hnodeC : nodeAt m c t v n) : SegMem (m := m) (some c) b :=
+  .there hnodeC hmem
+
+
 /-- A segment head exposes its payload, link, and tail values
     (naming helpers: implicits, so callers obtain them through
     these and substitute the inaccessible originals away). -/
@@ -816,3 +940,50 @@ theorem ListSeg_head_notin_tail {m : Mem} {a : Addr} {t : Nat}
   have hcon := ListSeg_acyclic_aux rest'.length m hex n₀ rest' hlen
     htail
   exact hcon.2 a t v hnode b hb
+
+/-! ## Erase transport (pillar-1 goal #2: after the acyclicity
+    kit, which the outsideness arguments need) -/
+
+/-- A visited-prefix chain rides the unlink store and the free:
+    every strict-prefix node differs from the predecessor and
+    the victim (both lie in its tail footprint, named by the
+    chain end), so its points-to fact transports across both
+    updates. -/
+theorem PrefixChain.transport_erase {m m2 m3 : Mem} {s e : Option Addr}
+    {nodes : List (Addr × Nat × BitVec 32)}
+    (h : PrefixChain m s nodes e)
+    {p : Addr} {tp : Nat} {wp : BitVec 32} {c : Addr} {tc : Nat}
+    {vc : BitVec 32} {n : Option Addr} {rest : List (BitVec 32)}
+    (hp : nodeAt m p tp wp (some c))
+    (hc : nodeAt m c tc vc n)
+    (hsuf : ListSeg m n rest)
+    (he : e = some p)
+    (hex : ∀ x, (memFind m x).isSome = true → x + 1 < 2 ^ 32)
+    {tp' : Nat} {w' : BitVec 32}
+    (hstore : memStore m p tp' 1 w' = .ok m2)
+    {tc' : Nat}
+    (hfree : memFree m2 c tc' = .ok m3) :
+    PrefixChain m3 s nodes e := by
+  revert he
+  induction h with
+  | nil =>
+    intro _
+    exact .nil
+  | cons hnodeB hrest ih =>
+    intro he
+    rw [he] at hrest
+    have htail : ListSeg m _ (preVals _ ++ wp :: vc :: rest) :=
+      PrefixChain.appendSeg hrest
+        (ListSeg.cons hp (ListSeg.cons hc hsuf))
+    have hmemP : SegMem (m := m) _ p :=
+      PrefixChain.back hrest p (SegMem.here hp)
+    have hmemC : SegMem (m := m) _ c :=
+      PrefixChain.back hrest c (SegMem.there hp (SegMem.here hc))
+    have hneP : _ ≠ p :=
+      Ne.symm (ListSeg_head_notin_tail hnodeB htail hex p hmemP)
+    have hneC : _ ≠ c :=
+      Ne.symm (ListSeg_head_notin_tail hnodeB htail hex c hmemC)
+    have hnB2 : nodeAt m2 _ _ _ _ :=
+      nodeAt_store_other_fwd hnodeB hstore hneP
+    have hnB3 : nodeAt m3 _ _ _ _ := nodeAt_free_other hnB2 hfree hneC
+    exact PrefixChain.cons hnB3 (ih he)

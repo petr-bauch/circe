@@ -235,6 +235,10 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .nfree dst, ρ =>
+    match evalExpr dst ρ with
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
   | .vgrowFree x, ρ =>
     match envLookup ρ x with
     | none => .error .Uninit
@@ -520,6 +524,16 @@ theorem evalStmtFuel_psetVal (f : Nat) (dst val : CExpr)
     evalStmtFuel f (.psetVal dst val) ρ = .error .AssertFail := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd, hv]
+
+/-- `nfree` has no value mirror (freed cells are `Mem`-space,
+    like stored links and payloads — see
+    `evalStmtFuel_psetNext`). -/
+theorem evalStmtFuel_nfree (f : Nat) (dst : CExpr)
+    (ρ : Env) (d : Value)
+    (hd : evalExpr dst ρ = .ok d) :
+    evalStmtFuel f (.nfree dst) ρ = .error .AssertFail := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd]
 
 /-- `vgrowFree` consumes the triple's buffer token and updates the
     binding, keeping `len`/`cap` (any fuel; N4d-iv-b1:

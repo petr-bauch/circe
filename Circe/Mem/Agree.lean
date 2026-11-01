@@ -410,6 +410,35 @@ theorem memEvalStmtFuel_psetVal_err (f : Nat) (dst ve : CExpr)
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
       hd, hv, hfind, hstore]
 
+/-- `nfree` frees the addressed cell (the `memEvalStmtFuel` twin
+    of the `boxFree` memory leg, with the tag resolved through
+    `memFind` like `psetNext`: value env and layout untouched;
+    any fuel). -/
+theorem memEvalStmtFuel_nfree_ok (f : Nat) (dst : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (b : Block) (m' : Mem)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hfree : memFree m a b.tag = .ok m') :
+    memEvalStmtFuel f (.nfree dst) ρ m π =
+      .ok (((ρ, m', π)), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hfind, hfree]
+
+/-- `nfree` propagates `memFree` errors (miss, tag mismatch,
+    double-free — all loud; any fuel). -/
+theorem memEvalStmtFuel_nfree_err (f : Nat) (dst : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (b : Block) (e : Panic)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hfree : memFree m a b.tag = .error e) :
+    memEvalStmtFuel f (.nfree dst) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hfind, hfree]
+
 /-- Allocating `let_` (`vnew`): the value side runs `vecNew`, the
     memory side additionally pins a fresh block holding the same words,
     extending the layout. -/

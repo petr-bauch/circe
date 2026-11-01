@@ -234,6 +234,30 @@ theorem addrOfWord_linkWord_none :
   rw [linkWord_none, addrOfWord]
   exact ite_eq_left rfl
 
+/-- Encoding inverts decoding on every word (re-encoding a
+    decoded link is the identity — the unlink store writes back
+    exactly the loaded word). -/
+theorem linkWord_addrOfWord (w : BitVec 32) :
+    linkWord (addrOfWord w) = w := by
+  rw [addrOfWord]
+  split
+  · next heq =>
+    rw [heq]
+    exact linkWord_none
+  · next hne =>
+    have hto : w.toNat ≠ 0 := by
+      intro hz
+      apply hne
+      have hz0 : w.toNat = (0 : BitVec 32).toNat := by simpa using hz
+      have heq0 := BitVec.eq_of_toNat_eq hz0
+      simpa using heq0
+    have hpos : 0 < w.toNat := Nat.pos_of_ne_zero hto
+    have hsub : w.toNat - 1 + 1 = w.toNat := Nat.sub_add_cancel hpos
+    rw [linkWord_some, hsub]
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt w.isLt
+
 /-- Checked load: the block must exist, carry the expected tag (the
     borrow check), be live (no use-after-free), and cover `i`
     (bounds). Anything else is loud (`AssertFail`, `OOB` for bounds —
@@ -726,6 +750,17 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | .error e => .error e
     | .ok _ => .error .AssertFail
     | .error err => .error err
+  | .pgetVal e, ρ, m, π =>
+    match memEvalExpr e ρ m π with
+    | .ok (.ptrVal (some a)) =>
+      match memFind m a with
+      | none => .error .AssertFail
+      | some b =>
+        match memLoad m a b.tag 0 with
+        | .ok w => .ok (.i32 w)
+        | .error e => .error e
+    | .ok _ => .error .AssertFail
+    | .error err => .error err
   | .stdVecLen s, ρ, m, π =>
     match layoutLookup π s with
     | none => .error .AssertFail
@@ -1158,6 +1193,43 @@ theorem memEvalExpr_pgetNext_err (e : CExpr) (ρ : Env)
     (hfind : memFind m a = some b)
     (hmem : memLoad m a b.tag 1 = .error werr) :
     memEvalExpr (.pgetNext e) ρ m π = .error werr := by
+  simp only [memEvalExpr, he, hfind, hmem]
+
+/-- `pgetVal` on a live node reads the payload word at index 0
+    (no decoding — payloads are raw `i32`). -/
+theorem memEvalExpr_pgetVal_hit (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr) (w : BitVec 32)
+    (b : Block)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hmem : memLoad m a b.tag 0 = .ok w) :
+    memEvalExpr (.pgetVal e) ρ m π = .ok (.i32 w) := by
+  simp only [memEvalExpr, he, hfind, hmem]
+
+/-- `pgetVal` on null is loud (dereferencing `nullptr` is
+    `AssertFail`, as for `pgetNext`). -/
+theorem memEvalExpr_pgetVal_null (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal none)) :
+    memEvalExpr (.pgetVal e) ρ m π = .error .AssertFail := by
+  simp only [memEvalExpr, he]
+
+/-- `pgetVal` on a missing block is loud. -/
+theorem memEvalExpr_pgetVal_miss (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = none) :
+    memEvalExpr (.pgetVal e) ρ m π = .error .AssertFail := by
+  simp only [memEvalExpr, he, hfind]
+
+/-- `pgetVal` propagates `memLoad` errors (dead block, short read). -/
+theorem memEvalExpr_pgetVal_err (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr)
+    (b : Block) (werr : Panic)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hmem : memLoad m a b.tag 0 = .error werr) :
+    memEvalExpr (.pgetVal e) ρ m π = .error werr := by
   simp only [memEvalExpr, he, hfind, hmem]
 
 /-- `spanAt` OOB agreement: the memory load itself fails `OOB`
@@ -1801,6 +1873,17 @@ def memEvalStmtWith
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .nfree dst, ρ, m, π =>
+    match memEvalExpr dst ρ m π with
+    | .ok (.ptrVal (some a)) =>
+      match memFind m a with
+      | none => .error .AssertFail
+      | some b =>
+        match memFree m a b.tag with
+        | .error e => .error e
+        | .ok m' => .ok ((ρ, m', π), .fellThrough)
+    | .ok _ => .error .AssertFail
+    | .error e => .error e
   | .vgrowFree x, ρ, m, π =>
     match envLookup ρ x, layoutLookup π x with
     | some (.stdVecOwned b len cap), some (a, t) =>

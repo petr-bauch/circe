@@ -205,6 +205,7 @@ inductive CExpr : Type
   | u64ofI32 : CExpr → CExpr
   | mload : String → CExpr → CExpr
   | pgetNext : CExpr → CExpr
+  | pgetVal : CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and
@@ -284,6 +285,7 @@ inductive CStmt : Type
   | mstore (slot : String) (idx val : CExpr)
   | psetNext (dst link : CExpr)
   | psetVal (dst val : CExpr)
+  | nfree (dst : CExpr)
   | fail
   | if_ (cond : CExpr) (then_ else_ : CStmt)
   | while_ (cond : CExpr) (body : CStmt)

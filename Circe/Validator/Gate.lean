@@ -30,6 +30,7 @@ import Circe.Emit.LinkedReverse
 import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
+import Circe.Emit.ListErase
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecTransformAdd
@@ -1929,6 +1930,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { listAppendFunc with name := raw.name }
       else if isPushFrontShape raw then
         .ok { pushFrontFunc with name := raw.name }
+      else if isListEraseShape raw then
+        .ok { listEraseFunc with name := raw.name }
       else if isStdVecEmptyCtorShape raw then
         .ok { stdVecEmptyCtorFunc with name := raw.name }
       else if isStdVecUnitShape raw then
