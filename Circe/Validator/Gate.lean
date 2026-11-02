@@ -38,6 +38,7 @@ import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
+import Circe.Emit.VecRemove
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecQuicksort
@@ -1905,6 +1906,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecTransformAddFunc with name := raw.name }
       else if isVecPartitionShape raw then
         .ok { vecPartitionFunc with name := raw.name }
+      else if isVecRemoveShape raw then
+        .ok { vecRemoveFunc with name := raw.name }
       else if isVecMinIndexShape raw then
         .ok { VecSelectionSort.minIndexFunc with name := raw.name }
       else if isVecSelectionSortShape raw then

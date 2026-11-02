@@ -1859,6 +1859,16 @@ roster entries for `DiffVecQuicksort`/`GoldenVecQuicksort`.
 - Acceptance: 452 jobs TEST-OK, CHECK-OK (`b79752a`,
   `f9b4e76`).
 
+### P2-M9. Erase-compress (`vec_remove`, remove-style) — DONE (2026-10-26)
+
+Pillar-2 proposed goal #1. The `std::remove` idiom: compact survivors forward, shrink the logical length. One proposition covers the two proof trees by construction (the new endpoint shape — the returned length is below the input length, violations of the filter/length contract coincide with `l'.take w' ≠ survivors`): admission `vec_remove.cpp` + real CIRGen `.cir` (entry 5 allocas/15 loads/8 stores, one `cir.while`, one `cir.if`, two compares — `u64 lt` bound check + signed `ne` keep test — four calls (one `size` + three non-const `at()`), the admission is the strongest natural separator from `vec_partition` (signed `slt`, two counters, six calls). The exact reading treats the *first* endpoint where new length ≠ old length: the analysis disagrees with erase-compress (which truncates and returns void) and with `std::remove` alone (which leaves the tail unspecified). The exact reading is the `ne`-conditioned compacting return; the strictest prior shape is `vec_partition`, whose separator the analysis inherits: one `cir.while`, one `cir.if`, two compares, eight `cir.const`, two plain `u64` bumps. The proof covers both the evaluator side (`Circe.Emit.VecRemove`: `vecRemoveFwd`, `removeFwd`, `valRemoveBody_keep/drop`, `valRemoveLoop_ok`, `mkRemoveEnv` — the direct generalization of the partition kit from one counter to two, with the `w ≤ r` bound replacing `s ≤ i`) and the memory side (`Circe.Transfer.VecRemove`: `memRemoveBody_keep/drop`, `memRemoveLoop_ok`, `memTransferProg_vecRemove_ok`, plus `removeFwd_ok`/`removeFwd_prefix`/`removeFwd_bounds` in `Circe/Specs`). The closing contract `evalProgFunc_vecRemove_spec` ties the returned `w'` to `(l.filter (· != x)).length` *and* the survivor prefix (`l'.take w' = l.filter (· != x)` with contents), and enforces `l'.length = l.length` (no silent truncation under the caller-debt obligation). The one asymmetry: the `remove` return is the new logical length, not the compacted vector — callers must resize; the contract forces that contract to the caller. The take-lemma pair (`List.take_add_one`, `getElem?_set_self`) was probed until byte-stable before the file landed; the suite build (`VecPartition`-mirrored matcher with `matchFrag_vecRemove` by `rfl`, `FragKind.vecRemove`, `GenOut` writable arm) followed the same byte-identical shape check as erase-compress's admitted sibling. Goldens + `GOLDENVECREMOVE-OK passed=15` (5-check entry pipeline + 9 sibling rejections + remove-not-sibs), spec stub 6 edges (`spec_check=true` by `#eval`: interior drops, no-match, all-match, empty, singleton drop/keep). The rule: never trust an unverified size word.
+- Acceptance: full gate 561/561 TEST-OK
+  (`GOLDENVECREMOVE-OK passed=15`,
+  `GOLDENVECPARTITION-OK` unchanged); goldens typecheck
+  (`lake env lean out/VecRemove.lean
+  out/VecRemove_Spec.lean`); gallery compiles unchanged
+  (`lake build HoareGallery`, 126 jobs).
+
 ### P4 Phase 0. Iris vendoring re-check — DONE (2026-10-23, report-only)
 
 All three 2026-10-12 blockers re-checked in `/tmp` scratch (no

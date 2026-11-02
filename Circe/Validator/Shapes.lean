@@ -2544,6 +2544,41 @@ def isListClearShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `vec_remove` entry shape (erase-compress): one `mutBorrow`
+    vector plus one owned `i32` value in, `u64` out (the new
+    logical length), exactly four calls (one `size` + three
+    non-const `at()` — the test read, the survivor read, the
+    write target), one `cir.while` (the read scan), one
+    `cir.if` (the keep test), two compares (the `u64` bound
+    check + the signed `ne` keep test), two plain `u64` bumps.
+    No allocation, no recursion, no `unreachable`; the `ne`
+    compare + non-const `at()`-only traffic separate it from
+    `vec_partition` (signed `slt`, two counters, six calls). -/
+def isVecRemoveShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v, x] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isI32 x.ctype &&
+    raw.ret == "!u64i" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.const" == 8 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 15 &&
+    opCount raw.text "cir.store" == 8 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.add nsw"
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

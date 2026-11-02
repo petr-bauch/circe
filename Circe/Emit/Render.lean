@@ -1358,6 +1358,31 @@ def emitVecPartitionText (name : String) : String :=
   ++ "        else loop pivot l fuel (i + 1) s\n"
   ++ "    else .ok (i, s, l)\n"
 
+/-- Render the `vec_remove` entry forward definition: the
+    erase-compress two-cursor scan over the reified words
+    (guard-justified accesses, so the model is total). The
+    forward returns the new logical length; the compacted
+    prefix is `take` of the final words. -/
+def emitVecRemoveText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (erase-compress over the reified words; guard-justified, total). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) (x : BitVec 32) : Result Nat :=\n"
+  ++ "  match loop x l l.length 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop (x : BitVec 32) : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, r, w => .ok (r, w, l)\n"
+  ++ "  | l, fuel + 1, r, w =>\n"
+  ++ "    if r < l.length then\n"
+  ++ "      match l[r]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some y =>\n"
+  ++ "        if (y != x) then loop x (l.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop x l fuel (r + 1) w\n"
+  ++ "    else .ok (r, w, l)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=

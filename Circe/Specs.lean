@@ -2759,6 +2759,164 @@ theorem partitionFwd_partitioned (pivot : BitVec 32)
       obtain ⟨rfl, rfl, rfl⟩ := hpair
       exact ⟨hpref, fun j hsj hjl y hy => hsuff j hsj (by omega) y hy⟩
 
+/-! ## P2-M9: erase-compress (`remove`) forward contract -/
+
+/-- Erase-compress forward contract, ok leg: the scan runs to
+    `l.length` with full reads (single leg — the kernel is
+    total: every access is guard-justified, so the `none` arm
+    never fires in-invariant). Fuel induction threading the
+    write bound `w ≤ r`. -/
+theorem removeFwd_ok (x : BitVec 32) (l : List (BitVec 32))
+    (fuel r w : Nat)
+    (hle : r ≤ l.length) (hwle : w ≤ r)
+    (hF : l.length - r ≤ fuel)
+    (hread : ∀ p, p < l.length → ∃ y, l[p]? = some y) :
+    ∃ w' l', removeFwd x l fuel r w = .ok (l.length, w', l') := by
+  induction fuel generalizing l r w with
+  | zero =>
+    have him : r = l.length := by omega
+    subst him
+    exact ⟨w, l, by simp [removeFwd]⟩
+  | succ n ih =>
+    by_cases hlt : r < l.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      have hwlt : w < l.length := by omega
+      obtain ⟨wOld, hwget⟩ := hread w hwlt
+      have hF' : l.length - (r + 1) ≤ n := by omega
+      by_cases hkeep : (y != x) = true
+      · have hlen : (l.set w y).length = l.length := by
+          simp [List.length_set]
+        have hread' : ∀ p, p < (l.set w y).length →
+            ∃ z, (l.set w y)[p]? = some z := by
+          intro p hp
+          have hplen : p < l.length := by rw [hlen] at hp; exact hp
+          by_cases hpw : p = w
+          · rw [hpw]
+            exact ⟨y, List.getElem?_set_self hwlt⟩
+          · obtain ⟨z, hz⟩ := hread p hplen
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show w ≠ p by omega)]
+              exact hz⟩
+        obtain ⟨w', l', h'⟩ := ih (l := l.set w y) (r := r + 1)
+          (w := w + 1) (by rw [hlen]; omega) (by omega)
+          (by rw [hlen]; omega) hread'
+        exact ⟨w', l', by
+          simpa [removeFwd, dite_eq_left hlt, hy, hkeep] using h'⟩
+      · have hdrop : (y != x) = false := by
+          cases h : (y != x) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        obtain ⟨w', l', h'⟩ := ih (l := l) (r := r + 1) (w := w)
+          (by omega) (by omega) hF' hread
+        exact ⟨w', l', by
+          simpa [removeFwd, dite_eq_left hlt, hy, hdrop] using h'⟩
+    · have him : r = l.length := by omega
+      subst him
+      exact ⟨w, l, by simp [removeFwd, dite_eq_right hlt]⟩
+
+/-- Erase-compress invariant over the scan, stated against the
+    entry list `l₀` (the running list `l` mutates under the
+    scan: positions at/above the write cursor still hold the
+    entry values). The compacted prefix is the filtered
+    scanned prefix of `l₀`; at exit (`r = l₀.length`) this is
+    the whole filtered input. -/
+theorem removeFwd_prefix (x : BitVec 32) (l₀ : List (BitVec 32))
+    (fuel r w w' : Nat) (l l' : List (BitVec 32))
+    (hle : r ≤ l₀.length) (hwle : w ≤ r)
+    (hF : l₀.length - r ≤ fuel)
+    (hlen : l.length = l₀.length)
+    (hpre : l.take w =
+      (l₀.take r).filter (fun y => (y != x)))
+    (hsuf : ∀ j, w ≤ j → l[j]? = l₀[j]?)
+    (hfwd : removeFwd x l fuel r w = .ok (l₀.length, w', l')) :
+    l'.take w' = l₀.filter (fun y => (y != x)) ∧
+      w ≤ w' ∧
+      l'.length = l₀.length := by
+  induction fuel generalizing l r w with
+  | zero =>
+    have hpair : (r, w, l) = (l₀.length, w', l') := by
+      simpa [removeFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    refine ⟨?_, Nat.le_refl _, hlen⟩
+    rw [List.take_length] at hpre
+    exact hpre
+  | succ n ih =>
+    by_cases hlt : r < l.length
+    · have hlt₀ : r < l₀.length := by omega
+      have hy₀ : l[r]? = some l₀[r] := by
+        rw [hsuf r (by omega)]
+        exact List.getElem?_eq_getElem hlt₀
+      obtain ⟨wOld, hwget⟩ : ∃ z, l[w]? = some z := by
+        have hwlt : w < l.length := by omega
+        exact ⟨l[w], List.getElem?_eq_getElem hwlt⟩
+      have hF' : l₀.length - (r + 1) ≤ n := by omega
+      by_cases hkeep : (l₀[r] != x) = true
+      · have hlen' : (l.set w l₀[r]).length = l₀.length := by
+          simp [List.length_set, hlen]
+        have hpre' : (l.set w l₀[r]).take (w + 1) =
+            (l₀.take (r + 1)).filter (fun y => (y != x)) := by
+          have htake : (l.set w l₀[r]).take (w + 1) =
+              l.take w ++ [l₀[r]] := by
+            have htakeW : (l.set w l₀[r]).take w = l.take w := by
+              apply List.ext_getElem?
+              intro j
+              rw [List.getElem?_take, List.getElem?_take]
+              by_cases hj : j < w
+              · rw [List.getElem?_set_ne (show w ≠ j by omega)]
+              · simp [hj]
+            rw [List.take_add_one,
+              List.getElem?_set_self (by omega : w < l.length),
+              htakeW]; rfl
+          have hfilter : (l₀.take (r + 1)).filter
+              (fun y => (y != x)) =
+              (l₀.take r).filter (fun y => (y != x)) ++ [l₀[r]] := by
+            have htake₀ : l₀.take (r + 1) = l₀.take r ++ [l₀[r]] := by
+              rw [List.take_add_one,
+                List.getElem?_eq_getElem hlt₀]; rfl
+            rw [htake₀, List.filter_append]
+            simp [hkeep]
+          rw [htake, hfilter, hpre]
+        have hsuf' : ∀ j, w + 1 ≤ j → (l.set w l₀[r])[j]? = l₀[j]? := by
+          intro j hj
+          rw [List.getElem?_set_ne (show w ≠ j by omega)]
+          exact hsuf j (by omega)
+        have hfwd' : removeFwd x (l.set w l₀[r]) n (r + 1) (w + 1) =
+            .ok (l₀.length, w', l') := by
+          have h := hfwd
+          simpa [removeFwd, dite_eq_left hlt, hy₀, hkeep] using h
+        obtain ⟨hA, hB, hC⟩ := ih (l := l.set w l₀[r]) (r := r + 1)
+          (w := w + 1) (by omega) (by omega) hF' hlen' hpre' hsuf'
+          hfwd'
+        exact ⟨hA, by omega, hC⟩
+      · have hdrop : (l₀[r] != x) = false := by
+          cases h : (l₀[r] != x) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hpre' : l.take w =
+            (l₀.take (r + 1)).filter (fun y => (y != x)) := by
+          have hfilter : (l₀.take (r + 1)).filter
+              (fun y => (y != x)) =
+              (l₀.take r).filter (fun y => (y != x)) := by
+            have htake₀ : l₀.take (r + 1) = l₀.take r ++ [l₀[r]] := by
+              rw [List.take_add_one,
+                List.getElem?_eq_getElem hlt₀]; rfl
+            rw [htake₀, List.filter_append]
+            simp [hdrop]
+          rw [hfilter]; exact hpre
+        have hfwd' : removeFwd x l n (r + 1) w =
+            .ok (l₀.length, w', l') := by
+          have h := hfwd
+          simpa [removeFwd, dite_eq_left hlt, hy₀, hdrop] using h
+        obtain ⟨hA, hB, hC⟩ := ih (l := l) (r := r + 1) (w := w)
+          (by omega) (by omega) hF' hlen hpre'
+          (fun j hj => hsuf j (by omega)) hfwd'
+        exact ⟨hA, hB, hC⟩
+    · have hpair : (r, w, l) = (l₀.length, w', l') := by
+        simpa [removeFwd, dite_eq_right hlt] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      refine ⟨?_, Nat.le_refl _, hlen⟩
+      rw [List.take_length] at hpre
+      exact hpre
 /-- Sorted window (M5 positional formulation for a subrange):
     positions in `[lo, hi)` pairwise ascending under `slt`. -/
 def SortedSeg (l : List (BitVec 32)) (lo hi : Nat) : Prop :=
@@ -5098,3 +5256,40 @@ theorem VecQuicksort.vecQuicksort_spec (F : Nat)
     cases hev
     have hjoint := vecQuicksortFwd_joint l F lo hi hlo_le hhi_le l' hfwd
     exact ⟨l', hret', hjoint.1, hjoint.2.1, hjoint.2.2.1, hjoint.2.2.2⟩
+
+/-- Erase-compress bounds: the write cursor stays behind the
+    read cursor, and the read cursor never retreats. -/
+theorem removeFwd_bounds (x : BitVec 32) (l l' : List (BitVec 32))
+    (fuel r w r' w' : Nat) (hwle : w ≤ r)
+    (h : removeFwd x l fuel r w = .ok (r', w', l')) :
+    w' ≤ r' ∧ r ≤ r' := by
+  induction fuel generalizing l r w with
+  | zero =>
+    have hpair : (r, w, l) = (r', w', l') := by
+      simpa [removeFwd] using h
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact ⟨hwle, Nat.le_refl _⟩
+  | succ n ih =>
+    by_cases hlt : r < l.length
+    · obtain ⟨y, hy⟩ : ∃ y, l[r]? = some y := by
+        exact ⟨l[r], List.getElem?_eq_getElem hlt⟩
+      by_cases hkeep : (y != x) = true
+      · have h' : removeFwd x (l.set w y) n (r + 1) (w + 1) =
+            .ok (r', w', l') := by
+          simpa [removeFwd, dite_eq_left hlt, hy, hkeep] using h
+        obtain ⟨h1, h2⟩ := ih (l := l.set w y) (r := r + 1)
+          (w := w + 1) (by omega) h'
+        exact ⟨h1, by omega⟩
+      · have hdrop : (y != x) = false := by
+          cases hh : (y != x) with
+          | true => exact absurd hh hkeep
+          | false => rfl
+        have h' : removeFwd x l n (r + 1) w = .ok (r', w', l') := by
+          simpa [removeFwd, dite_eq_left hlt, hy, hdrop] using h
+        obtain ⟨h1, h2⟩ := ih (l := l) (r := r + 1) (w := w)
+          (by omega) h'
+        exact ⟨h1, by omega⟩
+    · have hpair : (r, w, l) = (r', w', l') := by
+        simpa [removeFwd, dite_eq_right hlt] using h
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact ⟨hwle, Nat.le_refl _⟩

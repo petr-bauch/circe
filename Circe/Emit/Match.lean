@@ -42,6 +42,7 @@ import Circe.Emit.VecQuicksort
 import Circe.Emit.VecHeapSort
 import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
+import Circe.Emit.VecRemove
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
@@ -1153,6 +1154,24 @@ def matchFrag : Func → Option FragKind
                       (.lit (.u64 v1))))))
             (.return_ (.var "v")))))⟩ =>
     some .vecPartition
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩,
+        ⟨"x", .i 32, .owned⟩],
+      .u 64,
+      (.seq (.let_ "w" (.u 64) (.lit (.u64 z0)))
+        (.seq (.let_ "r" (.u 64) (.lit (.u64 z1)))
+          (.seq (.while_ (.ult (.var "r") (.stdVecLen "v"))
+                  (.seq (.if_ (.une (.stdVecAt "v" (.var "r"))
+                                    (.var "x"))
+                            (.seq (.vecSet "v" (.var "w")
+                                        (.stdVecAt "v" (.var "r")))
+                              (.assign "w" (.uadd (.var "w")
+                                    (.lit (.u64 v0)))))
+                            .skip)
+                    (.assign "r" (.uadd (.var "r")
+                      (.lit (.u64 v1))))))
+            (.return_ (.var "w")))))⟩ =>
+    some .vecRemove
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"lo", .u 64, .owned⟩],
       .u 64,
@@ -2251,6 +2270,8 @@ theorem matchFrag_vecTransformAdd :
     matchFrag vecTransformAddFunc = some .vecTransformAdd := rfl
 theorem matchFrag_vecPartition :
     matchFrag vecPartitionFunc = some .vecPartition := rfl
+theorem matchFrag_vecRemove :
+    matchFrag vecRemoveFunc = some .vecRemove := rfl
 theorem matchFrag_vecMinIndex :
     matchFrag VecSelectionSort.minIndexFunc = some .vecMinIndex := rfl
 theorem matchFrag_vecSelectionSort :

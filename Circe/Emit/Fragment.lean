@@ -163,6 +163,7 @@ inductive FragKind : Type
   | vecDfsGrow
   | vecTransformAdd
   | vecPartition
+  | vecRemove
   | vecMinIndex
   | vecSelectionSort
   | vecEmptyCtor
