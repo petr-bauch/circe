@@ -1383,6 +1383,32 @@ def emitVecRemoveText (name : String) : String :=
   ++ "        else loop x l fuel (r + 1) w\n"
   ++ "    else .ok (r, w, l)\n"
 
+/-- Render the `vec_partial_sum` entry forward definition: the
+    in-place prefix-sum scan over the reified words
+    (read-after-write through the vector; the checked `add` can
+    fail loudly mid-scan, so the model is partial). The forward
+    returns the final cursor alongside the rewritten words. -/
+def emitVecPartialSumText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (in-place prefix sums over the reified words; read-after-write through the vector, checked add, partial). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result (Nat × List (BitVec 32)) :=\n"
+  ++ "  match loop l l.length 1 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (i, l') => .ok (i, l')\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → Nat → Nat → Result (Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, i => .ok (i, l)\n"
+  ++ "  | l, fuel + 1, i =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match l[i]?, l[i - 1]? with\n"
+  ++ "      | some cur, some prev =>\n"
+  ++ "        match checkedAddI32 cur prev with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok sum => loop (l.set i sum) fuel (i + 1)\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (i, l)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=

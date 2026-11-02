@@ -2545,6 +2545,48 @@ def emitVecRemoveSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_partial_sum`. The mirror is the in-place
+    prefix-sum scan over the reified words (read-after-write
+    through the vector; the checked `add` fails loudly, so the
+    mirror is partial like the forward). Edges carry ground truth:
+    a four-element scan, singleton and empty identity, a scan with
+    a negative step, a loud `Overflow` mid-scan, and an all-negative
+    scan. -/
+def emitVecPartialSumSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v)` rewrites `v` to its prefix sums in place (`std::partial_sum` idiom). Base body reference: the same scan on the reified words (cf. emitted `{name}_fwd`). Returns the final cursor alongside the rewritten words; the checked add fails loudly (`Overflow`). -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (Nat × List (BitVec 32)) :=\n"
+  ++ "  match loop l l.length 1 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (i, l') => .ok (i, l')\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → Nat → Nat → Result (Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, i => .ok (i, l)\n"
+  ++ "  | l, fuel + 1, i =>\n"
+  ++ "    if i < l.length then\n"
+  ++ "      match l[i]?, l[i - 1]? with\n"
+  ++ "      | some cur, some prev =>\n"
+  ++ "        match checkedAddI32 cur prev with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok sum => loop (l.set i sum) fuel (i + 1)\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (i, l)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: four-element scan, singleton and empty identity, negative step, loud overflow, all-negative scan. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (Nat × List (BitVec 32))) :=\n"
+  ++ "  [([1, 2, 3, 4], .ok (4, [1, 3, 6, 10])),\n"
+  ++ "   ([5], .ok (1, [5])),\n"
+  ++ "   ([], .ok (1, [])),\n"
+  ++ "   ([10, -3, 7], .ok (3, [10, 7, 14])),\n"
+  ++ "   ([2147483647, 1], .error .Overflow),\n"
+  ++ "   ([-1, -2, -3], .ok (3, [-1, -3, -6]))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `min_index`. The mirror is the forward min-scan
     over the reified words; edges carry ground truth (singleton,
     head/tail minima, interior minimum). -/

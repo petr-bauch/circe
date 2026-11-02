@@ -1869,6 +1869,16 @@ Pillar-2 proposed goal #1. The `std::remove` idiom: compact survivors forward, s
   out/VecRemove_Spec.lean`); gallery compiles unchanged
   (`lake build HoareGallery`, 126 jobs).
 
+### P2-M10. Prefix-sum scan (`vec_partial_sum`, `std::partial_sum` idiom) — DONE (2026-11-02)
+
+Roadmap proposed goal #1. The in-place prefix-sum scan: `v.at(i) = v.at(i) + v.at(i - 1)` from `i = 1`, the first read-after-write loop-carried dependency the transform/partition kit never exercises (each output word reads the previous output). Admission `vec_partial_sum.cpp` + real CIRGen `.cir` (248 lines; entry `_Z15vec_partial_sumRSt6vectorIiSaIiEE` + shared leaves `size`, non-const `at()`, `_M_range_check`, non-const `operator[]`; one `cir.while`, `lt` guard, `sub` predecessor index, two non-const `at()` calls, checked `add`). The proof has two legs throughout because the checked `i32` add can fail mid-scan (empty/singleton are identity; the cursor starts at 1). The two-segment invariant is stated against the entry list `l₀`: the written prefix equals the independent scan of `l₀.take i`, the suffix is untouched. The core (`Circe.Emit.VecPartialSum`: `vecPartialSumName/Body/Loop/Func`, `mkPartialSumEnv`, `partialSumFwd`/`vecPartialSumFwd`, `valPartialSumBody_ok/_overflow`, `valPartialSumLoop_ok/_overflow`) reuses the existing kit — no new CoreIR: `.stdVecAt`/`.vecSet`/`.add`/`.usub`/`.ult`/`.uadd`, `i - 1` via the `usub` kit. The oracle (`Circe/Specs`: `scanChecked`/`partialSumsChecked`/`scanChecked_append`, `partialSumFwd_scan_ok/_err`, `scanChecked_singleton_zero`) is independent of the forward model; the ok leg threads the running sum through the written prefix, the error leg replays the first failing add and closes by take/drop append. The memory side (`Circe.Transfer.VecPartialSum`: `memPartialSumBody_ok/_overflow`, `memPartialSumLoop_ok/_overflow`, both entries, `memTransferProg_vecPartialSum_ok/_overflow`, closing `evalProgFunc_vecPartialSum_spec_ok/_overflow`) mirrors every value step lockstepped on the single `v` block. Two proof-engineering notes: elaborated `1#64` vs bare `1` literals are definitionally equal but not syntactically so — whole-expression `simp` matches need the `#64` spelling (the Vec64 precedent); and the induction must generalize the accumulated prefix (`taken`) or the IH cannot be instantiated at `taken ++ [sum]`. The suite build (`VecPartition`-mirrored matcher with `matchFrag_vecPartialSum` by `rfl`, `FragKind.vecPartialSum`, `GenOut` writable arms) follows the byte-identical shape discipline. Goldens + `GOLDENVECPARTIALSUM-OK passed=15` (5-check entry pipeline + 9 sibling rejections + partialsum-not-sibs), spec stub 6 edges (`spec_check=true`: four-element scan, singleton/empty identity, negative step, loud `Overflow`, all-negative scan).
+- Acceptance: full gate 565/565 TEST-OK
+  (`GOLDENVECPARTIALSUM-OK passed=15`,
+  prior goldens unchanged); goldens typecheck
+  (`lake env lean tests/golden/VecPartialSum.lean
+  tests/golden/VecPartialSum_Spec.lean`); gallery compiles unchanged
+  (`lake build HoareGallery`, 127 jobs).
+
 ### P4 Phase 0. Iris vendoring re-check — DONE (2026-10-23, report-only)
 
 All three 2026-10-12 blockers re-checked in `/tmp` scratch (no

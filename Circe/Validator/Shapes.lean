@@ -2579,6 +2579,48 @@ def isVecRemoveShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.add nsw"
   | _ => false
 
+/-- `vec_partial_sum` entry shape (partial-sum scan, P2-M10):
+    one `mutBorrow` vector in, `void` out, exactly four calls
+    (one `size` + three non-const `at()` — the current read,
+    the previous-output read, and the write target), one
+    `cir.while` (the prefix scan starting at index 1), no
+    `cir.if`, one `lt` compare, one plain `u64` subtraction
+    (the `i - 1` previous-output index), one `nsw` add (the
+    loud checked sum), and one plain `u64` bump. No allocation,
+    no recursion, no `unreachable`; non-const `at()`-only
+    traffic plus `nsw` add separates it from `vec_remove`
+    (single-borrow plus owned value, `u64` out, `ne` test) and
+    `vec_partition` (two borrowed-side reads plus an owned
+    pivot, swaps, two plain `u64` bumps). -/
+def isVecPartialSumShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    raw.ret == "" &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtMutName &&
+    !callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 0 &&
+    opCount raw.text "cir.cmp" == 1 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.add nsw" == 1 &&
+    opCount raw.text "cir.add" == 2 &&
+    opCount raw.text "cir.sub" == 1 &&
+    opCount raw.text "cir.const" == 6 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 2 &&
+    opCount raw.text "cir.load" == 11 &&
+    opCount raw.text "cir.store" == 4 &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

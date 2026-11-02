@@ -22,6 +22,7 @@ ok/err sides. `cir_simp` (`Circe.Tactics`) is used throughout.
 -/
 import Circe.Base
 import Circe.Emit
+import Circe.Emit.VecPartialSum
 import Circe.Tactics
 
 /-! ## `incr`: mathematical successor spec -/
@@ -2917,6 +2918,331 @@ theorem removeFwd_prefix (x : BitVec 32) (l₀ : List (BitVec 32))
       refine ⟨?_, Nat.le_refl _, hlen⟩
       rw [List.take_length] at hpre
       exact hpre
+
+/-! ## P2-M10: prefix-sum scan forward contract -/
+
+/-- Checked independent prefix-scan oracle. Addition is the
+    loud checked `i32` add, so a single overflowing adjacent
+    pair aborts the whole scan. -/
+def scanChecked : List (BitVec 32) → BitVec 32 →
+    Result (List (BitVec 32))
+  | [], _ => .ok []
+  | x :: xs, acc =>
+    match checkedAddI32 acc x with
+    | .error e => .error e
+    | .ok s =>
+      match scanChecked xs s with
+      | .error e => .error e
+      | .ok ss => .ok (s :: ss)
+
+/-- Checked prefix sums of a whole list, starting from zero. -/
+def partialSumsChecked (l : List (BitVec 32)) :
+    Result (List (BitVec 32)) :=
+  scanChecked l 0
+
+/-- Scan composition: scanning a concatenation first scans the
+    left part, then continues from its last output (or the
+    incoming accumulator for an empty left part). -/
+theorem scanChecked_append (a b : List (BitVec 32))
+    (acc : BitVec 32) :
+    scanChecked (a ++ b) acc =
+      match scanChecked a acc with
+      | .error e => .error e
+      | .ok sa =>
+        match scanChecked b (sa.getLast?.getD acc) with
+        | .error e => .error e
+        | .ok sb => .ok (sa ++ sb) := by
+  induction a generalizing acc with
+  | nil =>
+    cases h : scanChecked b acc <;> simp [scanChecked, h]
+  | cons x xs ih =>
+    simp only [List.cons_append, scanChecked]
+    cases h1 : checkedAddI32 acc x with
+    | error e => simp [h1]
+    | ok s =>
+      simp only [h1]
+      cases h2 : scanChecked xs s with
+      | error e =>
+        simp only [h2]
+        rw [ih s]
+        simp [h2]
+      | ok ss =>
+        simp only [h2, ih s]
+        have hlast : ((s :: ss).getLast?.getD acc) =
+            (ss.getLast?.getD s) := by
+          cases ss <;> rfl
+        rw [hlast]
+        cases h3 : scanChecked b (ss.getLast?.getD s) with
+        | error e => simp [h3]
+        | ok sb => simp [h3, List.cons_append]
+/-- A singleton scan from `0` just returns the element: `0 + x`
+    cannot overflow because `x.toInt` is already in range. -/
+theorem scanChecked_singleton_zero (x : BitVec 32) :
+    scanChecked [x] 0 = .ok [x] := by
+  have h0 : (0#32 : BitVec 32).toInt = 0 := by simp
+  have hlo := BitVec.le_toInt (x := x)
+  have hhi := BitVec.toInt_le (x := x)
+  have hrange : inInt32Range ((0#32 : BitVec 32).toInt + x.toInt) = true := by
+    rw [inInt32Range_iff, h0, Int.zero_add]
+    exact ⟨hlo, hhi⟩
+  have hadd0 : checkedAddI32 0#32 x = .ok (0#32 + x) :=
+    checkedAddI32_ok _ _ hrange
+  simp [scanChecked, hadd0]
+
+/-- Prefix-scan forward contract, ok leg: with the already
+    scanned prefix pinned against the entry list and the
+    unscanned suffix untouched, a successful forward run to the
+    end returns the independent checked scan. -/
+theorem partialSumFwd_scan_ok (l₀ : List (BitVec 32))
+    (fuel i : Nat) (l taken : List (BitVec 32))
+    (l' : List (BitVec 32)) (i' : Nat)
+    (hle : i ≤ l₀.length) (hi1 : 1 ≤ i)
+    (hF : l₀.length - i ≤ fuel)
+    (hlen : l.length = l₀.length)
+    (hpre : l.take i = taken)
+    (hscan : scanChecked (l₀.take i) 0 = .ok taken)
+    (hsuf : l.drop i = l₀.drop i)
+    (hfwd : partialSumFwd l fuel i = .ok (i', l')) :
+    i' = l₀.length ∧
+      scanChecked l₀ 0 = .ok l' ∧
+      l'.length = l₀.length := by
+  induction fuel generalizing l i taken with
+  | zero =>
+    have him : i = l₀.length := by omega
+    subst him
+    have hpair : (l₀.length, l) = (i', l') := by
+      simpa [partialSumFwd] using hfwd
+    rw [Prod.mk.injEq] at hpair
+    obtain ⟨hiEq, hlEq⟩ := hpair
+    refine ⟨hiEq.symm, ?_, by rw [← hlEq, hlen]⟩
+    have hpre' : l = taken := by
+      have h := hpre
+      rw [← hlen, List.take_length] at h
+      exact h
+    have hscan' : scanChecked l₀ 0 = .ok taken := by
+      have h := hscan
+      rw [List.take_length] at h
+      exact h
+    rw [← hlEq, hpre']
+    exact hscan'
+  | succ n ih =>
+    by_cases hlt : i < l.length
+    · obtain ⟨cur, hgetC⟩ : ∃ x, l[i]? = some x :=
+        ⟨l[i], List.getElem?_eq_getElem hlt⟩
+      have hprevlt : i - 1 < l.length := by omega
+      obtain ⟨prev, hgetP⟩ : ∃ x, l[i - 1]? = some x :=
+        ⟨l[i - 1], List.getElem?_eq_getElem hprevlt⟩
+      match hadd : checkedAddI32 cur prev with
+      | .ok sum =>
+        have hcur0 : l₀[i]? = some cur := by
+          have h0 : (l.drop i)[0]? = (l₀.drop i)[0]? := by
+            rw [hsuf]
+          rw [List.getElem?_drop, List.getElem?_drop] at h0
+          simp only [Nat.add_zero] at h0 ⊢
+          exact h0.symm.trans hgetC
+        have htakenN : taken.length = i := by
+          rw [← hpre, List.length_take, hlen,
+            Nat.min_eq_left hle]
+        have hprevTaken : taken[i - 1]? = some prev := by
+          have h := congrArg
+            (fun xs : List (BitVec 32) => xs[i - 1]?) hpre
+          simpa [List.getElem?_take_of_lt
+            (show i - 1 < i by omega), hgetP] using h.symm
+        have hlast : taken.getLast? = some prev := by
+          rw [List.getLast?_eq_getElem?, htakenN]
+          exact hprevTaken
+        have haccPrev : taken.getLast?.getD 0 = prev := by
+          rw [hlast]; rfl
+        have hadd' : checkedAddI32 prev cur = .ok sum := by
+          rw [checkedAddI32_comm]; exact hadd
+        have hval : sum = prev + cur := by
+          have h := checkedAddI32_ok_value _ _ _ hadd
+          rw [BitVec.add_comm] at h
+          exact h
+        have hsingleton : scanChecked [cur] prev = .ok [sum] := by
+          simp [scanChecked, hadd', hval]
+        have htake0 : l₀.take (i + 1) = l₀.take i ++ [cur] := by
+          rw [List.take_add_one, hcur0]; rfl
+        have hscanNext :
+            scanChecked (l₀.take (i + 1)) 0 =
+              .ok (taken ++ [sum]) := by
+          simp only [htake0, scanChecked_append, hscan, haccPrev,
+            hsingleton]
+        have htakeW : (l.set i sum).take i = l.take i := by
+          apply List.ext_getElem?
+          intro j
+          rw [List.getElem?_take, List.getElem?_take]
+          by_cases hj : j < i
+          · rw [List.getElem?_set_ne (show i ≠ j by omega)]
+          · simp [hj]
+        have htake : (l.set i sum).take (i + 1) =
+            l.take i ++ [sum] := by
+          rw [List.take_add_one, List.getElem?_set_self hlt,
+            htakeW]; rfl
+        have hpre' : (l.set i sum).take (i + 1) =
+            taken ++ [sum] := by
+          rw [htake, hpre]
+        have hlen' : (l.set i sum).length = l₀.length := by
+          simp [List.length_set, hlen]
+        have hsuf' : (l.set i sum).drop (i + 1) =
+            l₀.drop (i + 1) := by
+          have htails : (l.drop i).tail = (l₀.drop i).tail := by
+            rw [hsuf]
+          have hsame : l.drop (i + 1) = l₀.drop (i + 1) := by
+            rw [List.drop_add_one_eq_tail_drop,
+              List.drop_add_one_eq_tail_drop, htails]
+          simp [List.drop_set, show i < i + 1 by omega, hsame]
+        have hfwd' : partialSumFwd (l.set i sum) n (i + 1) =
+            .ok (i', l') := by
+          have h := hfwd
+          simpa [partialSumFwd, dite_eq_left hlt, hgetC, hgetP,
+            hadd] using h
+        obtain ⟨hiEq, hscanFull, hlenFull⟩ :=
+          ih (i + 1) (l.set i sum) (taken ++ [sum])
+            (by omega) (by omega) (by omega) hlen' hpre'
+            hscanNext hsuf' hfwd'
+        exact ⟨hiEq, hscanFull, hlenFull⟩
+      | .error e =>
+        have h := hfwd
+        simp only [partialSumFwd, dite_eq_left hlt, hgetC, hgetP,
+          hadd] at h
+        exact absurd h (by simp)
+    · have him : i = l.length := by omega
+      subst him
+      have him0 : l.length = l₀.length := hlen
+      have hpair : (l.length, l) = (i', l') := by
+        cases n with
+        | zero => simpa [partialSumFwd] using hfwd
+        | succ _ =>
+          have hneg : ¬ l.length < l.length := by omega
+          simpa [partialSumFwd, dite_eq_right hneg] using hfwd
+      rw [Prod.mk.injEq] at hpair
+      obtain ⟨hiEq, hlEq⟩ := hpair
+      refine ⟨hiEq.symm.trans him0, ?_,
+        by rw [← hlEq, hlen]⟩
+      have hpre' : l = taken := by
+        have h := hpre
+        rw [List.take_length] at h
+        exact h
+      have hscan' : scanChecked l₀ 0 = .ok taken := by
+        have h := hscan
+        rw [him0, List.take_length] at h
+        exact h
+      rw [← hlEq, hpre']
+      exact hscan'
+
+
+/-- Prefix-scan forward contract, error leg: with the same
+    already-scanned/unscanned invariant, a loud forward failure is
+    also a loud failure of the independent checked scan. -/
+theorem partialSumFwd_scan_err (l₀ : List (BitVec 32))
+    (fuel i : Nat) (l taken : List (BitVec 32)) (e : Panic)
+    (hle : i ≤ l₀.length) (hi1 : 1 ≤ i)
+    (hF : l₀.length - i ≤ fuel)
+    (hlen : l.length = l₀.length)
+    (hpre : l.take i = taken)
+    (hscan : scanChecked (l₀.take i) 0 = .ok taken)
+    (hsuf : l.drop i = l₀.drop i)
+    (hfwd : partialSumFwd l fuel i = .error e) :
+    scanChecked l₀ 0 = .error e := by
+  induction fuel generalizing l i taken with
+  | zero => simpa [partialSumFwd] using hfwd
+  | succ n ih =>
+    by_cases hlt : i < l.length
+    · obtain ⟨cur, hgetC⟩ : ∃ x, l[i]? = some x :=
+        ⟨l[i], List.getElem?_eq_getElem hlt⟩
+      have hprevlt : i - 1 < l.length := by omega
+      obtain ⟨prev, hgetP⟩ : ∃ x, l[i - 1]? = some x :=
+        ⟨l[i - 1], List.getElem?_eq_getElem hprevlt⟩
+      have hcur0 : l₀[i]? = some cur := by
+        have h0 : (l.drop i)[0]? = (l₀.drop i)[0]? := by
+          rw [hsuf]
+        rw [List.getElem?_drop, List.getElem?_drop] at h0
+        simp only [Nat.add_zero] at h0 ⊢
+        exact h0.symm.trans hgetC
+      have htakenN : taken.length = i := by
+        rw [← hpre, List.length_take, hlen,
+          Nat.min_eq_left hle]
+      have hprevTaken : taken[i - 1]? = some prev := by
+        have h := congrArg
+          (fun xs : List (BitVec 32) => xs[i - 1]?) hpre
+        simpa [List.getElem?_take_of_lt
+          (show i - 1 < i by omega), hgetP] using h.symm
+      have hlast : taken.getLast? = some prev := by
+        rw [List.getLast?_eq_getElem?, htakenN]
+        exact hprevTaken
+      have haccPrev : taken.getLast?.getD 0 = prev := by
+        rw [hlast]; rfl
+      have htake0 : l₀.take (i + 1) = l₀.take i ++ [cur] := by
+        rw [List.take_add_one, hcur0]; rfl
+      match hadd : checkedAddI32 cur prev with
+      | .ok sum =>
+        have hadd' : checkedAddI32 prev cur = .ok sum := by
+          rw [checkedAddI32_comm]; exact hadd
+        have hval : sum = prev + cur := by
+          have h := checkedAddI32_ok_value _ _ _ hadd
+          rw [BitVec.add_comm] at h
+          exact h
+        have hsingleton : scanChecked [cur] prev = .ok [sum] := by
+          simp [scanChecked, hadd', hval]
+        have hscanNext :
+            scanChecked (l₀.take (i + 1)) 0 =
+              .ok (taken ++ [sum]) := by
+          simp only [htake0, scanChecked_append, hscan, haccPrev,
+            hsingleton]
+        have htakeW : (l.set i sum).take i = l.take i := by
+          apply List.ext_getElem?
+          intro j
+          rw [List.getElem?_take, List.getElem?_take]
+          by_cases hj : j < i
+          · rw [List.getElem?_set_ne (show i ≠ j by omega)]
+          · simp [hj]
+        have htake : (l.set i sum).take (i + 1) =
+            l.take i ++ [sum] := by
+          rw [List.take_add_one, List.getElem?_set_self hlt,
+            htakeW]; rfl
+        have hpre' : (l.set i sum).take (i + 1) =
+            taken ++ [sum] := by
+          rw [htake, hpre]
+        have hlen' : (l.set i sum).length = l₀.length := by
+          simp [List.length_set, hlen]
+        have hsuf' : (l.set i sum).drop (i + 1) =
+            l₀.drop (i + 1) := by
+          have htails : (l.drop i).tail = (l₀.drop i).tail := by
+            rw [hsuf]
+          have hsame : l.drop (i + 1) = l₀.drop (i + 1) := by
+            rw [List.drop_add_one_eq_tail_drop,
+              List.drop_add_one_eq_tail_drop, htails]
+          simp [List.drop_set, show i < i + 1 by omega, hsame]
+        have hfwd' : partialSumFwd (l.set i sum) n (i + 1) =
+            .error e := by
+          have h := hfwd
+          simpa [partialSumFwd, dite_eq_left hlt, hgetC, hgetP,
+            hadd] using h
+        exact ih (i + 1) (l.set i sum) (taken ++ [sum])
+          (by omega) (by omega) (by omega) hlen' hpre'
+          hscanNext hsuf' hfwd'
+      | .error e' =>
+        have heEq : e' = e := by
+          have h := hfwd
+          simpa [partialSumFwd, dite_eq_left hlt, hgetC, hgetP,
+            hadd] using h
+        have haddCurr : checkedAddI32 prev cur = .error e' := by
+          rw [checkedAddI32_comm]; exact hadd
+        have hsingErr : scanChecked [cur] prev = .error e' := by
+          simp [scanChecked, haddCurr]
+        have hscanNextErr :
+            scanChecked (l₀.take (i + 1)) 0 = .error e' := by
+          simp only [htake0, scanChecked_append, hscan, haccPrev,
+            hsingErr]
+        have hfull : l₀ = l₀.take (i + 1) ++ l₀.drop (i + 1) :=
+          (List.take_append_drop _ _).symm
+        rw [hfull, scanChecked_append, hscanNextErr]
+        cases heEq
+        rfl
+    · have hneg : ¬ i < l.length := by omega
+      simpa [partialSumFwd, dite_eq_right hneg] using hfwd
+
 /-- Sorted window (M5 positional formulation for a subrange):
     positions in `[lo, hi)` pairwise ascending under `slt`. -/
 def SortedSeg (l : List (BitVec 32)) (lo hi : Nat) : Prop :=

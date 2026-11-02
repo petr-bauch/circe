@@ -62,11 +62,15 @@ Delivered slices (full reports in `DELIVERED.md`): merge-drain
 specs (P2-M1); the `std::vector` algorithm run — out-of-place
 checked transform (P2-M2), in-place Lomuto partition (P2-M3),
 iterative selection sort (P2-M4) with its
-sortedness/permutation contract (P2-M5), and erase-compress
+sortedness/permutation contract (P2-M5), erase-compress
 (P2-M9) — the first length-changing write (`vec_remove`, the
 `std::remove` idiom: compact survivors forward, return the
 new logical length under caller-debt, survivor prefix pinned
-as the filtered input); earlier: STL-free
+as the filtered input), and in-place prefix-sum scan (P2-M10)
+— the first read-after-write loop-carried dependency
+(`vec_partial_sum`, the `std::partial_sum` idiom: checked
+scan from cursor 1, loud `Overflow` mid-scan leg, suffix
+untouched); earlier: STL-free
 C++-lite admission (M2a–M2c), proved transfer (M3d),
 `string_view`-ended loop + `ElementRef` family composers (N7),
 insertion sort over `std::array` (N9), binary search (V1),
@@ -90,24 +94,26 @@ diff fuzz.
 Next: nothing open — the selection-sort, partition,
 merge-sort, quicksort, and heapsort stacks are closed, as are
 the Kadane scan, the BFS slice, the J link-chase, the
-erase-compress endpoint (P2-M9), and the
+erase-compress endpoint (P2-M9), the prefix-sum scan
+(P2-M10), and the
 G-track (G1/G1b/G2/G3/G5a/G4); see `DELIVERED.md` §§
-P2-M5–P2-M9, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
+P2-M5–P2-M10, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
 refactor (the G-track slice labels are distinct from the
 Gate rule G-labels cited under N12–N14)
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Prefix-sum scan (`partial_sum`): read-write
-   dependency chain (each output reads the previous
-   output) — the one loop-carried shape the
-   transform/partition kit never exercises.
-2. Two-cursor sorted-range intersection (`set_intersection`):
-   dual-read idiom beside the G-track cursors; no writes
-   past the record cursor.
-3. Out-of-place filter (`copy_if`): the P2-M9 compaction scan
+1. (Recommended) Two-cursor sorted-range intersection
+   (`set_intersection`): dual-read idiom beside the G-track
+   cursors; no writes past the record cursor — the one
+   two-input shape the single-vector kit never exercises.
+2. Out-of-place filter (`copy_if`): the P2-M9 compaction scan
    writing into a caller-sized output and returning the
    count — composes the remove scan with the M2 out-borrow
    and its short-out loud leg.
+3. Adjacent-duplicate squeeze (`unique`): length-changing
+   compaction with an equality test against the previous
+   survivor — composes the P2-M9 write cursor with the
+   P2-M10 read-after-write predecessor read.
 
 ## Pillar 3 — Human-readable/writable proofs
 
