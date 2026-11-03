@@ -724,6 +724,26 @@ theorem memFind_cellsAt_store (m : Mem) (a t i : Nat)
   unfold cellsAt
   simp [memFind]
 
+/-- Single `vecSet`-lockstep store on a `cellsAt`-pinned block, closed in one
+    step: store past the length word and re-pin the shadowed snapshot.
+    Packages `memStore_cellsAt` + `memFind_cellsAt_store` +
+    `List.set_cons_succ` (the store leg repeated across core-eval transfers).
+    The conclusion keeps the word-index form; callers needing the `Nat`
+    form rewrite with their index bridge. -/
+theorem memStore_cellsAt_pin (m : Mem) (a t : Nat) {n : BitVec 32}
+    {l : List (BitVec 32)} {xB : BitVec 64} (w : BitVec 32)
+    (hmem : cellsAt m a t (n :: l)) (hlt : xB.toNat + 1 < (n :: l).length) :
+    ∃ m', memStore m a t (xB.toNat + 1) w = .ok m' ∧
+      memFind m' a = some ⟨t, true, n :: l.set xB.toNat w⟩ := by
+  have hstore :=
+    memStore_cellsAt m a t (xB.toNat + 1) (n :: l) w hmem hlt
+  have hcells :=
+    memFind_cellsAt_store m a t (xB.toNat + 1) (n :: l) w _ hmem hlt hstore
+  have e : (n :: l).set (xB.toNat + 1) w = n :: l.set xB.toNat w :=
+    List.set_cons_succ
+  rw [e] at hcells
+  exact ⟨_, hstore, hcells⟩
+
 /-- Loading from a known live multi-word cell at a present index
     (the array-loop read leg, via `getElem?`). -/
 theorem memLoad_cellsAt (m : Mem) (a t i : Nat)

@@ -459,26 +459,15 @@ theorem memIntersectBody_write (prog : Prog) (F : Nat)
   have hlt' : wB.toNat + 1 < (no :: lo).length := by
     simp only [List.length_cons]
     omega
-  obtain ⟨m₁, hmstore⟩ : ∃ m', memStore m ao to (wB.toNat + 1) x =
-      .ok m' :=
-    ⟨_, memStore_cellsAt m ao to (wB.toNat + 1) (no :: lo) x
-      hmem_o hlt'⟩
+  obtain ⟨m₁, hmstore, hmem_o₁⟩ :=
+    memStore_cellsAt_pin m ao to x hmem_o hlt'
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup ρ "out"
     (.stdVecVal lo) (.stdVecVal (lo.set wB.toNat x)) hout
   have hstep_set := memRevVecSet prog F "out" (.var "w")
     (.stdVecAt "a" (.var "i")) ρ m π wB x ao to lo xO m₁ ρ₁
     hwVarM hatM hout hlay_o hgetO' hmstore hu₁
-  have hcells₁ : cellsAt m₁ ao to ((no :: lo).set (wB.toNat + 1) x) :=
-    memFind_cellsAt_store m ao to (wB.toNat + 1) (no :: lo) x m₁
-      hmem_o hlt' hmstore
   have hsetB : lo.set wB.toNat x = lo.set w x := by rw [hwN]
-  have hmem_o₁ : memFind m₁ ao =
-      some ⟨to, true, no :: (lo.set w x)⟩ := by
-    have e : (no :: lo).set (wB.toNat + 1) x =
-        no :: (lo.set wB.toNat x) :=
-      List.set_cons_succ
-    rw [e, hsetB] at hcells₁
-    exact hcells₁
+  rw [hsetB] at hmem_o₁
   have hmem_a₁ : memFind m₁ aa = some ⟨ta, true, na :: la⟩ := by
     have h := memFind_memStore_other m m₁ ao aa to (wB.toNat + 1) x
       hmstore haa

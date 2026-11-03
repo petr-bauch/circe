@@ -198,10 +198,8 @@ theorem memPartitionBody_take (prog : Prog) (F : Nat)
   have hlt₁ : iB.toNat + 1 < (n :: l).length := by
     simp only [List.length_cons]
     omega
-  obtain ⟨m₁, hmstore⟩ : ∃ m', memStore m a t (iB.toNat + 1) w =
-      .ok m' :=
-    ⟨_, memStore_cellsAt m a t (iB.toNat + 1) (n :: l) w
-      hmem hlt₁⟩
+  obtain ⟨m₁, hmstore, hmem₁⟩ :=
+    memStore_cellsAt_pin m a t w hmem hlt₁
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup
     (envExtend ρ "t" (.i32 x)) "v"
     (.stdVecVal l) (.stdVecVal (l.set iB.toNat w)) hv₁
@@ -211,17 +209,7 @@ theorem memPartitionBody_take (prog : Prog) (F : Nat)
   have hstep_set1 := memRevVecSet prog F "v" (.var "i")
     (.stdVecAt "v" (.var "s")) (envExtend ρ "t" (.i32 x)) m π
     iB w a t l x m₁ ρ₁ hiVarM₁ hatS₁M hv₁ hlay hgetB hmstore hu₁
-  have hcells₁ : cellsAt m₁ a t ((n :: l).set (iB.toNat + 1) w) :=
-    memFind_cellsAt_store m a t (iB.toNat + 1) (n :: l) w m₁
-      hmem hlt₁ hmstore
   have hsetB : l.set iB.toNat w = l.set i w := by rw [hiN]
-  have hmem₁ : memFind m₁ a =
-      some ⟨t, true, n :: (l.set iB.toNat w)⟩ := by
-    have e : (n :: l).set (iB.toNat + 1) w =
-        n :: (l.set iB.toNat w) :=
-      List.set_cons_succ
-    rw [e] at hcells₁
-    exact hcells₁
   have hs₁' : envLookup ρ₁ "s" = some (.u64 sB) := by
     rw [envLookup_update_miss _ _ _ _ _
       (show ("s" : String) ≠ "v" by decide) hu₁]
@@ -277,26 +265,14 @@ theorem memPartitionBody_take (prog : Prog) (F : Nat)
   have hlt₂ : sB.toNat + 1 < (n :: (l.set iB.toNat w)).length := by
     simp only [List.length_cons, List.length_set]
     omega
-  obtain ⟨m₂, hmstore₂⟩ : ∃ m', memStore m₁ a t (sB.toNat + 1) x =
-      .ok m' :=
-    ⟨_, memStore_cellsAt m₁ a t (sB.toNat + 1)
-      (n :: (l.set iB.toNat w)) x hmem₁ hlt₂⟩
+  obtain ⟨m₂, hmstore₂, hmem₂⟩ :=
+    memStore_cellsAt_pin m₁ a t x hmem₁ hlt₂
   have hstep_set2 := memRevVecSet prog F "v" (.var "s") (.var "t")
     ρ₁ m₁ π sB x a t (l.set iB.toNat w) w m₂ ρ₂
     hsVarM₂ htVarM₂ hout₁ hlay hgetS₁ hmstore₂ hu₂
-  have hcells₂ : cellsAt m₂ a t
-      ((n :: (l.set iB.toNat w)).set (sB.toNat + 1) x) :=
-    memFind_cellsAt_store m₁ a t (sB.toNat + 1)
-      (n :: (l.set iB.toNat w)) x m₂ hmem₁ hlt₂ hmstore₂
   have hset : ((l.set iB.toNat w).set sB.toNat x) =
       ((l.set i w).set s x) := by rw [hiN, hsN]
-  have hmem₂ : memFind m₂ a =
-      some ⟨t, true, n :: ((l.set i w).set s x)⟩ := by
-    have e : (n :: (l.set iB.toNat w)).set (sB.toNat + 1) x =
-        n :: ((l.set iB.toNat w).set sB.toNat x) :=
-      List.set_cons_succ
-    rw [e, hset] at hcells₂
-    exact hcells₂
+  rw [hset] at hmem₂
   have hs₂ : envLookup ρ₂ "s" = some (.u64 sB) := by
     rw [envLookup_update_miss _ _ _ _ _
       (show ("s" : String) ≠ "v" by decide) hu₂]

@@ -169,10 +169,8 @@ theorem memPartialSumBody_ok (prog : Prog) (F : Nat)
   have hlt' : iB.toNat + 1 < (n :: l).length := by
     simp only [List.length_cons]
     omega
-  obtain ⟨m₁, hmstore⟩ : ∃ m', memStore m a t (iB.toNat + 1) sum =
-      .ok m' :=
-    ⟨_, memStore_cellsAt m a t (iB.toNat + 1) (n :: l) sum
-      hmem hlt'⟩
+  obtain ⟨m₁, hmstore, hmem₁⟩ :=
+    memStore_cellsAt_pin m a t sum hmem hlt'
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup ρ "v"
     (.stdVecVal l) (.stdVecVal (l.set iB.toNat sum)) hv
   have hstep_set := memRevVecSet prog F "v" (.var "i")
@@ -180,17 +178,8 @@ theorem memPartialSumBody_ok (prog : Prog) (F : Nat)
       (.stdVecAt "v" (.usub (.var "i") (.lit (.u64 1))))) ρ m π
     iB sum a t l cur m₁ ρ₁
     hiVarM haddVM hv hlay hgetI hmstore hu₁
-  have hcells₁ : cellsAt m₁ a t ((n :: l).set (iB.toNat + 1) sum) :=
-    memFind_cellsAt_store m a t (iB.toNat + 1) (n :: l) sum m₁
-      hmem hlt' hmstore
   have hsetB : l.set iB.toNat sum = l.set i sum := by rw [hiN]
-  have hmem₁ : memFind m₁ a =
-      some ⟨t, true, n :: (l.set i sum)⟩ := by
-    have e : (n :: l).set (iB.toNat + 1) sum =
-        n :: (l.set iB.toNat sum) :=
-      List.set_cons_succ
-    rw [e, hsetB] at hcells₁
-    exact hcells₁
+  rw [hsetB] at hmem₁
   have hi₁ : envLookup ρ₁ "i" = some (.u64 iB) := by
     rw [envLookup_update_miss _ _ _ _ _
       (show ("i" : String) ≠ "v" by decide) hu₁]

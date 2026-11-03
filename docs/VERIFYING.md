@@ -419,6 +419,22 @@ refactor changed no statement.
   forward-level uses the standing rule keeps this at prose
   level; a third countdown-swap loop reopens the question.
 
+- Lockstep store step (`memStore_cellsAt_pin` in
+  `Circe/Mem/Agree.lean`, DELIVERED P3): one existential
+  store + re-pinned snapshot from a `cellsAt` pin and its
+  bound, packaging `memStore_cellsAt` +
+  `memFind_cellsAt_store` + `List.set_cons_succ`. Unlike the
+  `Lemmas/*` packs it lives beside the kit it composes (H1
+  precedent), and unlike `cir_fold_end` it is a lemma, not a
+  tactic — the fragment is statement-shaped, so a tactic
+  would be pure indirection. Consumers: core-eval transfer
+  bodies (Remove, PartialSum, Partition, Intersect converted;
+  TransformAdd, SelectionSort, MergeSort, MergeRuns deferred
+  to next touch). The conclusion keeps the word-index form;
+  rewrite with your index bridge for the `Nat` form. Bound
+  side-goals stay `by simp only [List.length_cons]; omega`
+  with the invariant in context.
+
 ## Hoare triples (H1)
 
 `Circe.Hoare` wraps the `Mem` equation lemmas as Hoare triples —

@@ -113,26 +113,15 @@ theorem memRemoveBody_keep (prog : Prog) (F : Nat)
   have hlt₁ : wB.toNat + 1 < (n :: l).length := by
     simp only [List.length_cons]
     omega
-  obtain ⟨m₁, hmstore⟩ : ∃ m', memStore m a t (wB.toNat + 1) y =
-      .ok m' :=
-    ⟨_, memStore_cellsAt m a t (wB.toNat + 1) (n :: l) y
-      hmem hlt₁⟩
+  obtain ⟨m₁, hmstore, hmem₁⟩ :=
+    memStore_cellsAt_pin m a t y hmem hlt₁
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup ρ "v"
     (.stdVecVal l) (.stdVecVal (l.set wB.toNat y)) hv
   have hstep_set := memRevVecSet prog F "v" (.var "w")
     (.stdVecAt "v" (.var "r")) ρ m π wB y a t l wOld m₁ ρ₁
     hwVarM hatM hv hlay hgetW hmstore hu₁
-  have hcells₁ : cellsAt m₁ a t ((n :: l).set (wB.toNat + 1) y) :=
-    memFind_cellsAt_store m a t (wB.toNat + 1) (n :: l) y m₁
-      hmem hlt₁ hmstore
   have hsetB : l.set wB.toNat y = l.set w y := by rw [hwN]
-  have hmem₁ : memFind m₁ a =
-      some ⟨t, true, n :: (l.set w y)⟩ := by
-    have e : (n :: l).set (wB.toNat + 1) y =
-        n :: (l.set wB.toNat y) :=
-      List.set_cons_succ
-    rw [e, hsetB] at hcells₁
-    exact hcells₁
+  rw [hsetB] at hmem₁
   have hw₁ : envLookup ρ₁ "w" = some (.u64 wB) := by
     rw [envLookup_update_miss _ _ _ _ _
       (show ("w" : String) ≠ "v" by decide) hu₁]

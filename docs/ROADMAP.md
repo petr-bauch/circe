@@ -166,8 +166,12 @@ checked-add arity (audit #3), third user-goal transfer-leg use
 for a `cir_transfer_leg`-shaped tactic (audit #4), third
 countdown-loop shape for fuel arithmetic (audit #5) and for
 the unfold-loop-`show` tactic (R/S are two uses);
-R memory-threading stays prose at first use; third lockstep
-use earns a tactic; first triple-level store customer earns a
+the core-eval lockstep store leg harvested as the
+`memStore_cellsAt_pin` packaging lemma — lemma verdict, not
+a tactic (DELIVERED P3); 13 deferred sites (TransformAdd,
+SelectionSort, MergeSort, MergeRuns) convert on next touch;
+R/S program-level memory-threading stays prose at two uses;
+first triple-level store customer earns a
 rule; a fully framed spine waits for an actual multi-cell
 caller (P2-M2 was one — delivered). The trailing `return_`
 seq equation landed (P3f, DELIVERED). A gallery per new
@@ -175,11 +179,11 @@ admitted shape, as always (J/H/L-ptr instances landed with
 their slices).
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Harvest the lockstep tactic: R/S are two
-   uses of the `vecSet`-lockstep/memory-threading pattern —
-   the next admitted loop shape with stores is the third
-   use that earns the Lean tactic (audit the shape, then
-   generalize).
+1. (Recommended) Finish the lockstep rollout: convert the 13
+   deferred store sites (TransformAdd, SelectionSort ×2,
+   MergeSort ×2, MergeRuns ×8) to `memStore_cellsAt_pin` —
+   mechanical, proof-only, each on next touch or one sweep;
+   closes the P3 harvest.
 2. Triple-level store rule: still waiting on its first
    customer (loops with stores contain calls, so they live
    at prog level — H1 cell-kit audit). Next store-heavy
@@ -211,8 +215,9 @@ Proposed (toward the platform goal — for approval, in order):
   lengths; the swap-step triple ports premise-for-premise
   (`hoare_segSwap` mirrors `hoare_reverseSwap` — only the
   invariant, the length-word snapshot, and the `hfind` fact
-  change). Third use (next admitted loop shape) earns the Lean
-  tactics.
+  change). The store leg of that third use is now the
+  `memStore_cellsAt_pin` lemma (DELIVERED P3); the remaining
+  deltas stay prose.
 
 ## Pillar 4 — Iris separation logic for low-level aspects and concurrency
 

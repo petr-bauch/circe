@@ -2604,3 +2604,31 @@ once; shape-exactness both directions vs `list_copy` /
   typecheck (`lake env lean out/ListClear.lean
   out/ListClear_Spec.lean`); gallery compiles unchanged
   (`lake build HoareGallery`).
+
+### P3. Lockstep store-step harvest (`memStore_cellsAt_pin`) — DONE (2026-11-03)
+
+Roadmap pillar-3 proposed goal #1, closed as a lemma, not a tactic —
+deliberately. The A0 census (report-only, `/tmp/lockstep_audit.md`) found the
+`vecSet`-lockstep store leg repeated verbatim across 8 core-eval transfer
+files, 18 sites (Remove, PartialSum, Partition ×2, Intersect, TransformAdd,
+SelectionSort ×2, MergeSort ×2, MergeRuns ×8): bound proof
+(`simp only [List.length_cons]; omega`), `obtain` via `memStore_cellsAt`,
+re-pin via `memFind_cellsAt_store` + `List.set_cons_succ`. The repetition is
+statement-shaped (existential store + re-pinned snapshot), so the harvest is a
+packaging lemma in `Circe/Mem/Agree.lean` beside the two kit lemmas it composes
+(U3 lemma-pack precedent), taking the `cellsAt` pin + bound and returning
+store ∧ re-pin in the word-index form (callers needing the `Nat` form keep
+their one-line index-bridge rewrite). A Lean tactic over this fragment would be
+pure indirection over lemma applications — the exact shape the F3-closers
+audit rejected — and the bound proofs draw on ambient value-side context no
+vehicle can name uniformly, so both stay longhand. Adoption: 5 sites in 4
+shapes converted (Remove, PartialSum, Partition ×2, Intersect), proof-only
+(no statement changes). The R/S program-level pattern (`revMemStore_ok` +
+per-file bridges) stays prose at two uses; the one-line `memFind_cons_hit`
+re-pins and the Emit-side `memStore_cellsAt_ok` stay as-is. Deferred on
+purpose: TransformAdd, SelectionSort, MergeSort, MergeRuns convert on next
+touch (no sweep).
+- Acceptance: full gate 569/569 TEST-OK (tally unchanged, proof-only);
+  gallery builds (128 jobs); `GenOut` no drift (no `out/` change); positive
+  probe (one-step close over a cons pin) elaborates, nil-pin application
+  rejected with a unification error (both report-only in `/tmp`).
