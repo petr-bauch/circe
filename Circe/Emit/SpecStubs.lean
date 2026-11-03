@@ -2587,6 +2587,47 @@ def emitVecPartialSumSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_intersect`. The mirror is the two-cursor
+    sorted merge over the reified words (cf. emitted `{name}_fwd`);
+    edges carry ground truth (overlap, disjoint, empty input,
+    duplicate min-count, negatives, singleton). -/
+def emitVecIntersectSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b, out)` records the sorted intersection of `a` and `b` into the caller-sized `out` (`std::set_intersection` idiom). Base body reference: the same scan on the reified words (cf. emitted `{name}_fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (la lb : List (BitVec 32)) (lo : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match loop la lb lo (la.length + lb.length + 1) 0 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, _, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lb, lo, 0, i, j, w => .ok (i, j, w, lo)\n"
+  ++ "  | la, lb, lo, fuel + 1, i, j, w =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      if j < lb.length then\n"
+  ++ "        match la[i]?, lb[j]? with\n"
+  ++ "        | some x, some y =>\n"
+  ++ "          if x.slt y then loop la lb lo fuel (i + 1) j w\n"
+  ++ "          else if y.slt x then loop la lb lo fuel i (j + 1) w\n"
+  ++ "          else loop la lb (lo.set w x) fuel (i + 1) (j + 1) (w + 1)\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "      else .ok (i, j, w, lo)\n"
+  ++ "    else .ok (i, j, w, lo)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: overlap, disjoint, empty input, duplicate min-count, negatives, singleton hit. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32) × List (BitVec 32)) × Result Nat) :=\n"
+  ++ "  [(([1, 2, 3, 4], [2, 4, 6], [0, 0, 0, 0]), .ok 2),\n"
+  ++ "   (([1, 3, 5], [2, 4, 6], [0, 0, 0]), .ok 0),\n"
+  ++ "   (([], [1, 2], [0, 0]), .ok 0),\n"
+  ++ "   (([5, 5, 7], [5, 7, 7], [0, 0, 0]), .ok 2),\n"
+  ++ "   (([-3, -1, 2], [-1, 2, 5], [0, 0, 0]), .ok 2),\n"
+  ++ "   (([7], [7], [9]), .ok 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `min_index`. The mirror is the forward min-scan
     over the reified words; edges carry ground truth (singleton,
     head/tail minima, interior minimum). -/

@@ -44,6 +44,7 @@ import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
 import Circe.Emit.VecRemove
 import Circe.Emit.VecPartialSum
+import Circe.Emit.VecIntersect
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
@@ -1187,6 +1188,34 @@ def matchFrag : Func → Option FragKind
           (.return_ (.var "v"))))⟩ =>
     some .vecPartialSum
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
+        ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
+        ⟨"out", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩],
+      .u 64,
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
+        (.seq (.let_ "j" (.u 64) (.lit (.u64 z1)))
+          (.seq (.let_ "w" (.u 64) (.lit (.u64 z2)))
+            (.seq (.while_ (.tif (.ult (.var "i") (.stdVecLen "a"))
+                                    (.ult (.var "j") (.stdVecLen "b"))
+                                    (.lit (.b false)))
+                            (.if_ (.slt (.stdVecAt "a" (.var "i"))
+                                        (.stdVecAt "b" (.var "j")))
+                              (.assign "i" (.uadd (.var "i")
+                                (.lit (.u64 v0))))
+                              (.if_ (.slt (.stdVecAt "b" (.var "j"))
+                                          (.stdVecAt "a" (.var "i")))
+                                (.assign "j" (.uadd (.var "j")
+                                  (.lit (.u64 v1))))
+                                (.seq (.vecSet "out" (.var "w")
+                                               (.stdVecAt "a" (.var "i")))
+                                  (.seq (.assign "i" (.uadd (.var "i")
+                                            (.lit (.u64 v2))))
+                                    (.seq (.assign "j" (.uadd (.var "j")
+                                              (.lit (.u64 v3))))
+                                      (.assign "w" (.uadd (.var "w")
+                                                (.lit (.u64 v4))))))))))
+              (.return_ (.var "w"))))))⟩ =>
+    some .vecIntersect
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"lo", .u 64, .owned⟩],
       .u 64,
       (.seq (.let_ "m" (.u 64) (.var "lo"))
@@ -2288,6 +2317,8 @@ theorem matchFrag_vecRemove :
     matchFrag vecRemoveFunc = some .vecRemove := rfl
 theorem matchFrag_vecPartialSum :
     matchFrag vecPartialSumFunc = some .vecPartialSum := rfl
+theorem matchFrag_vecIntersect :
+    matchFrag vecIntersectFunc = some .vecIntersect := rfl
 theorem matchFrag_vecMinIndex :
     matchFrag VecSelectionSort.minIndexFunc = some .vecMinIndex := rfl
 theorem matchFrag_vecSelectionSort :

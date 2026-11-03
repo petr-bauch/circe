@@ -23,6 +23,7 @@ import Circe.Emit.VecTransformAdd
 import Circe.Emit.VecPartition
 import Circe.Emit.VecRemove
 import Circe.Emit.VecPartialSum
+import Circe.Emit.VecIntersect
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecDfs
@@ -177,6 +178,7 @@ def main : IO Unit := do
   let vecPartition ← emitOrDie vecPartitionFunc
   let vecRemove ← emitOrDie vecRemoveFunc
   let vecPartialSum ← emitOrDie vecPartialSumFunc
+  let vecIntersect ← emitOrDie vecIntersectFunc
   let vecMinIndex ← emitOrDie VecSelectionSort.minIndexFunc
   let vecSelectionSort ← emitOrDie VecSelectionSort.vecSelectionSortFunc
   let vecMergeRuns ← emitOrDie VecMergeRuns.mergeRunsFunc
@@ -341,6 +343,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartition.lean" (emitFileText (.ok vecPartition))
   IO.FS.writeFile "out/VecRemove.lean" (emitFileText (.ok vecRemove))
   IO.FS.writeFile "out/VecPartialSum.lean" (emitFileText (.ok vecPartialSum))
+  IO.FS.writeFile "out/VecIntersect.lean" (emitFileText (.ok vecIntersect))
   IO.FS.writeFile "out/VecMinIndex.lean" (emitFileText (.ok vecMinIndex))
   IO.FS.writeFile "out/VecSelectionSort.lean" (emitFileText (.ok vecSelectionSort))
   IO.FS.writeFile "out/VecMergeRuns.lean" (emitFileText (.ok vecMergeRuns))
@@ -505,6 +508,7 @@ def main : IO Unit := do
   let vecPartitionSpec ← specOrDie vecPartitionFunc
   let vecRemoveSpec ← specOrDie vecRemoveFunc
   let vecPartialSumSpec ← specOrDie vecPartialSumFunc
+  let vecIntersectSpec ← specOrDie vecIntersectFunc
   let vecMinIndexSpec ← specOrDie VecSelectionSort.minIndexFunc
   let vecSelectionSortSpec ← specOrDie VecSelectionSort.vecSelectionSortFunc
   let vecMergeRunsSpec ← specOrDie VecMergeRuns.mergeRunsFunc
@@ -669,6 +673,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartition_Spec.lean" vecPartitionSpec
   IO.FS.writeFile "out/VecRemove_Spec.lean" vecRemoveSpec
   IO.FS.writeFile "out/VecPartialSum_Spec.lean" vecPartialSumSpec
+  IO.FS.writeFile "out/VecIntersect_Spec.lean" vecIntersectSpec
   IO.FS.writeFile "out/VecMinIndex_Spec.lean" vecMinIndexSpec
   IO.FS.writeFile "out/VecSelectionSort_Spec.lean" vecSelectionSortSpec
   IO.FS.writeFile "out/VecMergeRuns_Spec.lean" vecMergeRunsSpec

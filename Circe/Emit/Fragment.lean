@@ -165,6 +165,7 @@ inductive FragKind : Type
   | vecPartition
   | vecRemove
   | vecPartialSum
+  | vecIntersect
   | vecMinIndex
   | vecSelectionSort
   | vecEmptyCtor

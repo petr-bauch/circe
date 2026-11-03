@@ -1409,6 +1409,33 @@ def emitVecPartialSumText (name : String) : String :=
   ++ "      | _, _ => .error .AssertFail\n"
   ++ "    else .ok (i, l)\n"
 
+/-- Render the `vec_intersect` entry forward definition: the
+    two-cursor sorted merge over the reified words, recording
+    common heads into the caller-sized record; returns the
+    survivor count (guard-justified, total). -/
+def emitVecIntersectText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (two-cursor sorted-range intersection over the reified words; the `std::set_intersection` idiom on sorted inputs; caller-sized record; returns the survivor count). -/\n"
+  ++ s!"def {name}_fwd (la lb : List (BitVec 32)) (lo : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match loop la lb lo (la.length + lb.length + 1) 0 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, _, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lb, lo, 0, i, j, w => .ok (i, j, w, lo)\n"
+  ++ "  | la, lb, lo, fuel + 1, i, j, w =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      if j < lb.length then\n"
+  ++ "        match la[i]?, lb[j]? with\n"
+  ++ "        | some x, some y =>\n"
+  ++ "          if x.slt y then loop la lb lo fuel (i + 1) j w\n"
+  ++ "          else if y.slt x then loop la lb lo fuel i (j + 1) w\n"
+  ++ "          else loop la lb (lo.set w x) fuel (i + 1) (j + 1) (w + 1)\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "      else .ok (i, j, w, lo)\n"
+  ++ "    else .ok (i, j, w, lo)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=
