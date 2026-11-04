@@ -2632,3 +2632,34 @@ touch (no sweep).
   gallery builds (128 jobs); `GenOut` no drift (no `out/` change); positive
   probe (one-step close over a cons pin) elaborates, nil-pin application
   rejected with a unification error (both report-only in `/tmp`).
+
+### P4. First S0 store-equation discharge (`store_frame_cellAtI`) — DONE (2026-11-04)
+
+Roadmap pillar-4 proposed goal #1, bounded to a single equation as specified.
+Every layer of the S0 story assumed store equations of the form
+`memStore m a t 0 x = .ok m'` as hypotheses — the S0 open contract
+(`Circe/CondFrame.lean`: `condPost_disjoint`, `loadCell_frame`,
+`condExec_disjoint_true`), the admitted transfer legs
+(`Circe/Transfer/Slice.lean`: `memEvalStmt_aliasCond_*` take `hsto1/hsto2`),
+and the Iris side itself (`frame_memStore` takes `hstore`; all `CondDemo`
+theorems took `h1/h2`). New write leg `store_frame_cellAtI` in
+`Circe/Iris/PointsTo.lean` beside `frame_memStore`: from a BI premise
+`((cellAtI a t p) ∗ R) (stateOf m)` it concludes
+`∃ m', memStore m a t 0 x = .ok m' ∧ ((cellAtI a t x) ∗ R) (stateOf m')` —
+existence via the singleton `memStore_cellsAt` closed form
+(`cellAt_cellsAt`), the frame conjunct routed through `frame_memStore`
+(not re-proved natively), following the file's meta-existential idiom
+(the classical instance has no program logic or state-update modality).
+One site retired: `condPost_disjoint_star` in `Circe/Iris/CondDemo.lean`
+derives its first-leg equation (the `a`/`t₁`/value-11 taken-branch store,
+`q` riding the frame) instead of assuming `h1`; `h2`, the aliased leg,
+and `double_store_frame` stay as-is — the one-equation bound respected.
+`condPost_disjoint_parity` carries the discharged equation existentially
+and still recovers the native conclusions. `CondFrame` and the admitted
+`Slice` legs untouched (no Iris import pulled into the gate path).
+- Acceptance: sorry-free and warning-free; `#print axioms` on the new
+  and changed theorems shows exactly `[propext, Classical.choice,
+  Quot.sound]` — identical to the pre-existing `frame_memStore`;
+  full gate 569/569 TEST-OK (tally unchanged); gallery builds
+  (128 jobs); diff confined to `Circe/Iris/` + docs (no goldens,
+  no driver rows, no `out/` churn).

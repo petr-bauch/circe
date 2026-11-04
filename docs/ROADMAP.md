@@ -270,10 +270,11 @@ Use cases encountered so far, with dispositions:
   whole-while abstraction. Program-level call frame is
   definitional (callee binds into `emptyMem`) — P3e.
 - `Mem`-level writes: delivered via `mstore`/`mload` + open
-  contracts (S0–S4, N14); store equations stay hypotheses
-  under the S0 open contract instead of discharged writes
-  (discharging them through the Iris points-to is the
-  standing fallback candidate).
+  contracts (S0–S4, N14); the first store equation is now
+  discharged through the Iris points-to
+  (`store_frame_cellAtI` retiring `condPost_disjoint_star`'s
+  `h1`, DELIVERED P4) while the remaining equations stay
+  hypotheses under the S0 open contract.
 - Raw-pointer list reversal (L-ptr, trigger review L5):
   no trigger fired — the `ListSeg`/`chaseN` kit plus
   statement-level framing proved it natively
@@ -286,11 +287,13 @@ Use cases encountered so far, with dispositions:
 What Iris (MoSeL) now provides: a reusable frame rule
 carrying untouched locations through for free
 (`frame_memStore` over reified `Mem`, Phase 1 MVP) +
-BI/separation-logic tactics over our instance. First
-consumers under the fallback policy: a second conditional
-shape that resists the bespoke-`condPost` treatment, or a
-`Mem`-level write need the native path cannot meet (the S0
-store-equation hypotheses are the standing candidate).
+BI/separation-logic tactics over our instance, plus a
+store-with-frame write leg (`store_frame_cellAtI`) that
+discharges one S0 store equation from a points-to premise
+(DELIVERED P4). First consumers under the fallback policy:
+a second conditional shape that resists the bespoke-`condPost`
+treatment, or a further `Mem`-level write need the native
+path cannot meet.
 
 Out of scope until the platform says otherwise: concurrency
 (standing non-goal) — the one use case with no native answer.
@@ -299,16 +302,15 @@ mandatory rather than optional: invariants and ghost state
 have no equational counterpart.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Discharge one S0 store equation through the
-   vendored Iris points-to: the standing fallback candidate,
-   bounded to a single equation — proves the frame rule does
-   real work without replacing the oracle or `Mem` tags.
-2. Keep the second-conditional-shape trigger armed: if a new
+1. (Recommended) Keep the second-conditional-shape trigger armed: if a new
    conditional shape resists the bespoke-`condPost`
-   treatment, escalate to `frame_memStore` instead of paying
+   treatment, escalate to `frame_memStore` (now backed by the
+   `store_frame_cellAtI` write leg) instead of paying
    a third bespoke proof.
-3. No concurrency work (non-goal reaffirmed); no new Iris
-   imports until trigger 1 or 2 fires.
+2. No concurrency work (non-goal reaffirmed); no new Iris
+   imports until trigger 1 fires. (The S0 discharge proposed
+   item landed as DELIVERED P4: one equation, `h1` of
+   `condPost_disjoint_star`; the rest stay hypotheses.)
 
 
 ## Guiding principle (locked)

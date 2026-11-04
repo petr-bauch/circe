@@ -2,10 +2,12 @@
 Circe.Iris.CondDemo — Phase 1 MVP demo: the `alias_cond`
 disjunctive post through the reusable frame rule.
 
-`condPost_disjoint_star` proves both legs with `frame_memStore`
-(the other cell rides the frame — no manual `rw` threading) and
-`star_intro` assembles the initial stars. `condPost_disjoint_parity`
-then recovers the EXACT native `condPost_disjoint` conclusions
+`condPost_disjoint_star` proves both legs with the other cell
+riding the frame — no manual `rw` threading — and
+`star_intro` assembles the initial stars. The first leg's
+store equation is discharged through `store_frame_cellAtI`;
+the second leg still takes `h2`. `condPost_disjoint_parity`
+then recovers the native `condPost_disjoint` conclusions
 via `star_cellAt`: same statements, frame-rule proofs. The
 aliased leg (`condPost_aliased_parity`) needs no star at all —
 one cell, branch-exclusive update — discharged through the
@@ -28,33 +30,41 @@ namespace Circe.Iris
 
 /-- Disjoint leg, star form: each store updates its cell while
     the other cell rides the frame. Compare the native proof,
-    which re-pays one `memFind_memStore_other` rewrite per leg. -/
-theorem condPost_disjoint_star (m m₁ m₂ : Mem) (a b t₁ t₂ : Nat)
+    which re-pays one `memFind_memStore_other` rewrite per leg.
+    The first store equation is discharged, not assumed: the
+    taken-branch write comes out of `store_frame_cellAtI`
+    (the `q` cell rides the frame); only `h2` stays a
+    hypothesis — the one-equation bound. -/
+theorem condPost_disjoint_star (m m₂ : Mem) (a b t₁ t₂ : Nat)
     (p q : BitVec 32)
     (hp : cellAt m a t₁ p) (hq : cellAt m b t₂ q) (hne : b ≠ a)
-    (h1 : memStore m a t₁ 0 11 = .ok m₁)
     (h2 : memStore m b t₂ 0 22 = .ok m₂) :
-    (iprop(cellAtI a t₁ 11 ∗ cellAtI b t₂ q)) (stateOf m₁) ∧
+    (∃ m₁, memStore m a t₁ 0 11 = .ok m₁ ∧
+      (iprop(cellAtI a t₁ 11 ∗ cellAtI b t₂ q)) (stateOf m₁)) ∧
     (iprop(cellAtI b t₂ 22 ∗ cellAtI a t₁ p)) (stateOf m₂) := by
   refine ⟨?_, ?_⟩
-  · exact frame_memStore m m₁ a t₁ p 11 _ hp h1
+  · obtain ⟨m₁, h1, hleg⟩ := store_frame_cellAtI m a t₁ p 11
+      (cellAtI b t₂ q)
       (star_intro m a b _ _ hne hp hq)
+    exact ⟨m₁, h1, hleg⟩
   · exact frame_memStore m m₂ b t₂ q 22 _ hq h2
       (star_intro m b a _ _ (Ne.symm hne) hq hp)
 
-/-- Parity: the exact native `condPost_disjoint` conclusions,
+/-- Parity: the native `condPost_disjoint` conclusions,
     recovered from the star form — the written cells via
-    `star_cellAt`, the framed cells via `star_frame_cellAt`. -/
-theorem condPost_disjoint_parity (m m₁ m₂ : Mem) (a b t₁ t₂ : Nat)
+    `star_cellAt`, the framed cells via `star_frame_cellAt`.
+    The first leg carries its discharged store equation
+    existentially; the second leg still takes `h2`. -/
+theorem condPost_disjoint_parity (m m₂ : Mem) (a b t₁ t₂ : Nat)
     (p q : BitVec 32)
     (hp : cellAt m a t₁ p) (hq : cellAt m b t₂ q) (hne : b ≠ a)
-    (h1 : memStore m a t₁ 0 11 = .ok m₁)
     (h2 : memStore m b t₂ 0 22 = .ok m₂) :
-    (cellAt m₁ a t₁ 11 ∧ cellAt m₁ b t₂ q) ∧
+    (∃ m₁, memStore m a t₁ 0 11 = .ok m₁ ∧
+      (cellAt m₁ a t₁ 11 ∧ cellAt m₁ b t₂ q)) ∧
     (cellAt m₂ b t₂ 22 ∧ cellAt m₂ a t₁ p) := by
-  obtain ⟨hleg1, hleg2⟩ := condPost_disjoint_star m m₁ m₂ a b t₁ t₂ p q
-    hp hq hne h1 h2
-  exact ⟨⟨star_cellAt m₁ a t₁ 11 _ hleg1,
+  obtain ⟨⟨m₁, h1, hleg1⟩, hleg2⟩ :=
+    condPost_disjoint_star m m₂ a b t₁ t₂ p q hp hq hne h2
+  exact ⟨⟨m₁, h1, star_cellAt m₁ a t₁ 11 _ hleg1,
       star_frame_cellAt m₁ b t₂ q _ hleg1⟩,
     ⟨star_cellAt m₂ b t₂ 22 _ hleg2,
       star_frame_cellAt m₂ a t₁ p _ hleg2⟩⟩

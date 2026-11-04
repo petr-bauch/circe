@@ -236,4 +236,22 @@ theorem star_frame_cellAt (m : Mem) (a : Addr) (t : Nat)
     exact hunion
   exact split_cellAt m a t v σ₂ σ₁ hunion' (disjoint_comm.mp hdisj) hσ
 
+/-- Write leg with frame: a `cellAtI` star over the reified state
+    yields a successor memory discharging the index-0 singleton store
+    equation, with the updated star preserved. The frame conjunct routes
+    through `frame_memStore`; existence is the singleton
+    `memStore_cellsAt` closed form via `cellAt_cellsAt`. -/
+theorem store_frame_cellAtI (m : Mem) (a : Addr) (t : Nat)
+    (p x : BitVec 32) (R : HeapProp Block)
+    (h : (iprop(cellAtI a t p ∗ R)) (stateOf m)) :
+    ∃ m', memStore m a t 0 x = .ok m' ∧
+      (iprop(cellAtI a t x ∗ R)) (stateOf m') := by
+  have hcell : cellAt m a t p := star_cellAt m a t p R h
+  have hcells : cellsAt m a t [p] :=
+    (cellAt_cellsAt m a t p).mp hcell
+  have hlt : 0 < ([p] : List (BitVec 32)).length := by simp
+  obtain ⟨m', hstore⟩ : ∃ m', memStore m a t 0 x = .ok m' :=
+    ⟨_, memStore_cellsAt m a t 0 [p] x hcells hlt⟩
+  exact ⟨m', hstore, frame_memStore m m' a t p x R hcell hstore h⟩
+
 end Circe.Iris
