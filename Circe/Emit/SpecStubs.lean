@@ -2628,6 +2628,47 @@ def emitVecIntersectSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_copy_if`. The mirror is the read-cursor
+    filter over the reified words (cf. emitted `{name}_fwd`);
+    edges carry ground truth (keeps, all-dropped, empty input,
+    singleton hit/miss, short-`out` loud failure). -/
+def emitVecCopyIfSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, out, x)` records the elements of `a` differing from `x` into the caller-sized `out` (`std::copy_if` idiom). Base body reference: the same scan on the reified words (cf. emitted `{name}_fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (la : List (BitVec 32)) (lo : List (BitVec 32)) (x : BitVec 32) : Result Nat :=\n"
+  ++ "  match loop la lo la.length 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, r, w => .ok (r, w, lo)\n"
+  ++ "  | la, lo, fuel + 1, r, w =>\n"
+  ++ "    if r < la.length then\n"
+  ++ "      match la[r]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some y =>\n"
+  ++ "        if y != x then\n"
+  ++ "          match lo[w]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la (lo.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop la lo fuel (r + 1) w\n"
+  ++ "    else .ok (r, w, lo)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: keeps, all-dropped, empty input, singleton hit/miss, short-`out` loud failure. -/\n"
+  ++ s!"def {name}_spec_edges : List (((List (BitVec 32) × List (BitVec 32)) × BitVec 32) × Result Nat) :=\n"
+  ++ "  [((([1, 2, 3], [0, 0, 0]), 2), .ok 2),\n"
+  ++ "   ((([5, 5, 5], [0, 0]), 5), .ok 0),\n"
+  ++ "   ((([], [0]), 1), .ok 0),\n"
+  ++ "   ((([7], [9]), 7), .ok 0),\n"
+  ++ "   ((([7], [9]), 0), .ok 1),\n"
+  ++ "   ((([1, 2], [0]), 9), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `min_index`. The mirror is the forward min-scan
     over the reified words; edges carry ground truth (singleton,
     head/tail minima, interior minimum). -/

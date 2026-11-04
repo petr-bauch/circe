@@ -2663,6 +2663,52 @@ def isVecIntersectShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text raw.name
   | _ => false
 
+/-- `vec_copy_if` entry shape (out-of-place filter, P2-M12): one
+    read-only vector plus one caller-sized output vector plus one
+    owned `i32` in, `u64` count out, exactly four calls (one `size`
+    + two const `at()` — the keep test and the copy-value read —
+    + one non-const `at()` write target), one `cir.while` (the
+    read scan), one `cir.if` (the keep branch, no else), two
+    compares (one `u64` bound check + one signed `ne` keep test),
+    two plain `u64` bumps (the two cursors). Encapsulation pins:
+    `at()`-only element traffic (no `operator[]`), no recursion,
+    no allocation, no `unreachable`; the extra output vector plus
+    keep-`if` separates it from `vec_remove` (single borrow plus
+    owned value, three `at()` calls, five allocas) and the four
+    calls plus `if` separate it from `vec_transform_add`
+    (three calls, no `if`, `nsw` add). -/
+def isVecCopyIfShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, out, x] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType out.ctype && out.singleRef && isStdVectorType out.ctype &&
+    isI32 x.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.const" == 8 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 15 &&
+    opCount raw.text "cir.store" == 9 &&
+    opCount raw.text "cir.add " == 2 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

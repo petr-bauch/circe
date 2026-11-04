@@ -22,6 +22,7 @@ ok/err sides. `cir_simp` (`Circe.Tactics`) is used throughout.
 -/
 import Circe.Base
 import Circe.Emit
+import Circe.Emit.VecCopyIf
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecPartialSum
 import Circe.Tactics
@@ -6100,3 +6101,392 @@ theorem vecIntersectFwd_correct (la lb lo : List (BitVec 32))
   obtain ⟨_, _, hlen⟩ :=
     intersectFwd_correct la lb lo hsA hsB hcap0 i' j' w' lo' hfwd
   exact ⟨w', by simp only [vecIntersectFwd, hfwd], hlen⟩
+
+/-! ## P2-M12: out-of-place filter (`copy_if`) forward contract -/
+
+/-- Filter forward totality, ok leg: the scan runs to
+    `la.length` with full reads and fitting writes (fuel
+    induction threading the keep count and the capacity
+    bound). -/
+theorem copyIfFwd_ok (x : BitVec 32) (la lo : List (BitVec 32))
+    (fuel r w : Nat)
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcnt : ((la.take r).filter (fun y => (y != x))).length = w)
+    (hcap : (la.filter (fun y => (y != x))).length ≤ lo.length) :
+    ∃ w' lo', copyIfFwd x la lo fuel r w = .ok (la.length, w', lo') := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    exact ⟨w, lo, by simp [copyIfFwd]⟩
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y != x) = true
+      · have hkeeps1 : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w + 1) := by
+          rw [copyIfFilter_take_succ x la r y hy hkeep, hwcnt]
+        have hwlt : w < lo.length := by
+          have hsplit := copyIfFilter_split x la r (by omega)
+          omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, lo[w]? = some z :=
+          ⟨lo[w], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w + 1) := hkeeps1
+        have hcap' : (la.filter (fun y => (y != x))).length ≤
+            (lo.set w y).length := by
+          have hlen : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          rw [hlen]; exact hcap
+        obtain ⟨w', lo', h⟩ := ih (lo := lo.set w y)
+          (r := r + 1) (w := w + 1)
+          (hle := by omega) (hF := hF')
+          (hwcnt := hwcnt') (hcap := hcap')
+        exact ⟨w', lo', by
+          simp only [copyIfFwd, dite_eq_left hlt, hy, hkeep, hwget]
+          exact h⟩
+      · have hdrop : (y != x) = false := by
+          cases h : (y != x) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w) := by
+          rw [copyIfFilter_take_succ_drop x la r y hy hdrop, hwcnt]
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        obtain ⟨w', lo', h⟩ := ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hF := hF')
+          (hwcnt := hwcnt') (hcap := hcap)
+        exact ⟨w', lo', by
+          simp only [copyIfFwd, dite_eq_left hlt, hy, hdrop]
+          exact h⟩
+    · have him : r = la.length := by omega
+      subst him
+      exact ⟨w, lo, by simp [copyIfFwd]⟩
+
+/-- Filter forward prefix contract, ok leg: the written prefix
+    is the filter of the scanned prefix, the count never
+    retreats, the output length is unchanged (fuel induction
+    threading the prefix, suffix, keep-count, and capacity
+    facts — the M9 `removeFwd_prefix` shape on the `out`
+    list). -/
+theorem copyIfFwd_prefix (x : BitVec 32) (la lo₀ : List (BitVec 32))
+    (fuel r w w' : Nat) (lo lo' : List (BitVec 32))
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hlen : lo.length = lo₀.length)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcnt : ((la.take r).filter (fun y => (y != x))).length = w)
+    (hcap : (la.filter (fun y => (y != x))).length ≤ lo₀.length)
+    (hpre : lo.take w = ((la.take r).filter (fun y => (y != x))))
+    (hsuf : ∀ j, w ≤ j → lo[j]? = lo₀[j]?)
+    (hfwd : copyIfFwd x la lo fuel r w = .ok (la.length, w', lo')) :
+    lo'.take w' = la.filter (fun y => (y != x)) ∧
+      w ≤ w' ∧ lo'.length = lo₀.length := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have hpair : (r, w, lo) = (la.length, w', lo') := by
+      simpa [copyIfFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    refine ⟨?_, Nat.le_refl _, hlen⟩
+    rw [List.take_length] at hpre
+    exact hpre
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y != x) = true
+      · have hkeeps1 : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w + 1) := by
+          rw [copyIfFilter_take_succ x la r y hy hkeep, hwcnt]
+        have hwlt : w < lo.length := by
+          have hsplit := copyIfFilter_split x la r (by omega)
+          have hcap' : (la.filter (fun y => (y != x))).length ≤
+              lo.length := by
+            rw [hlen]; exact hcap
+          omega
+        have hwget : lo[w]? = some lo[w] :=
+          List.getElem?_eq_getElem hwlt
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hlen' : (lo.set w y).length = lo₀.length := by
+          simp [List.length_set, hlen]
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w + 1) := hkeeps1
+        have hcap' : (la.filter (fun y => (y != x))).length ≤
+            lo₀.length := hcap
+        have hpre' : (lo.set w y).take (w + 1) =
+            ((la.take (r + 1)).filter (fun y => (y != x))) := by
+          have htake : (lo.set w y).take (w + 1) =
+              lo.take w ++ [y] := by
+            have htakeW : (lo.set w y).take w = lo.take w := by
+              apply List.ext_getElem?
+              intro j
+              rw [List.getElem?_take, List.getElem?_take]
+              by_cases hj : j < w
+              · rw [List.getElem?_set_ne (show w ≠ j by omega)]
+              · simp [hj]
+            rw [List.take_add_one,
+              List.getElem?_set_self (by omega : w < lo.length),
+              htakeW]; rfl
+          have hfilter : ((la.take (r + 1)).filter
+              (fun z => (z != x))) =
+              (la.take r).filter (fun z => (z != x)) ++ [y] := by
+            have htake₀ : la.take (r + 1) = la.take r ++ [y] := by
+              have h0 : la.take (r + 1) = la.take r ++ la[r]?.toList :=
+                List.take_add_one
+              have h1 : la[r]?.toList = [y] := by rw [hy]; rfl
+              rwa [h1] at h0
+            rw [htake₀, List.filter_append]
+            simp [hkeep]
+          rw [htake, hfilter, hpre]
+        have hsuf' : ∀ j, w + 1 ≤ j → (lo.set w y)[j]? = lo₀[j]? := by
+          intro j hj
+          rw [List.getElem?_set_ne (show w ≠ j by omega)]
+          exact hsuf j (by omega)
+        have hfwd' : copyIfFwd x la (lo.set w y) n (r + 1) (w + 1) =
+            .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [copyIfFwd, dite_eq_left hlt, hy, hkeep, hwget] at h
+          exact h
+        obtain ⟨hA, hB, hC⟩ := ih (lo := lo.set w y)
+          (r := r + 1) (w := w + 1)
+          (hle := by omega) (hF := hF') (hlen := hlen')
+          (hwcnt := hwcnt')
+          (hpre := hpre') (hsuf := hsuf')
+          (hfwd := hfwd')
+        exact ⟨hA, by omega, hC⟩
+      · have hdrop : (y != x) = false := by
+          cases h : (y != x) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w) := by
+          rw [copyIfFilter_take_succ_drop x la r y hy hdrop, hwcnt]
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hpre' : lo.take w =
+            ((la.take (r + 1)).filter (fun y => (y != x))) := by
+          rw [copyIfFilter_take_succ_drop x la r y hy hdrop]
+          exact hpre
+        have hfwd' : copyIfFwd x la lo n (r + 1) w =
+            .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [copyIfFwd, dite_eq_left hlt, hy, hdrop] at h
+          exact h
+        obtain ⟨hA, hB, hC⟩ := ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hF := hF') (hlen := hlen)
+          (hwcnt := hwcnt')
+          (hpre := hpre') (hsuf := hsuf)
+          (hfwd := hfwd')
+        exact ⟨hA, by omega, hC⟩
+    · have him : r = la.length := by omega
+      subst him
+      have hpair : (la.length, w, lo) = (la.length, w', lo') := by
+        cases n with
+        | zero => simpa [copyIfFwd] using hfwd
+        | succ n =>
+          have hneg : ¬ la.length < la.length := by omega
+          simpa [copyIfFwd, dite_eq_right hneg] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      refine ⟨?_, Nat.le_refl _, hlen⟩
+      rw [List.take_length] at hpre
+      exact hpre
+
+/-- Filter forward short-`out` error leg: when the keeps so
+    far fit but the total keeps overflow the output, the scan
+    fails loudly (fuel induction threading the keep count;
+    the zero/exhausted cases are discharged by the count
+    facts). -/
+theorem copyIfFwd_err_short (x : BitVec 32) (la lo : List (BitVec 32))
+    (fuel r w : Nat)
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcnt : ((la.take r).filter (fun y => (y != x))).length = w)
+    (hwle : w ≤ lo.length)
+    (hmore : lo.length < (la.filter (fun y => (y != x))).length) :
+    copyIfFwd x la lo fuel r w = .error .AssertFail := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    rw [List.take_length] at hwcnt
+    omega
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y != x) = true
+      · by_cases hmiss : lo[w]? = none
+        · simpa [copyIfFwd, dite_eq_left hlt, hy, hkeep, hmiss]
+        · have hsome : ∃ z, lo[w]? = some z := by
+            match h : lo[w]? with
+            | none => exact absurd h hmiss
+            | some z => exact ⟨z, rfl⟩
+          obtain ⟨wOld, hwget⟩ := hsome
+          have hwlt : w < lo.length := by
+            have hne : w ≠ lo.length := by
+              intro heq
+              subst heq
+              have hnone : lo[lo.length]? = none :=
+                List.getElem?_eq_none (Nat.le_refl _)
+              rw [hnone] at hwget
+              simp at hwget
+            exact Nat.lt_of_le_of_ne hwle hne
+          have hF' : la.length - (r + 1) ≤ n := by omega
+          have hwcnt' : (((la.take (r + 1)).filter
+              (fun z => (z != x))).length = w + 1) := by
+            rw [copyIfFilter_take_succ x la r y hy hkeep, hwcnt]
+          have hwle' : w + 1 ≤ (lo.set w y).length := by
+            have hlen : (lo.set w y).length = lo.length := by
+              simp [List.length_set]
+            omega
+          have hmore' : (lo.set w y).length <
+              (la.filter (fun y => (y != x))).length := by
+            have hlen : (lo.set w y).length = lo.length := by
+              simp [List.length_set]
+            rw [hlen]; exact hmore
+          have h := ih (lo := lo.set w y)
+            (r := r + 1) (w := w + 1)
+            (hle := by omega) (hF := hF')
+            (hwcnt := hwcnt') (hwle := hwle') (hmore := hmore')
+          simpa [copyIfFwd, dite_eq_left hlt, hy, hkeep, hwget] using h
+      · have hdrop : (y != x) = false := by
+          cases h : (y != x) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w) := by
+          rw [copyIfFilter_take_succ_drop x la r y hy hdrop, hwcnt]
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have h := ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hF := hF')
+          (hwcnt := hwcnt') (hwle := hwle) (hmore := hmore)
+        simpa [copyIfFwd, dite_eq_left hlt, hy, hdrop] using h
+    · have him : r = la.length := by omega
+      subst him
+      rw [List.take_length] at hwcnt
+      omega
+
+/-- Short-`out` fires loudly from the entry: more keeps than
+    output words means the forward scan errors. -/
+theorem copyIfFwd_err_of_overflow (x : BitVec 32)
+    (la lo : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hmore : lo.length < (la.filter (fun y => (y != x))).length) :
+    copyIfFwd x la lo la.length 0 0 = .error .AssertFail :=
+  copyIfFwd_err_short x la lo la.length 0 0 (Nat.zero_le _)
+    (by omega) hread (by simp) (Nat.zero_le _) hmore
+
+/-- Count bound: the survivor count never exceeds the output
+    length while the scan fits (fuel induction threading the
+    keep count and the capacity bound — the ok-leg write
+    rule). -/
+theorem copyIfFwd_le (x : BitVec 32) (la lo : List (BitVec 32))
+    (fuel r w w' : Nat) (lo' : List (BitVec 32))
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcnt : ((la.take r).filter (fun y => (y != x))).length = w)
+    (hcap : (la.filter (fun y => (y != x))).length ≤ lo.length)
+    (hfwd : copyIfFwd x la lo fuel r w = .ok (la.length, w', lo')) :
+    w' ≤ lo.length := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    have hpair : (la.length, w, lo) = (la.length, w', lo') := by
+      simpa [copyIfFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    rw [List.take_length] at hwcnt
+    omega
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y != x) = true
+      · have hkeeps1 : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w + 1) := by
+          rw [copyIfFilter_take_succ x la r y hy hkeep, hwcnt]
+        have hwlt : w < lo.length := by
+          have hsplit := copyIfFilter_split x la r (by omega)
+          omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, lo[w]? = some z :=
+          ⟨lo[w], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w + 1) := hkeeps1
+        have hcap' : (la.filter (fun y => (y != x))).length ≤
+            (lo.set w y).length := by
+          have hlen : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          rw [hlen]; exact hcap
+        have hfwd' : copyIfFwd x la (lo.set w y) n (r + 1) (w + 1) =
+            .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [copyIfFwd, dite_eq_left hlt, hy, hkeep, hwget] at h
+          exact h
+        have h := ih (lo := lo.set w y)
+          (r := r + 1) (w := w + 1)
+          (hle := by omega) (hF := hF')
+          (hwcnt := hwcnt') (hcap := hcap')
+          (hfwd := hfwd')
+        have hlen : (lo.set w y).length = lo.length := by
+          simp [List.length_set]
+        omega
+      · have hdrop : (y != x) = false := by
+          cases h : (y != x) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hwcnt' : (((la.take (r + 1)).filter
+            (fun z => (z != x))).length = w) := by
+          rw [copyIfFilter_take_succ_drop x la r y hy hdrop, hwcnt]
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hfwd' : copyIfFwd x la lo n (r + 1) w =
+            .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [copyIfFwd, dite_eq_left hlt, hy, hdrop] at h
+          exact h
+        exact ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hF := hF')
+          (hwcnt := hwcnt') (hcap := hcap)
+          (hfwd := hfwd')
+    · have him : r = la.length := by omega
+      subst him
+      have hpair : (la.length, w, lo) = (la.length, w', lo') := by
+        cases n with
+        | zero => simpa [copyIfFwd] using hfwd
+        | succ n =>
+          have hneg : ¬ la.length < la.length := by omega
+          simpa [copyIfFwd, dite_eq_right hneg] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      rw [List.take_length] at hwcnt
+      omega
+
+/-- Closed copy_if contract: when the keeps fit, the forward
+    returns the filter count over the filter prefix, output
+    length unchanged. -/
+theorem vecCopyIfFwd_correct (x : BitVec 32)
+    (la lo : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hcap : (la.filter (fun y => (y != x))).length ≤ lo.length) :
+    ∃ (w' : Nat) (lo' : List (BitVec 32)),
+      vecCopyIfFwd la lo x = .ok (.u64 (BitVec.ofNat 64 w')) ∧
+      lo'.take w' = la.filter (fun y => (y != x)) ∧
+      w' = (la.filter (fun y => (y != x))).length ∧
+      lo'.length = lo.length := by
+  obtain ⟨w', lo', hfwd⟩ := copyIfFwd_ok x la lo la.length 0 0
+    (Nat.zero_le _) (by omega) hread (by simp) hcap
+  obtain ⟨hpref, hle, hlen⟩ := copyIfFwd_prefix x la lo la.length 0 0 w'
+    lo lo' (Nat.zero_le _) (by omega) rfl hread (by simp) hcap
+    (by simp) (fun j _ => rfl) hfwd
+  have hb := copyIfFwd_le x la lo la.length 0 0 w' lo'
+    (Nat.zero_le _) (by omega) hread (by simp) hcap hfwd
+  refine ⟨w', lo', by simp only [vecCopyIfFwd, hfwd], hpref, ?_, hlen⟩
+  have htw : (lo'.take w').length = w' := by
+    rw [List.length_take, Nat.min_eq_left (by omega : w' ≤ lo'.length)]
+  have hflen : (lo'.take w').length =
+      (la.filter (fun y => (y != x))).length := by rw [hpref]
+  omega

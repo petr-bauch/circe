@@ -1436,6 +1436,33 @@ def emitVecIntersectText (name : String) : String :=
   ++ "      else .ok (i, j, w, lo)\n"
   ++ "    else .ok (i, j, w, lo)\n"
 
+/-- Render the `vec_copy_if` entry forward definition: the
+    read-cursor scan over the reified words, recording non-`x`
+    elements into the caller-sized record; returns the survivor
+    count (short-`out` is loud `AssertFail`). -/
+def emitVecCopyIfText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (read-cursor filter over the reified words; the `std::copy_if` idiom with predicate `!= x`; caller-sized record; returns the survivor count). -/\n"
+  ++ s!"def {name}_fwd (la : List (BitVec 32)) (lo : List (BitVec 32)) (x : BitVec 32) : Result Nat :=\n"
+  ++ "  match loop la lo la.length 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, r, w => .ok (r, w, lo)\n"
+  ++ "  | la, lo, fuel + 1, r, w =>\n"
+  ++ "    if r < la.length then\n"
+  ++ "      match la[r]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some y =>\n"
+  ++ "        if y != x then\n"
+  ++ "          match lo[w]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la (lo.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop la lo fuel (r + 1) w\n"
+  ++ "    else .ok (r, w, lo)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=
