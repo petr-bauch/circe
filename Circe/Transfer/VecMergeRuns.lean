@@ -861,10 +861,8 @@ theorem memRunsDrainI_ok (prog : Prog) (F : Nat)
         have hlt1 : k.toNat + 1 < (nB :: lt).length := by
           simp only [List.length_cons]
           omega
-        obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-            (k.toNat + 1) la[i.toNat] = .ok m₁ :=
-          ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-            la[i.toNat] hmem_b hlt1⟩
+        obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+          memStore_cellsAt_pin m ab tb la[i.toNat] hmem_b hlt1
         obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
           (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[i.toNat]))
           htmp_env
@@ -914,15 +912,6 @@ theorem memRunsDrainI_ok (prog : Prog) (F : Nat)
             (k.toNat + 1) la[i.toNat] hstore haa
           rw [h]
           exact hmem_a
-        have hmem_b₁ : memFind m₁ ab =
-            some ⟨tb, true, nB :: lt.set k.toNat la[i.toNat]⟩ := by
-          have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-            (nB :: lt) la[i.toNat] m₁ hmem_b hlt1 hstore
-          have hsetEq : (nB :: lt).set (k.toNat + 1) la[i.toNat] =
-              nB :: lt.set k.toNat la[i.toNat] :=
-            List.set_cons_succ
-          rw [hsetEq] at hcells
-          exact hcells
         have hnB₁ : nB =
             BitVec.ofNat 32 (lt.set k.toNat la[i.toNat]).length := by
           rw [List.length_set]
@@ -1120,10 +1109,8 @@ theorem memRunsDrainI_err (prog : Prog) (F : Nat)
         have hlt1 : k.toNat + 1 < (nB :: lt).length := by
           simp only [List.length_cons]
           omega
-        obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-            (k.toNat + 1) la[i.toNat] = .ok m₁ :=
-          ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-            la[i.toNat] hmem_b hlt1⟩
+        obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+          memStore_cellsAt_pin m ab tb la[i.toNat] hmem_b hlt1
         obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
           (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[i.toNat]))
           htmp_env
@@ -1172,15 +1159,6 @@ theorem memRunsDrainI_err (prog : Prog) (F : Nat)
             (k.toNat + 1) la[i.toNat] hstore haa
           rw [h]
           exact hmem_a
-        have hmem_b₁ : memFind m₁ ab =
-            some ⟨tb, true, nB :: lt.set k.toNat la[i.toNat]⟩ := by
-          have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-            (nB :: lt) la[i.toNat] m₁ hmem_b hlt1 hstore
-          have hsetEq : (nB :: lt).set (k.toNat + 1) la[i.toNat] =
-              nB :: lt.set k.toNat la[i.toNat] :=
-            List.set_cons_succ
-          rw [hsetEq] at hcells
-          exact hcells
         have hnB₁ : nB =
             BitVec.ofNat 32 (lt.set k.toNat la[i.toNat]).length := by
           rw [List.length_set]
@@ -1341,10 +1319,8 @@ theorem memRunsDrainJ_err (prog : Prog) (F : Nat)
         have hlt1 : k.toNat + 1 < (nB :: lt).length := by
           simp only [List.length_cons]
           omega
-        obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-            (k.toNat + 1) la[j.toNat] = .ok m₁ :=
-          ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-            la[j.toNat] hmem_b hlt1⟩
+        obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+          memStore_cellsAt_pin m ab tb la[j.toNat] hmem_b hlt1
         obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
           (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[j.toNat]))
           htmp_env
@@ -1393,15 +1369,6 @@ theorem memRunsDrainJ_err (prog : Prog) (F : Nat)
             (k.toNat + 1) la[j.toNat] hstore haa
           rw [h]
           exact hmem_a
-        have hmem_b₁ : memFind m₁ ab =
-            some ⟨tb, true, nB :: lt.set k.toNat la[j.toNat]⟩ := by
-          have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-            (nB :: lt) la[j.toNat] m₁ hmem_b hlt1 hstore
-          have hsetEq : (nB :: lt).set (k.toNat + 1) la[j.toNat] =
-              nB :: lt.set k.toNat la[j.toNat] :=
-            List.set_cons_succ
-          rw [hsetEq] at hcells
-          exact hcells
         have hnB₁ : nB =
             BitVec.ofNat 32 (lt.set k.toNat la[j.toNat]).length := by
           rw [List.length_set]
@@ -1556,10 +1523,8 @@ theorem memRunsDrainJ_ok (prog : Prog) (F : Nat)
         have hlt1 : k.toNat + 1 < (nB :: lt).length := by
           simp only [List.length_cons]
           omega
-        obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-            (k.toNat + 1) la[j.toNat] = .ok m₁ :=
-          ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-            la[j.toNat] hmem_b hlt1⟩
+        obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+          memStore_cellsAt_pin m ab tb la[j.toNat] hmem_b hlt1
         obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
           (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[j.toNat]))
           htmp_env
@@ -1609,15 +1574,6 @@ theorem memRunsDrainJ_ok (prog : Prog) (F : Nat)
             (k.toNat + 1) la[j.toNat] hstore haa
           rw [h]
           exact hmem_a
-        have hmem_b₁ : memFind m₁ ab =
-            some ⟨tb, true, nB :: lt.set k.toNat la[j.toNat]⟩ := by
-          have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-            (nB :: lt) la[j.toNat] m₁ hmem_b hlt1 hstore
-          have hsetEq : (nB :: lt).set (k.toNat + 1) la[j.toNat] =
-              nB :: lt.set k.toNat la[j.toNat] :=
-            List.set_cons_succ
-          rw [hsetEq] at hcells
-          exact hcells
         have hnB₁ : nB =
             BitVec.ofNat 32 (lt.set k.toNat la[j.toNat]).length := by
           rw [List.length_set]
@@ -1832,10 +1788,8 @@ theorem memRunsMain_ok (prog : Prog) (F : Nat)
             simp only [mergeRunsMainFwd, dite_eq_left hI,
               dite_eq_left hJ, hgetK, hgetI, hgetJ, hslt] at h
             exact h
-          obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-              (k.toNat + 1) la[i.toNat] = .ok m₁ :=
-            ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-              la[i.toNat] hmem_b hlt1⟩
+          obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+            memStore_cellsAt_pin m ab tb la[i.toNat] hmem_b hlt1
           obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
             (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[i.toNat]))
             htmp_env
@@ -1889,15 +1843,6 @@ theorem memRunsMain_ok (prog : Prog) (F : Nat)
               (k.toNat + 1) la[i.toNat] hstore haa
             rw [h]
             exact hmem_a
-          have hmem_b₁ : memFind m₁ ab =
-              some ⟨tb, true, nB :: lt.set k.toNat la[i.toNat]⟩ := by
-            have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-              (nB :: lt) la[i.toNat] m₁ hmem_b hlt1 hstore
-            have hsetEq : (nB :: lt).set (k.toNat + 1) la[i.toNat] =
-                nB :: lt.set k.toNat la[i.toNat] :=
-              List.set_cons_succ
-            rw [hsetEq] at hcells
-            exact hcells
           have hnB₁ : nB =
               BitVec.ofNat 32 (lt.set k.toNat la[i.toNat]).length := by
             rw [List.length_set]
@@ -1965,10 +1910,8 @@ theorem memRunsMain_ok (prog : Prog) (F : Nat)
             simp only [mergeRunsMainFwd, dite_eq_left hI,
               dite_eq_left hJ, hgetK, hgetI, hgetJ, hsltF] at h
             exact h
-          obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-              (k.toNat + 1) la[j.toNat] = .ok m₁ :=
-            ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-              la[j.toNat] hmem_b hlt1⟩
+          obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+            memStore_cellsAt_pin m ab tb la[j.toNat] hmem_b hlt1
           obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
             (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[j.toNat]))
             htmp_env
@@ -2022,15 +1965,6 @@ theorem memRunsMain_ok (prog : Prog) (F : Nat)
               (k.toNat + 1) la[j.toNat] hstore haa
             rw [h]
             exact hmem_a
-          have hmem_b₁ : memFind m₁ ab =
-              some ⟨tb, true, nB :: lt.set k.toNat la[j.toNat]⟩ := by
-            have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-              (nB :: lt) la[j.toNat] m₁ hmem_b hlt1 hstore
-            have hsetEq : (nB :: lt).set (k.toNat + 1) la[j.toNat] =
-                nB :: lt.set k.toNat la[j.toNat] :=
-              List.set_cons_succ
-            rw [hsetEq] at hcells
-            exact hcells
           have hnB₁ : nB =
               BitVec.ofNat 32 (lt.set k.toNat la[j.toNat]).length := by
             rw [List.length_set]
@@ -2339,10 +2273,8 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
             simp only [mergeRunsMainFwd, dite_eq_left hI,
               dite_eq_left hJ, hgetK, hgetI, hgetJ, hslt] at h
             exact h
-          obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-              (k.toNat + 1) la[i.toNat] = .ok m₁ :=
-            ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-              la[i.toNat] hmem_b hlt1⟩
+          obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+            memStore_cellsAt_pin m ab tb la[i.toNat] hmem_b hlt1
           obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
             (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[i.toNat]))
             htmp_env
@@ -2396,15 +2328,6 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
               (k.toNat + 1) la[i.toNat] hstore haa
             rw [h]
             exact hmem_a
-          have hmem_b₁ : memFind m₁ ab =
-              some ⟨tb, true, nB :: lt.set k.toNat la[i.toNat]⟩ := by
-            have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-              (nB :: lt) la[i.toNat] m₁ hmem_b hlt1 hstore
-            have hsetEq : (nB :: lt).set (k.toNat + 1) la[i.toNat] =
-                nB :: lt.set k.toNat la[i.toNat] :=
-              List.set_cons_succ
-            rw [hsetEq] at hcells
-            exact hcells
           have hnB₁ : nB =
               BitVec.ofNat 32 (lt.set k.toNat la[i.toNat]).length := by
             rw [List.length_set]
@@ -2472,10 +2395,8 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
             simp only [mergeRunsMainFwd, dite_eq_left hI,
               dite_eq_left hJ, hgetK, hgetI, hgetJ, hsltF] at h
             exact h
-          obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m ab tb
-              (k.toNat + 1) la[j.toNat] = .ok m₁ :=
-            ⟨_, memStore_cellsAt m ab tb (k.toNat + 1) (nB :: lt)
-              la[j.toNat] hmem_b hlt1⟩
+          obtain ⟨m₁, hstore, hmem_b₁⟩ :=
+            memStore_cellsAt_pin m ab tb la[j.toNat] hmem_b hlt1
           obtain ⟨ρt, hu⟩ := envUpdate_some_of_lookup ρ "tmp"
             (.stdVecVal lt) (.stdVecVal (lt.set k.toNat la[j.toNat]))
             htmp_env
@@ -2529,15 +2450,6 @@ theorem memRunsMain_err (prog : Prog) (F : Nat)
               (k.toNat + 1) la[j.toNat] hstore haa
             rw [h]
             exact hmem_a
-          have hmem_b₁ : memFind m₁ ab =
-              some ⟨tb, true, nB :: lt.set k.toNat la[j.toNat]⟩ := by
-            have hcells := memFind_cellsAt_store m ab tb (k.toNat + 1)
-              (nB :: lt) la[j.toNat] m₁ hmem_b hlt1 hstore
-            have hsetEq : (nB :: lt).set (k.toNat + 1) la[j.toNat] =
-                nB :: lt.set k.toNat la[j.toNat] :=
-              List.set_cons_succ
-            rw [hsetEq] at hcells
-            exact hcells
           have hnB₁ : nB =
               BitVec.ofNat 32 (lt.set k.toNat la[j.toNat]).length := by
             rw [List.length_set]

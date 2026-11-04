@@ -233,10 +233,8 @@ theorem memSortCopy_ok (prog : Prog) (F : Nat)
           list_lt_of_getElem?_some la t.toNat la[t.toNat] hgetA
         simp only [List.length_cons]
         omega
-      obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m aa ta
-          (t.toNat + 1) lt[t.toNat] = .ok m₁ :=
-        ⟨_, memStore_cellsAt m aa ta (t.toNat + 1) (nA :: la)
-          lt[t.toNat] hmem_a hlt1⟩
+      obtain ⟨m₁, hstore, hmem_a₁⟩ :=
+        memStore_cellsAt_pin m aa ta lt[t.toNat] hmem_a hlt1
       have hstep := memSortCopyBody_hit prog F ρ m π la lt
         n w lo mid hi t lt[t.toNat] la[t.toNat]
         aa ab ta tb nB hlay_a hlay_tmp hmem_b hnB
@@ -261,15 +259,6 @@ theorem memSortCopy_ok (prog : Prog) (F : Nat)
           .ok (la', t') := by
         rw [← h1t, hM'] at hfwdT
         exact hfwdT
-      have hmem_a₁ : memFind m₁ aa =
-          some ⟨ta, true, nA :: la.set t.toNat lt[t.toNat]⟩ := by
-        have hcells := memFind_cellsAt_store m aa ta (t.toNat + 1)
-          (nA :: la) lt[t.toNat] m₁ hmem_a hlt1 hstore
-        have hsetEq : (nA :: la).set (t.toNat + 1) lt[t.toNat] =
-            nA :: la.set t.toNat lt[t.toNat] :=
-          List.set_cons_succ
-        rw [hsetEq] at hcells
-        exact hcells
       have hmem_b₁ : memFind m₁ ab = some ⟨tb, true, nB :: lt⟩ := by
         have h := memFind_memStore_other m m₁ aa ab ta
           (t.toNat + 1) lt[t.toNat] hstore (Ne.symm haa)
@@ -376,10 +365,8 @@ theorem memSortCopy_err (prog : Prog) (F : Nat)
           list_lt_of_getElem?_some la t.toNat la[t.toNat] hgetA
         simp only [List.length_cons]
         omega
-      obtain ⟨m₁, hstore⟩ : ∃ m₁, memStore m aa ta
-          (t.toNat + 1) lt[t.toNat] = .ok m₁ :=
-        ⟨_, memStore_cellsAt m aa ta (t.toNat + 1) (nA :: la)
-          lt[t.toNat] hmem_a hlt1⟩
+      obtain ⟨m₁, hstore, hmem_a₁⟩ :=
+        memStore_cellsAt_pin m aa ta lt[t.toNat] hmem_a hlt1
       have hstep := memSortCopyBody_hit prog F ρ m π la lt
         n w lo mid hi t lt[t.toNat] la[t.toNat]
         aa ab ta tb nB hlay_a hlay_tmp hmem_b hnB
@@ -404,15 +391,6 @@ theorem memSortCopy_err (prog : Prog) (F : Nat)
           .error e := by
         rw [← h1t, hM'] at hfwdT
         exact hfwdT
-      have hmem_a₁ : memFind m₁ aa =
-          some ⟨ta, true, nA :: la.set t.toNat lt[t.toNat]⟩ := by
-        have hcells := memFind_cellsAt_store m aa ta (t.toNat + 1)
-          (nA :: la) lt[t.toNat] m₁ hmem_a hlt1 hstore
-        have hsetEq : (nA :: la).set (t.toNat + 1) lt[t.toNat] =
-            nA :: la.set t.toNat lt[t.toNat] :=
-          List.set_cons_succ
-        rw [hsetEq] at hcells
-        exact hcells
       have hmem_b₁ : memFind m₁ ab = some ⟨tb, true, nB :: lt⟩ := by
         have h := memFind_memStore_other m m₁ aa ab ta
           (t.toNat + 1) lt[t.toNat] hstore (Ne.symm haa)

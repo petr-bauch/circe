@@ -429,8 +429,8 @@ refactor changed no statement.
   tactic — the fragment is statement-shaped, so a tactic
   would be pure indirection. Consumers: core-eval transfer
   bodies (Remove, PartialSum, Partition, Intersect converted;
-  TransformAdd, SelectionSort, MergeSort, MergeRuns deferred
-  to next touch). The conclusion keeps the word-index form;
+  TransformAdd, SelectionSort, MergeSort, MergeRuns — rollout
+  closed 2026-11-04, all converted). The conclusion keeps the word-index form;
   rewrite with your index bridge for the `Nat` form. Bound
   side-goals stay `by simp only [List.length_cons]; omega`
   with the invariant in context.

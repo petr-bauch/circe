@@ -1697,10 +1697,8 @@ theorem memSelectionSortBody_ok (F G : Nat)
   have hlt₁ : iB.toNat + 1 < (n :: l).length := by
     simp only [List.length_cons]
     omega
-  obtain ⟨mm₁, hmstore⟩ : ∃ mm', memStore mm a t (iB.toNat + 1) y =
-      .ok mm' :=
-    ⟨_, memStore_cellsAt mm a t (iB.toNat + 1) (n :: l) y
-      hmem hlt₁⟩
+  obtain ⟨mm₁, hmstore, hmem₁⟩ :=
+    memStore_cellsAt_pin mm a t y hmem hlt₁
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup
     (envExtend (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
       "t" (.i32 x)) "v"
@@ -1710,16 +1708,6 @@ theorem memSelectionSortBody_ok (F G : Nat)
     (envExtend (envExtend ρ "m" (.u64 (BitVec.ofNat 64 m)))
       "t" (.i32 x)) mm π
     iB y a t l x mm₁ ρ₁ hiVarM₂T hatSM₂T hv₂ hlay hgetB hmstore hu₁
-  have hcells₁ : cellsAt mm₁ a t ((n :: l).set (iB.toNat + 1) y) :=
-    memFind_cellsAt_store mm a t (iB.toNat + 1) (n :: l) y mm₁
-      hmem hlt₁ hmstore
-  have hmem₁ : memFind mm₁ a =
-      some ⟨t, true, n :: (l.set iB.toNat y)⟩ := by
-    have e : (n :: l).set (iB.toNat + 1) y =
-        n :: (l.set iB.toNat y) :=
-      List.set_cons_succ
-    rw [e] at hcells₁
-    exact hcells₁
   have hm₃ : envLookup ρ₁ "m" = some (.u64 (BitVec.ofNat 64 m)) := by
     rw [envLookup_update_miss _ _ _ _ _
       (show ("m" : String) ≠ "v" by decide) hu₁]
@@ -1772,26 +1760,15 @@ theorem memSelectionSortBody_ok (F G : Nat)
       (n :: (l.set iB.toNat y)).length := by
     simp only [List.length_cons, List.length_set]
     omega
-  obtain ⟨mm₂, hmstore₂⟩ : ∃ mm', memStore mm₁ a t
-      ((BitVec.ofNat 64 m).toNat + 1) x = .ok mm' :=
-    ⟨_, memStore_cellsAt mm₁ a t ((BitVec.ofNat 64 m).toNat + 1)
-      (n :: (l.set iB.toNat y)) x hmem₁ hlt₂⟩
+  obtain ⟨mm₂, hmstore₂, hcells₂⟩ :=
+    memStore_cellsAt_pin mm₁ a t x hmem₁ hlt₂
   have hstep_set2 := memRevVecSet vecSelectionSortProg F "v"
     (.var "m") (.var "t") ρ₁ mm₁ π (BitVec.ofNat 64 m) x
     a t (l.set iB.toNat y) y mm₂ ρ₂
     hmVarM₃ htVarM₃ hout₁ hlay hgetM₁ hmstore₂ hu₂
-  have hcells₂ : cellsAt mm₂ a t
-      ((n :: (l.set iB.toNat y)).set
-        ((BitVec.ofNat 64 m).toNat + 1) x) :=
-    memFind_cellsAt_store mm₁ a t ((BitVec.ofNat 64 m).toNat + 1)
-      (n :: (l.set iB.toNat y)) x mm₂ hmem₁ hlt₂ hmstore₂
   have hmem₂ : memFind mm₂ a =
       some ⟨t, true, n :: ((l.set i y).set m x)⟩ := by
-    have e : (n :: (l.set iB.toNat y)).set
-        ((BitVec.ofNat 64 m).toNat + 1) x =
-        n :: ((l.set iB.toNat y).set (BitVec.ofNat 64 m).toNat x) :=
-      List.set_cons_succ
-    rw [e, hset] at hcells₂
+    rw [hset] at hcells₂
     exact hcells₂
   have hm₄ : envLookup ρ₂ "m" = some (.u64 (BitVec.ofNat 64 m)) := by
     rw [envLookup_update_miss _ _ _ _ _

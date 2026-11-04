@@ -173,8 +173,9 @@ countdown-loop shape for fuel arithmetic (audit #5) and for
 the unfold-loop-`show` tactic (R/S are two uses);
 the core-eval lockstep store leg harvested as the
 `memStore_cellsAt_pin` packaging lemma — lemma verdict, not
-a tactic (DELIVERED P3); 13 deferred sites (TransformAdd,
-SelectionSort, MergeSort, MergeRuns) convert on next touch;
+a tactic (DELIVERED P3); rollout closed 2026-11-04 (all 13
+deferred sites converted: TransformAdd, SelectionSort ×2,
+MergeSort ×2, MergeRuns ×8);
 R/S program-level memory-threading stays prose at two uses;
 first triple-level store customer earns a
 rule; a fully framed spine waits for an actual multi-cell
@@ -184,18 +185,19 @@ admitted shape, as always (J/H/L-ptr instances landed with
 their slices).
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Finish the lockstep rollout: convert the 13
-   deferred store sites (TransformAdd, SelectionSort ×2,
-   MergeSort ×2, MergeRuns ×8) to `memStore_cellsAt_pin` —
-   mechanical, proof-only, each on next touch or one sweep;
-   closes the P3 harvest.
-2. Triple-level store rule: still waiting on its first
-   customer (loops with stores contain calls, so they live
-   at prog level — H1 cell-kit audit). Next store-heavy
-   triple frames the rule; no proactive abstraction.
-3. Gallery maintenance + `cir_fold_end` coverage for new
+1. (Recommended) Triple-level store rule: still waiting on
+   its first customer (loops with stores contain calls, so
+   they live at prog level — H1 cell-kit audit). Next
+   store-heavy triple frames the rule; no proactive
+   abstraction.
+2. Gallery maintenance + `cir_fold_end` coverage for new
    emitters (each new slice converts its tail positions;
    no new tactics until a third use lands).
+3. R/S program-level threading decision: still prose at two
+   uses (`revMemStore_ok` + per-file bridges). The third
+   use forces the call — package like the store leg, or keep
+   prose; no tactic without three user-goal uses (rule of
+   three).
 - R loop-proof tactics (first use, prose-note stage): one-sided
   reference unfolding (`conv => lhs; unfold <ref>`, then `show`
   past the `let`-bound scrutinee so `rw` sees the `get?`

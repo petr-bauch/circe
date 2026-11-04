@@ -2638,6 +2638,20 @@ per-file bridges) stays prose at two uses; the one-line `memFind_cons_hit`
 re-pins and the Emit-side `memStore_cellsAt_ok` stay as-is. Deferred on
 purpose: TransformAdd, SelectionSort, MergeSort, MergeRuns convert on next
 touch (no sweep).
+
+Rollout closed (2026-11-04, one sweep, still proof-only): the remaining 13
+sites converted by the same mechanical delta — `obtain` +
+`memStore_cellsAt`/`memFind_cellsAt_store` pair replaced with one
+`memStore_cellsAt_pin` obtain (bound proofs and one-line `Nat`-form
+bridges untouched) across `Circe/Transfer/VecTransformAdd.lean` (1),
+`VecSelectionSort.lean` (2), `VecMergeSort.lean` (2), and
+`VecMergeRuns.lean` (8, four indent×index groups converted by counted
+group replacement after a byte-level census). Census after: zero remaining
+verbatim pairs in the four files; 13 pin uses. The R/S program-level
+pattern, `memFind_cons_hit` re-pins, and Emit-side `memStore_cellsAt_ok`
+stay as-is per the harvest verdict.
+- Acceptance: full gate 573/573 TEST-OK (tally unchanged, proof-only);
+  goldens byte-identical (goldenPairs job green); no `GenOut` drift.
 - Acceptance: full gate 569/569 TEST-OK (tally unchanged, proof-only);
   gallery builds (128 jobs); `GenOut` no drift (no `out/` change); positive
   probe (one-step close over a cons pin) elaborates, nil-pin application

@@ -151,23 +151,18 @@ theorem memTransformBody_ok (prog : Prog) (F : Nat)
   have hlt' : iB.toNat + 1 < (nB :: lo).length := by
     simp only [List.length_cons]
     omega
-  obtain ⟨m₁, hmstore⟩ : ∃ m', memStore m ab tb (iB.toNat + 1) y =
-      .ok m' :=
-    ⟨_, memStore_cellsAt m ab tb (iB.toNat + 1) (nB :: lo) y
-      hmem_out hlt'⟩
+  obtain ⟨m₁, hmstore, hcells⟩ :=
+    memStore_cellsAt_pin m ab tb y hmem_out hlt'
   obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup ρ "out"
     (.stdVecVal lo) (.stdVecVal (lo.set iB.toNat y)) hout
   have hstep_set := memRevVecSet prog F "out" (.var "i")
     (.add (.stdVecAt "in" (.var "i")) (.var "c")) ρ m π
     iB y ab tb lo z m₁ ρ₁
     hiVarM haddVM hout hlay_out hgetB hmstore hu₁
-  have hcells : cellsAt m₁ ab tb ((nB :: lo).set (iB.toNat + 1) y) :=
-    memFind_cellsAt_store m ab tb (iB.toNat + 1) (nB :: lo) y m₁
-      hmem_out hlt' hmstore
   have hmem_out' : memFind m₁ ab =
       some ⟨tb, true, nB :: (lo.set i y)⟩ := by
-    have e : (nB :: lo).set (iB.toNat + 1) y = nB :: (lo.set i y) := by
-      rw [List.set_cons_succ, hiN]
+    have e : nB :: lo.set iB.toNat y = nB :: (lo.set i y) := by
+      rw [hiN]
     rw [e] at hcells
     exact hcells
   have hmem_in' : memFind m₁ aa = some ⟨ta, true, nA :: li⟩ := by
