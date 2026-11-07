@@ -25,6 +25,7 @@ import Circe.Emit.VecRemove
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecCopyIf
+import Circe.Emit.VecUnion
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecUnique
 import Circe.Emit.VecMergeSort
@@ -184,6 +185,7 @@ def main : IO Unit := do
   let vecPartialSum ← emitOrDie vecPartialSumFunc
   let vecIntersect ← emitOrDie vecIntersectFunc
   let vecCopyIf ← emitOrDie vecCopyIfFunc
+  let vecUnion ← emitOrDie vecUnionFunc
   let vecMinIndex ← emitOrDie VecSelectionSort.minIndexFunc
   let vecSelectionSort ← emitOrDie VecSelectionSort.vecSelectionSortFunc
   let vecUnique ← emitOrDie vecUniqueFunc
@@ -353,6 +355,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartialSum.lean" (emitFileText (.ok vecPartialSum))
   IO.FS.writeFile "out/VecIntersect.lean" (emitFileText (.ok vecIntersect))
   IO.FS.writeFile "out/VecCopyIf.lean" (emitFileText (.ok vecCopyIf))
+  IO.FS.writeFile "out/VecUnion.lean" (emitFileText (.ok vecUnion))
   IO.FS.writeFile "out/VecMinIndex.lean" (emitFileText (.ok vecMinIndex))
   IO.FS.writeFile "out/VecUnique.lean" (emitFileText (.ok vecUnique))
   IO.FS.writeFile "out/VecSelectionSort.lean" (emitFileText (.ok vecSelectionSort))
@@ -522,6 +525,7 @@ def main : IO Unit := do
   let vecPartialSumSpec ← specOrDie vecPartialSumFunc
   let vecIntersectSpec ← specOrDie vecIntersectFunc
   let vecCopyIfSpec ← specOrDie vecCopyIfFunc
+  let vecUnionSpec ← specOrDie vecUnionFunc
   let vecMinIndexSpec ← specOrDie VecSelectionSort.minIndexFunc
   let vecSelectionSortSpec ← specOrDie VecSelectionSort.vecSelectionSortFunc
   let vecUniqueSpec ← specOrDie vecUniqueFunc
@@ -691,6 +695,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartialSum_Spec.lean" vecPartialSumSpec
   IO.FS.writeFile "out/VecIntersect_Spec.lean" vecIntersectSpec
   IO.FS.writeFile "out/VecCopyIf_Spec.lean" vecCopyIfSpec
+  IO.FS.writeFile "out/VecUnion_Spec.lean" vecUnionSpec
   IO.FS.writeFile "out/VecMinIndex_Spec.lean" vecMinIndexSpec
   IO.FS.writeFile "out/VecUnique_Spec.lean" vecUniqueSpec
   IO.FS.writeFile "out/VecSelectionSort_Spec.lean" vecSelectionSortSpec

@@ -22,7 +22,7 @@ VEC_BIN="$WORKDIR/circe_vec_native"
 tools/check-phase5.sh "$TRIALS"
 
 echo "== regenerate out/ (vec) =="
-lake env lean --run tools/GenOut.lean
+lake env lean -DmaxHeartbeats=400000 --run tools/GenOut.lean
 
 echo "== golden diff (vec) =="
 diff -u tests/golden/VecAlloc.lean out/VecAlloc.lean

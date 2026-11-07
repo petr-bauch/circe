@@ -120,6 +120,7 @@ import GoldenVecRemove
 import GoldenVecPartialSum
 import GoldenVecIntersect
 import GoldenVecCopyIf
+import GoldenVecUnion
 import GoldenVecSelectionSort
 import GoldenVecUnique
 import GoldenVecMergeSort
@@ -538,6 +539,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecIntersect_Spec.lean", "out/VecIntersect_Spec.lean"),
    ("tests/golden/VecCopyIf.lean", "out/VecCopyIf.lean"),
    ("tests/golden/VecCopyIf_Spec.lean", "out/VecCopyIf_Spec.lean"),
+   ("tests/golden/VecUnion.lean", "out/VecUnion.lean"),
+   ("tests/golden/VecUnion_Spec.lean", "out/VecUnion_Spec.lean"),
    ("tests/golden/VecMinIndex.lean", "out/VecMinIndex.lean"),
    ("tests/golden/VecMinIndex_Spec.lean", "out/VecMinIndex_Spec.lean"),
    ("tests/golden/VecSelectionSort.lean", "out/VecSelectionSort.lean"),
@@ -759,6 +762,7 @@ def emittedTypechecks : List String :=
    "out/VecPartialSum.lean",
    "out/VecIntersect.lean",
    "out/VecCopyIf.lean",
+   "out/VecUnion.lean",
    "out/VecMinIndex.lean",
    "out/VecSelectionSort.lean",
    "out/VecUnique.lean",
@@ -1813,6 +1817,16 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Validator/Gate.lean", "isVecIntersectShape raw"),
      ("out/VecIntersect.lean", "_Z13vec_intersectRSt6vectorIiSaIiEES2_S2__fwd"),
      ("tests/golden/VecIntersect.lean", "_Z13vec_intersectRSt6vectorIiSaIiEES2_S2__fwd")]),
+   ("vec-union",
+    [("Circe/Emit/VecUnion.lean", "def vecUnionFwd"),
+     ("Circe/Transfer/VecUnion.lean", "theorem evalProgFunc_vecUnion_spec_ok"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecUnion"),
+     ("Circe/Emit/Render.lean", "def emitVecUnionText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecUnionSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isVecUnionShape"),
+     ("Circe/Validator/Gate.lean", "isVecUnionShape raw"),
+     ("out/VecUnion.lean", "_Z9vec_unionRSt6vectorIiSaIiEES2_S2__fwd"),
+     ("tests/golden/VecUnion.lean", "_Z9vec_unionRSt6vectorIiSaIiEES2_S2__fwd")]),
    ("vec-copy-if",
     [("Circe/Emit/VecCopyIf.lean", "def copyIfFwd"),
      ("Circe/Transfer/VecCopyIf.lean", "theorem evalProgFunc_vecCopyIf_spec_ok"),
@@ -2375,8 +2389,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 169 then
-    throw (IO.userError s!"expected 169 spec stubs, found {stubs.length}")
+  if stubs.length != 170 then
+    throw (IO.userError s!"expected 170 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2512,6 +2526,7 @@ def checkSuites : List Job :=
    ("golden-vecpartialsum", GoldenVecPartialSum.main),
    ("golden-vecintersect", GoldenVecIntersect.main),
    ("golden-veccopyif", GoldenVecCopyIf.main),
+   ("golden-vecunion", GoldenVecUnion.main),
    ("golden-vecselectionsort", GoldenVecSelectionSort.main),
    ("golden-vecunique", GoldenVecUnique.main),
    ("golden-vecmergesort", GoldenVecMergeSort.main),
@@ -2561,7 +2576,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecUnion", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",
@@ -2603,7 +2618,8 @@ def main (args : List String) : IO Unit := do
   let trials := ((args.filter (· != "--")).getD 0 "1000")
   IO.FS.createDirAll workdir
   IO.println "== regenerate out/ =="
-  sh "lake" #["env", "lean", "--run", "tools/GenOut.lean"]
+  sh "lake" #["env", "lean", "-DmaxHeartbeats=400000", "--run",
+    "tools/GenOut.lean"]
   IO.println s!"== native builds ({nativeBuilds.length}) =="
   let _ ← runJobs (nativeBuilds.map fun (cc, srcs, out) =>
     (s!"build {out}", ccBuild cc srcs out))

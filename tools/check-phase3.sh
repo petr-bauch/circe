@@ -14,7 +14,7 @@ echo "== lake build =="
 lake build
 
 echo "== regenerate out/ =="
-lake env lean --run tools/GenOut.lean
+lake env lean -DmaxHeartbeats=400000 --run tools/GenOut.lean
 
 echo "== golden diff (lake does not track include_str deps) =="
 diff -u tests/golden/Add.lean out/Add.lean
