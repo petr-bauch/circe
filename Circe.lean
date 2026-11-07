@@ -12,4 +12,8 @@ import Circe.Scope
 import Circe.Transfer
 import Circe.LeafTactics
 import Circe.Tactics
+import Circe.Lemmas.TwoCursor
+import Circe.Hoare.Vec
+import Circe.Contracts.Tactics
+import Circe.Contracts.VecUnique
 import Circe.Specs

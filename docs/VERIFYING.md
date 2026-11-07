@@ -393,6 +393,46 @@ returns its state as payload for the tail instead of an
 equation, because the tail runs at outer fuel on one side
 and predecessor fuel on the other.
 
+### Contract facades (P3)
+
+Recipe for a modular slice proof (worked instance:
+`vec_unique`, `Circe/Contracts/VecUnique.lean`; regression
+test `tests/lean/ContractVecUnique.lean`,
+`contract-vecunique`):
+
+1. State the contract in ideal vocabulary — value result
+   plus memory/value agreement, no `Env`/`Mem`/`Layout`/fuel
+   beyond the entry fuel bound (`vec_unique_contract`).
+2. Name the loop invariant over lists and indices, not state
+   (`squeezeInv`: `1 ≤ w ∧ w ≤ r ≤ len`, kept prefix is the
+   squeeze of the scanned prefix, length preserved).
+   Establishment is a one-liner at the seed
+   (`squeezeInv_entry`); maintenance stays the existing
+   forward-prefix lemma (`uniqueFwd_prefix`), never a copy.
+3. Close counts with the pack (`squeeze_length_eq`), not
+   inline `length_take` chains — both squeeze closings did.
+4. Prove the prelude as a Hoare triple over `cursorAt`
+   assertions with the two `cir_*` tactics
+   (`vecUnique_prelude_triple`); callers use only the facade
+   plus the pack (`caller_truncate_length`).
+
+Tactics (`Circe/Contracts/Tactics.lean`): `cir_mem_let (hM,
+hV)` fills the four constructor discriminations of a
+pure-`let_` step (parenthesized comma args — adjacent terms
+parse greedily); `cir_lookup` closes hit/one-deep/two-deep
+`envLookup` chains with `decide`d inequalities. Both fail
+loudly outside their shape — that is the signal to name an
+intermediate environment, not to extend the macro.
+
+Anti-patterns (measured): re-threading fuel/`Env`/`Mem` in a
+caller (use the facade); growing `cir_lookup` past two
+misses (name the env); tactics that invent an invariant or a
+frame (stay explicit `refine`s); custom bracket syntax (the
+`⦃⦄` probe collides with the term parser even in isolation —
+plain `HTriple`/`HTripleProg` applications carry the
+readability); `exact` where a goal must remain (it cannot
+create goals — `?_` holes do).
+
 ## Lemma packs (U3)
 
 Rule: prose note on first reuse, pack on the third use. Each pack
@@ -434,6 +474,18 @@ refactor changed no statement.
   rewrite with your index bridge for the `Nat` form. Bound
   side-goals stay `by simp only [List.length_cons]; omega`
   with the invariant in context.
+
+- Squeeze count (`Circe/Lemmas/TwoCursor.lean`, P3-N3 DONE):
+  `take_length_of_le` (the `length_take` + `min_eq_left`
+  chain) plus `squeeze_length_eq` (prefix-is-oracle-squeeze
+  implies count-is-oracle-length). Consumers:
+  `vecUniqueFwd_correct` (`dedupAdj` oracle) and
+  `evalProgFunc_vecRemove_spec` (`filter` oracle) — the two
+  closings that were verbatim copies modulo the oracle.
+  Bounds side-goals stay `by rw [hlen']; exact hb` with the
+  length equation and the cursor bound in context. Pack is by
+  concept (two-cursor compactions), not by slice: the next
+  squeeze (caller-record `unique_copy`) reuses it unchanged.
 
 ## Hoare triples (H1)
 

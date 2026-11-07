@@ -27,6 +27,7 @@ import Circe.Emit.VecIntersect
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecUnique
 import Circe.Tactics
+import Circe.Lemmas.TwoCursor
 
 /-! ## `incr`: mathematical successor spec -/
 
@@ -5984,10 +5985,8 @@ theorem vecUniqueFwd_correct (l₀ : List (BitVec 32))
     have hbw := uniqueFwd_bounds (x :: xs) l'
       ((x :: xs).length) 1 1 _ w' (Nat.le_refl _) (Nat.le_refl _)
       hfwd
-    have hwlen : w' = (dedupAdj (x :: xs)).length := by
-      have h1 : (l'.take w').length = w' := by
-        rw [List.length_take, hlen', Nat.min_eq_left (by omega)]
-      rw [← h1, hpre]
+    have hwlen : w' = (dedupAdj (x :: xs)).length :=
+      squeeze_length_eq l' _ w' hpre (by rw [hlen']; exact hbw.1)
     exact ⟨w', l', by rw [List.length_cons] at hfwd; simp [vecUniqueFwd, hfwd],
       hpre, hwlen, hlen'⟩
 

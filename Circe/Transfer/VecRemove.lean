@@ -18,6 +18,7 @@ prefix is pinned on the final block.
 -/
 import Circe.Transfer.VecPartition
 import Circe.Emit.VecRemove
+import Circe.Lemmas.TwoCursor
 import Circe.Specs
 
 /-! ## Binding (closed form) -/
@@ -869,9 +870,7 @@ theorem evalProgFunc_vecRemove_spec (F : Nat)
   obtain ⟨htake, -, hlen'⟩ := removeFwd_prefix x l l.length 0 0
     w' l l' (Nat.zero_le _) (Nat.le_refl _) (by omega) rfl
     (by simp) (fun j _ => rfl) heq
-  refine ⟨w', evalProgFunc_vecRemove_ok F l l' x w' hl64 hF
-    hread heq, ?_, hb⟩
-  have hlen : (l'.take w').length = w' := by
-    rw [List.length_take, Nat.min_eq_left (by rw [hlen']; exact hb)]
-  calc w' = (l'.take w').length := hlen.symm
-    _ = (l.filter (fun y => (y != x))).length := by rw [htake]
+  have hwlen : w' = (l.filter (fun y => (y != x))).length :=
+    squeeze_length_eq l' _ w' htake (by rw [hlen']; exact hb)
+  exact ⟨w', evalProgFunc_vecRemove_ok F l l' x w' hl64 hF
+    hread heq, hwlen, hb⟩

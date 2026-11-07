@@ -159,6 +159,7 @@ import CondPairGate
 import AliasCondGate
 import HoareGallery
 import LoopOobGallery
+import ContractVecUnique
 import Circe.CondFrame
 import Circe.Parser
 
@@ -2542,7 +2543,8 @@ def checkSuites : List Job :=
    ("condpair-gate", CondPairGate.main),
    ("aliascond-gate", AliasCondGate.main),
    ("hoare-gallery", HoareGallery.main),
-   ("loopoob-gallery", LoopOobGallery.main)]
+   ("loopoob-gallery", LoopOobGallery.main),
+   ("contract-vecunique", ContractVecUnique.main)]
 
 /-- Registered suite module names (mirrors the `Suites` roots: a new
     `tests/lean` runner without registration fails loudly here). -/
@@ -2562,7 +2564,8 @@ def suiteModules : List String :=
    "CondPairGate", "GoldenCondPair", "DiffCondPair",
    "AliasCondGate", "GoldenAliasCond", "DiffAliasCond",
    "HoareGallery",
-   "LoopOobGallery"]
+   "LoopOobGallery",
+   "ContractVecUnique"]
 
 def stem (f : String) : String :=
   String.ofList (f.toList.take (f.length - 5))
