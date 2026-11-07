@@ -287,11 +287,13 @@ Use cases encountered so far, with dispositions:
   whole-while abstraction. Program-level call frame is
   definitional (callee binds into `emptyMem`) — P3e.
 - `Mem`-level writes: delivered via `mstore`/`mload` + open
-  contracts (S0–S4, N14); the first store equation is now
-  discharged through the Iris points-to
+  contracts (S0–S4, N14); the CondDemo store equations are
+  now all discharged through the Iris points-to
   (`store_frame_cellAtI` retiring `condPost_disjoint_star`'s
-  `h1`, DELIVERED P4) while the remaining equations stay
-  hypotheses under the S0 open contract.
+  `h1`, DELIVERED P4; `condPost_disjoint_free` /
+  `condPost_aliased_free` discharging the rest, P4-2) while
+  the S0 transfer-leg equations stay hypotheses under the S0
+  open contract.
 - Raw-pointer list reversal (L-ptr, trigger review L5):
   no trigger fired — the `ListSeg`/`chaseN` kit plus
   statement-level framing proved it natively
@@ -303,14 +305,17 @@ Use cases encountered so far, with dispositions:
 
 What Iris (MoSeL) now provides: a reusable frame rule
 carrying untouched locations through for free
-(`frame_memStore` over reified `Mem`, Phase 1 MVP) +
+(`frame_memStore_cells` over reified `Mem`, whole-block at
+any index, Phase 1 MVP generalized P4-2) +
 BI/separation-logic tactics over our instance, plus a
-store-with-frame write leg (`store_frame_cellAtI`) that
-discharges one S0 store equation from a points-to premise
-(DELIVERED P4). First consumers under the fallback policy:
-a second conditional shape that resists the bespoke-`condPost`
-treatment, or a further `Mem`-level write need the native
-path cannot meet.
+store-with-frame write leg (`store_frame_cellsAtI`) that
+discharges store equations from points-to premises with no
+equation assumed anywhere in `CondDemo` (`condPost_disjoint_free`,
+`condPost_aliased_free`, `block_two_store_frame` — the
+array-loop store pattern, DELIVERED P4-2). First consumers
+under the fallback policy: a second conditional shape that
+resists the bespoke-`condPost` treatment, or a further
+`Mem`-level write need the native path cannot meet.
 
 Out of scope until the platform says otherwise: concurrency
 (standing non-goal) — the one use case with no native answer.

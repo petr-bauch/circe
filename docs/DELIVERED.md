@@ -2763,6 +2763,44 @@ and still recovers the native conclusions. `CondFrame` and the admitted
   (128 jobs); diff confined to `Circe/Iris/` + docs (no goldens,
   no driver rows, no `out/` churn).
 
+### P4-2. Whole-block framed store + hypothesis-free CondDemo — DONE (2026-11-07)
+
+Roadmap pillar-4 fallback made usable at real shapes: the
+frame rule and write leg generalize from index-0 singletons
+to whole blocks at any index. New in
+`Circe/Iris/PointsTo.lean`: `frame_memStore_cells` (store at
+`i < l.length` updates the block points-to to `l.set i x`,
+arbitrary frame `R` preserved — the old proof script with the
+rebuilt substate over `l.set i x`; the one capture risk was
+the rebuilt-state binder shadowing the store index, fixed by
+naming it `j`), `store_frame_cellsAtI` (existence via
+`memStore_cellsAt`), block adequacy trio (`split_cellsAt`,
+`star_cellsAt`, `star_frame_cellsAt`), `star_emp_cellAt`
+(single cell lifts to an `emp`-framed star — direct
+`sep_unfold` proof over `union_comm`/`empty_union`/`empty_disjoint`,
+no entailment plumbing). `frame_memStore` /
+`store_frame_cellAtI` are now one-line singleton corollaries
+(`cellAt_cellsAt`, `by simp` bounds) with unchanged
+statements — no churn in existing CondDemo proofs. New in
+`Circe/Iris/CondDemo.lean`: `condPost_disjoint_free` (both
+legs' equations discharged through the write leg, native
+conclusions via adequacy), `condPost_aliased_free` (via the
+`emp` star — the case a star-conjunction would conflate),
+`block_two_store_frame` (two stores at indices `i`, `j` of
+one block with a second block riding the frame, both
+equations discharged, native `cellsAt`/`cellAt` recovered on
+both sides — the array-loop store pattern). Bounds premises
+stay explicit per the native-kit convention
+(`memStore_cellsAt`, `memFind_cellsAt_store`); no new shape
+invented.
+- Acceptance: sorry-free and warning-free; `#print axioms` on
+  every new and re-proved theorem shows exactly
+  `[propext, Classical.choice, Quot.sound]` (the adequacy
+  lemmas even drop `Classical.choice`); `lake build` green;
+  full gate 582/582 TEST-OK (tally unchanged); diff confined
+  to `Circe/Iris/` + docs (no goldens, no driver rows, no
+  `out/` churn).
+
 ### P2-M13. Adjacent-duplicate squeeze (`vec_unique`, `std::unique` idiom) — DONE (2026-11-07)
 
 Roadmap proposed goal #1. The keep-iff-different scan over `std::vector<int>` with the write cursor seeded at `1`: each element survives iff it differs from the previous survivor (`v.at(r) != v.at(w-1)`), the predecessor read justified by the `1 ≤ w` seed fact plus `w ≤ r` and the loop guard; the entry `if (size == 0) return 0` exits early, otherwise the `(1, 1)` prelude runs the loop and the new logical length returns (caller owes the erase). Admission `vec_unique.cpp` (31 lines) + real CIRGen `.cir` (317 lines; entry `_Z10vec_uniqueRSt6vectorIiSaIiEE` + shared leaves `size`, non-const `at()`, `_M_range_check`, non-const `operator[]`; four allocas, nineteen loads, eight stores, one `cir.while`, two `cir.if`, three `cir.cmp` — the `ueq` empty check, the `ult` bound, the signed `ne` keep test — fourteen `cir.const`, two `cir.return`, six calls: two `size` + four non-const `at()`). The core (`Circe.Emit.VecUnique`: `vecUniqueName/Prev/Body/Loop/Func`, `mkUniqueEnv` + lookups, `uniqueFwd`/`vecUniqueFwd` with the empty-input early exit, `valUniqueBody_keep/drop`, `valUniqueLoop_ok`) needs no new CoreIR: `.ult`/`.usub`/`.une`/`.stdVecAt`/`.vecSet`. The oracle (`Circe/Specs`: `dedupAdj` insert-first-of-run recursion, `dedupAdj_cons_cons`, the snoc law `dedupAdj_append_single` keyed on `getLast?`, `uniqueFwd_ok`/`_bounds`/`_prefix`, `vecUniqueFwd_correct`) is the independent squeeze with the take/getLast bridge. The memory side (`Circe/Transfer/VecUnique`: `memUniqueBody_keep/drop` with the second `memLoad` at the predecessor index, `memUniqueLoop_ok` lockstepped on `(ρ, m, π)` with `memStore_cellsAt_pin`, value and memory nil legs, both entries, `memTransferProg_vecUnique_ok`, closing `evalProgFunc_vecUnique_spec`) mirrors every value step; the empty-input forward cases are vacuous against the forward equation (the `(1, 1)` seed never satisfies it at length `0`), so the unconditional transfer and spec split on the input (nil via the nil theorems, cons via the forward equation). Proof-engineering notes: a bare `0 : BitVec 64` is a different head than `BitVec.ofNat 64 0` (the `ueq_vars` conclusions print the latter as `0#64`), so guard literals must be written explicitly when rewriting; the memory `if_false` leg needs a `skip` bridge (`hif.trans hskipV`) before `seq_fallthrough`; the value nil leg is `subst` + `simpa` (vacuous). The suite build (matcher with `matchFrag_vecUnique` by `rfl`, `FragKind.vecUnique`, `GenOut` writable arms, the emitted forward rendering the `vecUniqueFwd` wrapper shape with the `[] → 0` arm) follows the byte-identical shape discipline. Goldens + `GOLDENVECUNIQUE-OK passed=16` (5-check entry pipeline + 10 sibling rejections incl. the erase-compress closest analog + unique-not-sibs), spec stub 6 edges (`spec_check=true`: runs collapse, no-op identity, all-same, empty, singleton keep, pair collapse). Tamper probes (report-only): alias-strip → `out-of-subset` (the shape's single-reference-triple pin; a single bare pointer is L-ptr-exempt by design), second pointer + unknown fact → `alias-reject`, `ne`-to-`eq` flip → `out-of-subset` (the `cmp ne` pin), predecessor `sub`-to-`add` swap → `out-of-subset` (the `sub`/`add` pins).
