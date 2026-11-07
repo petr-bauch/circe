@@ -25,6 +25,7 @@ import Circe.Emit
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecPartialSum
+import Circe.Emit.VecUnique
 import Circe.Tactics
 
 /-! ## `incr`: mathematical successor spec -/
@@ -5621,6 +5622,374 @@ theorem removeFwd_bounds (x : BitVec 32) (l l' : List (BitVec 32))
         simpa [removeFwd, dite_eq_right hlt] using h
       obtain ⟨rfl, rfl, rfl⟩ := hpair
       exact ⟨hwle, Nat.le_refl _⟩
+
+/-! ## P2-M13: adjacent-duplicate squeeze (`vec_unique`) forward contract -/
+
+/-- Adjacent-duplicate oracle: keep the first element of each
+    equal run (insert-first-of-run recursion). -/
+def dedupAdj : List (BitVec 32) → List (BitVec 32)
+  | [] => []
+  | [x] => [x]
+  | x :: y :: rest =>
+    if x != y then x :: dedupAdj (y :: rest)
+    else dedupAdj (y :: rest)
+
+/-- One-step unfolding of the oracle on a two-element head. -/
+theorem dedupAdj_cons_cons (x y : BitVec 32)
+    (rest : List (BitVec 32)) :
+    dedupAdj (x :: y :: rest)
+      = if x != y then x :: dedupAdj (y :: rest)
+        else dedupAdj (y :: rest) := rfl
+
+/-- A false `bne` test is equality (the upper-bound-flip
+    direction of the keep test). -/
+theorem bne_eq_false_eq {x y : BitVec 32}
+    (h : (x != y) = false) : x = y := by
+  have hbeq : (x == y) = true := by
+    have h1 : (!(x == y)) = false := by simpa [bne_eq] using h
+    simpa using h1
+  exact beq_iff_eq.mp hbeq
+
+/-- The oracle never squeezes a nonempty list to nothing. -/
+theorem dedupAdj_nonempty {D : List (BitVec 32)} (h : D ≠ []) :
+    dedupAdj D ≠ [] := by
+  cases D with
+  | nil => exact absurd rfl h
+  | cons x xs =>
+    cases xs with
+    | nil => simp [dedupAdj]
+    | cons z zs =>
+      simp only [dedupAdj]
+      by_cases hxz : (x != z) = true
+      · simp [hxz]
+      · have hne : (x != z) = false := eq_false_of_ne_true hxz
+        simp only [hne, if_false]
+        exact dedupAdj_nonempty (by simp)
+
+/-- Squeeze-then-append: squeezing `D ++ [y]` keeps the squeezed
+    prefix and appends `y` iff it differs from the last survivor
+    (an empty squeeze appends unconditionally). -/
+theorem dedupAdj_append_single (D : List (BitVec 32)) (y : BitVec 32) :
+    dedupAdj (D ++ [y]) =
+      match (dedupAdj D).getLast? with
+      | none => [y]
+      | some p => if y != p then dedupAdj D ++ [y] else dedupAdj D := by
+  induction D with
+  | nil => simp [dedupAdj]
+  | cons x xs ih =>
+    cases xs with
+    | nil =>
+      simp only [List.cons_append, List.nil_append, dedupAdj]
+      by_cases h : (x != y) = true
+      · have h' : (y != x) = true := by rw [bne_comm]; exact h
+        simp [h, h']
+      · have hf : (x != y) = false := Bool.eq_false_of_ne_true h
+        have h'f : (y != x) = false := by rw [bne_comm]; exact hf
+        have hxy : x = y := bne_eq_false_eq hf
+        subst hxy
+        simp [hf, h'f]
+    | cons z zs =>
+      by_cases hxz : (x != z) = true
+      · have hne : dedupAdj (z :: zs) ≠ [] :=
+          dedupAdj_nonempty (by simp)
+        have hlast : ((x :: dedupAdj (z :: zs)).getLast?
+            = (dedupAdj (z :: zs)).getLast?) :=
+          List.getLast?_cons_of_ne_nil hne
+        have e : dedupAdj ((x :: z :: zs) ++ [y])
+            = x :: dedupAdj ((z :: zs) ++ [y]) := by
+          have n1 : (x :: z :: zs) ++ [y]
+              = x :: z :: (zs ++ [y]) := by simp
+          rw [n1, dedupAdj_cons_cons, ite_eq_left hxz,
+            List.cons_append]
+        have eR : dedupAdj (x :: z :: zs)
+            = x :: dedupAdj (z :: zs) := by
+          rw [dedupAdj_cons_cons, ite_eq_left hxz]
+        rw [e, eR, hlast, ih]
+        cases hD : (dedupAdj (z :: zs)).getLast? with
+        | none =>
+          exact absurd (List.getLast?_eq_none_iff.mp hD) hne
+        | some p =>
+          by_cases h : (y != p) = true <;> simp [h]
+      · have hne : (x != z) = false := Bool.eq_false_of_ne_true hxz
+        have hnc : ¬ (x != z) = true := by
+          intro h
+          rw [h] at hne
+          exact Bool.noConfusion hne
+        have e : dedupAdj ((x :: z :: zs) ++ [y])
+            = dedupAdj ((z :: zs) ++ [y]) := by
+          have n1 : (x :: z :: zs) ++ [y]
+              = x :: z :: (zs ++ [y]) := by simp
+          rw [n1, dedupAdj_cons_cons, ite_eq_right hnc,
+            List.cons_append]
+        have eR : dedupAdj (x :: z :: zs)
+            = dedupAdj (z :: zs) := by
+          rw [dedupAdj_cons_cons, ite_eq_right hnc]
+        rw [e, eR, ih]
+
+/-- The running prefix's last element is the predecessor read:
+    from `l[w - 1]? = some p`, the taken prefix ends in `p`. -/
+theorem take_getLast_of_getElem? (l : List (BitVec 32)) (w : Nat)
+    (p : BitVec 32)
+    (hw : 0 < w) (hle : w ≤ l.length)
+    (h : l[w - 1]? = some p) :
+    (l.take w).getLast? = some p := by
+  have htakenN : (l.take w).length = w := by
+    rw [List.length_take, Nat.min_eq_left hle]
+  have hprevTaken : (l.take w)[w - 1]? = some p := by
+    rw [List.getElem?_take_of_lt (by omega : w - 1 < w)]
+    exact h
+  rw [List.getLast?_eq_getElem?, htakenN]
+  exact hprevTaken
+
+/-- Squeeze loop is total: the scan runs to `l.length` (fuel
+    induction threading the predecessor read; the `w - 1` access
+    is justified by the `1 ≤ w` seed fact plus `w ≤ r`). -/
+theorem uniqueFwd_ok (l : List (BitVec 32))
+    (fuel r w : Nat)
+    (hle : r ≤ l.length) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (hF : l.length - r ≤ fuel)
+    (hread : ∀ p, p < l.length → ∃ y, l[p]? = some y) :
+    ∃ w' l', uniqueFwd l fuel r w = .ok (l.length, w', l') := by
+  induction fuel generalizing l r w with
+  | zero =>
+    have him : r = l.length := by omega
+    subst him
+    exact ⟨w, l, by simp [uniqueFwd]⟩
+  | succ n ih =>
+    by_cases hlt : r < l.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      have hwltM : w - 1 < l.length := by omega
+      obtain ⟨p, hp⟩ := hread (w - 1) hwltM
+      have hwlt : w < l.length := by omega
+      obtain ⟨wOld, hwget⟩ := hread w hwlt
+      have hF' : l.length - (r + 1) ≤ n := by omega
+      by_cases hkeep : (y != p) = true
+      · have hlen : (l.set w y).length = l.length := by
+          simp [List.length_set]
+        have hread' : ∀ q, q < (l.set w y).length →
+            ∃ z, (l.set w y)[q]? = some z := by
+          intro q hq
+          have hplen : q < l.length := by rw [hlen] at hq; exact hq
+          by_cases hpw : q = w
+          · rw [hpw]
+            exact ⟨y, List.getElem?_set_self hwlt⟩
+          · obtain ⟨z, hz⟩ := hread q hplen
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show w ≠ q by omega)]
+              exact hz⟩
+        obtain ⟨w', l', h'⟩ := ih (l := l.set w y) (r := r + 1)
+          (w := w + 1) (by rw [hlen]; omega) (by omega) (by omega)
+          (by rw [hlen]; omega) hread'
+        exact ⟨w', l', by
+          simpa [uniqueFwd, dite_eq_left hlt, hy, hp,
+            hkeep] using h'⟩
+      · have hdrop : (y != p) = false := by
+          cases h : (y != p) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        obtain ⟨w', l', h'⟩ := ih (l := l) (r := r + 1) (w := w)
+          (by omega) (by omega) hw1 (by omega) hread
+        exact ⟨w', l', by
+          simpa [uniqueFwd, dite_eq_left hlt, hy, hp,
+            hdrop] using h'⟩
+    · have him : r = l.length := by omega
+      subst him
+      exact ⟨w, l, by simp [uniqueFwd, dite_eq_right hlt]⟩
+
+/-- Squeeze-loop bounds: the write cursor never passes the read
+    cursor, which never passes the exit length. -/
+theorem uniqueFwd_bounds (l l' : List (BitVec 32))
+    (fuel r w r' w' : Nat) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (h : uniqueFwd l fuel r w = .ok (r', w', l')) :
+    w' ≤ r' ∧ r ≤ r' := by
+  induction fuel generalizing l r w with
+  | zero =>
+    have hpair : (r, w, l) = (r', w', l') := by
+      simpa [uniqueFwd] using h
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact ⟨hwle, Nat.le_refl _⟩
+  | succ n ih =>
+    by_cases hlt : r < l.length
+    · obtain ⟨y, hy⟩ : ∃ y, l[r]? = some y := by
+        exact ⟨l[r], List.getElem?_eq_getElem hlt⟩
+      have hwltM : w - 1 < l.length := by omega
+      obtain ⟨p, hp⟩ : ∃ p, l[w - 1]? = some p :=
+        ⟨l[w - 1], List.getElem?_eq_getElem hwltM⟩
+      by_cases hkeep : (y != p) = true
+      · have h' : uniqueFwd (l.set w y) n (r + 1) (w + 1) =
+            .ok (r', w', l') := by
+          simpa [uniqueFwd, dite_eq_left hlt, hy, hp, hkeep] using h
+        obtain ⟨h1, h2⟩ := ih (l := l.set w y) (r := r + 1)
+          (w := w + 1) (by omega) (by omega) h'
+        exact ⟨h1, by omega⟩
+      · have hdrop : (y != p) = false := by
+          cases hh : (y != p) with
+          | true => exact absurd hh hkeep
+          | false => rfl
+        have h' : uniqueFwd l n (r + 1) w = .ok (r', w', l') := by
+          simpa [uniqueFwd, dite_eq_left hlt, hy, hp, hdrop] using h
+        obtain ⟨h1, h2⟩ := ih (l := l) (r := r + 1) (w := w)
+          (by omega) hw1 h'
+        exact ⟨h1, by omega⟩
+    · have hpair : (r, w, l) = (r', w', l') := by
+        simpa [uniqueFwd, dite_eq_right hlt] using h
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact ⟨hwle, Nat.le_refl _⟩
+
+/-- Squeeze invariant over the scan, stated against the entry
+    list `l₀` (the running list `l` mutates under the scan:
+    positions at/above the write cursor still hold the entry
+    values). The compacted prefix is the squeezed scanned prefix
+    of `l₀`; at exit (`r = l₀.length`) this is the whole squeezed
+    input. -/
+theorem uniqueFwd_prefix (l₀ : List (BitVec 32))
+    (fuel r w w' : Nat) (l l' : List (BitVec 32))
+    (hle : r ≤ l₀.length) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (hF : l₀.length - r ≤ fuel)
+    (hlen : l.length = l₀.length)
+    (hpre : l.take w = dedupAdj (l₀.take r))
+    (hsuf : ∀ j, w ≤ j → l[j]? = l₀[j]?)
+    (hfwd : uniqueFwd l fuel r w = .ok (l₀.length, w', l')) :
+    l'.take w' = dedupAdj l₀ ∧
+      w ≤ w' ∧
+      l'.length = l₀.length := by
+  induction fuel generalizing l r w with
+  | zero =>
+    have hpair : (r, w, l) = (l₀.length, w', l') := by
+      simpa [uniqueFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    have htakeFull : l₀.take l₀.length = l₀ := List.take_length
+    rw [htakeFull] at hpre
+    exact ⟨hpre, Nat.le_refl _, hlen⟩
+  | succ n ih =>
+    have hlenN : l.length = l₀.length := hlen
+    by_cases hlt : r < l.length
+    · have hlt₀ : r < l₀.length := by omega
+      have hy₀ : l[r]? = some l₀[r] := by
+        rw [hsuf r (by omega)]
+        exact List.getElem?_eq_getElem hlt₀
+      have hwltM : w - 1 < l.length := by omega
+      have hDne : l₀.take r ≠ [] := by
+        have hlenD : 0 < (l₀.take r).length := by
+          rw [List.length_take]; omega
+        intro h
+        rw [h, List.length_nil] at hlenD
+        omega
+      have hDnn : dedupAdj (l₀.take r) ≠ [] :=
+        dedupAdj_nonempty hDne
+      obtain ⟨p, hpD⟩ : ∃ p, (dedupAdj (l₀.take r)).getLast? = some p := by
+        have hne : (dedupAdj (l₀.take r)).getLast? ≠ none :=
+          fun h => hDnn (List.getLast?_eq_none_iff.mp h)
+        exact Option.ne_none_iff_exists'.mp hne
+      have hlastL : (l.take w).getLast? = some p := by
+        rw [hpre]; exact hpD
+      have hlenW : (l.take w).length = w := by
+        rw [List.length_take, hlen, Nat.min_eq_left (by omega)]
+      have hprevTaken : (l.take w)[w - 1]? = some p := by
+        have h := hlastL
+        rw [List.getLast?_eq_getElem?, hlenW] at h
+        exact h
+      have hp : l[w - 1]? = some p := by
+        have h := hprevTaken
+        rw [List.getElem?_take_of_lt (by omega : w - 1 < w)] at h
+        exact h
+      have htakeR : l₀.take (r + 1) = l₀.take r ++ [l₀[r]] := by
+        rw [List.take_add_one, List.getElem?_eq_getElem hlt₀,
+          Option.toList_some]
+      have hF' : l₀.length - (r + 1) ≤ n := by omega
+      by_cases hkeep : (l₀[r] != p) = true
+      · have hwlt : w < l.length := by omega
+        have hlen' : (l.set w l₀[r]).length = l₀.length := by
+          simp [List.length_set, hlen]
+        have hts : (l.set w l₀[r]).take (w + 1) =
+            l.take w ++ [l₀[r]] := by
+          have htakeW : (l.set w l₀[r]).take w = l.take w := by
+            apply List.ext_getElem?
+            intro j
+            rw [List.getElem?_take, List.getElem?_take]
+            by_cases hj : j < w
+            · rw [List.getElem?_set_ne (show w ≠ j by omega)]
+            · simp [hj]
+          rw [List.take_add_one,
+            List.getElem?_set_self (by omega : w < l.length),
+            htakeW]; rfl
+        have hpre' : (l.set w l₀[r]).take (w + 1) =
+            dedupAdj (l₀.take (r + 1)) := by
+          simp only [hts, hpre, htakeR, dedupAdj_append_single,
+            hpD, hkeep, if_true]
+        have hsuf' : ∀ j, w + 1 ≤ j →
+            (l.set w l₀[r])[j]? = l₀[j]? := by
+          intro j hj
+          rw [List.getElem?_set_ne (show w ≠ j by omega)]
+          exact hsuf j (by omega)
+        have hfwd' : uniqueFwd (l.set w l₀[r]) n (r + 1) (w + 1) =
+            .ok (l₀.length, w', l') := by
+          have h := hfwd
+          simp only [uniqueFwd, dite_eq_left hlt, hy₀, hp,
+            hkeep] at h
+          exact h
+        obtain ⟨hA, hB, hC⟩ := ih (l := l.set w l₀[r]) (r := r + 1)
+          (w := w + 1) (by omega) (by omega) (by omega) hF' hlen'
+          hpre' hsuf' hfwd'
+        exact ⟨hA, by omega, hC⟩
+      · have hdrop : (l₀[r] != p) = false := by
+          cases h : (l₀[r] != p) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hpre' : l.take w = dedupAdj (l₀.take (r + 1)) := by
+          simp only [htakeR, dedupAdj_append_single, hpD, hkeep,
+            hpre]
+          rw [if_neg (by decide : ¬ ((false : Bool) = true))]
+        have hfwd' : uniqueFwd l n (r + 1) w =
+            .ok (l₀.length, w', l') := by
+          have h := hfwd
+          simp only [uniqueFwd, dite_eq_left hlt, hy₀, hp,
+            hdrop] at h
+          exact h
+        obtain ⟨hA, hB, hC⟩ := ih (l := l) (r := r + 1) (w := w)
+          (by omega) (by omega) hw1 hF' hlen hpre'
+          (fun j hj => hsuf j (by omega)) hfwd'
+        exact ⟨hA, hB, hC⟩
+    · have hpair : (r, w, l) = (l₀.length, w', l') := by
+        simpa [uniqueFwd, dite_eq_right hlt] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      have htakeFull : l₀.take l₀.length = l₀ := List.take_length
+      rw [htakeFull] at hpre
+      exact ⟨hpre, Nat.le_refl _, hlen⟩
+
+/-- Whole-function squeeze contract: the returned length is the
+    squeezed length, the compacted prefix is the oracle squeeze,
+    and the vector length is preserved (the caller owes the
+    `erase`: the tail past `w'` is don't-care). -/
+theorem vecUniqueFwd_correct (l₀ : List (BitVec 32))
+    (hl64 : l₀.length < 2 ^ 64)
+    (hread₀ : ∀ p, p < l₀.length → ∃ y, l₀[p]? = some y) :
+    ∃ (w' : Nat) (l' : List (BitVec 32)),
+      vecUniqueFwd l₀ = .ok (.u64 (BitVec.ofNat 64 w')) ∧
+      l'.take w' = dedupAdj l₀ ∧
+      w' = (dedupAdj l₀).length ∧
+      l'.length = l₀.length := by
+  cases l₀ with
+  | nil => exact ⟨0, [], by simp [vecUniqueFwd], by simp [dedupAdj], rfl, rfl⟩
+  | cons x xs =>
+    have hlen1 : 1 ≤ (x :: xs).length := by
+      rw [List.length_cons]; omega
+    obtain ⟨w', l', hfwd⟩ := uniqueFwd_ok (x :: xs)
+      ((x :: xs).length) 1 1 hlen1 (Nat.le_refl _) (Nat.le_refl _)
+      (Nat.sub_le _ _) hread₀
+    obtain ⟨hpre, hwle, hlen'⟩ := uniqueFwd_prefix (x :: xs)
+      ((x :: xs).length) 1 1 w' (x :: xs) l'
+      hlen1 (Nat.le_refl _) (Nat.le_refl _) (Nat.sub_le _ _)
+      rfl (by simp [dedupAdj]) (fun j _ => rfl) hfwd
+    have hbw := uniqueFwd_bounds (x :: xs) l'
+      ((x :: xs).length) 1 1 _ w' (Nat.le_refl _) (Nat.le_refl _)
+      hfwd
+    have hwlen : w' = (dedupAdj (x :: xs)).length := by
+      have h1 : (l'.take w').length = w' := by
+        rw [List.length_take, hlen', Nat.min_eq_left (by omega)]
+      rw [← h1, hpre]
+    exact ⟨w', l', by rw [List.length_cons] at hfwd; simp [vecUniqueFwd, hfwd],
+      hpre, hwlen, hlen'⟩
 
 /-! ## P2-M11: sorted-range intersection (`vec_intersect`) forward contract -/
 

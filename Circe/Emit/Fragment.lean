@@ -170,6 +170,7 @@ inductive FragKind : Type
   | vecCopyIf
   | vecMinIndex
   | vecSelectionSort
+  | vecUnique
   | vecEmptyCtor
   | vecUnit
   | vecDtor

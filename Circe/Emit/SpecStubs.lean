@@ -2637,6 +2637,48 @@ def emitVecRemoveSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_unique` (adjacent-duplicate squeeze). The
+    mirror is the keep-iff-different scan over the reified words;
+    edges carry ground truth as (new logical length, squeezed
+    prefix): runs collapse, no-op identity, all-same, empty,
+    singleton keep, pair collapse. -/
+def emitVecUniqueSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(v)` squeezes adjacent duplicates to the front (`std::unique` idiom). Base body reference: the same scan on the reified words (cf. emitted `{name}_fwd`). Returns the new logical length; the caller owes the `erase`/`resize` (caller-debt), the tail past the length is don't-care. Guard-justified, total. -/\n"
+  ++ s!"def {name}_spec_fwd (l : List (BitVec 32)) : Result (Nat × List (BitVec 32)) :=\n"
+  ++ "  match l with\n"
+  ++ "  | [] => .ok (0, [])\n"
+  ++ "  | _ :: _ =>\n"
+  ++ "    match loop l l.length 1 1 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, w, l') => .ok (w, l'.take w)\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, r, w => .ok (r, w, l)\n"
+  ++ "  | l, fuel + 1, r, w =>\n"
+  ++ "    if r < l.length then\n"
+  ++ "      match l[r]?, l[w - 1]? with\n"
+  ++ "      | some y, some p =>\n"
+  ++ "        if (y != p) then loop (l.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop l fuel (r + 1) w\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (r, w, l)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: runs collapse, no-op identity, all-same, empty, singleton keep, pair collapse. -/\n"
+  ++ s!"def {name}_spec_edges : List (List (BitVec 32) × Result (Nat × List (BitVec 32))) :=\n"
+  ++ "  [([1, 1, 2, 2, 1], .ok (3, [1, 2, 1])),\n"
+  ++ "   ([1, 2, 3], .ok (3, [1, 2, 3])),\n"
+  ++ "   ([5, 5, 5], .ok (1, [5])),\n"
+  ++ "   ([], .ok (0, [])),\n"
+  ++ "   ([7], .ok (1, [7])),\n"
+  ++ "   ([7, 7], .ok (1, [7]))]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `vec_partial_sum`. The mirror is the in-place
     prefix-sum scan over the reified words (read-after-write
     through the vector; the checked `add` fails loudly, so the

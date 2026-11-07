@@ -1441,6 +1441,35 @@ def emitVecRemoveText (name : String) : String :=
   ++ "        else loop x l fuel (r + 1) w\n"
   ++ "    else .ok (r, w, l)\n"
 
+/-- Render the `vec_unique` entry forward definition: the
+    adjacent-duplicate squeeze over the reified words (each
+    element is kept iff it differs from the previous survivor;
+    the predecessor read is guard-justified by the `1` seed, so
+    the model is total). The forward returns the new logical
+    length; the squeezed prefix is `take` of the final words. -/
+def emitVecUniqueText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (adjacent-duplicate squeeze over the reified words; keep iff different from the previous survivor, guard-justified, total; empty input returns `0` via the entry early exit). -/\n"
+  ++ s!"def {name}_fwd (l : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match l with\n"
+  ++ "  | [] => .ok 0\n"
+  ++ "  | _ :: _ =>\n"
+  ++ "    match loop l l.length 1 1 with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | l, 0, r, w => .ok (r, w, l)\n"
+  ++ "  | l, fuel + 1, r, w =>\n"
+  ++ "    if r < l.length then\n"
+  ++ "      match l[r]?, l[w - 1]? with\n"
+  ++ "      | some y, some p =>\n"
+  ++ "        if (y != p) then loop (l.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop l fuel (r + 1) w\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (r, w, l)\n"
+
 /-- Render the `vec_partial_sum` entry forward definition: the
     in-place prefix-sum scan over the reified words
     (read-after-write through the vector; the checked `add` can

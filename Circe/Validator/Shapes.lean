@@ -2777,6 +2777,49 @@ def isVecCopyIfShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text stdVecIndexMutName
   | _ => false
 
+/-- `vec_unique` entry shape (adjacent-duplicate squeeze, P2-M13):
+    single `mutBorrow` vector in, `u64` new length out, exactly six
+    calls (two `size` + four non-const `at()` — the keep-test pair,
+    the write-source re-read, and the write target), one `cir.while`
+    (the scan from index 1), two `cir.if` (the empty-check early
+    exit + the keep test), three compares (`lt` guard, `eq` empty
+    check, `ne` keep test against the `w - 1` predecessor), one
+    plain `u64` subtraction (the predecessor index), two plain
+    `u64` bumps, two returns (empty-0 + tail-`w`). No ternary, no
+    `nsw` arithmetic; the entry empty-check pair separates it from
+    `vec_remove` (single-borrow plus owned value, one `if`, one
+    return), the `ne`-against-predecessor plus `sub` from
+    `vec_partial_sum` (void out, `nsw` add), and the no-`for` from
+    `vec_at_sum`. -/
+def isVecUniqueShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [v] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType v.ctype && v.singleRef && isStdVectorType v.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 6 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.cmp eq" == 1 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.const" == 14 &&
+    opCount raw.text "cir.return" == 2 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.load" == 19 &&
+    opCount raw.text "cir.store" == 8 &&
+    opCount raw.text "cir.add " == 2 &&
+    opCount raw.text "cir.sub " == 1 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one

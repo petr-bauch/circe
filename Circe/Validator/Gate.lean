@@ -44,6 +44,7 @@ import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecSelectionSort
+import Circe.Emit.VecUnique
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecQuicksort
 import Circe.Emit.VecHeapSort
@@ -1912,6 +1913,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecPartitionFunc with name := raw.name }
       else if isVecRemoveShape raw then
         .ok { vecRemoveFunc with name := raw.name }
+      else if isVecUniqueShape raw then
+        .ok { vecUniqueFunc with name := raw.name }
       else if isVecPartialSumShape raw then
         .ok { vecPartialSumFunc with name := raw.name }
       else if isVecIntersectShape raw then

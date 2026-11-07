@@ -48,6 +48,7 @@ import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecSelectionSort
+import Circe.Emit.VecUnique
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -1199,6 +1200,28 @@ def matchFrag : Func → Option FragKind
                       (.lit (.u64 v1))))))
             (.return_ (.var "w")))))⟩ =>
     some .vecRemove
+  | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
+         .mutBorrow _⟩],
+      .u 64,
+      (.seq (.if_ (.ueq (.stdVecLen "v")
+                        (.lit (.u64 z0)))
+                  (.return_ (.lit (.u64 z1)))
+                  .skip)
+        (.seq (.let_ "w" (.u 64) (.lit (.u64 o0)))
+          (.seq (.let_ "r" (.u 64) (.lit (.u64 o1)))
+            (.seq (.while_ (.ult (.var "r") (.stdVecLen "v"))
+                    (.seq (.if_ (.une (.stdVecAt "v" (.var "r"))
+                                      (.stdVecAt "v" (.usub (.var "w")
+                                        (.lit (.u64 s0)))))
+                              (.seq (.vecSet "v" (.var "w")
+                                          (.stdVecAt "v" (.var "r")))
+                                (.assign "w" (.uadd (.var "w")
+                                      (.lit (.u64 v0)))))
+                              .skip)
+                      (.assign "r" (.uadd (.var "r")
+                        (.lit (.u64 v1))))))
+              (.return_ (.var "w"))))))⟩ =>
+    some .vecUnique
   | ⟨_, [⟨"v", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .mutBorrow _⟩],
       .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2361,6 +2384,8 @@ theorem matchFrag_vecPartition :
     matchFrag vecPartitionFunc = some .vecPartition := rfl
 theorem matchFrag_vecRemove :
     matchFrag vecRemoveFunc = some .vecRemove := rfl
+theorem matchFrag_vecUnique :
+    matchFrag vecUniqueFunc = some .vecUnique := rfl
 theorem matchFrag_vecPartialSum :
     matchFrag vecPartialSumFunc = some .vecPartialSum := rfl
 theorem matchFrag_vecIntersect :

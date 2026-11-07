@@ -121,6 +121,7 @@ import GoldenVecPartialSum
 import GoldenVecIntersect
 import GoldenVecCopyIf
 import GoldenVecSelectionSort
+import GoldenVecUnique
 import GoldenVecMergeSort
 import GoldenVecQuicksort
 import GoldenVecHeapSort
@@ -539,6 +540,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/VecMinIndex_Spec.lean", "out/VecMinIndex_Spec.lean"),
    ("tests/golden/VecSelectionSort.lean", "out/VecSelectionSort.lean"),
    ("tests/golden/VecSelectionSort_Spec.lean", "out/VecSelectionSort_Spec.lean"),
+   ("tests/golden/VecUnique.lean", "out/VecUnique.lean"),
+   ("tests/golden/VecUnique_Spec.lean", "out/VecUnique_Spec.lean"),
    ("tests/golden/VecMergeRuns.lean", "out/VecMergeRuns.lean"),
    ("tests/golden/VecMergeRuns_Spec.lean", "out/VecMergeRuns_Spec.lean"),
    ("tests/golden/VecMergeSort.lean", "out/VecMergeSort.lean"),
@@ -754,6 +757,7 @@ def emittedTypechecks : List String :=
    "out/VecCopyIf.lean",
    "out/VecMinIndex.lean",
    "out/VecSelectionSort.lean",
+   "out/VecUnique.lean",
    "out/VecMergeRuns.lean",
    "out/VecMergeSort.lean",
    "out/VecQuicksort.lean",
@@ -1832,6 +1836,16 @@ def contentAsserts : List (String × List (String × String)) :=
      ("out/VecSelectionSort.lean", "_Z18vec_selection_sortRSt6vectorIiSaIiEE_fwd"),
      ("tests/golden/VecMinIndex.lean", "_Z9min_indexRKSt6vectorIiSaIiEEm_fwd"),
      ("tests/golden/VecSelectionSort.lean", "_Z18vec_selection_sortRSt6vectorIiSaIiEE_fwd")]),
+   ("vec-unique",
+    [("Circe/Emit/VecUnique.lean", "def vecUniqueFwd"),
+     ("Circe/Transfer/VecUnique.lean", "theorem evalProgFunc_vecUnique_spec"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_vecUnique"),
+     ("Circe/Emit/Render.lean", "def emitVecUniqueText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitVecUniqueSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isVecUniqueShape"),
+     ("Circe/Validator/Gate.lean", "isVecUniqueShape raw"),
+     ("out/VecUnique.lean", "_Z10vec_uniqueRSt6vectorIiSaIiEE_fwd"),
+     ("tests/golden/VecUnique.lean", "_Z10vec_uniqueRSt6vectorIiSaIiEE_fwd")]),
    ("vec-reverse",
     [("Circe/Emit/VecReverse.lean", "theorem RevInv_step"),
      ("Circe/Emit/VecReverse.lean", "theorem RevInv_exit"),
@@ -2357,8 +2371,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 167 then
-    throw (IO.userError s!"expected 167 spec stubs, found {stubs.length}")
+  if stubs.length != 168 then
+    throw (IO.userError s!"expected 168 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2495,6 +2509,7 @@ def checkSuites : List Job :=
    ("golden-vecintersect", GoldenVecIntersect.main),
    ("golden-veccopyif", GoldenVecCopyIf.main),
    ("golden-vecselectionsort", GoldenVecSelectionSort.main),
+   ("golden-vecunique", GoldenVecUnique.main),
    ("golden-vecmergesort", GoldenVecMergeSort.main),
    ("golden-vecquicksort", GoldenVecQuicksort.main),
    ("golden-vecheapsort", GoldenVecHeapSort.main),
@@ -2540,7 +2555,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecSelectionSort", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

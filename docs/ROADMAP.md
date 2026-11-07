@@ -79,11 +79,15 @@ untouched), two-cursor sorted-range intersection (P2-M11)
 — the first dual-read scan (`vec_intersect`, the
 `std::set_intersection` idiom: common heads recorded once
 into a caller-sized record, survivor count returned,
-forward-total), and out-of-place filter (P2-M12) — the first
+forward-total), out-of-place filter (P2-M12) — the first
 two-leg scan with a loud short-output leg (`vec_copy_if`,
 the `std::copy_if` idiom: read-only input plus caller-sized
 record, survivor count returned, overflowing keep fails
-loud); earlier: STL-free
+loud), and adjacent-duplicate squeeze (P2-M13) — the first
+predecessor-read compaction (`vec_unique`, the `std::unique`
+idiom: keep iff different from the previous survivor, write
+cursor seeded at `1`, new logical length returned under
+caller-debt); earlier: STL-free
 C++-lite admission (M2a–M2c), proved transfer (M3d),
 `string_view`-ended loop + `ElementRef` family composers (N7),
 insertion sort over `std::array` (N9), binary search (V1),
@@ -109,25 +113,26 @@ merge-sort, quicksort, and heapsort stacks are closed, as are
 the Kadane scan, the BFS slice, the J link-chase, the
 erase-compress endpoint (P2-M9), the prefix-sum scan
 (P2-M10), the sorted-range intersection (P2-M11), the
-out-of-place filter (P2-M12), and the
+out-of-place filter (P2-M12), the adjacent-duplicate
+squeeze (P2-M13), and the
 G-track (G1/G1b/G2/G3/G5a/G4); see `DELIVERED.md` §§
-P2-M5–P2-M12, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
+P2-M5–P2-M13, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
 refactor (the G-track slice labels are distinct from the
 Gate rule G-labels cited under N12–N14)
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Adjacent-duplicate squeeze (`unique`):
-   length-changing compaction with an equality test against
-   the previous survivor — composes the P2-M9 write cursor
-   with the P2-M10 read-after-write predecessor read.
-2. Sorted-range union (`set_union`): the P2-M11 two-cursor
-   scan recording from either head with the same caller-sized
-   record discipline — the remaining merge idiom beside
-   intersection.
-3. Sorted-range difference (`set_difference`): the P2-M11
+1. (Recommended) Sorted-range union (`set_union`): the
+   P2-M11 two-cursor scan recording from either head with
+   the same caller-sized record discipline — the remaining
+   merge idiom beside intersection.
+2. Sorted-range difference (`set_difference`): the P2-M11
    two-cursor scan recording only left-only heads — completes
    the sorted set-operation trio with the same record
    discipline and no new mechanism.
+3. Caller-record squeeze (`unique_copy`): the P2-M13
+   predecessor-kept scan writing into a caller-sized record
+   — composes the M12 out-borrow with the M13 squeeze and
+   no new mechanism.
 
 ## Pillar 3 — Human-readable/writable proofs
 
