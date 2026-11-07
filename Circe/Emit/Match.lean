@@ -31,6 +31,7 @@ import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
+import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
 import Circe.Emit.ListSortedInsert
 import Circe.Emit.VecMergeInto
@@ -1066,6 +1067,42 @@ def matchFrag : Func → Option FragKind
                                 (.pgetNext (.var "cur")))))))))
               (.return_ (.var "new_head"))))))⟩ =>
     some .listCopy
+  | ⟨_, [⟨"a", .struct "Node" [.i 32, .u 32], .owned⟩,
+         ⟨"b", .struct "Node" [.i 32, .u 32], .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.if_ (.ueq (.var "a") (.lit .nullptr))
+              (.return_ (.var "b"))
+              .skip)
+        (.seq (.if_ (.ueq (.var "b") (.lit .nullptr))
+                (.return_ (.var "a"))
+                .skip)
+          (.seq (.let_ "head" (.struct "Node" [.i 32, .u 32])
+                  (.lit .nullptr))
+            (.seq (.let_ "tail" (.struct "Node" [.i 32, .u 32])
+                    (.lit .nullptr))
+              (.seq (.if_ (.slt (.pgetVal (.var "b")) (.pgetVal (.var "a")))
+                      (.seq (.assign "head" (.var "b"))
+                        (.assign "b" (.pgetNext (.var "b"))))
+                      (.seq (.assign "head" (.var "a"))
+                        (.assign "a" (.pgetNext (.var "a")))))
+                (.seq (.assign "tail" (.var "head"))
+                  (.seq (.while_ (.tif (.une (.var "a") (.lit .nullptr))
+                                    (.tif (.une (.var "b") (.lit .nullptr))
+                                      (.lit (.b true))
+                                      (.lit (.b false)))
+                                    (.lit (.b false)))
+                            (.seq (.if_ (.slt (.pgetVal (.var "b"))
+                                          (.pgetVal (.var "a")))
+                                     (.seq (.psetNext (.var "tail") (.var "b"))
+                                       (.assign "b" (.pgetNext (.var "b"))))
+                                     (.seq (.psetNext (.var "tail") (.var "a"))
+                                       (.assign "a" (.pgetNext (.var "a")))))
+                              (.assign "tail" (.pgetNext (.var "tail")))))
+                    (.seq (.if_ (.une (.var "a") (.lit .nullptr))
+                            (.psetNext (.var "tail") (.var "a"))
+                            (.psetNext (.var "tail") (.var "b")))
+                      (.return_ (.var "head"))))))))))⟩ =>
+    some .listMerge
   | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
       .struct "Node" [.i 32, .u 32],
       (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32]) (.var "head"))
@@ -2372,6 +2409,8 @@ theorem matchFrag_listFind :
     matchFrag listFindFunc = some .listFind := rfl
 theorem matchFrag_listCopy :
     matchFrag listCopyFunc = some .listCopy := rfl
+theorem matchFrag_listMerge :
+    matchFrag listMergeFunc = some .listMerge := rfl
 theorem matchFrag_listClear :
     matchFrag listClearFunc = some .listClear := rfl
 theorem matchFrag_listSortedInsert :

@@ -137,6 +137,7 @@ import GoldenPushFront
 import GoldenListErase
 import GoldenListFind
 import GoldenListCopy
+import GoldenListMerge
 import GoldenListClear
 import GoldenListSortedInsert
 import GoldenReborrow
@@ -573,6 +574,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ListFind_Spec.lean", "out/ListFind_Spec.lean"),
    ("tests/golden/ListCopy.lean", "out/ListCopy.lean"),
    ("tests/golden/ListCopy_Spec.lean", "out/ListCopy_Spec.lean"),
+   ("tests/golden/ListMerge.lean", "out/ListMerge.lean"),
+   ("tests/golden/ListMerge_Spec.lean", "out/ListMerge_Spec.lean"),
    ("tests/golden/ListClear.lean", "out/ListClear.lean"),
    ("tests/golden/ListSortedInsert.lean", "out/ListSortedInsert.lean"),
    ("tests/golden/ListSortedInsert_Spec.lean", "out/ListSortedInsert_Spec.lean"),
@@ -2372,8 +2375,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 168 then
-    throw (IO.userError s!"expected 168 spec stubs, found {stubs.length}")
+  if stubs.length != 169 then
+    throw (IO.userError s!"expected 169 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2525,6 +2528,7 @@ def checkSuites : List Job :=
    ("golden-listerase", GoldenListErase.main),
    ("golden-listfind", GoldenListFind.main),
    ("golden-listcopy", GoldenListCopy.main),
+   ("golden-listmerge", GoldenListMerge.main),
    ("golden-listclear", GoldenListClear.main),
    ("golden-listsortedinsert", GoldenListSortedInsert.main),
    ("golden-reborrow", GoldenReborrow.main),
@@ -2557,7 +2561,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

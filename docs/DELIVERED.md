@@ -2690,6 +2690,70 @@ shape-exactness both directions vs `list_copy` / `list_find` /
   galleries compile unchanged
   (`lake build HoareGallery LoopOobGallery`).
 
+### P1-merge. Sorted merge of two chains (`list_merge`) — DONE (2026-11-07)
+
+Pillar-1 proposed goal #1: the first multi-input traversal —
+`Node *list_merge(Node * __restrict__ a, Node * __restrict__ b)`
+splices two ascending chains into one ascending chain by
+relinking: null-entry early returns, a head-seed pick on
+`a->val <= b->val` (stable take-from-`a` on ties), a two-cursor
+chase swinging `tail.next` at the smaller head each iteration,
+and a remainder splice attaching the survivor (null-terminating
+when both cursors die together). No `malloc`/`free` (destructive
+relink only); `new` is never used. Both params carry
+`__restrict__`, corroborated by a `noalias` oracle verdict (the
+multi-pointer arm keeps the shape listed beside `list_append`;
+an `unknown` verdict still alias-rejects).
+Corpus `tests/cpp/list_merge.cpp` (59 lines) + real CIRGen
+`tests/cir/list_merge.cir` (266 lines; 5 allocas / 40 loads /
+17 stores, one `while`, 5 `cir.if`, 7 `cir.cmp`, 13
+`cir.get_member` (four `[0]` payload, nine `[1]` link), 6
+`cir.const`, 3 `cir.return`, 3 yield, 0 calls;
+`cir-opt --verify-each` clean).
+`isListMergeShape` pins exactly that (two `Node*` params plus
+the seed/chase/splice body — no sibling confusion either
+direction); Gate arm admitted with the `noalias` verdict.
+`Circe/Emit/ListMerge.lean` (1737 lines): the pure oracle
+`mergeChains` (stable take-from-`a`) with the take-A/B cons
+equations, length/perm/sorted lemmas on the `slt` trichotomy
+kit; CoreIR seed/loop/body/entry mirrors; the `ListSegAddrs`
+address-spine kit (spines keep outsideness pure — stores never
+move addresses — with `store_other`, `cons_inv`, `mem_segmem`,
+`nil_start`, `head_notin_tail`, `PrefixChain.store_other`
+transports); the `MergeInv` chase invariant (output spine +
+equation through the chase, pure spine outsideness); seed
+correctness (`merge_seedA/B`, caller debt bridged forward into
+spine facts); chase-step preservation across the tail swing
+(`merge_stepA/B`, fuel consumed per pick); remainder splices
+(`merge_spliceA/B`); chase correctness by fuel induction
+(`listMergeChase_correct`, stop arms carry over, live
+iterations swing and recurse with a fuel lift) plus the
+stop-disjunction (`listMergeChase_stop`); entry correctness
+(`listMergeFwd_correct`: null entries, seed, chase, three-way
+splice assembly into `ListSeg` of `mergeChains`).
+
+Emitter + Gate wiring (`FragKind.listMerge`,
+`matchFrag_listMerge` by `rfl`, spec/render texts,
+`Emit.lean` arms, Gate shape arm, `GenOut`, spec-stub pin
+168 → 169); goldens `tests/golden/ListMerge.lean`
+(+`_Spec`, 4-edge `spec_check` true by `#eval`: two-chain
+merge, null side, both null, missing head (loud));
+`GoldenListMerge` pipeline (with `noalias` oracle fact) +
+rejection gates (bare third-pointer variant `alias-reject`
+via `__restrict__`; `unknown`-verdict variant `alias-reject`
+via `inconclusive`; free-added variant `alias-reject` —
+exact shape broken; shape-exactness both directions vs
+`list_erase` / `list_append` / `list_length` / `list_copy` /
+`list_clear` / `list_find` / `list_sorted_insert` /
+`list_rev`; 12 checks).
+- Acceptance: full gate 586/586 TEST-OK
+  (`GOLDENLISTMERGE-OK passed=12`,
+  `GOLDENLISTSORTEDINSERT-OK passed=14` unchanged); goldens
+  typecheck (`lake env lean out/ListMerge.lean` and
+  `out/ListMerge_Spec.lean`, one file per invocation);
+  galleries compile unchanged
+  (`lake build HoareGallery LoopOobGallery`).
+
 ### P3. Lockstep store-step harvest (`memStore_cellsAt_pin`) — DONE (2026-11-03)
 
 Roadmap pillar-3 proposed goal #1, closed as a lemma, not a tactic —

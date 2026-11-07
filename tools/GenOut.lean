@@ -44,6 +44,7 @@ import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
+import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
 import Circe.Emit.ListSortedInsert
 import Circe.Emit.Reborrow
@@ -204,6 +205,7 @@ def main : IO Unit := do
   let listErase ← emitOrDie listEraseFunc
   let listFind ← emitOrDie listFindFunc
   let listCopy ← emitOrDie listCopyFunc
+  let listMerge ← emitOrDie listMergeFunc
   let listClear ← emitOrDie listClearFunc
   let listSortedInsert ← emitOrDie listSortedInsertFunc
   let vecIndexMut ← emitOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
@@ -372,6 +374,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListErase.lean" (emitFileText (.ok listErase))
   IO.FS.writeFile "out/ListFind.lean" (emitFileText (.ok listFind))
   IO.FS.writeFile "out/ListCopy.lean" (emitFileText (.ok listCopy))
+  IO.FS.writeFile "out/ListMerge.lean" (emitFileText (.ok listMerge))
   IO.FS.writeFile "out/ListClear.lean" (emitFileText (.ok listClear))
   IO.FS.writeFile "out/ListSortedInsert.lean" (emitFileText (.ok listSortedInsert))
   IO.FS.writeFile "out/VecIndexMut.lean" (emitFileText (.ok vecIndexMut))
@@ -540,6 +543,7 @@ def main : IO Unit := do
   let listEraseSpec ← specOrDie listEraseFunc
   let listFindSpec ← specOrDie listFindFunc
   let listCopySpec ← specOrDie listCopyFunc
+  let listMergeSpec ← specOrDie listMergeFunc
   let listClearSpec ← specOrDie listClearFunc
   let listSortedInsertSpec ← specOrDie listSortedInsertFunc
   let vecIndexMutSpec ← specOrDie { stdVecIndexFunc with name := stdVecIndexMutName }
@@ -708,6 +712,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListErase_Spec.lean" listEraseSpec
   IO.FS.writeFile "out/ListFind_Spec.lean" listFindSpec
   IO.FS.writeFile "out/ListCopy_Spec.lean" listCopySpec
+  IO.FS.writeFile "out/ListMerge_Spec.lean" listMergeSpec
   IO.FS.writeFile "out/ListClear_Spec.lean" listClearSpec
   IO.FS.writeFile "out/ListSortedInsert_Spec.lean" listSortedInsertSpec
   IO.FS.writeFile "out/VecIndexMut_Spec.lean" vecIndexMutSpec

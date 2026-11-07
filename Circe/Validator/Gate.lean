@@ -33,6 +33,7 @@ import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
+import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
 import Circe.Emit.ListSortedInsert
 import Circe.Emit.VecMergeInto
@@ -1745,7 +1746,7 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
           !isChacha20EncryptShape raw &&
           !isSumTwoShape raw && !isWrPairShape raw &&
           !isCondPairShape raw && !isAliasCondShape raw &&
-          !isListAppendShape raw then
+          !isListAppendShape raw && !isListMergeShape raw then
         reject raw.name .aliasReject
           s!"alias-reject: function '{raw.name}': {(oracleParams raw).length} live pointer parameters outside the borrow-return (`choose`) shape: a live writer may alias a live reader (writer+reader) and the pair cannot be discharged as read-only sharing — only the exact `choose` shape (one of two `noalias` inputs returned via `cir.ternary`), the exact `xor_n` shape (single `noalias` writer + `noalias` readers over one bounded xor loop, K2 single-`&mut` containment), the exact `sum_two` shape (two `noalias` readers over one bounded pair-sum loop, N2a two-reader discipline), the exact `wr_pair` shape (two `noalias` writers over two disjoint cells with the in-order dataflow pin, G2 writer-pair discipline), and the exact `cond_pair` shape (two `noalias` writers + `bool`, one scope-wrapped branch firing the first write with the in-order dataflow pin, G2b branch-writer discipline), and the exact `alias_cond` shape (two single-reference-triple writers + `bool`, same branch/dataflow skeleton with the fused C++ deref chain, admitted under any verdict via the G3 open contract — transfer case-splits on the addresses), and the exact `list_append` shape (two `noalias` caller-owned `Node*`: head chain plus fresh node, normalize-then-swing tail insertion with the read-only chase bridge, L-ptr writer leg), and the exact `chacha20_encrypt` shape (single `noalias` writer + two `noalias` readers over the block-call/xor loops, K6 single-`&mut` containment) are admitted (see docs/SUBSET.md rules 2, 6)"
       else if isAddShape raw then
@@ -1955,6 +1956,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { listFindFunc with name := raw.name }
       else if isListCopyShape raw then
         .ok { listCopyFunc with name := raw.name }
+      else if isListMergeShape raw then
+        .ok { listMergeFunc with name := raw.name }
       else if isListClearShape raw then
         .ok { listClearFunc with name := raw.name }
       else if isListSortedInsertShape raw then

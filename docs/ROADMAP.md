@@ -33,29 +33,29 @@ read-only query, allocating deep copy with per-element
 `malloc` — P1-copy, whose `Mark` high-water mark + `BoundedSeg`
 bundled-bound kit generalizes the chase transports,
 whole-chain free — P1-clear, whose `ClearInv` tracks the
-freed prefix + live suffix across iterations — and ordered
+freed prefix + live suffix across iterations — ordered
 insert — P1-sortedinsert, whose chase invariant carries the
-`sortedInsert` oracle equation plus the visited-prefix pin).
+`sortedInsert` oracle equation plus the visited-prefix
+pin — and sorted merge — P1-merge, the first multi-input
+traversal, whose `MergeInv` carries the `mergeChains` oracle
+equation over address-spine (`ListSegAddrs`) remainders with
+pure outsideness).
 
 Next: nothing open — the single-pointer exemption
 (`a393fa6`), the L-ptr2 slice, and the P1-push, P1-erase,
-P1-find, P1-copy, P1-clear, and P1-sortedinsert slices are
-all closed. Iris policy stays at
+P1-find, P1-copy, P1-clear, P1-sortedinsert, and P1-merge
+slices are all closed. Iris policy stays at
 pillar 4 (native first, Iris on fallback). See
 `DELIVERED.md` §§ M3/N1, S3, N6, L–L5, L-ptr, L-ptr2,
 P1-push, P1-erase, P1-find, P1-copy, P1-clear,
-P1-sortedinsert, O1/O2, Iris, P4, K6.
+P1-sortedinsert, P1-merge, O1/O2, Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Sorted merge of two chains (`list_merge`):
-   two-cursor chase with tail-append — reuses the copy kit's
-   swing + step structure with no new mechanism; the first
-   multi-input traversal.
-2. Remove-if (`list_filter`): unlink + `free` every node
-   matching a payload predicate, keeping the survivors
-   linked in order — composes the per-node erase step with
-   P1-clear's freed-prefix tracking.
-3. Adjacent-duplicate squeeze (`list_unique`): unlink + `free`
+1. (Recommended) Remove-if (`list_filter`): unlink + `free`
+   every node matching a payload predicate, keeping the
+   survivors linked in order — composes the per-node erase
+   step with P1-clear's freed-prefix tracking.
+2. Adjacent-duplicate squeeze (`list_unique`): unlink + `free`
    every node equal to its predecessor, keeping one copy per
    run — the ordered sequel to P1-sortedinsert (sorted input
    makes equality local), composing the erase step with

@@ -2612,6 +2612,70 @@ def isListClearShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Sorted merge of two chains (P1 first multi-input traversal
+    — the `list_merge` shape): two `Node*` heads in, `Node*`
+    out (merged head, remainder for an empty other side, null
+    for both empty). Two `cir.if` null-entry checks (early
+    returns), one `cir.if` head-seed pick, one `cir.while`
+    chasing `a`/`b` while both are non-null (one `ne` guard
+    pair via the `&&` ternary, one `cir.if` + signed `le`
+    pick per iteration), one `cir.if` remainder splice (tail
+    link swing, `ne` test). Per iteration: two `[0]`
+    `cir.get_member` (payload reads), link reads/swings via
+    `[1]`; 5 allocas / 40 loads / 17 stores / 6 consts /
+    3 returns (two early + single tail) / 3 yields; zero
+    calls (no `malloc`/`free` — destructive relink only, no
+    `get_global`, no casts). The 5-`if` / 3-return / 7-`cmp`
+    profile separates it from every sibling: the other
+    two-pointer shape `list_append` has 1 `if`, 2 returns,
+    2 `cmp`, 4 `cir.get_member`, and no `le`; the ordering
+    shapes `list_copy` / `list_sorted_insert` allocate (1
+    `malloc` + bitcast each) with a single return; the
+    unlinking shapes `list_erase` / `list_clear` free. -/
+def isListMergeShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && ptrInner a.ctype == some "!rec_Node" &&
+    isPtrType b.ctype && ptrInner b.ctype == some "!rec_Node" &&
+    isPtrType raw.ret && ptrInner raw.ret == some "!rec_Node" &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 5 &&
+    opCount raw.text "cir.cmp" == 7 &&
+    opCount raw.text "cir.cmp ne" == 3 &&
+    containsSubstr raw.text "cir.cmp le" &&
+    containsSubstr raw.text "cir.cmp eq" &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.get_member" == 13 &&
+    containsSubstr raw.text "[0]" &&
+    containsSubstr raw.text "[1]" &&
+    opCount raw.text "cir.const" == 6 &&
+    opCount raw.text "cir.cast" == 0 &&
+    opCount raw.text "cir.mul" == 0 &&
+    opCount raw.text "cir.add" == 0 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 40 &&
+    opCount raw.text "cir.store" == 17 &&
+    opCount raw.text "cir.return" == 3 &&
+    opCount raw.text "cir.yield" == 3 &&
+    opCount raw.text "cir.call @" == 0 &&
+    freeCallCount raw.text == 0 &&
+    opCount raw.text "cir.get_global" == 0 &&
+    opCount raw.text "cir.break" == 0 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.call @malloc(" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.call @_Znwm" &&
+    !containsSubstr raw.text "cir.call @_ZdlPvm" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_remove` entry shape (erase-compress): one `mutBorrow`
     vector plus one owned `i32` value in, `u64` out (the new
     logical length), exactly four calls (one `size` + three
