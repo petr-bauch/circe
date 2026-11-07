@@ -26,35 +26,40 @@ the first two-live-pointer shape admitted by exact listing
 rather than exemption (L-ptr2; label note — this reuses
 the L1–L4 slice labels of the lifetime track for a
 different subject, see `DELIVERED.md` "L-ptr."). The C
-core is complete within the standing non-goals, plus seven
+core is complete within the standing non-goals, plus eight
 dynamic shapes (read-only traversal, caller-node writer,
 caller-allocated writer, first deallocating shape,
 read-only query, allocating deep copy with per-element
 `malloc` — P1-copy, whose `Mark` high-water mark + `BoundedSeg`
-bundled-bound kit generalizes the chase transports — and
+bundled-bound kit generalizes the chase transports,
 whole-chain free — P1-clear, whose `ClearInv` tracks the
-freed prefix + live suffix across iterations).
+freed prefix + live suffix across iterations — and ordered
+insert — P1-sortedinsert, whose chase invariant carries the
+`sortedInsert` oracle equation plus the visited-prefix pin).
 
 Next: nothing open — the single-pointer exemption
 (`a393fa6`), the L-ptr2 slice, and the P1-push, P1-erase,
-P1-find, P1-copy, and P1-clear slices are all closed. Iris policy stays at
+P1-find, P1-copy, P1-clear, and P1-sortedinsert slices are
+all closed. Iris policy stays at
 pillar 4 (native first, Iris on fallback). See
 `DELIVERED.md` §§ M3/N1, S3, N6, L–L5, L-ptr, L-ptr2,
-P1-push, P1-erase, P1-find, P1-copy, P1-clear, O1/O2, Iris,
-P4, K6.
+P1-push, P1-erase, P1-find, P1-copy, P1-clear,
+P1-sortedinsert, O1/O2, Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Sorted insert: `find` + link swing
-   composition — the first ordered structure, reusing the
-   query and writer kits with no new mechanism.
-2. Sorted merge of two chains (`list_merge`): two-cursor
-   chase with tail-append — reuses the copy kit's swing +
-   step structure with no new mechanism; the first
+1. (Recommended) Sorted merge of two chains (`list_merge`):
+   two-cursor chase with tail-append — reuses the copy kit's
+   swing + step structure with no new mechanism; the first
    multi-input traversal.
-3. Remove-if (`list_filter`): unlink + `free` every node
+2. Remove-if (`list_filter`): unlink + `free` every node
    matching a payload predicate, keeping the survivors
    linked in order — composes the per-node erase step with
    P1-clear's freed-prefix tracking.
+3. Adjacent-duplicate squeeze (`list_unique`): unlink + `free`
+   every node equal to its predecessor, keeping one copy per
+   run — the ordered sequel to P1-sortedinsert (sorted input
+   makes equality local), composing the erase step with
+   P1-clear's freed-prefix tracking with no new mechanism.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 

@@ -32,6 +32,7 @@ import Circe.Emit.ListErase
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
 import Circe.Emit.ListClear
+import Circe.Emit.ListSortedInsert
 import Circe.Emit.VecMergeInto
 import Circe.Emit.VecMergeRuns
 import Circe.Emit.VecMergeSort
@@ -1075,6 +1076,29 @@ def matchFrag : Func → Option FragKind
                       (.assign "cur" (.var "next")))))
             (.return_ (.lit .nullptr)))))⟩ =>
     some .listClear
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩,
+         ⟨"val", .i 32, .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.let_ "nd" (.struct "Node" [.i 32, .u 32]) .nnew)
+        (.seq (.psetVal (.var "nd") (.var "val"))
+          (.seq (.let_ "prev" (.struct "Node" [.i 32, .u 32])
+                  (.lit .nullptr))
+            (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32])
+                    (.var "head"))
+              (.seq (.while_ (.tif (.une (.var "cur") (.lit .nullptr))
+                                (.tif (.slt (.var "val")
+                                        (.pgetVal (.var "cur")))
+                                  (.lit (.b false))
+                                  (.lit (.b true)))
+                                (.lit (.b false)))
+                      (.seq (.assign "prev" (.var "cur"))
+                        (.assign "cur" (.pgetNext (.var "cur")))))
+                (.seq (.psetNext (.var "nd") (.var "cur"))
+                  (.seq (.if_ (.ueq (.var "prev") (.lit .nullptr))
+                          (.assign "head" (.var "nd"))
+                          (.psetNext (.var "prev") (.var "nd")))
+                    (.return_ (.var "head")))))))))⟩ =>
+    some .listSortedInsert
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
          .sharedBorrow⟩,
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64],
@@ -2327,6 +2351,8 @@ theorem matchFrag_listCopy :
     matchFrag listCopyFunc = some .listCopy := rfl
 theorem matchFrag_listClear :
     matchFrag listClearFunc = some .listClear := rfl
+theorem matchFrag_listSortedInsert :
+    matchFrag listSortedInsertFunc = some .listSortedInsert := rfl
 theorem matchFrag_vecMergeInto :
     matchFrag vecMergeIntoFunc = some .vecMergeInto := rfl
 theorem matchFrag_vecTransformAdd :

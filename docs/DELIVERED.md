@@ -2615,6 +2615,81 @@ once; shape-exactness both directions vs `list_copy` /
   out/ListClear_Spec.lean`); gallery compiles unchanged
   (`lake build HoareGallery`).
 
+### P1-sortedinsert. Ordered insert (`list_sorted_insert`) — DONE (2026-11-04)
+
+Pillar-1 proposed goal #6: the first ordered structure —
+`Node *list_sorted_insert(Node *head, int val)` chases a prev/cur
+pair while `cur != nullptr && cur->val <= val` (upper-bound rule:
+the fresh node lands after existing equals), `malloc`s one fresh
+node, stores the payload, swings the fresh link at the landing
+cursor, then swings the head (null predecessor) or the predecessor
+link, returning the (possibly new) head. No `free` by design;
+`new` is never used (the P1 corpus forbids `_Znwm`: the fresh
+node comes from `(Node *)malloc`, the P1-copy per-node kit).
+Corpus `tests/cpp/list_sorted_insert.cpp` (41 lines) + real CIRGen
+`tests/cir/list_sorted_insert.cir` (159 lines; 6 allocas /
+18 loads / 12 stores, one `while`, one `cir.ternary` (the `&&`
+short-circuit) + one `cir.if` (prev-null head case), 3 `cir.cmp`
+(guard `ne`, keep-advancing signed `le`, prev-null `eq`), 5
+`cir.get_member` (two `[0]` payload, three `[1]` link), 5
+`cir.const`, 1 cast (bitcast of the malloc decl), 1
+`cir.call @malloc`, 0 `free`, 1 `get_global`, single tail
+`cir.return`; `cir-opt --verify-each` clean).
+`isListSortedInsertShape` pins exactly that (the `le` compare
+separates it from the order-blind `list_erase` chase; the single
+hoisted `malloc` from `list_find` and from per-node-allocating
+`list_copy`; the ternary from every prior list shape); Gate arm
+admitted with an honest `unknown` oracle verdict — the
+single-pointer exemption covers the head while the `i32`
+payload travels by value.
+
+No new CoreIR: `.nnew` / `.psetVal` / `.psetNext` / `.pgetNext` /
+`.pgetVal` / `.tif` / `.slt` reuse the copy/query kits.
+`Circe/Emit/ListSortedInsert.lean`
+(`_Z18list_sorted_insertP4Nodei`, 2253 lines): the pure oracle
+`sortedInsert` (insert-after-equals) with the
+`sortedInsert_prefix` / `sortedInsert_perm` bridge and the `slt`
+trichotomy kit (`slt_trans`, `slt_asymm`, `slt_irrefl`); the
+chain kit (`chainNext`, `prefixChain_chaseN`,
+`prefixChain_mem`, `SegMem_mem_alloc` / `SegMem_mem_lt`,
+`chain_last_notin_init` acyclicity, alloc/store transports); the
+chase (`listSortedInsertChase` as the erase-style step-for-step
+match-all mirror, `listSortedInsertChase_ok`,
+`listSortedInsertChase_prev_some`); the chase invariant carrying
+the oracle equation (`SortedWindow` restated at the Emit layer to
+avoid a `Specs → Emit` import cycle, plus the `hprevnodes`
+conjunct pinning the visited prefix); `listSortedInsertLoop_agree`;
+`listSortedInsertFwd` (chase + alloc + payload store +
+landing-link swing + head-or-predecessor swing);
+`listSortedInsertFwd_correct` (memory: swung bytes rewritten,
+everything else intact; sortedness of the `sortedInsert` oracle
+output; permutation); entry triple
+`listSortedInsertFunc_correct` over the fixed 5-slot
+`mkListSortedInsertEnv`.
+
+Emitter + Gate wiring (`FragKind.listSortedInsert`,
+`matchFrag_listSortedInsert` by `rfl`, spec/render texts,
+`Emit.lean` arms, Gate shape arm, `GenOut`; spec-stub pin
+166 → 167); goldens `tests/golden/ListSortedInsert.lean`
+(+`_Spec`, 6-edge `spec_check` true by `#eval`: middle landing,
+head landing, empty chain, singleton equal-payload upper-bound
+append, missing head (loud), short block (loud));
+`GoldenListSortedInsert` pipeline (with `unknown` oracle fact) +
+rejection gates (three-pointer variant `alias-reject`;
+free-added variant `escape-reject`; upper-bound-flip variant
+(`le` to `lt`) `out-of-subset` — a `malloc` text matching no
+admitted shape trips the heap-allocation subset gate;
+shape-exactness both directions vs `list_copy` / `list_find` /
+`list_erase` / `list_clear` / `list_append` / `list_length` /
+`linked_reverse` / `list_rev` / `push_front`; 14 checks).
+- Acceptance: full gate 577/577 TEST-OK
+  (`GOLDENLISTSORTEDINSERT-OK passed=14`,
+  `GOLDENLISTCLEAR-OK passed=13` unchanged); goldens
+  typecheck (`lake env lean out/ListSortedInsert.lean` and
+  `out/ListSortedInsert_Spec.lean`, one file per invocation);
+  galleries compile unchanged
+  (`lake build HoareGallery LoopOobGallery`).
+
 ### P3. Lockstep store-step harvest (`memStore_cellsAt_pin`) — DONE (2026-11-03)
 
 Roadmap pillar-3 proposed goal #1, closed as a lemma, not a tactic —

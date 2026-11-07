@@ -1137,6 +1137,64 @@ def emitListClearText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok m' => .ok (m', none)\n"
 
+/-- Render the `list_sorted_insert` entry forward definition: the
+    prev/cur chase to the landing point (first node strictly
+    greater than the payload, upper-bound rule), then a single
+    allocation, payload store, landing-link swing, and the
+    head-or-predecessor swing. Every lookup/store is matched on
+    so failures stay loud and mirror the entry proof. -/
+def emitListSortedInsertText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (prev/cur chase to the landing point over `Mem`; first payload strictly greater than `v` stops the chase, exhaustion lands at the tail). -/\n"
+  ++ s!"def {name}_chase_fwd (F : Nat) (m : Mem) (prev cur : Option Addr)\n"
+  ++ "    (v : BitVec 32) : Result (Option Addr × Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok (prev, none)\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          if (v.slt w) then .ok (prev, some a)\n"
+  ++ "          else match memLoad m a b.tag 1 with\n"
+  ++ "               | .error e => .error e\n"
+  ++ "               | .ok w' =>\n"
+  ++ s!"                 {name}_chase_fwd F m (some a) (addrOfWord w') v\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr)\n"
+  ++ "    (v : BitVec 32) : Result (Mem × Option Addr) :=\n"
+  ++ s!"  match {name}_chase_fwd F m none head v with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (prev, cur) =>\n"
+  ++ "    let (m1, a) := memAlloc m 2\n"
+  ++ "    match memFind m1 a with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some ba =>\n"
+  ++ "      match memStore m1 a ba.tag 0 v with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok m2 =>\n"
+  ++ "        match memFind m2 a with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some ba2 =>\n"
+  ++ "          match memStore m2 a ba2.tag 1 (linkWord cur) with\n"
+  ++ "          | .error e => .error e\n"
+  ++ "          | .ok m3 =>\n"
+  ++ "            match prev with\n"
+  ++ "            | none => .ok (m3, some a)\n"
+  ++ "            | some p =>\n"
+  ++ "              match memFind m3 p with\n"
+  ++ "              | none => .error .AssertFail\n"
+  ++ "              | some bp =>\n"
+  ++ "                match memStore m3 p bp.tag 1 (linkWord (some a)) with\n"
+  ++ "                | .error e => .error e\n"
+  ++ "                | .ok m4 => .ok (m4, head)\n"
+
 /-- Render the `list_length` entry forward definition: the
     read-only node count over `Mem` (link load only; null,
     missing, or short reads are `AssertFail`; cyclic input
