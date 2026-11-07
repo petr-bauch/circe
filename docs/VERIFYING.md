@@ -505,6 +505,13 @@ a `cellAt` cell is at index 0), `hexpr_mload`
 (expression-level only — `mload` has no value mirror, so loads
 cannot form statement triples), `htriple_if_true/false` (plain
 `.b` guards), `htriple_return` (first non-`fellThrough` post).
+Program level adds `htripleProg_let_at` (pure `let_`, memory
+untouched) and `htripleProg_vecSet_at` / `htripleProg_vecSet`
+(store with framing over the `vecSnapshot` vocabulary:
+snapshot re-pinned via `memStore_cellsAt_pin`, framed cell
+via `memFind_memStore_other` with explicit `hne`; first
+customer `hoare_vecSetSwap` composes two applications with
+`htripleProg_seq_at`).
 Gallery (`tests/lean/HoareGallery.lean`, compile-gated) proves
 `pa[0] += 1; pb[0] += 1` end-to-end with framing;
 overflow-freedom (`checkedAddI32 v 1 = .ok (v + 1)`) is explicit
@@ -531,11 +538,11 @@ named). Galleries (`tests/lean/HoareGallery.lean`):
 (first `if`-rule exercise, both cases proved), and a `u32`
 countdown (`n ≤ F` at fuel `F`, exact decrement via
 `BitVec.toNat_sub`); runtime closed instances ride the
-existing `hoare-gallery` driver job — 18 counted passes over
-16 check sites (H1–H3 cells/alias/cond-pair/countdown/sum/incr,
-R reverse-swap/loop, S seg-window, T rotate, J rewire/chase,
-H sift/entry/dup-entry, L-ptr linkedrev; both cond arms
-iterate). Tactic note: nested `obtain`
+existing `hoare-gallery` driver job — 19 counted passes over
+17 check sites (H1–H3 cells/alias/cond-pair/countdown/sum/incr,
+R reverse-swap/loop/vecSet-swap, S seg-window, T rotate,
+J rewire/chase, H sift/entry/dup-entry, L-ptr linkedrev; both
+cond arms iterate). Tactic note: nested `obtain`
 with `rfl` keeps the inner-binder side — the outer names are
 gone after substitution, so inner applications must use the
 fresh names.

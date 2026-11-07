@@ -133,7 +133,7 @@ Proposed (toward the platform goal — for approval, in order):
 ## Pillar 3 — Human-readable/writable proofs
 
 Delivered (re-verified 2026-10-25, then extended in place;
-details in `DELIVERED.md` §§ N5, H1–H3, A, P3a/b/c/d/e,
+details in `DELIVERED.md` §§ N5, H1–H4, A, P3a/b/c/d/e,
 Frontend, U1–U3, T1, P3c/d/e, P3f, H1, J, H, L-ptr): proof
 ergonomics (N5: `cir_fuel`, fuel-bound
 lemmas, per-step cascades; N5a/N5b micro-tactics
@@ -183,23 +183,20 @@ a tactic (DELIVERED P3); rollout closed 2026-11-04 (all 13
 deferred sites converted: TransformAdd, SelectionSort ×2,
 MergeSort ×2, MergeRuns ×8);
 R/S program-level memory-threading stays prose at two uses;
-first triple-level store customer earns a
-rule; a fully framed spine waits for an actual multi-cell
+the program-level store rule landed with its first customer
+(`htripleProg_vecSet_at` + `hoare_vecSetSwap`, DELIVERED H4 —
+further store-heavy triples compose rather than re-prove);
+a fully framed spine waits for an actual multi-cell
 caller (P2-M2 was one — delivered). The trailing `return_`
 seq equation landed (P3f, DELIVERED). A gallery per new
 admitted shape, as always (J/H/L-ptr instances landed with
 their slices).
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Triple-level store rule: still waiting on
-   its first customer (loops with stores contain calls, so
-   they live at prog level — H1 cell-kit audit). Next
-   store-heavy triple frames the rule; no proactive
-   abstraction.
-2. Gallery maintenance + `cir_fold_end` coverage for new
-   emitters (each new slice converts its tail positions;
-   no new tactics until a third use lands).
-3. R/S program-level threading decision: still prose at two
+1. (Recommended) Gallery maintenance + `cir_fold_end`
+   coverage for new emitters (each new slice converts its
+   tail positions; no new tactics until a third use lands).
+2. R/S program-level threading decision: still prose at two
    uses (`revMemStore_ok` + per-file bridges). The third
    use forces the call — package like the store leg, or keep
    prose; no tactic without three user-goal uses (rule of

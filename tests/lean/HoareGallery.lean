@@ -10,6 +10,7 @@
 -- is the check.
 import Circe.Hoare.Def
 import Circe.Hoare.Rules
+import Circe.Hoare.Vec
 import Circe.Emit.AliasCond
 import Circe.Emit.CondPair
 import Circe.Transfer.VecReverse
@@ -943,8 +944,9 @@ example : ∃ ρ' m' hd', memEvalStmtFuel 10 pushFrontFunc.body
     gallery triples at one point each (the proofs themselves are
     compile-gated): the two-cell incr, `alias_cond` under both
     guard values over the real emitted body, the countdown
-    from 3, the read-only sum loop over `[1,2,3,4]`, and the
-    in-place increment over `[1,2,3]`. -/
+    from 3, the read-only sum loop over `[1,2,3,4]`, the
+    in-place increment over `[1,2,3]`, and the `vecSet` swap
+    pair over `[1,2,3]` with the framed cell intact. -/
 def main : IO Unit := do
   let mut passed := 0
   -- Two-cell incr: `pa=10, pb=20` → `pa=11, pb=21`.
@@ -1264,6 +1266,30 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: listrev failed: {(repr e).pretty}")
+  -- `vecSet` swap pair over `[1,2,3]` exits with `[3,2,1]` and the
+  -- framed cell intact (executable shadow of `hoare_vecSetSwap`).
+  let swM : Mem := ⟨8, [(7, ⟨9, true, [42]⟩),
+    (0, ⟨0, true, [(3 : BitVec 32), 1, 2, 3]⟩)], []⟩
+  let swPi : Layout := [("v", 0, 0), ("w", 7, 9)]
+  let swRho : Env := [("v", .stdVecVal [1, 2, 3]),
+    ("i", .u64 0), ("j", .u64 2), ("a", .i32 1), ("b", .i32 3)]
+  match memEvalProgStmt vecReverseProg 20
+      (.seq (.vecSet "v" (.var "i") (.var "b"))
+        (.vecSet "v" (.var "j") (.var "a"))) swRho swM swPi with
+  | .ok ((ρ', m', _), .fellThrough) =>
+    match envLookup ρ' "v", memFind m' 7 with
+    | some (.stdVecVal got), some ⟨9, true, [w]⟩ =>
+      if got != [3, 2, 1] || w != 42 then
+        throw (IO.userError
+          s!"hoare-gallery: vecSet swap got={got.map (·.toInt)}, want [3,2,1] with frame")
+      else passed := passed + 1
+    | _, _ =>
+      throw (IO.userError "hoare-gallery: vecSet swap lost state")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: vecSet swap want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: vecSet swap failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix
@@ -1704,6 +1730,107 @@ theorem hoare_reverseSwap (F : Nat)
       hinv hiN hjN hlt ha hb hn64 hv hi hj hlay hmem
   exact ⟨ρ', m', π₀, .fellThrough, heval, rfl,
     ρ', m', π₀, rfl, hv', hi', hj', hlay, hmem', hinv'⟩
+
+/-- Swap-pair store leg as two `vecSet` rule applications: the
+    store pair at the heart of `vecReverseBody`, composed with
+    `htripleProg_seq_at` (first customer of
+    `htripleProg_vecSet_at`). The first triple is weakened to the
+    bare mid-state; the second triple's memory premises replay the
+    store equations rather than the first triple's post. -/
+theorem hoare_vecSetSwap (F : Nat)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (iB jB : BitVec 64)
+    (m₁ m₂ : Mem) (ρ₁ ρ₂ : Env)
+    (b : Addr) (t₂ : Nat) (qv : BitVec 32)
+    (hi : envLookup ρ "i" = some (.u64 iB)) (hiN : iB.toNat = 0)
+    (hj : envLookup ρ "j" = some (.u64 jB)) (hjN : jB.toNat = 2)
+    (ha : envLookup ρ "a" = some (.i32 1))
+    (hb : envLookup ρ "b" = some (.i32 3))
+    (hv : envLookup ρ "v" = some (.stdVecVal [1, 2, 3]))
+    (hlay : layoutLookup π "v" = some (0, 0))
+    (hmem : memFind m 0 = some ⟨0, true, [(3 : BitVec 32), 1, 2, 3]⟩)
+    (hs1 : memStore m 0 0 (iB.toNat + 1) 3 = .ok m₁)
+    (hu1 : envUpdate ρ "v" (.stdVecVal ([1, 2, 3].set iB.toNat 3)) = some ρ₁)
+    (hs2 : memStore m₁ 0 0 (jB.toNat + 1) 1 = .ok m₂)
+    (hu2 : envUpdate ρ₁ "v" (.stdVecVal ([3, 2, 3].set jB.toNat 1)) = some ρ₂)
+    (hq : cellAt m b t₂ qv) (hne : b ≠ 0) :
+    HTripleProgAt vecReverseProg F (fun st => st = (ρ, m, π))
+      (.seq (.vecSet "v" (.var "i") (.var "b"))
+        (.vecSet "v" (.var "j") (.var "a")))
+      (fun st o => st = (ρ₂, m₂, π) ∧ o = .fellThrough ∧
+        vecSnapshot "v" [3, 2, 1] st ∧ cellAt m₂ b t₂ qv) := by
+  have hev_i : memEvalExpr (.var "i") ρ m π = .ok (.u64 iB) :=
+    (memEvalExpr_var _ _ _ _).trans (evalExpr_var_hit _ _ _ hi)
+  have hev_b : memEvalExpr (.var "b") ρ m π = .ok (.i32 3) :=
+    (memEvalExpr_var _ _ _ _).trans (evalExpr_var_hit _ _ _ hb)
+  have hget₁ : [1, 2, 3][iB.toNat]? = some (1 : BitVec 32) := by
+    rw [hiN]; decide
+  have hn3 : (3 : BitVec 32) = BitVec.ofNat 32 [1, 2, 3].length := by
+    decide
+  have t1 := htripleProg_vecSet_at vecReverseProg F "v" (.var "i") (.var "b")
+    ρ m π iB 3 0 0 [1, 2, 3] 1 3 m₁ ρ₁ b t₂ qv
+    hev_i hev_b hv hlay hget₁ hmem hn3 hs1 hu1 hq hne
+  have t1w : HTripleProgAt vecReverseProg F (fun st => st = (ρ, m, π))
+      (.vecSet "v" (.var "i") (.var "b"))
+      (fun st o => o = .fellThrough ∧ st = (ρ₁, m₁, π)) := by
+    intro ρ₀ m₀ π₀ hP
+    obtain ⟨ρ', m', π', o, hev, hst, hft, hsnap, hfr⟩ :=
+      t1 ρ₀ m₀ π₀ hP
+    exact ⟨ρ', m', π', o, hev, hft, hst⟩
+  have hj₁ : envLookup ρ₁ "j" = some (.u64 jB) := by
+    rw [envLookup_update_miss _ _ _ _ _
+      (show ("j" : String) ≠ "v" by decide) hu1]
+    exact hj
+  have ha₁ : envLookup ρ₁ "a" = some (.i32 1) := by
+    rw [envLookup_update_miss _ _ _ _ _
+      (show ("a" : String) ≠ "v" by decide) hu1]
+    exact ha
+  have hev_j : memEvalExpr (.var "j") ρ₁ m₁ π = .ok (.u64 jB) :=
+    (memEvalExpr_var _ _ _ _).trans (evalExpr_var_hit _ _ _ hj₁)
+  have hev_a : memEvalExpr (.var "a") ρ₁ m₁ π = .ok (.i32 1) :=
+    (memEvalExpr_var _ _ _ _).trans (evalExpr_var_hit _ _ _ ha₁)
+  have hset₁ : ([1, 2, 3] : List (BitVec 32)).set iB.toNat 3
+      = [3, 2, 3] := by
+    rw [hiN]; decide
+  have hvec₂ : envLookup ρ₁ "v" = some (.stdVecVal [3, 2, 3]) := by
+    rw [← hset₁]
+    exact envLookup_update_hit _ _ _ _ hu1
+  have hget₂ : [3, 2, 3][jB.toNat]? = some (3 : BitVec 32) := by
+    rw [hjN]; decide
+  have hs1' : memStore m 0 0 1 3 = .ok m₁ := by
+    have h := hs1
+    rw [hiN] at h
+    exact h
+  have hmem₂ : memFind m₁ 0 = some ⟨0, true, [(3 : BitVec 32), 3, 2, 3]⟩ := by
+    have hc : cellsAt m 0 0 ([(3 : BitVec 32), 1, 2, 3]) := hmem
+    have h := memFind_cellsAt_store m 0 0 1 [(3 : BitVec 32), 1, 2, 3] 3
+      m₁ hc (by decide) hs1'
+    have e : ([(3 : BitVec 32), 1, 2, 3]).set 1 3 = [3, 3, 2, 3] := by
+      decide
+    rw [e] at h
+    exact h
+  have hn₂ : (3 : BitVec 32) = BitVec.ofNat 32 [3, 2, 3].length := by
+    decide
+  have hq₂ : cellAt m₁ b t₂ qv := by
+    unfold cellAt
+    rw [memFind_memStore_other _ _ 0 b 0 (iB.toNat + 1) _ hs1 hne]
+    exact hq
+  have hset₂ : ([3, 2, 3] : List (BitVec 32)).set jB.toNat 1
+      = [3, 2, 1] := by
+    rw [hjN]; decide
+  have t2 := htripleProg_vecSet_at vecReverseProg F "v" (.var "j") (.var "a")
+    ρ₁ m₁ π jB 1 0 0 [3, 2, 3] 3 3 m₂ ρ₂ b t₂ qv
+    hev_j hev_a hvec₂ hlay hget₂ hmem₂ hn₂ hs2 hu2 hq₂ hne
+  have t2' : HTripleProgAt vecReverseProg F (fun st => st = (ρ₁, m₁, π))
+      (.vecSet "v" (.var "j") (.var "a"))
+      (fun st o => st = (ρ₂, m₂, π) ∧ o = .fellThrough ∧
+        vecSnapshot "v" [3, 2, 1] st ∧ cellAt m₂ b t₂ qv) := by
+    intro ρ₀ m₀ π₀ hP
+    obtain ⟨ρ', m', π', o, hev, hst, hft, hsnap, hfr⟩ :=
+      t2 ρ₀ m₀ π₀ hP
+    rw [hset₂] at hsnap
+    exact ⟨ρ', m', π', o, hev, hst, hft, hsnap, hfr⟩
+  exact htripleProg_seq_at vecReverseProg F _ _ _ _ _ t1w t2'
 
 /-- `ult` guard evaluation for the `i`/`j` countdown environment
     (first use, prose-note stage: the same `ult_agree` + `var` +

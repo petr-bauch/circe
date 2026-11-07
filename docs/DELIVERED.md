@@ -1236,6 +1236,39 @@ assertions shipped in §A below (`cellsAt`).
 - Acceptance: Hoare files warning-free, galleries sorry-free,
 658 jobs TEST-OK (`HOAREGALLERY-OK passed=6`).
 
+### H4. Program-level `vecSet` store rule + swap gallery — DONE (2026-11-07)
+
+Roadmap proposed goal #1. The `HTripleProg` rule family had no
+store leg (loops with stores contain calls, so they live at
+prog level where frame was definitional per F3) — every
+`vecSet` proof re-threaded the store equation by hand (R/S/T
+galleries, P2 drain transfers). H4a: `htripleProg_vecSet_at`
+(fixed fuel) + `htripleProg_vecSet` (`∀ F`) in
+`Circe/Hoare/Vec.lean`, beside the snapshot vocabulary —
+thin wrappers over `memEvalStmtFuel_vecSet`, no new
+semantics, no `Transfer` import. Pre takes the `vecSnapshot`
+footprint plus a framed `cellAt` with an explicit
+address-distinctness premise (`hne`); post re-pins the
+snapshot via `memStore_cellsAt_pin` (store lands at `i+1`,
+length word untouched) and carries the framed cell via
+`memFind_memStore_other`. First-order premises only, per the
+standing ergonomics rules. H4b: first customer
+`hoare_vecSetSwap` in `tests/lean/HoareGallery.lean` — the
+`vecReverseBody` store pair as two rule applications composed
+with `htripleProg_seq_at` (first triple weakened to the bare
+mid-state; second triple's memory premises replay the store
+equations). The existing `hoare_reverseWhileProg` is kept as
+is: the swap pair needs no assign/call rules, and adding them
+just for the rewrite would be scope creep — measured line
+delta recorded here rather than paid. Closed instance runs
+the pair over `[1,2,3]` → `[3,2,1]` with the framed cell
+intact; driver `hoare-gallery` grows to 19 counted passes
+over 17 check sites. Tamper probe (report-only): aliased
+frame (`b = a`) leaves `hne` unprovable (`decide` refutes
+`0 ≠ 0`), so the rule cannot apply.
+- Acceptance: Hoare files warning-free, gallery sorry-free,
+591 jobs TEST-OK (`HOAREGALLERY-OK passed=19`).
+
 ### A. Whole-list assertions + read-only sum loop — DONE (2026-10-14)
 
 A1: `cellsAt m a t l := memFind m a = some ⟨t, true, l⟩` in
