@@ -3053,6 +3053,62 @@ def emitVecUnionSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_difference`. The mirror is the two-cursor
+    sorted-range difference over the reified words plus the single
+    survivor drain (cf. emitted `{name}_fwd`); edges carry ground
+    truth (overlap, disjoint, empty input, duplicate max-count
+    remainder, negatives, singleton hit). -/
+def emitVecDifferenceSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b, out)` records the elements of the sorted `a` absent from the sorted `b` into the caller-sized `out` (`std::set_difference` idiom with max-count multiplicity). Base body reference: the same scan plus survivor drain on the reified words (cf. emitted `{name}_fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (la lb : List (BitVec 32)) (lo : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match main la lb lo (la.length + lb.length + 1) 0 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (i, _, w, lo₁) =>\n"
+  ++ "    match drain la lo₁ (la.length - i) i w with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, w₂, _) => .ok w₂\n"
+  ++ "where\n"
+  ++ "  main : List (BitVec 32) → List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lb, lo, 0, i, j, w => .ok (i, j, w, lo)\n"
+  ++ "  | la, lb, lo, fuel + 1, i, j, w =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      if j < lb.length then\n"
+  ++ "        match la[i]?, lb[j]? with\n"
+  ++ "        | some x, some y =>\n"
+  ++ "          if x.slt y then main la lb (lo.set w x) fuel (i + 1) j (w + 1)\n"
+  ++ "          else if y.slt x then main la lb lo fuel i (j + 1) w\n"
+  ++ "          else main la lb lo fuel (i + 1) (j + 1) w\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "      else .ok (i, j, w, lo)\n"
+  ++ "    else .ok (i, j, w, lo)\n"
+  ++ "  drain : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, i, w => .ok (i, w, lo)\n"
+  ++ "  | la, lo, fuel + 1, i, w =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      match la[i]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some x =>\n"
+  ++ "        match lo[w]? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some _ => drain la (lo.set w x) fuel (i + 1) (w + 1)\n"
+  ++ "    else .ok (i, w, lo)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: overlap, disjoint, empty input, duplicate max-count remainder, negatives, singleton hit. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32) × List (BitVec 32)) × Result Nat) :=\n"
+  ++ "  [(([1, 2, 3, 4], [2, 4, 6], [0, 0, 0, 0]), .ok 2),\n"
+  ++ "   (([1, 3, 5], [2, 4, 6], [0, 0, 0]), .ok 3),\n"
+  ++ "   (([], [1, 2], [0, 0]), .ok 0),\n"
+  ++ "   (([5, 5, 7], [5, 7, 7], [0, 0, 0]), .ok 1),\n"
+  ++ "   (([-3, -1, 2], [-1, 2, 5], [0, 0, 0]), .ok 1),\n"
+  ++ "   (([7], [7], [9]), .ok 0)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2.1 t.1.2.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `vec_copy_if`. The mirror is the read-cursor
     filter over the reified words (cf. emitted `{name}_fwd`);
     edges carry ground truth (keeps, all-dropped, empty input,

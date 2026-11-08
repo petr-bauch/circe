@@ -1733,6 +1733,49 @@ def emitVecUnionText (name : String) : String :=
   ++ "        | some _ => drainB lb (lo.set w y) fuel (j + 1) (w + 1)\n"
   ++ "    else .ok (j, w, lo)\n"
 
+/-- Render the `vec_difference` entry forward definition: the
+    two-cursor sorted-range scan over the reified words, recording
+    `a`-only heads (`std::set_difference` idiom with max-count
+    multiplicity) into the caller-sized record, then the single
+    survivor drain; returns the survivor count (short-`out` is loud
+    `AssertFail`). -/
+def emitVecDifferenceText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (two-cursor sorted-range difference over the reified words; the `std::set_difference` idiom on sorted inputs with max-count multiplicity; caller-sized record; returns the survivor count). -/\n"
+  ++ s!"def {name}_fwd (la lb : List (BitVec 32)) (lo : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match main la lb lo (la.length + lb.length + 1) 0 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (i, _, w, lo₁) =>\n"
+  ++ "    match drain la lo₁ (la.length - i) i w with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (_, w₂, _) => .ok w₂\n"
+  ++ "where\n"
+  ++ "  main : List (BitVec 32) → List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lb, lo, 0, i, j, w => .ok (i, j, w, lo)\n"
+  ++ "  | la, lb, lo, fuel + 1, i, j, w =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      if j < lb.length then\n"
+  ++ "        match la[i]?, lb[j]? with\n"
+  ++ "        | some x, some y =>\n"
+  ++ "          if x.slt y then main la lb (lo.set w x) fuel (i + 1) j (w + 1)\n"
+  ++ "          else if y.slt x then main la lb lo fuel i (j + 1) w\n"
+  ++ "          else main la lb lo fuel (i + 1) (j + 1) w\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "      else .ok (i, j, w, lo)\n"
+  ++ "    else .ok (i, j, w, lo)\n"
+  ++ "  drain : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, i, w => .ok (i, w, lo)\n"
+  ++ "  | la, lo, fuel + 1, i, w =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      match la[i]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some x =>\n"
+  ++ "        match lo[w]? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some _ => drain la (lo.set w x) fuel (i + 1) (w + 1)\n"
+  ++ "    else .ok (i, w, lo)\n"
+
 /-- Render the `vec_copy_if` entry forward definition: the
     read-cursor scan over the reified words, recording non-`x`
     elements into the caller-sized record; returns the survivor

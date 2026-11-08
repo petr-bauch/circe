@@ -25,6 +25,7 @@ import Circe.Emit
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecUnion
+import Circe.Emit.VecDifference
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecUnique
 import Circe.Tactics
@@ -7419,6 +7420,647 @@ theorem vecUnionFwd_correct (la lb lo : List (BitVec 32))
       omega
     rw [← htake, hfin]
   exact ⟨hfin, hsortedB, hcnt⟩
+
+/-! ## P2-M15: sorted-range difference (`set_difference`) oracle -/
+
+/-- Independent `set_difference`: a strictly smaller left head is
+    recorded and the left cursor advances; a strictly smaller
+    right head advances only the right cursor; equal heads
+    advance both and record nothing (extra left copies beyond
+    the right count survive). -/
+def differenceOracle : List (BitVec 32) → List (BitVec 32) →
+    List (BitVec 32)
+  | [], _ => []
+  | l, [] => l
+  | x :: xs, y :: ys =>
+    if x.slt y then x :: differenceOracle xs (y :: ys)
+    else if y.slt x then differenceOracle (x :: xs) ys
+    else differenceOracle xs ys
+termination_by la lb => la.length + lb.length
+
+/-- Oracle head step, take-left: a strictly smaller left head is
+    recorded and the left cursor advances. -/
+theorem differenceOracle_takeLeft (x y : BitVec 32)
+    (xs ys : List (BitVec 32))
+    (hlt : (x.slt y) = true) :
+    differenceOracle (x :: xs) (y :: ys) =
+      x :: differenceOracle xs (y :: ys) := by
+  simp [differenceOracle, hlt]
+
+/-- Oracle head step, advance-right: a strictly smaller right
+    head advances only the right cursor. -/
+theorem differenceOracle_advRight (x y : BitVec 32)
+    (xs ys : List (BitVec 32))
+    (hne : (x.slt y) = false) (hgt : (y.slt x) = true) :
+    differenceOracle (x :: xs) (y :: ys) =
+      differenceOracle (x :: xs) ys := by
+  simp [differenceOracle, hne, hgt]
+
+/-- Oracle head step, skip-both: mutually-non-smaller heads
+    advance both sides and record nothing. -/
+theorem differenceOracle_skipBoth (x y : BitVec 32)
+    (xs ys : List (BitVec 32))
+    (hge1 : (x.slt y) = false) (hge2 : (y.slt x) = false) :
+    differenceOracle (x :: xs) (y :: ys) =
+      differenceOracle xs ys := by
+  simp [differenceOracle, hge1, hge2]
+
+/-- Forward conservation + sortedness: the recorded prefix plus
+    the oracle of the remaining suffixes always equals the
+    initial record plus the whole oracle; the record stays
+    sorted; the capacity invariant is preserved. Only the
+    take-left leg writes (so capacity counts left remainder
+    only); the advance-right and skip-both legs narrow the
+    suffixes silently. Fuel induction threading one forward step
+    per branch (the oracle unfolds in lockstep with the cursor
+    move). -/
+theorem differenceMainFwd_ok (la lb lo : List (BitVec 32)) (G i j w : Nat)
+    (Z : List (BitVec 32)) (i' j' w' : Nat) (lo' : List (BitVec 32))
+    (hsA : SortedSeg la 0 la.length) (hsB : SortedSeg lb 0 lb.length)
+    (hsO : SortedSeg lo 0 w)
+    (hcrossA : ∀ p, p < w → ∀ a, lo[p]? = some a →
+      ∀ q, i ≤ q → q < la.length → ∀ b, la[q]? = some b →
+      (b.slt a) = false)
+    (hcrossB : ∀ p, p < w → ∀ a, lo[p]? = some a →
+      ∀ q, j ≤ q → q < lb.length → ∀ b, lb[q]? = some b →
+      (b.slt a) = false)
+    (hcap : w + (la.length - i) ≤ lo.length)
+    (hZ : lo.take w ++ differenceOracle (la.drop i) (lb.drop j) =
+      Z ++ differenceOracle la lb)
+    (hfwd : differenceMainFwd la lb lo G i j w = .ok (i', j', w', lo')) :
+    (lo'.take w' ++ differenceOracle (la.drop i') (lb.drop j') =
+      Z ++ differenceOracle la lb) ∧
+    SortedSeg lo' 0 w' ∧
+    w' + (la.length - i') ≤ lo'.length ∧
+    (∀ p, p < w' → ∀ a, lo'[p]? = some a →
+      ∀ q, i' ≤ q → q < la.length → ∀ b, la[q]? = some b →
+      (b.slt a) = false) ∧
+    (∀ p, p < w' → ∀ a, lo'[p]? = some a →
+      ∀ q, j' ≤ q → q < lb.length → ∀ b, lb[q]? = some b →
+      (b.slt a) = false) := by
+  induction G generalizing la lb lo i j w Z with
+  | zero =>
+    have hpair : (i, j, w, lo) = (i', j', w', lo') := by
+      simpa [differenceMainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+    exact ⟨hZ, hsO, hcap, hcrossA, hcrossB⟩
+  | succ G ih =>
+    by_cases hltA : i < la.length
+    · by_cases hltB : j < lb.length
+      · obtain ⟨x, hgetA⟩ : ∃ x, la[i]? = some x :=
+          ⟨_, List.getElem?_eq_getElem hltA⟩
+        obtain ⟨y, hgetB⟩ : ∃ y, lb[j]? = some y :=
+          ⟨_, List.getElem?_eq_getElem hltB⟩
+        have hdropA : la.drop i = x :: la.drop (i + 1) :=
+          drop_cons_of_getElem? la i x hgetA
+        have hdropB : lb.drop j = y :: lb.drop (j + 1) :=
+          drop_cons_of_getElem? lb j y hgetB
+        by_cases hlt : (x.slt y) = true
+        · have hfwd' : differenceMainFwd la lb (lo.set w x) G (i + 1) j
+              (w + 1) = .ok (i', j', w', lo') := by
+            simpa [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+              hgetA, hgetB, hlt] using hfwd
+          have hstep : differenceOracle (la.drop i) (lb.drop j) =
+              x :: differenceOracle (la.drop (i + 1)) (lb.drop j) := by
+            rw [hdropA, hdropB, differenceOracle_takeLeft _ _ _ _ hlt]
+          have hwlt : w < lo.length := by omega
+          have htake : ((lo.set w x).take (w + 1)) =
+              (lo.take w) ++ [x] := take_set_succ lo w x hwlt
+          have hZ' : (lo.set w x).take (w + 1) ++
+              differenceOracle (la.drop (i + 1)) (lb.drop j) =
+              Z ++ differenceOracle la lb := by
+            have hZZ := hZ
+            rw [hstep] at hZZ
+            rw [htake, List.append_assoc, List.cons_append,
+              List.nil_append]
+            exact hZZ
+          have hsorted1 : SortedSeg (lo.set w x) 0 (w + 1) :=
+            sortedSeg_snoc lo 0 w x hsO
+              (fun p _ hpk a ha =>
+                hcrossA p hpk a ha i (Nat.le_refl _) hltA x hgetA)
+              hwlt
+          have hcrossA' : ∀ p, p < w + 1 → ∀ a,
+              ((lo.set w x)[p]? : Option (BitVec 32)) = some a →
+              ∀ q, i + 1 ≤ q → q < la.length → ∀ b, la[q]? = some b →
+              (b.slt a) = false := by
+            intro p hpw a ha q hiq hqm b hb
+            by_cases hpk : p = w
+            · rw [hpk] at ha
+              have hax : a = x := by
+                have hget := List.getElem?_set_self hwlt (a := x)
+                rw [hget] at ha
+                exact (Option.some_inj.mp ha).symm
+              rw [hax]
+              exact hsA i q (by omega) (by omega) (by omega) x b
+                hgetA hb
+            · have ha' : lo[p]? = some a := by
+                have h1 : (((lo.set w x)[p]? : Option (BitVec 32))) =
+                    lo[p]? := by
+                  rw [List.getElem?_set_ne (show w ≠ p by omega)]
+                rw [h1] at ha
+                exact ha
+              exact hcrossA p (by omega) a ha' q (by omega) hqm b hb
+          have hcrossB' : ∀ p, p < w + 1 → ∀ a,
+              ((lo.set w x)[p]? : Option (BitVec 32)) = some a →
+              ∀ q, j ≤ q → q < lb.length → ∀ b, lb[q]? = some b →
+              (b.slt a) = false := by
+            intro p hpw a ha q hjq hqm b hb
+            by_cases hpk : p = w
+            · rw [hpk] at ha
+              have hax : a = x := by
+                have hget := List.getElem?_set_self hwlt (a := x)
+                rw [hget] at ha
+                exact (Option.some_inj.mp ha).symm
+              rw [hax]
+              by_cases heq : q = j
+              · subst heq
+                have hbyy : b = y := by
+                  rw [hgetB] at hb
+                  exact (Option.some_inj.mp hb).symm
+                rw [hbyy]
+                have hirr : (y.slt y) = false := by
+                  have e : ¬ y.toInt < y.toInt := by omega
+                  simpa [BitVec.slt_eq_decide] using e
+                exact slt_lt_ge_trans hlt hirr
+              · have hby : (b.slt y) = false :=
+                  hsB j q (by omega) (by omega) (by omega) y b
+                    hgetB hb
+                exact slt_lt_ge_trans hlt hby
+            · have ha' : lo[p]? = some a := by
+                have h1 : (((lo.set w x)[p]? : Option (BitVec 32))) =
+                    lo[p]? := by
+                  rw [List.getElem?_set_ne (show w ≠ p by omega)]
+                rw [h1] at ha
+                exact ha
+              exact hcrossB p (by omega) a ha' q hjq hqm b hb
+          have hcap' : (w + 1) + (la.length - (i + 1)) ≤
+              (lo.set w x).length := by
+            rw [List.length_set]; omega
+          obtain ⟨hcons, hsorted, hcapI, hcrossAfin, hcrossBfin⟩ :=
+            ih (la := la) (lb := lb) (lo := (lo.set w x))
+              (i := i + 1) (j := j) (w := w + 1) (Z := Z)
+              (hsA := hsA) (hsB := hsB) (hsO := hsorted1)
+              (hcrossA := hcrossA') (hcrossB := hcrossB')
+              (hcap := hcap') (hZ := hZ') (hfwd := hfwd')
+          exact ⟨hcons, hsorted, hcapI, hcrossAfin, hcrossBfin⟩
+        · by_cases hgt : (y.slt x) = true
+          · have hne : (x.slt y) = false := by
+              cases hxy : x.slt y with
+              | true => exact absurd hxy hlt
+              | false => rfl
+            have hfwd' : differenceMainFwd la lb lo G i (j + 1) w =
+                .ok (i', j', w', lo') := by
+              simpa [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+                hgetA, hgetB, hne, hgt] using hfwd
+            have hstep : differenceOracle (la.drop i) (lb.drop j) =
+                differenceOracle (la.drop i) (lb.drop (j + 1)) := by
+              rw [hdropA, hdropB,
+                differenceOracle_advRight _ _ _ _ hne hgt]
+            have hZ' : lo.take w ++
+                differenceOracle (la.drop i) (lb.drop (j + 1)) =
+                Z ++ differenceOracle la lb := by
+              have hZZ := hZ
+              rw [hstep] at hZZ
+              exact hZZ
+            have hcrossB' : ∀ p, p < w → ∀ a, lo[p]? = some a →
+                ∀ q, j + 1 ≤ q → q < lb.length → ∀ b, lb[q]? = some b →
+                (b.slt a) = false := by
+              intro p hpw a ha q hjq hqm b hb
+              exact hcrossB p hpw a ha q (by omega) hqm b hb
+            obtain ⟨hcons, hsorted, hcapI, hcrossAfin, hcrossBfin⟩ :=
+              ih (la := la) (lb := lb) (lo := lo)
+                (i := i) (j := j + 1) (w := w) (Z := Z)
+                (hsA := hsA) (hsB := hsB) (hsO := hsO)
+                (hcrossA := hcrossA) (hcrossB := hcrossB')
+                (hcap := hcap) (hZ := hZ') (hfwd := hfwd')
+            exact ⟨hcons, hsorted, hcapI, hcrossAfin, hcrossBfin⟩
+          · have hge1 : (x.slt y) = false := by
+              cases hxy : x.slt y with
+              | true => exact absurd hxy hlt
+              | false => rfl
+            have hge2 : (y.slt x) = false := by
+              cases hyx : y.slt x with
+              | true => exact absurd hyx hgt
+              | false => rfl
+            have hfwd' : differenceMainFwd la lb lo G (i + 1) (j + 1) w =
+                .ok (i', j', w', lo') := by
+              simpa [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+                hgetA, hgetB, hge1, hge2] using hfwd
+            have hstep : differenceOracle (la.drop i) (lb.drop j) =
+                differenceOracle (la.drop (i + 1)) (lb.drop (j + 1)) := by
+              rw [hdropA, hdropB,
+                differenceOracle_skipBoth _ _ _ _ hge1 hge2]
+            have hZ' : lo.take w ++
+                differenceOracle (la.drop (i + 1)) (lb.drop (j + 1)) =
+                Z ++ differenceOracle la lb := by
+              have hZZ := hZ
+              rw [hstep] at hZZ
+              exact hZZ
+            have hcrossA' : ∀ p, p < w → ∀ a, lo[p]? = some a →
+                ∀ q, i + 1 ≤ q → q < la.length → ∀ b, la[q]? = some b →
+                (b.slt a) = false := by
+              intro p hpw a ha q hiq hqm b hb
+              exact hcrossA p hpw a ha q (by omega) hqm b hb
+            have hcrossB' : ∀ p, p < w → ∀ a, lo[p]? = some a →
+                ∀ q, j + 1 ≤ q → q < lb.length → ∀ b, lb[q]? = some b →
+                (b.slt a) = false := by
+              intro p hpw a ha q hjq hqm b hb
+              exact hcrossB p hpw a ha q (by omega) hqm b hb
+            have hcap' : w + (la.length - (i + 1)) ≤ lo.length := by
+              omega
+            obtain ⟨hcons, hsorted, hcapI, hcrossAfin, hcrossBfin⟩ :=
+              ih (la := la) (lb := lb) (lo := lo)
+                (i := i + 1) (j := j + 1) (w := w) (Z := Z)
+                (hsA := hsA) (hsB := hsB) (hsO := hsO)
+                (hcrossA := hcrossA') (hcrossB := hcrossB')
+                (hcap := hcap') (hZ := hZ') (hfwd := hfwd')
+            exact ⟨hcons, hsorted, hcapI, hcrossAfin, hcrossBfin⟩
+      · have hpair : (i, j, w, lo) = (i', j', w', lo') := by
+          have hnegB : ¬ j < lb.length := by omega
+          simpa [differenceMainFwd, dite_eq_left hltA,
+            dite_eq_right hnegB] using hfwd
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+        exact ⟨hZ, hsO, hcap, hcrossA, hcrossB⟩
+    · have hpair : (i, j, w, lo) = (i', j', w', lo') := by
+        have hnegA : ¬ i < la.length := by omega
+        simpa [differenceMainFwd, dite_eq_right hnegA] using hfwd
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+      exact ⟨hZ, hsO, hcap, hcrossA, hcrossB⟩
+
+/-- Main-scan exhaustion: with exact fuel the scan runs until a
+    cursor reaches its end. -/
+theorem differenceMainFwd_exhausted (la lb lo : List (BitVec 32))
+    (G i j w : Nat)
+    (i' j' w' : Nat) (lo' : List (BitVec 32))
+    (hile : i ≤ la.length) (hjle : j ≤ lb.length)
+    (hF : (la.length - i) + (lb.length - j) ≤ G)
+    (hfwd : differenceMainFwd la lb lo G i j w = .ok (i', j', w', lo')) :
+    i' = la.length ∨ j' = lb.length := by
+  induction G generalizing la lb lo i j w with
+  | zero =>
+    have hpair : (i, j, w, lo) = (i', j', w', lo') := by
+      simpa [differenceMainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+    left; omega
+  | succ G ih =>
+    by_cases hltA : i < la.length
+    · by_cases hltB : j < lb.length
+      · obtain ⟨x, hgetA⟩ : ∃ x, la[i]? = some x :=
+          ⟨_, List.getElem?_eq_getElem hltA⟩
+        obtain ⟨y, hgetB⟩ : ∃ y, lb[j]? = some y :=
+          ⟨_, List.getElem?_eq_getElem hltB⟩
+        by_cases hlt : (x.slt y) = true
+        · have hfwd' : differenceMainFwd la lb (lo.set w x) G (i + 1) j
+              (w + 1) = .ok (i', j', w', lo') := by
+            simpa [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+              hgetA, hgetB, hlt] using hfwd
+          exact ih (la := la) (lb := lb) (lo := (lo.set w x))
+            (i := i + 1) (j := j) (w := w + 1) (by omega) hjle
+            (by omega) (hfwd := hfwd')
+        · by_cases hgt : (y.slt x) = true
+          · have hne : (x.slt y) = false := by
+              cases hxy : x.slt y with
+              | true => exact absurd hxy hlt
+              | false => rfl
+            have hfwd' : differenceMainFwd la lb lo G i (j + 1) w =
+                .ok (i', j', w', lo') := by
+              simpa [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+                hgetA, hgetB, hne, hgt] using hfwd
+            exact ih (la := la) (lb := lb) (lo := lo)
+              (i := i) (j := j + 1) (w := w) hile (by omega)
+              (by omega) (hfwd := hfwd')
+          · have hge1 : (x.slt y) = false := by
+              cases hxy : x.slt y with
+              | true => exact absurd hxy hlt
+              | false => rfl
+            have hge2 : (y.slt x) = false := by
+              cases hyx : y.slt x with
+              | true => exact absurd hyx hgt
+              | false => rfl
+            have hfwd' : differenceMainFwd la lb lo G (i + 1) (j + 1) w =
+                .ok (i', j', w', lo') := by
+              simpa [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+                hgetA, hgetB, hge1, hge2] using hfwd
+            exact ih (la := la) (lb := lb) (lo := lo)
+              (i := i + 1) (j := j + 1) (w := w) (by omega) (by omega)
+              (by omega) (hfwd := hfwd')
+      · have hpair : (i, j, w, lo) = (i', j', w', lo') := by
+          have hnegB : ¬ j < lb.length := by omega
+          simpa [differenceMainFwd, dite_eq_left hltA,
+            dite_eq_right hnegB] using hfwd
+        obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+        right; omega
+    · have hpair : (i, j, w, lo) = (i', j', w', lo') := by
+        have hnegA : ¬ i < la.length := by omega
+        simpa [differenceMainFwd, dite_eq_right hnegA] using hfwd
+      obtain ⟨rfl, rfl, rfl, rfl⟩ := hpair
+      left; omega
+
+/-- Forward totality: every in-bounds index failure is guarded
+    away, so the scan always succeeds with enough fuel. -/
+theorem differenceMainFwd_noFail (la lb lo : List (BitVec 32))
+    (G i j w : Nat)
+    (hile : i ≤ la.length) (hjle : j ≤ lb.length)
+    (hF : (la.length - i) + (lb.length - j) ≤ G) :
+    ∃ i' j' w' lo',
+      differenceMainFwd la lb lo G i j w = .ok (i', j', w', lo') := by
+  induction G generalizing la lb lo i j w with
+  | zero =>
+    exact ⟨i, j, w, lo, by simp [differenceMainFwd]⟩
+  | succ G ih =>
+    by_cases hltA : i < la.length
+    · by_cases hltB : j < lb.length
+      · obtain ⟨x, hgetA⟩ : ∃ x, la[i]? = some x :=
+          ⟨_, List.getElem?_eq_getElem hltA⟩
+        obtain ⟨y, hgetB⟩ : ∃ y, lb[j]? = some y :=
+          ⟨_, List.getElem?_eq_getElem hltB⟩
+        by_cases hlt : (x.slt y) = true
+        · have hstep : differenceMainFwd la lb lo (G + 1) i j w =
+              differenceMainFwd la lb (lo.set w x) G (i + 1) j
+                (w + 1) := by
+            simp [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+              hgetA, hgetB, hlt]
+          rw [hstep]
+          exact ih (la := la) (lb := lb) (lo := (lo.set w x))
+            (i := i + 1) (j := j) (w := w + 1) (by omega) hjle
+            (by omega)
+        · by_cases hgt : (y.slt x) = true
+          · have hne : (x.slt y) = false := by
+              cases hxy : x.slt y with
+              | true => exact absurd hxy hlt
+              | false => rfl
+            have hstep : differenceMainFwd la lb lo (G + 1) i j w =
+                differenceMainFwd la lb lo G i (j + 1) w := by
+              simp [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+                hgetA, hgetB, hne, hgt]
+            rw [hstep]
+            exact ih (la := la) (lb := lb) (lo := lo)
+              (i := i) (j := j + 1) (w := w) hile (by omega)
+              (by omega)
+          · have hge1 : (x.slt y) = false := by
+              cases hxy : x.slt y with
+              | true => exact absurd hxy hlt
+              | false => rfl
+            have hge2 : (y.slt x) = false := by
+              cases hyx : y.slt x with
+              | true => exact absurd hyx hgt
+              | false => rfl
+            have hstep : differenceMainFwd la lb lo (G + 1) i j w =
+                differenceMainFwd la lb lo G (i + 1) (j + 1) w := by
+              simp [differenceMainFwd, dite_eq_left hltA, dite_eq_left hltB,
+                hgetA, hgetB, hge1, hge2]
+            rw [hstep]
+            exact ih (la := la) (lb := lb) (lo := lo)
+              (i := i + 1) (j := j + 1) (w := w) (by omega) (by omega)
+              (by omega)
+      · exact ⟨i, j, w, lo, by
+          have hnegB : ¬ j < lb.length := by omega
+          simpa [differenceMainFwd, dite_eq_left hltA,
+            dite_eq_right hnegB]⟩
+    · exact ⟨i, j, w, lo, by
+        have hnegA : ¬ i < la.length := by omega
+        simpa [differenceMainFwd, dite_eq_right hnegA]⟩
+
+/-- Drain conservation: copying the left survivor suffix
+    appends exactly the remaining tail to the record. -/
+theorem differenceDrainFwd_ok (la : List (BitVec 32)) (lo : List (BitVec 32))
+    (G i w : Nat)
+    (Z : List (BitVec 32)) (i' w' : Nat) (lo' : List (BitVec 32))
+    (hsuf : SortedSeg la i la.length)
+    (hsO : SortedSeg lo 0 w)
+    (hcross : ∀ p, p < w → ∀ a, lo[p]? = some a →
+      ∀ q, i ≤ q → q < la.length → ∀ b, la[q]? = some b →
+      (b.slt a) = false)
+    (hcap : w + (la.length - i) ≤ lo.length)
+    (hZ : lo.take w ++ la.drop i = Z)
+    (hfwd : differenceDrainFwd la lo G i w = .ok (i', w', lo')) :
+    (lo'.take w' ++ la.drop i' = Z) ∧
+    SortedSeg lo' 0 w' ∧
+    w' + (la.length - i') ≤ lo'.length ∧
+    (∀ p, p < w' → ∀ a, lo'[p]? = some a →
+      ∀ q, i' ≤ q → q < la.length → ∀ b, la[q]? = some b →
+      (b.slt a) = false) := by
+  induction G generalizing la lo i w Z with
+  | zero =>
+    have hpair : (i, w, lo) = (i', w', lo') := by
+      simpa [differenceDrainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact ⟨hZ, hsO, hcap, hcross⟩
+  | succ G ih =>
+    by_cases hltA : i < la.length
+    · obtain ⟨x, hgetA⟩ : ∃ x, la[i]? = some x :=
+        ⟨_, List.getElem?_eq_getElem hltA⟩
+      have hdropA : la.drop i = x :: la.drop (i + 1) :=
+        drop_cons_of_getElem? la i x hgetA
+      have hfwd' : differenceDrainFwd la (lo.set w x) G (i + 1) (w + 1) =
+          .ok (i', w', lo') := by
+        simpa [differenceDrainFwd, dite_eq_left hltA, hgetA] using hfwd
+      have hwlt : w < lo.length := by omega
+      have htake : ((lo.set w x).take (w + 1)) =
+          (lo.take w) ++ [x] := take_set_succ lo w x hwlt
+      have hstep : lo.take w ++ la.drop i =
+          ((lo.take w) ++ [x]) ++ la.drop (i + 1) := by
+        rw [hdropA]
+        simp only [List.append_assoc, List.cons_append, List.nil_append]
+      have hZ' : (lo.set w x).take (w + 1) ++ la.drop (i + 1) = Z := by
+        rw [htake, ← hstep]; exact hZ
+      have hsorted1 : SortedSeg (lo.set w x) 0 (w + 1) :=
+        sortedSeg_snoc lo 0 w x hsO
+          (fun p _ hpk a ha =>
+            hcross p hpk a ha i (Nat.le_refl _) hltA x hgetA)
+          hwlt
+      have hcross' : ∀ p, p < w + 1 → ∀ a,
+          ((lo.set w x)[p]? : Option (BitVec 32)) = some a →
+          ∀ q, i + 1 ≤ q → q < la.length → ∀ b, la[q]? = some b →
+          (b.slt a) = false := by
+        intro p hpw a ha q hiq hqm b hb
+        by_cases hpk : p = w
+        · rw [hpk] at ha
+          have hax : a = x := by
+            have hget := List.getElem?_set_self hwlt (a := x)
+            rw [hget] at ha
+            exact (Option.some_inj.mp ha).symm
+          rw [hax]
+          exact hsuf i q (by omega) (by omega) (by omega) x b
+            hgetA hb
+        · have ha' : lo[p]? = some a := by
+            have h1 : (((lo.set w x)[p]? : Option (BitVec 32))) =
+                lo[p]? := by
+              rw [List.getElem?_set_ne (show w ≠ p by omega)]
+            rw [h1] at ha
+            exact ha
+          exact hcross p (by omega) a ha' q (by omega) hqm b hb
+      have hcap' : (w + 1) + (la.length - (i + 1)) ≤
+          (lo.set w x).length := by
+        rw [List.length_set]; omega
+      have hsuf' : SortedSeg la (i + 1) la.length := by
+        intro p q hpq1 hpq2 hpq3 a b ha hb
+        exact hsuf p q (by omega) hpq2 hpq3 a b ha hb
+      obtain ⟨hcons, hsorted, hcapI, hcrossFin⟩ :=
+        ih (la := la) (lo := (lo.set w x))
+          (i := i + 1) (w := w + 1) (Z := Z)
+          (hsuf := hsuf') (hsO := hsorted1)
+          (hcross := hcross') (hcap := hcap') (hZ := hZ')
+          (hfwd := hfwd')
+      exact ⟨hcons, hsorted, hcapI, hcrossFin⟩
+    · have hpair : (i, w, lo) = (i', w', lo') := by
+        have hnegA : ¬ i < la.length := by omega
+        simpa [differenceDrainFwd, dite_eq_right hnegA] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact ⟨hZ, hsO, hcap, hcross⟩
+
+/-- Drain totality: with fuel covering the survivor suffix, the
+    copy always succeeds. -/
+theorem differenceDrainFwd_noFail (la : List (BitVec 32))
+    (lo : List (BitVec 32)) (G i w : Nat)
+    (hF : la.length - i ≤ G) :
+    ∃ i' w' lo',
+      differenceDrainFwd la lo G i w = .ok (i', w', lo') := by
+  induction G generalizing la lo i w with
+  | zero =>
+    exact ⟨i, w, lo, by simp [differenceDrainFwd]⟩
+  | succ G ih =>
+    by_cases hltA : i < la.length
+    · obtain ⟨x, hgetA⟩ : ∃ x, la[i]? = some x :=
+        ⟨_, List.getElem?_eq_getElem hltA⟩
+      have hstep : differenceDrainFwd la lo (G + 1) i w =
+          differenceDrainFwd la (lo.set w x) G (i + 1) (w + 1) := by
+        simp [differenceDrainFwd, dite_eq_left hltA, hgetA]
+      rw [hstep]
+      exact ih (la := la) (lo := (lo.set w x))
+        (i := i + 1) (w := w + 1) (by omega)
+    · exact ⟨i, w, lo, by
+        have hnegA : ¬ i < la.length := by omega
+        simpa [differenceDrainFwd, dite_eq_right hnegA]⟩
+
+/-- Drain exhaustion: with exact fuel the copy runs the survivor
+    suffix to its end. -/
+theorem differenceDrainFwd_exhausted (la : List (BitVec 32))
+    (lo : List (BitVec 32)) (G i w : Nat)
+    (i' w' : Nat) (lo' : List (BitVec 32))
+    (hile : i ≤ la.length)
+    (hF : la.length - i ≤ G)
+    (hfwd : differenceDrainFwd la lo G i w = .ok (i', w', lo')) :
+    i' = la.length := by
+  induction G generalizing la lo i w with
+  | zero =>
+    have hpair : (i, w, lo) = (i', w', lo') := by
+      simpa [differenceDrainFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    omega
+  | succ G ih =>
+    by_cases hltA : i < la.length
+    · obtain ⟨x, hgetA⟩ : ∃ x, la[i]? = some x :=
+        ⟨_, List.getElem?_eq_getElem hltA⟩
+      have hfwd' : differenceDrainFwd la (lo.set w x) G (i + 1) (w + 1) =
+          .ok (i', w', lo') := by
+        simpa [differenceDrainFwd, dite_eq_left hltA, hgetA] using hfwd
+      exact ih (la := la) (lo := (lo.set w x))
+        (i := i + 1) (w := w + 1) (by omega) (by omega)
+        (hfwd := hfwd')
+    · have hpair : (i, w, lo) = (i', w', lo') := by
+        have hnegA : ¬ i < la.length := by omega
+        simpa [differenceDrainFwd, dite_eq_right hnegA] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      omega
+
+/-- Whole-function forward correctness: from sorted inputs and a
+    caller-sized record (`a.size()` slots), the main-plus-drain
+    scan records exactly the difference oracle, stays sorted,
+    and reports its length. The two forward runs are hypotheses
+    (the entries and the transfer feed the same runs, so no
+    determinism argument is needed). No drain-`b`: leftover
+    right elements are never recorded. -/
+theorem vecDifferenceFwd_correct (la lb : List (BitVec 32))
+    (lo : List (BitVec 32))
+    (hsA : SortedSeg la 0 la.length) (hsB : SortedSeg lb 0 lb.length)
+    (hcap0 : la.length ≤ lo.length)
+    (i j w : Nat) (lo₁ : List (BitVec 32))
+    (i₂ w₂ : Nat) (lo₂ : List (BitVec 32))
+    (hfwdM : differenceMainFwd la lb lo (la.length + lb.length + 1) 0 0 0 =
+      .ok (i, j, w, lo₁))
+    (hfwdA : differenceDrainFwd la lo₁ (la.length - i) i w =
+      .ok (i₂, w₂, lo₂)) :
+    (lo₂.take w₂ = differenceOracle la lb) ∧
+    SortedSeg lo₂ 0 w₂ ∧
+    w₂ = (differenceOracle la lb).length := by
+  have hZ0 : (lo.take 0) ++ differenceOracle (la.drop 0) (lb.drop 0) =
+      [] ++ differenceOracle la lb := by simp
+  have hsO0 : SortedSeg lo 0 0 := by
+    intro p hlo hpq hqk a b ha hb
+    have hfalse : False := by omega
+    exact hfalse.elim
+  have hcrossA0 : ∀ p, p < 0 → ∀ a, lo[p]? = some a →
+      ∀ q, 0 ≤ q → q < la.length → ∀ b, la[q]? = some b →
+      (b.slt a) = false := by
+    intro p hp
+    have hfalse : False := by omega
+    exact hfalse.elim
+  have hcrossB0 : ∀ p, p < 0 → ∀ a, lo[p]? = some a →
+      ∀ q, 0 ≤ q → q < lb.length → ∀ b, lb[q]? = some b →
+      (b.slt a) = false := by
+    intro p hp
+    have hfalse : False := by omega
+    exact hfalse.elim
+  have hcap : 0 + (la.length - 0) ≤ lo.length := by
+    simpa using hcap0
+  obtain ⟨hconsM, hsortedM, hcapM, hcrossA1, hcrossB1⟩ :=
+    differenceMainFwd_ok la lb lo (la.length + lb.length + 1) 0 0 0 [] i j
+      w lo₁ hsA hsB hsO0 hcrossA0 hcrossB0 hcap hZ0 hfwdM
+  obtain ⟨hi_le, hj_le, hw_le, hlenM⟩ :=
+    differenceMainFwd_le la lb (la.length + lb.length + 1) 0 0 0 lo i j w
+      lo₁ (by omega) (by omega) hcap hfwdM
+  obtain hexh := differenceMainFwd_exhausted la lb lo
+    (la.length + lb.length + 1) 0 0 0 i j w lo₁ (by omega) (by omega)
+    (by omega) hfwdM
+  have hsufA : SortedSeg la i la.length := by
+    intro p q hpq1 hpq2 hpq3 a b ha hb
+    exact hsA p q (by omega) hpq2 hpq3 a b ha hb
+  have hcapA0 : w + (la.length - i) ≤ lo₁.length := by omega
+  obtain ⟨hconsA, hsortedA, hcapA, hcrossA2⟩ :=
+    differenceDrainFwd_ok la lo₁ (la.length - i) i w
+      (lo₁.take w ++ la.drop i) i₂ w₂ lo₂
+      hsufA hsortedM hcrossA1 hcapA0 rfl hfwdA
+  obtain ⟨hi_le1, hw_le1, hlenA⟩ :=
+    differenceDrainFwd_le la (la.length - i) i w lo₁ i₂ w₂ lo₂
+      hi_le hcapA0 hfwdA
+  have hexhA := differenceDrainFwd_exhausted la lo₁ (la.length - i) i w
+    i₂ w₂ lo₂ hi_le (by omega) hfwdA
+  have hw₂le : w₂ ≤ lo₂.length := by omega
+  have hwle : w ≤ lo₁.length := by omega
+  -- Chain the two conservations: the drain appends the left
+  -- survivor suffix to the main-scan record.
+  have htakeA : lo₂.take w₂ = lo₁.take w ++ la.drop i := by
+    have h := hconsA
+    rw [hexhA, List.drop_length, List.append_nil] at h
+    exact h
+  have hfin : lo₂.take w₂ = differenceOracle la lb := by
+    have hM := hconsM
+    rw [List.nil_append] at hM
+    -- hM : lo₁.take w ++ differenceOracle (la.drop i) (lb.drop j) = differenceOracle la lb
+    rcases hexh with hAi | hBj
+    · rw [hAi, List.drop_length] at hM
+      -- oracle of ([], drop j) is empty
+      have hor : differenceOracle [] (lb.drop j) = [] := by
+        simp [differenceOracle]
+      rw [hor, List.append_nil] at hM
+      rw [htakeA, hAi, List.drop_length, List.append_nil]
+      exact hM
+    · rw [hBj, List.drop_length] at hM
+      have hor : differenceOracle (la.drop i) [] = la.drop i := by
+        cases e : la.drop i with
+        | nil => simp [differenceOracle, e]
+        | cons x xs => simp [differenceOracle, e]
+      rw [hor] at hM
+      rw [htakeA]
+      exact hM
+  have hcnt : w₂ = (differenceOracle la lb).length := by
+    have htake : (lo₂.take w₂).length = w₂ := by
+      rw [List.length_take]
+      have := hcapA
+      omega
+    rw [← htake, hfin]
+  exact ⟨hfin, hsortedA, hcnt⟩
 
 /-! ## P2-M12: out-of-place filter (`copy_if`) forward contract -/
 

@@ -2900,6 +2900,60 @@ def isVecUnionShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- `vec_difference` entry shape (two-cursor sorted-range
+    difference, P2-M15): two single-ref vectors plus one
+    single-ref output vector in, `u64` count out, exactly eleven
+    calls (three `size` + eight non-const `at()` — the two guard
+    reads, the two head-compare reads, the `else if` re-reads,
+    the take-left write+read, and the drain write+read), two
+    `cir.while` (the main two-pointer loop plus the left-survivor
+    drain — no drain-`b`), two `cir.if` (the three-way branch),
+    one `cir.ternary` over the `&&` guard, five `lt` compares
+    (three bound checks + two signed head compares), seven plain
+    `u64` adds (the cursor bumps). Encapsulation pins:
+    `at()`-only element traffic, no recursion, no allocation, no
+    `unreachable`, no casts; the two-`while` plus eleven-call
+    footprint separates it from `vec_union` (three `while`,
+    eighteen calls) and `vec_intersect` (one `cir.while`, eight
+    calls, no drain). -/
+def isVecDifferenceShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b, out] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType b.ctype && b.singleRef && isStdVectorType b.ctype &&
+    isPtrType out.ctype && out.singleRef && isStdVectorType out.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtMutName &&
+    !callsFunc raw.text stdVecAtName &&
+    opCount raw.text "cir.call @" == 11 &&
+    opCount raw.text "cir.while" == 2 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 5 &&
+    opCount raw.text "cir.cmp lt" == 5 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.const" == 21 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 7 &&
+    opCount raw.text "cir.load" == 37 &&
+    opCount raw.text "cir.store" == 16 &&
+    opCount raw.text "cir.add " == 7 &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName &&
+    !callsFunc raw.text stdVecRangeCheckName &&
+    !callsFunc raw.text stdVecRangeCheckThrowName &&
+    !containsSubstr raw.text "cir.cast" &&
+    !containsSubstr raw.text "cir.get_member" &&
+    !containsSubstr raw.text "cir.get_global" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @free(" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- `vec_copy_if` entry shape (out-of-place filter, P2-M12): one
     read-only vector plus one caller-sized output vector plus one
     owned `i32` in, `u64` count out, exactly four calls (one `size`

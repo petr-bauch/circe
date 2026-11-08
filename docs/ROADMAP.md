@@ -117,21 +117,18 @@ the Kadane scan, the BFS slice, the J link-chase, the
 erase-compress endpoint (P2-M9), the prefix-sum scan
 (P2-M10), the sorted-range intersection (P2-M11), the
 out-of-place filter (P2-M12), the adjacent-duplicate
-squeeze (P2-M13), the sorted-range union (P2-M14), and the
+squeeze (P2-M13), the sorted-range union (P2-M14), the
+sorted-range difference (P2-M15), and the
 G-track (G1/G1b/G2/G3/G5a/G4); see `DELIVERED.md` §§
-P2-M5–P2-M14, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
+P2-M5–P2-M15, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
 refactor (the G-track slice labels are distinct from the
 Gate rule G-labels cited under N12–N14)
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Sorted-range difference (`set_difference`):
-   the P2-M11 two-cursor scan recording only left-only heads
-   — completes the sorted set-operation trio with the same
-   record discipline and no new mechanism.
-2. Caller-record squeeze (`unique_copy`): the P2-M13
-   predecessor-kept scan writing into a caller-sized record
-   — composes the M12 out-borrow with the M13 squeeze and
-   no new mechanism.
+1. (Recommended) Caller-record squeeze (`unique_copy`): the
+   P2-M13 predecessor-kept scan writing into a caller-sized
+   record — composes the M12 out-borrow with the M13 squeeze
+   and no new mechanism.
 
 ## Pillar 3 — Human-readable/writable proofs
 

@@ -50,6 +50,7 @@ import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecUnion
+import Circe.Emit.VecDifference
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecUnique
 import Circe.Emit.Vec
@@ -1325,10 +1326,13 @@ def matchFrag : Func → Option FragKind
         ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"out", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩],
       .u 64, body⟩ =>
-    -- P2-M14 sorted-range union: three cursor lets, the two-cursor
-    -- main scan, then the two survivor drains, returning the `w`
-    -- count. Loop bodies are exact constants, compared via
-    -- `beqStmt` against the `Circe.Emit.VecUnion` fragments.
+    -- P2-M14/M15 sorted-range union/difference: three cursor
+    -- lets, the two-cursor main scan, then the survivor drain(s),
+    -- returning the `w` count. Union carries both survivor
+    -- drains; difference carries only drain-A. Loop bodies are
+    -- exact constants, compared via `beqStmt` against the
+    -- `Circe.Emit.VecUnion` / `Circe.Emit.VecDifference`
+    -- fragments.
     match body with
     | .seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
         (.seq (.let_ "j" (.u 64) (.lit (.u64 z1)))
@@ -1339,6 +1343,14 @@ def matchFrag : Func → Option FragKind
       if z0.toNat == 0 && z1.toNat == 0 && z2.toNat == 0 &&
           beqStmt main vecUnionMain && beqStmt drainA vecUnionDrainA &&
           beqStmt drainB vecUnionDrainB then some .vecUnion
+      else none
+    | .seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
+        (.seq (.let_ "j" (.u 64) (.lit (.u64 z1)))
+        (.seq (.let_ "w" (.u 64) (.lit (.u64 z2)))
+          (.seq main
+            (.seq drainA (.return_ (.var "w")))))) =>
+      if z0.toNat == 0 && z1.toNat == 0 && z2.toNat == 0 &&
+          beqStmt main vecDifferenceMain && beqStmt drainA vecDifferenceDrain then some .vecDifference
       else none
     | _ => none
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
@@ -2474,6 +2486,8 @@ theorem matchFrag_vecIntersect :
     matchFrag vecIntersectFunc = some .vecIntersect := rfl
 theorem matchFrag_vecUnion :
     matchFrag vecUnionFunc = some .vecUnion := rfl
+theorem matchFrag_vecDifference :
+    matchFrag vecDifferenceFunc = some .vecDifference := rfl
 theorem matchFrag_vecCopyIf :
     matchFrag vecCopyIfFunc = some .vecCopyIf := rfl
 theorem matchFrag_vecMinIndex :
