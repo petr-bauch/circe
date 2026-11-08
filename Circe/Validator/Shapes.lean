@@ -2612,6 +2612,62 @@ def isListClearShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Adjacent-duplicate squeeze (P1 adjacent-duplicate shape —
+    the `list_unique` shape): single `Node*` head in, `Node*`
+    out (the head, unchanged — the first node has no
+    predecessor, so it is always kept). The trailing-pointer
+    chase unlinks every node equal to its predecessor and frees
+    each victim, running to exhaustion with a single tail
+    return. One `cir.while`, one `cir.if` (drop test), one
+    `cir.ternary` (the `prev != nullptr &&` short-circuit),
+    three `cir.cmp` (two pointer `ne`, one payload `eq`), five
+    `cir.get_member` (two `[0]` payload reads — the victim and
+    the predecessor — three `[1]` link reads), four
+    `cir.const` (nulls), five allocas (the extra `next` slot),
+    18 loads / 9 stores, one `cir.return`, one `free` call.
+    The `ternary` + single `cir.if` separate it from
+    `list_filter` (two `if`, no ternary); the payload reads +
+    `free` separate it from `list_clear` (link-only, no
+    `cir.if`). -/
+def isListUniqueShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [head] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType head.ctype && ptrInner head.ctype == some "!rec_Node" &&
+    isPtrType raw.ret && ptrInner raw.ret == some "!rec_Node" &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.get_member" == 5 &&
+    opCount raw.text "[0]" == 2 &&
+    opCount raw.text "[1]" == 3 &&
+    opCount raw.text "cir.const" == 4 &&
+    opCount raw.text "cir.cast" == 1 &&
+    opCount raw.text "cir.mul" == 0 &&
+    opCount raw.text "cir.add" == 0 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 18 &&
+    opCount raw.text "cir.store" == 9 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.yield" == 3 &&
+    opCount raw.text "cir.call @" == 1 &&
+    freeCallCount raw.text == 1 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.break" == 0 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.call @malloc(" &&
+    !containsSubstr raw.text "cir.call @_Znwm" &&
+    !containsSubstr raw.text "cir.call @_ZdlPvm" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- Remove-if sweep (P1 remove-if shape — the `list_filter`
     shape): `Node*` head + `i32` payload in, `Node*` out;
     the trailing-pointer chase unlinks *every* match and frees

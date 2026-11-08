@@ -143,6 +143,7 @@ import GoldenListCopy
 import GoldenListMerge
 import GoldenListClear
 import GoldenListSortedInsert
+import GoldenListUnique
 import GoldenReborrow
 import GoldenReborrow34
 import GoldenVecRead
@@ -588,6 +589,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/ListClear.lean", "out/ListClear.lean"),
    ("tests/golden/ListSortedInsert.lean", "out/ListSortedInsert.lean"),
    ("tests/golden/ListSortedInsert_Spec.lean", "out/ListSortedInsert_Spec.lean"),
+   ("tests/golden/ListUnique.lean", "out/ListUnique.lean"),
+   ("tests/golden/ListUnique_Spec.lean", "out/ListUnique_Spec.lean"),
    ("tests/golden/ListClear_Spec.lean", "out/ListClear_Spec.lean"),
    ("tests/golden/VecAtMut.lean", "out/VecAtMut.lean"),
    ("tests/golden/VecAtMut_Spec.lean", "out/VecAtMut_Spec.lean"),
@@ -791,6 +794,7 @@ def emittedTypechecks : List String :=
    "out/ListCopy.lean",
    "out/ListClear.lean",
    "out/ListSortedInsert.lean",
+   "out/ListUnique.lean",
    "out/VecAtMut.lean",
    "out/VecIndexMut.lean",
    "out/VecCharSize.lean",
@@ -2080,6 +2084,20 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Validator/Gate.lean", "isListSortedInsertShape raw"),
      ("out/ListSortedInsert.lean", "_Z18list_sorted_insertP4Nodei_fwd"),
      ("tests/golden/ListSortedInsert.lean", "_Z18list_sorted_insertP4Nodei_fwd")]),
+   ("listunique-links",
+    [("Circe/Emit/ListUnique.lean", "theorem listUniqueFwd_correct"),
+     ("Circe/Emit/ListUnique.lean", "theorem listUniqueLoop_agree"),
+     ("Circe/Emit/ListUnique.lean", "theorem listUniqueSweep_invariant"),
+     ("Circe/Emit/ListUnique.lean", "theorem listUniqueFunc_correct"),
+     ("Circe/Emit/ListUnique.lean", "def listUniqueFwd"),
+     ("Circe/Emit/ListUnique.lean", "def listUniqueSweep"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_listUnique"),
+     ("Circe/Emit/Render.lean", "def emitListUniqueText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitListUniqueSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isListUniqueShape"),
+     ("Circe/Validator/Gate.lean", "isListUniqueShape raw"),
+     ("out/ListUnique.lean", "_Z11list_uniqueP4Node_fwd"),
+     ("tests/golden/ListUnique.lean", "_Z11list_uniqueP4Node_fwd")]),
    ("linkedrev-links",
     [("Circe/Emit/LinkedReverse.lean", "theorem linkRevBody_ok"),
      ("Circe/Emit/LinkedReverse.lean", "theorem linkRevOuterFwd_invariant"),
@@ -2423,8 +2441,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 172 then
-    throw (IO.userError s!"expected 172 spec stubs, found {stubs.length}")
+  if stubs.length != 173 then
+    throw (IO.userError s!"expected 173 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2582,6 +2600,7 @@ def checkSuites : List Job :=
    ("golden-listmerge", GoldenListMerge.main),
    ("golden-listclear", GoldenListClear.main),
    ("golden-listsortedinsert", GoldenListSortedInsert.main),
+   ("golden-listunique", GoldenListUnique.main),
    ("golden-reborrow", GoldenReborrow.main),
    ("golden-reborrow34", GoldenReborrow34.main),
    ("golden-wrpair", GoldenWrPair.main),
@@ -2612,7 +2631,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecUnion", "GoldenVecDifference", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFilter", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecUnion", "GoldenVecDifference", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFilter", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenListUnique", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

@@ -1078,6 +1078,66 @@ def emitListFilterText (name : String) : String :=
   ++ "  | .error e => .error e\n"
   ++ "  | .ok (m', hd', _) => .ok (m', hd')\n"
 
+/-- Render the `list_unique` entry forward definition: the
+    trailing-pointer squeeze over `Mem` (predecessor payload
+    read at `[0]`, drop test as the short-circuit conjunction,
+    restitch + free + advance-only-cursor on an equal
+    predecessor, step both cursors otherwise); the head never
+    moves, a miss returns it untouched, dangling links are
+    `AssertFail`, cyclic input exhausts fuel. -/
+def emitListUniqueText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.LinkedList\n\n"
+  ++ s!"/-- Pure translation of `{name}` (adjacent-duplicate squeeze over `Mem`; every predecessor-equal node is unlinked and freed, survivors keep order and the head never moves). -/\n"
+  ++ s!"def {name}_unique_fwd (F : Nat) (m : Mem) (head prev cur : Option Addr)\n"
+  ++ "    (scanned : List (BitVec 32))\n"
+  ++ "    (dropped : List (Addr × Nat × List (BitVec 32))) :\n"
+  ++ "    Result (Mem × Option Addr × List (Addr × Nat × List (BitVec 32))) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok (m, head, dropped)\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          match prev with\n"
+  ++ "          | none =>\n"
+  ++ "            match memLoad m a b.tag 1 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ "            | .ok w' =>\n"
+  ++ s!"              {name}_unique_fwd F m head (some a) (addrOfWord w') (scanned ++ [w]) dropped\n"
+  ++ "          | some p =>\n"
+  ++ "            match memFind m p with\n"
+  ++ "            | none => .error .AssertFail\n"
+  ++ "            | some bp =>\n"
+  ++ "              match memLoad m p bp.tag 0 with\n"
+  ++ "              | .error e => .error e\n"
+  ++ "              | .ok u =>\n"
+  ++ "                if w == u then\n"
+  ++ "                  match memLoad m a b.tag 1 with\n"
+  ++ "                  | .error e => .error e\n"
+  ++ "                  | .ok w' =>\n"
+  ++ "                    match memStore m p bp.tag 1 w' with\n"
+  ++ "                    | .error e => .error e\n"
+  ++ "                    | .ok m1 =>\n"
+  ++ "                      match memFree m1 a b.tag with\n"
+  ++ "                      | .error e => .error e\n"
+  ++ s!"                      | .ok m2 => {name}_unique_fwd F m2 head (some p) (addrOfWord w') (scanned ++ [w]) (dropped ++ [(a, b.tag, [w, w'])])\n"
+  ++ "                else\n"
+  ++ "                  match memLoad m a b.tag 1 with\n"
+  ++ "                  | .error e => .error e\n"
+  ++ s!"                  | .ok w' => {name}_unique_fwd F m head (some a) (addrOfWord w') (scanned ++ [w]) dropped\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (head : Option Addr) : Result (Mem × Option Addr) :=\n"
+  ++ s!"  match {name}_unique_fwd F m head none head [] [] with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (m', hd', _) => .ok (m', hd')\n"
+
 /-- Render the `list_find` entry forward definition: the
     first-match chase over `Mem` (payload load, link decode);
     the hit cursor is returned, a miss returns null, dangling

@@ -2862,6 +2862,86 @@ the filter text is not `list_erase`- or `list_clear`-shaped;
   galleries compile unchanged
   (`lake build HoareGallery LoopOobGallery`).
 
+### P1-unique. Adjacent-duplicate squeeze (`list_unique`) — DONE (2026-11-08)
+
+Pillar-1 proposed goal #1 (recommended): the ordered sequel to
+P1-sortedinsert — `Node *list_unique(Node *head)` unlinks every
+node equal to its predecessor, frees each victim, and keeps one
+copy per run; the head never swings (the first node has no
+predecessor) and is returned unchanged; survivors keep their
+relative order; dangling links abort loudly. Corpus
+`tests/cpp/list_unique.cpp` (48 lines, prev/cur formulation —
+not a `head`/`head->next` seed, so no extra null-deref branch)
++ real CIRGen `tests/cir/list_unique.cir` (144 lines; entry
+`_Z11list_uniqueP4Node`, one `while`, one `cir.if`, one
+`cir.ternary` (the `prev != nullptr && cur->val == prev->val`
+short-circuit), 3 `cir.cmp`, 5 `cir.get_member`, 4 `cir.const`,
+5 `cir.alloca`, 18 `cir.load`, 9 `cir.store`, 1 `cir.return`, 1
+`cir.cast`, 1 `cir.call @free` + `get_global`;
+`cir-opt --verify-each` clean). `isListUniqueShape` pins
+exactly that (plus no `nsw`, no `ptr_stride`, no `mul`/`add`/
+`sub`, no `new`/`delete`/`realloc`/`try`/`switch`); Gate arm
+admitted via the existing single-pointer exemption with an
+honest `unknown` oracle verdict — no blessed-listing change.
+`dedupAdj` (the P2-M13 `vec_unique` oracle) is reused unchanged,
+relocated `Circe/Specs` → `Circe/Lemmas/TwoCursor` (import
+layering: Emit cannot import Specs) with new boundary lemmas
+`dedupAdj_snoc_keep`/`dedupAdj_snoc_drop` (plus
+`dedupAdj_nonempty`/`_append_single`, `bne_eq_false_eq`,
+`take_getLast_of_getElem?`).
+
+New mechanism (filter-style multi-drop sweep): `listUniqueSweep`
+(fuel-indexed: each visit reads the payload at `[0]` and the
+link at `[1]`; the drop test is the short-circuit
+prev-non-null + payload-equal, modeled as a pure `.tif` over
+the `cir.ternary` per the sortedinsert precedent; a drop
+restitches the predecessor — the head case is impossible by
+construction — frees the victim, and recurses; a keep advances
+both cursors; misses, dangling links, and short blocks abort
+loudly at any fuel) with the accumulated `dropped` list plus a
+ghost `scanned` history carried through the sweep,
+`listUniqueFwd` entry mirror, `listUniqueSweep_invariant`
+(the read-only kept prefix pinned as a `PrefixChain` with
+`preVals kept = dedupAdj scanned` plus the last-kept tuple for
+the predecessor read, the suffix an untouched `ListSeg`,
+previously dropped cells dead; the keep/drop legs close via
+`dedupAdj_snoc_keep`/`_drop` keyed on the last survivor),
+`listUniqueFwd_correct`, `listUniqueLoop_agree` (memory/env
+threading only — no squeeze equation needed), entry triple
+`listUniqueFunc_correct`. No new CoreIR; the freed prefix
+tracks dropped cells the way P1-clear's `ClearInv` does.
+
+Proof-engineering notes: the `eq→ne` compare flip does *not*
+break the shape (compares are counted in total, never
+per-predicate — verified by probe) — the load-bearing tamper is
+`cir.ternary` → `cir.if`, which still parses but breaks the
+ternary/`if` pins; the spec-edges block needs N opens for N
+allocs (the first draft had N−1 and died with `sorryAx` + a
+col-227 parse error); the loop-agree statement drops the
+squeeze equation, keeping only kept-prefix threading.
+
+Emitter + Gate wiring (`FragKind.listUnique`,
+`matchFrag_listUnique` by `rfl`, spec/render texts,
+`Emit.lean` arms, Gate shape arm, `GenOut` writable arms,
+driver job + roster + goldenPairs + `listunique-links` +
+spec-stub pin 172 → 173); goldens
+`tests/golden/ListUnique.lean` (+`_Spec`, 9-edge `spec_check`
+verified by probe: run-heavy squeeze, alternating dups,
+all-same, no-dup, empty, singleton, two-same, two-diff,
+dangling head (loud)); `GoldenListUnique` pipeline (entry
+byte-identical, `unknown` oracle fact) + rejection gates
+(three-pointer variant still `alias-reject`; double-free
+variant `out-of-subset` — heap blocks are freed at most once;
+ternary-rewrite tamper shape-false; shape-exactness both
+directions vs `list_append`/`list_length`/`linked_reverse`/
+`list_rev`/`push_front`/`list_filter`, and the unique text is
+not `list_erase`- or `list_clear`-shaped; 11 checks).
+- Acceptance: full gate 603/603 TEST-OK
+  (`GOLDENLISTUNIQUE-OK passed=11`,
+  prior goldens unchanged); `lake build Test.Driver`
+  green (incl. `HoareGallery`); galleries compile unchanged
+  (`hoare-gallery`, `loopoob-gallery` in the gate).
+
 ### P3. Lockstep store-step harvest (`memStore_cellsAt_pin`) — DONE (2026-11-03)
 
 Roadmap pillar-3 proposed goal #1, closed as a lemma, not a tactic —

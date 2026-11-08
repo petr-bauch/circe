@@ -30,6 +30,7 @@ import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFilter
+import Circe.Emit.ListUnique
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
@@ -1053,6 +1054,25 @@ def matchFrag : Func → Option FragKind
                         (.assign "cur" (.pgetNext (.var "cur"))))))
               (.return_ (.var "head"))))))⟩ =>
     some .listFilter
+  | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.let_ "prev" (.struct "Node" [.i 32, .u 32]) (.lit .nullptr))
+        (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32]) (.var "head"))
+          (.seq (.let_ "next" (.struct "Node" [.i 32, .u 32])
+                  (.lit .nullptr))
+            (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+                    (.if_ (.tif (.une (.var "prev") (.lit .nullptr))
+                              (.ueq (.pgetVal (.var "cur"))
+                                (.pgetVal (.var "prev")))
+                              (.lit (.b false)))
+                      (.seq (.assign "next" (.pgetNext (.var "cur")))
+                        (.seq (.psetNext (.var "prev") (.var "next"))
+                          (.seq (.nfree (.var "cur"))
+                            (.assign "cur" (.var "next")))))
+                      (.seq (.assign "prev" (.var "cur"))
+                        (.assign "cur" (.pgetNext (.var "cur"))))))
+              (.return_ (.var "head"))))))⟩ =>
+    some .listUnique
   | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩,
          ⟨"val", .i 32, .owned⟩],
       .struct "Node" [.i 32, .u 32],
@@ -2460,6 +2480,8 @@ theorem matchFrag_listErase :
     matchFrag listEraseFunc = some .listErase := rfl
 theorem matchFrag_listFilter :
     matchFrag listFilterFunc = some .listFilter := rfl
+theorem matchFrag_listUnique :
+    matchFrag listUniqueFunc = some .listUnique := rfl
 theorem matchFrag_listFind :
     matchFrag listFindFunc = some .listFind := rfl
 theorem matchFrag_listCopy :
