@@ -51,8 +51,9 @@ macro "let_pure_step" "(" hM:term "," hE:term ")" : tactic =>
 
 /-- Fold-end script: unfold a suffix fold one step on the left
     (`conv => lhs` + the drop equation), then discharge the lookup
-    with `hget`. The six in-repo sites (`spanFold_*`,
-    `viewFold_*`, `stdVecFold_*` step/nil pairs) share this script
+    with `hget`. The eight in-repo sites (`spanFold_*`,
+    `viewFold_*`, `stdVecFold_*` step/nil pairs plus
+    `kadaneFold_nil`/`kadaneFold_step_err`) share this script
     verbatim. Usage: `cir_fold_end (spanFold_drop, hget)`.
     (An `elab` in two `evalTactic` steps so the `conv => ...` /
     `simp ...` boundary keeps its original parse — one quotation

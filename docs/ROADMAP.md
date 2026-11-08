@@ -134,7 +134,7 @@ Proposed (toward the platform goal — for approval, in order):
 
 Delivered (re-verified 2026-10-25, then extended in place;
 details in `DELIVERED.md` §§ N5, H1–H4, A, P3a/b/c/d/e,
-Frontend, U1–U3, T1, P3c/d/e, P3f, H1, J, H, L-ptr): proof
+Frontend, U1–U3, T1, P3c/d/e, P3f, H1, P3, P3-N, J, H, L-ptr): proof
 ergonomics (N5: `cir_fuel`, fuel-bound
 lemmas, per-step cascades; N5a/N5b micro-tactics
 `fuel_step_down` / `cir_step` with adoption gates — n5 later
@@ -142,8 +142,8 @@ adopted `fuel_step_down` at 14 `VecHeapSort` sites, retiring
 the `exists_eq_succ_of_ne_zero` collision), proof
 scale-down (N8: `cir_eval_closed`), Hoare rule library +
 galleries (H1–H3 incl. cond-pair, A, R/S/T swap-step, J
-rewire/chase, H sift/entry/dup-entry, L-ptr linkedrev — 18
-counted `hoare-gallery` passes over 16 check sites, two
+rewire/chase, H sift/entry/dup-entry, L-ptr linkedrev — 19
+counted `hoare-gallery` passes, two
 iterating over both cond arms), program-level while
 rule (P3a: `HTripleProg` + `htripleProg_while_at`, R countdown
 as a rule application), frontend MVP (`circe-emit` CLI +
@@ -159,7 +159,13 @@ recorded, P3 closed with no pack), fold-end tactic (T1:
 demo), program-level composition (P3c/d/e: `seq_at`,
 `callProg_at`, call frame rules, closed rotate prefix,
 framed leaf), cell-kit promotion (H1: kit out of the
-report-only spike into `Circe.Mem.Agree`), and generator
+report-only spike into `Circe.Mem.Agree`), lockstep
+store-step harvest (P3: `memStore_cellsAt_pin` packaging
+lemma, rollout closed 2026-11-04 over all 13 deferred
+sites), contract facade (P3-N: `Circe.Contracts.VecUnique`
+stable contract + `Circe.Lemmas.TwoCursor` squeeze pack +
+`cir_mem_let`/`cir_lookup` tactics + `contract-vecunique`
+regression), and generator
 tooling (`tools/GenOut.lean`,
 `tools/GenMatch.lean`). Strategy capture lives in
 `docs/VERIFYING.md` (galleries, For-users, Contracts, Lemma
@@ -176,27 +182,14 @@ pattern vs tactic audit). Rule-of-three harvesting: third
 checked-add arity (audit #3), third user-goal transfer-leg use
 for a `cir_transfer_leg`-shaped tactic (audit #4), third
 countdown-loop shape for fuel arithmetic (audit #5) and for
-the unfold-loop-`show` tactic (R/S are two uses);
-the core-eval lockstep store leg harvested as the
-`memStore_cellsAt_pin` packaging lemma — lemma verdict, not
-a tactic (DELIVERED P3); rollout closed 2026-11-04 (all 13
-deferred sites converted: TransformAdd, SelectionSort ×2,
-MergeSort ×2, MergeRuns ×8);
+the unfold-loop-`show` tactic (R/S are two uses).
 R/S program-level memory-threading stays prose at two uses;
-the program-level store rule landed with its first customer
-(`htripleProg_vecSet_at` + `hoare_vecSetSwap`, DELIVERED H4 —
-further store-heavy triples compose rather than re-prove);
-a fully framed spine waits for an actual multi-cell
-caller (P2-M2 was one — delivered). The trailing `return_`
-seq equation landed (P3f, DELIVERED). A gallery per new
-admitted shape, as always (J/H/L-ptr instances landed with
-their slices).
+further store-heavy triples compose over
+`htripleProg_vecSet_at` rather than re-prove (DELIVERED H4).
+A gallery per new admitted shape, as always.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Gallery maintenance + `cir_fold_end`
-   coverage for new emitters (each new slice converts its
-   tail positions; no new tactics until a third use lands).
-2. R/S program-level threading decision: still prose at two
+1. (Recommended) R/S program-level threading decision: still prose at two
    uses (`revMemStore_ok` + per-file bridges). The third
    use forces the call — package like the store leg, or keep
    prose; no tactic without three user-goal uses (rule of

@@ -185,8 +185,15 @@ Hello`, so the demo IS the regression test):
   the forward/backward equations — `hello_choose_get_put`),
   `cir_fold_end (dropEq, hget)` (suffix-fold end script: unfold
   one step on the left via your fold's drop equation, discharge
-  the lookup — `hello_fold_end`; the six in-repo fold sites run
-  this exact script).
+  the lookup — `hello_fold_end`; the eight in-repo fold sites run
+  this exact script: the T1 six plus `kadaneFold_nil` and
+  `kadaneFold_step_err`). Census verdicts (P3 fold-end round):
+  `kadaneFold_step` stays longhand (needs the `hc` add fact,
+  which the two-argument script cannot take — extending the
+  signature would be a new tactic surface); `markFold` has no
+  drop equation (two-list induction-step shape) and the
+  `GrowFwd` blit folds have no end-lemma tails at all, so both
+  are out of the tactic's shape by construction.
 
 Three standing limits (all hit during the U1 audit, all documented
 so users don't rediscover them):
@@ -205,7 +212,7 @@ so users don't rediscover them):
   hypotheses cover — a single uncovered `envLookup` stalls it);
   `cir_fold_end` needs the drop-equation name for your fold
   (it is per-fold by definition — `spanFold_drop`,
-  `viewFold_drop`, `stdVecFold_drop` — plus the lookup fact;
+  `viewFold_drop`, `stdVecFold_drop`, `kadaneFold_drop` — plus the lookup fact;
   implementation re-parses surface strings at the use site
   because `rw`/`simp` arg kinds reject spliced idents —
   `cir_step` precedent).

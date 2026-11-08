@@ -24,8 +24,26 @@ import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
+import Circe.Emit.VecUnique
 
 namespace HoareGallery
+
+/-- The `vec_unique` cursor prelude: both cursors seeded at 1.
+    This is the real fragment — it sits verbatim in
+    `vecUniqueFunc.body` past the empty-check exit (the `rfl`
+    pins it; the runtime check in `main` executes it). -/
+def uniquePrelude : CStmt :=
+  (.seq (.let_ "w" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+    (.let_ "r" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1)))))
+
+example : ∃ tail : CStmt, vecUniqueFunc.body =
+    (.seq (.if_ (.ueq (.stdVecLen "v")
+                  (.lit (.u64 (BitVec.ofNat 64 0))))
+            (.return_ (.lit (.u64 (BitVec.ofNat 64 0))))
+            .skip)
+      (.seq (.let_ "w" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+        (.seq (.let_ "r" (.u 64) (.lit (.u64 (BitVec.ofNat 64 1))))
+          tail))) := ⟨_, rfl⟩
 
 /-- The gallery body, shared by the proof below and the
     closed-instance runtime check in `main`. -/
@@ -945,8 +963,9 @@ example : ∃ ρ' m' hd', memEvalStmtFuel 10 pushFrontFunc.body
     compile-gated): the two-cell incr, `alias_cond` under both
     guard values over the real emitted body, the countdown
     from 3, the read-only sum loop over `[1,2,3,4]`, the
-    in-place increment over `[1,2,3]`, and the `vecSet` swap
-    pair over `[1,2,3]` with the framed cell intact. -/
+    in-place increment over `[1,2,3]`, the `vecSet` swap
+    pair over `[1,2,3]` with the framed cell intact, and the
+    `vec_unique` prelude seeding both cursors at 1. -/
 def main : IO Unit := do
   let mut passed := 0
   -- Two-cell incr: `pa=10, pb=20` → `pa=11, pb=21`.
@@ -1290,6 +1309,24 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: vecSet swap failed: {(repr e).pretty}")
+  -- `vec_unique` prelude: `w := 1; r := 1` (executable shadow of
+  -- `vecUnique_prelude_triple`'s cursor establishment, over the
+  -- real fragment pinned above).
+  match memEvalProgStmt vecUniqueProg 20 uniquePrelude [] emptyMem [] with
+  | .ok ((ρ', _, _), .fellThrough) =>
+    match envLookup ρ' "w", envLookup ρ' "r" with
+    | some (.u64 bw), some (.u64 br) =>
+      if bw.toNat != 1 || br.toNat != 1 then
+        throw (IO.userError
+          s!"hoare-gallery: unique prelude cursors={(bw.toNat, br.toNat)}, want (1, 1)")
+      else passed := passed + 1
+    | _, _ =>
+      throw (IO.userError "hoare-gallery: unique prelude lost cursors")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: unique prelude want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: unique prelude failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix

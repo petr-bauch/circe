@@ -226,7 +226,7 @@ theorem kadaneFold_nil (l : List (BitVec 32)) (k : Nat)
     (cur best : BitVec 32)
     (hget : l[k]? = none) :
     kadaneFold (l.drop k) cur best = .ok (cur, best) := by
-  rw [kadaneFold_drop]; simp only [hget]
+  cir_fold_end (kadaneFold_drop, hget)
 
 /-- Unfolding the suffix fold at a live index, keeping the
     checked-add match (the error arm stays open for the
@@ -239,7 +239,7 @@ theorem kadaneFold_step_err (l : List (BitVec 32)) (k : Nat)
       | .error e => .error e
       | .ok s => kadaneFold (l.drop (k + 1)) (imax s w)
         (imax best (imax s w)) := by
-  rw [kadaneFold_drop]; simp only [hget]
+  cir_fold_end (kadaneFold_drop, hget)
 
 /-! ## Seed -/
 
