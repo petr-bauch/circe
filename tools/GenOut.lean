@@ -43,6 +43,7 @@ import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
+import Circe.Emit.ListFilter
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
@@ -205,6 +206,7 @@ def main : IO Unit := do
   let listAppend ← emitOrDie listAppendFunc
   let pushFront ← emitOrDie pushFrontFunc
   let listErase ← emitOrDie listEraseFunc
+  let listFilter ← emitOrDie listFilterFunc
   let listFind ← emitOrDie listFindFunc
   let listCopy ← emitOrDie listCopyFunc
   let listMerge ← emitOrDie listMergeFunc
@@ -375,6 +377,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListAppend.lean" (emitFileText (.ok listAppend))
   IO.FS.writeFile "out/PushFront.lean" (emitFileText (.ok pushFront))
   IO.FS.writeFile "out/ListErase.lean" (emitFileText (.ok listErase))
+  IO.FS.writeFile "out/ListFilter.lean" (emitFileText (.ok listFilter))
   IO.FS.writeFile "out/ListFind.lean" (emitFileText (.ok listFind))
   IO.FS.writeFile "out/ListCopy.lean" (emitFileText (.ok listCopy))
   IO.FS.writeFile "out/ListMerge.lean" (emitFileText (.ok listMerge))
@@ -545,6 +548,7 @@ def main : IO Unit := do
   let listAppendSpec ← specOrDie listAppendFunc
   let pushFrontSpec ← specOrDie pushFrontFunc
   let listEraseSpec ← specOrDie listEraseFunc
+  let listFilterSpec ← specOrDie listFilterFunc
   let listFindSpec ← specOrDie listFindFunc
   let listCopySpec ← specOrDie listCopyFunc
   let listMergeSpec ← specOrDie listMergeFunc
@@ -715,6 +719,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListAppend_Spec.lean" listAppendSpec
   IO.FS.writeFile "out/PushFront_Spec.lean" pushFrontSpec
   IO.FS.writeFile "out/ListErase_Spec.lean" listEraseSpec
+  IO.FS.writeFile "out/ListFilter_Spec.lean" listFilterSpec
   IO.FS.writeFile "out/ListFind_Spec.lean" listFindSpec
   IO.FS.writeFile "out/ListCopy_Spec.lean" listCopySpec
   IO.FS.writeFile "out/ListMerge_Spec.lean" listMergeSpec

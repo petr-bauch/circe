@@ -2612,6 +2612,57 @@ def isListClearShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- Remove-if sweep (P1 remove-if shape — the `list_filter`
+    shape): `Node*` head + `i32` payload in, `Node*` out;
+    the trailing-pointer chase unlinks *every* match and frees
+    each victim, running to exhaustion with a single tail
+    return. One `cir.while`, two `cir.if` (match test +
+    head-case split), three `cir.cmp`, four `cir.get_member`
+    (one `[0]` payload read, three `[1]` link reads), three
+    `cir.const` (nulls), six allocas (the extra `next` slot),
+    18 loads / 11 stores, one `cir.return`, one `free` call.
+    The single tail return + `alloca == 6` separate it from
+    `list_erase` (early return, five allocas); the compare +
+    `free` separate it from `list_clear` (no `cir.if`). -/
+def isListFilterShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [head, val] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType head.ctype && ptrInner head.ctype == some "!rec_Node" &&
+    isI32 val.ctype && !isPtrType val.ctype &&
+    isPtrType raw.ret && ptrInner raw.ret == some "!rec_Node" &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.get_member" == 4 &&
+    opCount raw.text "[0]" == 1 &&
+    opCount raw.text "[1]" == 3 &&
+    opCount raw.text "cir.const" == 3 &&
+    opCount raw.text "cir.cast" == 1 &&
+    opCount raw.text "cir.mul" == 0 &&
+    opCount raw.text "cir.add" == 0 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    !containsSubstr raw.text "cir.ptr_stride" &&
+    opCount raw.text "cir.alloca" == 6 &&
+    opCount raw.text "cir.load" == 18 &&
+    opCount raw.text "cir.store" == 11 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.yield" == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    freeCallCount raw.text == 1 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.break" == 0 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.call @malloc(" &&
+    !containsSubstr raw.text "cir.call @_Znwm" &&
+    !containsSubstr raw.text "cir.call @_ZdlPvm" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- Sorted merge of two chains (P1 first multi-input traversal
     — the `list_merge` shape): two `Node*` heads in, `Node*`
     out (merged head, remainder for an empty other side, null

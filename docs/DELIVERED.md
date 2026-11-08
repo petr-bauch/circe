@@ -2787,6 +2787,81 @@ exact shape broken; shape-exactness both directions vs
   galleries compile unchanged
   (`lake build HoareGallery LoopOobGallery`).
 
+### P1-filter. Remove-if with `free` (`list_filter`) — DONE (2026-11-08)
+
+Pillar-1 proposed goal #1 (recommended): the every-match
+deallocating sweep — `Node *list_filter(Node *head, int val)`
+unlinks every `Node` holding `val`, frees each victim, and
+returns the (possibly new) head; survivors keep their relative
+order, a miss returns the head untouched, dangling links abort
+loudly. Corpus `tests/cpp/list_filter.cpp` (49 lines) + real
+CIRGen `tests/cir/list_filter.cir` (155 lines; 6 allocas / 18
+loads / 11 stores, one `while`, two `cir.if`, 3 `cir.cmp`, 4
+`cir.get_member` (one `[0]` payload / three `[1]` link), 3
+`cir.const`, 1 `cast`, 1 `cir.call @free` + `get_global`,
+single tail `cir.return`; `cir-opt --verify-each` clean).
+`isListFilterShape` pins exactly that (plus no `nsw`, no
+`ptr_stride`, no `mul`/`add`/`sub`, no `new`/`delete`/
+`realloc`/`try`/`switch`); Gate arm admitted via the existing
+single-pointer exemption with an honest `unknown` oracle
+verdict — no blessed-listing change (one bare `Node*` cannot
+alias itself).
+
+New mechanism (single sweep, unlink inline): `listFilterSweep`
+(fuel-indexed: each visit reads the payload at `[0]`; on a
+match reads the link at `[1]`, restitches the predecessor —
+head case swings the return — frees the victim, and recurses;
+a keep recurses past the node; misses, dangling links, and
+short blocks abort loudly at any fuel) with the accumulated
+`dropped` list carried through the sweep (no coverage argument
+needed), `listFilterFwd` entry mirror, `listFilterSweep_invariant`
+(the read-only survivor prefix pinned as a `PrefixChain` of
+kept nodes with all payloads differing from `v`, the suffix an
+untouched `ListSeg`, previously dropped cells dead with
+`v`-payload blocks, result equation `preVals kept ++
+suf.filter`), `listFilterFwd_correct` (`ListSeg m' hd'
+(vs.filter (· != v))` plus the victim-dead clause),
+`listFilterLoop_agree` (sweep success drives the loop to
+`fellThrough` with the swept head/memory; final cursors
+existential — each visit steps the evaluator through save-link,
+swing, free, advance, and the IH reuses the transported
+prefix/suffix/dead facts), entry triple
+`listFilterFunc_correct` (three seed lets + loop agree + final
+return). Reused kit, no new CoreIR: `nfree`/`pgetVal`,
+`nodeStoreNext`, `ListSeg.free_other`/`store_other`,
+`memFind_memFree_dead`/`_other`, `memFind_memStore_other`,
+`PrefixChain` (`nil`, `snoc_extend`, `split`,
+`transport_erase`, `appendSeg`), `ListSeg_head_notin_tail`
+(acyclic outsideness for the store-then-free composition),
+`nodeAt_link_roundtrip`, `hex_store`; the freed prefix tracks
+dropped cells the way P1-clear's `ClearInv` does. The predicate
+is equality (`val`), not a function pointer — calls in loop
+bodies stay out of subset; the classic prev/cur chase mirrors
+P1-erase with no dummy head, and a single tail return
+distinguishes the sweep from the erase early-return.
+
+Emitter + Gate wiring (`FragKind.listFilter`,
+`matchFrag_listFilter` by `rfl`, spec/render texts,
+`Emit.lean` arms, Gate shape arm, `GenOut`, spec-stub pin
+170 → 171); goldens `tests/golden/ListFilter.lean`
+(+`_Spec`, 8-edge `spec_check` verified by probe: head-hit,
+interior-hit, all-match, miss, empty, singleton-hit,
+singleton-miss, missing head (loud)); `GoldenListFilter`
+pipeline (with `unknown` oracle fact) + rejection gates
+(three-pointer variant still `alias-reject`; double-free
+variant `out-of-subset` — heap blocks are freed at most
+once; shape-exactness both directions vs `list_append`/
+`list_length`/`linked_reverse`/`list_rev`/`push_front`, and
+the filter text is not `list_erase`- or `list_clear`-shaped;
+9 checks).
+- Acceptance: full gate 595/595 TEST-OK
+  (`GOLDENLISTFILTER-OK passed=9`,
+  `GOLDENLISTSORTEDINSERT-OK passed=14` unchanged); goldens
+  typecheck (`lake env lean out/ListFilter.lean` and
+  `out/ListFilter_Spec.lean`, one file per invocation);
+  galleries compile unchanged
+  (`lake build HoareGallery LoopOobGallery`).
+
 ### P3. Lockstep store-step harvest (`memStore_cellsAt_pin`) — DONE (2026-11-03)
 
 Roadmap pillar-3 proposed goal #1, closed as a lemma, not a tactic —

@@ -150,6 +150,7 @@ inductive FragKind : Type
   | listAppend
   | pushFront
   | listErase
+  | listFilter
   | listFind
   | listCopy
   | listClear

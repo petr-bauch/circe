@@ -136,6 +136,7 @@ import GoldenListLength
 import GoldenListAppend
 import GoldenPushFront
 import GoldenListErase
+import GoldenListFilter
 import GoldenListFind
 import GoldenListCopy
 import GoldenListMerge
@@ -573,6 +574,8 @@ def goldenPairs : List (String × String) :=
    ("tests/golden/PushFront_Spec.lean", "out/PushFront_Spec.lean"),
    ("tests/golden/ListErase.lean", "out/ListErase.lean"),
    ("tests/golden/ListErase_Spec.lean", "out/ListErase_Spec.lean"),
+   ("tests/golden/ListFilter.lean", "out/ListFilter.lean"),
+   ("tests/golden/ListFilter_Spec.lean", "out/ListFilter_Spec.lean"),
    ("tests/golden/ListFind.lean", "out/ListFind.lean"),
    ("tests/golden/ListFind_Spec.lean", "out/ListFind_Spec.lean"),
    ("tests/golden/ListCopy.lean", "out/ListCopy.lean"),
@@ -779,6 +782,7 @@ def emittedTypechecks : List String :=
    "out/ListAppend.lean",
    "out/PushFront.lean",
    "out/ListErase.lean",
+   "out/ListFilter.lean",
    "out/ListFind.lean",
    "out/ListCopy.lean",
    "out/ListClear.lean",
@@ -1993,6 +1997,22 @@ def contentAsserts : List (String × List (String × String)) :=
      ("Circe/Mem/LinkedList.lean", "theorem PrefixChain.transport_erase"),
      ("out/ListErase.lean", "_Z10list_eraseP4Nodei_fwd"),
      ("tests/golden/ListErase.lean", "_Z10list_eraseP4Nodei_fwd")]),
+   ("listfilter-links",
+    [("Circe/Emit/ListFilter.lean", "theorem listFilterFwd_correct"),
+     ("Circe/Emit/ListFilter.lean", "theorem listFilterLoop_agree"),
+     ("Circe/Emit/ListFilter.lean", "theorem listFilterSweep_invariant"),
+     ("Circe/Emit/ListFilter.lean", "theorem listFilterFunc_correct"),
+     ("Circe/Emit/ListFilter.lean", "def listFilterFwd"),
+     ("Circe/Emit/ListFilter.lean", "def listFilterSweep"),
+     ("Circe/Emit/Match.lean", "theorem matchFrag_listFilter"),
+     ("Circe/Emit/Render.lean", "def emitListFilterText"),
+     ("Circe/Emit/SpecStubs.lean", "def emitListFilterSpecText"),
+     ("Circe/Validator/Shapes.lean", "def isListFilterShape"),
+     ("Circe/Validator/Gate.lean", "isListFilterShape raw"),
+     ("Circe/Mem/LinkedList.lean", "theorem ListSeg.free_other"),
+     ("Circe/Mem/LinkedList.lean", "theorem PrefixChain.transport_erase"),
+     ("out/ListFilter.lean", "_Z11list_filterP4Nodei_fwd"),
+     ("tests/golden/ListFilter.lean", "_Z11list_filterP4Nodei_fwd")]),
    ("listfind-links",
     [("Circe/Emit/ListFind.lean", "theorem listFindFwd_correct"),
      ("Circe/Emit/ListFind.lean", "theorem listFindLoop_agree"),
@@ -2389,8 +2409,8 @@ def specCheckOf (text : String) : Option String := do
 def specStubJobs : IO (List Job) := do
   let entries ← lsDir "out"
   let stubs := entries.filter (endsWith · "_Spec.lean")
-  if stubs.length != 170 then
-    throw (IO.userError s!"expected 170 spec stubs, found {stubs.length}")
+  if stubs.length != 171 then
+    throw (IO.userError s!"expected 171 spec stubs, found {stubs.length}")
   let pairs ← stubs.mapM fun s => do
     let text ← IO.FS.readFile (("out/" ++ s : String))
     let chk ← match specCheckOf text with
@@ -2541,6 +2561,7 @@ def checkSuites : List Job :=
    ("golden-listappend", GoldenListAppend.main),
    ("golden-pushfront", GoldenPushFront.main),
    ("golden-listerase", GoldenListErase.main),
+   ("golden-listfilter", GoldenListFilter.main),
    ("golden-listfind", GoldenListFind.main),
    ("golden-listcopy", GoldenListCopy.main),
    ("golden-listmerge", GoldenListMerge.main),
@@ -2576,7 +2597,7 @@ def suiteModules : List String :=
    "GoldenAcc", "GoldenBox", "GoldenCalls", "GoldenFlow",
    "GoldenFreeDiscipline", "GoldenM2Setup", "GoldenMethod", "GoldenMove", "GoldenOptional", "GoldenOverload", "GoldenPhase4",
    "GoldenPhase6", "GoldenPhase7", "GoldenReadOnly", "GoldenRejectCatalog",
-   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecUnion", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
+   "GoldenSpan", "GoldenStruct", "GoldenSumTwo", "GoldenTadd", "GoldenArray", "GoldenArraySort", "GoldenArraySort8", "GoldenAliasProbe", "GoldenVec2", "GoldenVec64", "GoldenVecRealloc", "GoldenVecRead", "GoldenVecGrow", "GoldenVecAt", "GoldenVecAtSum", "GoldenVecMarkCount", "GoldenVecMarkCountC", "GoldenVecMatAt", "GoldenVecStackPush", "GoldenVecDfs", "GoldenVecBfs", "GoldenVecDfsGrow", "GoldenVecKadane", "GoldenVecBinarySearch", "GoldenVecTwoSum", "GoldenVecAtSet", "GoldenVecMergeInto", "GoldenVecTransformAdd", "GoldenVecPartition", "GoldenVecRemove", "GoldenVecPartialSum", "GoldenVecIntersect", "GoldenVecCopyIf", "GoldenVecUnion", "GoldenVecSelectionSort", "GoldenVecUnique", "GoldenVecMergeSort", "GoldenVecQuicksort", "GoldenVecHeapSort", "GoldenVecReverse", "GoldenVecSegReverse", "GoldenVecRotate", "GoldenVecListRev", "GoldenLinkedReverse", "GoldenListLength", "GoldenListAppend", "GoldenPushFront", "GoldenListErase", "GoldenListFilter", "GoldenListFind", "GoldenListCopy", "GoldenListMerge", "GoldenListClear", "GoldenListSortedInsert", "GoldenView",
    "GoldenWidth", "GoldenXorN", "GoldenChacha", "GoldenChacha20Encrypt", "GoldenSha", "ScopeReport",
    "ReborrowGate", "GoldenReborrow", "DiffReborrow", "GoldenReborrow34", "DiffReborrow34",
    "WrPairGate", "GoldenWrPair", "DiffWrPair",

@@ -31,6 +31,7 @@ import Circe.Emit.ListLength
 import Circe.Emit.ListAppend
 import Circe.Emit.PushFront
 import Circe.Emit.ListErase
+import Circe.Emit.ListFilter
 import Circe.Emit.ListFind
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
@@ -1955,6 +1956,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { pushFrontFunc with name := raw.name }
       else if isListEraseShape raw then
         .ok { listEraseFunc with name := raw.name }
+      else if isListFilterShape raw then
+        .ok { listFilterFunc with name := raw.name }
       else if isListFindShape raw then
         .ok { listFindFunc with name := raw.name }
       else if isListCopyShape raw then

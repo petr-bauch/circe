@@ -26,7 +26,7 @@ the first two-live-pointer shape admitted by exact listing
 rather than exemption (L-ptr2; label note — this reuses
 the L1–L4 slice labels of the lifetime track for a
 different subject, see `DELIVERED.md` "L-ptr."). The C
-core is complete within the standing non-goals, plus eight
+core is complete within the standing non-goals, plus nine
 dynamic shapes (read-only traversal, caller-node writer,
 caller-allocated writer, first deallocating shape,
 read-only query, allocating deep copy with per-element
@@ -39,27 +39,30 @@ insert — P1-sortedinsert, whose chase invariant carries the
 pin — and sorted merge — P1-merge, the first multi-input
 traversal, whose `MergeInv` carries the `mergeChains` oracle
 equation over address-spine (`ListSegAddrs`) remainders with
-pure outsideness).
+pure outsideness — and every-match deallocating sweep —
+P1-filter, whose `FilterInv` carries the kept-prefix pin plus
+the freed-prefix tracking).
 
 Next: nothing open — the single-pointer exemption
 (`a393fa6`), the L-ptr2 slice, and the P1-push, P1-erase,
-P1-find, P1-copy, P1-clear, P1-sortedinsert, and P1-merge
-slices are all closed. Iris policy stays at
+P1-find, P1-copy, P1-clear, P1-sortedinsert, P1-merge, and
+P1-filter slices are all closed. Iris policy stays at
 pillar 4 (native first, Iris on fallback). See
 `DELIVERED.md` §§ M3/N1, S3, N6, L–L5, L-ptr, L-ptr2,
 P1-push, P1-erase, P1-find, P1-copy, P1-clear,
-P1-sortedinsert, P1-merge, O1/O2, Iris, P4, K6.
+P1-sortedinsert, P1-merge, P1-filter, O1/O2, Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Remove-if (`list_filter`): unlink + `free`
-   every node matching a payload predicate, keeping the
-   survivors linked in order — composes the per-node erase
-   step with P1-clear's freed-prefix tracking.
-2. Adjacent-duplicate squeeze (`list_unique`): unlink + `free`
-   every node equal to its predecessor, keeping one copy per
-   run — the ordered sequel to P1-sortedinsert (sorted input
-   makes equality local), composing the erase step with
-   P1-clear's freed-prefix tracking with no new mechanism.
+1. (Recommended) Adjacent-duplicate squeeze (`list_unique`):
+   unlink + `free` every node equal to its predecessor,
+   keeping one copy per run — the ordered sequel to
+   P1-sortedinsert (sorted input makes equality local),
+   composing the erase step with P1-clear's freed-prefix
+   tracking with no new mechanism.
+2. In-place reversal (`list_reverse`): swing every link in one
+   chase with two cursors, no allocation or free — reuses the
+   chase + link-decode kit with no new mechanism, the
+   read-only-traversal dual.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
