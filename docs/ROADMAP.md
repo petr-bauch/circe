@@ -152,7 +152,8 @@ Proposed (toward the platform goal — for approval, in order):
 
 Delivered (re-verified 2026-10-25, then extended in place;
 details in `DELIVERED.md` §§ N5, H1–H4, A, P3a/b/c/d/e,
-Frontend, U1–U3, T1, P3c/d/e, P3f, H1, P3, P3-N, J, H, L-ptr): proof
+Frontend, U1–U3, T1, P3c/d/e, P3f, H1, P3, P3-N, P3-NCopy,
+J, H, L-ptr): proof
 ergonomics (N5: `cir_fuel`, fuel-bound
 lemmas, per-step cascades; N5a/N5b micro-tactics
 `fuel_step_down` / `cir_step` with adoption gates — n5 later
@@ -207,16 +208,11 @@ further store-heavy triples compose over
 A gallery per new admitted shape, as always.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Caller-record contract facade
-   (`Circe.Contracts.VecUniqueCopy`): the P3-N treatment for
-   the M16 squeeze — a stable user-facing contract (fits →
-   squeeze count + prefix; short → loud) delegating to the
-   Transfer specs, so users never name lockstep internals.
-2. Two-block Hoare gallery instance: the M16 seed store +
-   one keep step as a closed gallery triple — first
-   two-block (read-only + record) gallery, executable shadow
-   of the seed/short discipline.
-3. R/S program-level threading decision: still prose at two
+1. (Recommended) Two-block Hoare gallery instance: the M16
+   seed store + one keep step as a closed gallery triple —
+   first two-block (read-only + record) gallery, executable
+   shadow of the seed/short discipline.
+2. R/S program-level threading decision: still prose at two
    uses (`revMemStore_ok` + per-file bridges). The third
    use forces the call — package like the store leg, or keep
    prose; no tactic without three user-goal uses (rule of

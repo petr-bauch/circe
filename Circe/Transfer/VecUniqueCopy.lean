@@ -2887,7 +2887,6 @@ theorem evalProgFunc_vecUniqueCopy_spec_err (F : Nat)
     (la lo : List (BitVec 32))
     (hla64 : la.length < 2 ^ 64) (hlo64 : lo.length < 2 ^ 64)
     (hF : la.length + 1 ≤ F)
-    (hcap : (dedupAdj la).length ≤ lo.length)
     (hmore : lo.length < (dedupAdj la).length) :
     memEvalProgFunc vecUniqueCopyProg F vecUniqueCopyFunc
       [.stdVecVal la, .stdVecVal lo] =

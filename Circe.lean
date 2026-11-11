@@ -16,4 +16,5 @@ import Circe.Lemmas.TwoCursor
 import Circe.Hoare.Vec
 import Circe.Contracts.Tactics
 import Circe.Contracts.VecUnique
+import Circe.Contracts.VecUniqueCopy
 import Circe.Specs

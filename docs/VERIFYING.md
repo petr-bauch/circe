@@ -402,10 +402,14 @@ and predecessor fuel on the other.
 
 ### Contract facades (P3)
 
-Recipe for a modular slice proof (worked instance:
+Recipe for a modular slice proof (worked instances:
 `vec_unique`, `Circe/Contracts/VecUnique.lean`; regression
 test `tests/lean/ContractVecUnique.lean`,
-`contract-vecunique`):
+`contract-vecunique`; second instance: `vec_unique_copy`,
+`Circe/Contracts/VecUniqueCopy.lean`, regression test
+`tests/lean/ContractVecUniqueCopy.lean`,
+`contract-vecuniquecopy` — same recipe with a two-leg
+fits/short contract instead of one):
 
 1. State the contract in ideal vocabulary — value result
    plus memory/value agreement, no `Env`/`Mem`/`Layout`/fuel
