@@ -2502,6 +2502,76 @@ def isBstSearchShape (raw : RawFunc) : Bool :=
     !containsSubstr raw.text "cir.unreachable"
   | _ => false
 
+/-- BST insert (P1 tree-kit second shape, iterative descent
+    with per-element `malloc` — the `bst_insert` shape):
+    `Node*` root + `i32` key in, new-root `Node*` out.
+    One `cir.while` chasing `cur` while `cur != nullptr`
+    (one `ne` `cir.cmp` on the pointer); the two-leg key test
+    is exactly two `cir.if`s (one `eq` `cir.cmp` for the
+    duplicate-key early exit, one signed `lt` `cir.cmp` for the
+    left/right descent); attach is one `cir.if` on the
+    null-parent `eq` plus one `cir.if` on the recorded side
+    (a single `cir.call @malloc`, 3-word node init).
+    Nine `cir.get_member` (`[0]` key, `[1]` left link,
+    `[2]` right link — read on descent, written on attach);
+    the `[2]` projection plus the `lt` compare separates it
+    from every linear list shape. 7 allocas, 30 loads,
+    20 stores (alloca-heavy unoptimized CIR: cursor swing,
+    node init, link swing). 3 `cir.return` (hit-early,
+    empty-tree, normal tail on `!cir.ptr<!rec_Node>`),
+    1 `cir.call @` (`@malloc` only), no `cir.sub` /
+    `cir.mul` / `cir.add` / `ternary` / `nsw` / `for` /
+    `switch` / `try` / `unreachable` / `free` /
+    operator-`new` / `delete` / `realloc`. Encapsulation pins:
+    root points at `!rec_Node` (the C three-field
+    `key`/`left`/`right` record), key is a plain `i32`. The
+    single-pointer exemption stays a gate concern; the shape
+    pins structure only. -/
+def isBstInsertShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [root, key] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType root.ctype && ptrInner root.ctype == some "!rec_Node" &&
+    isI32 key.ctype && !isPtrType key.ctype &&
+    isPtrType raw.ret && ptrInner raw.ret == some "!rec_Node" &&
+    containsSubstr raw.text "#cir.ptr<null>" &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.for" == 0 &&
+    opCount raw.text "cir.if" == 4 &&
+    opCount raw.text "cir.ternary" == 0 &&
+    opCount raw.text "cir.cmp" == 4 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.cmp eq" == 2 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.get_member" == 9 &&
+    containsSubstr raw.text "[0]" &&
+    containsSubstr raw.text "[1]" &&
+    containsSubstr raw.text "[2]" &&
+    opCount raw.text "cir.const" == 9 &&
+    opCount raw.text "cir.cast" == 12 &&
+    opCount raw.text "cir.mul" == 0 &&
+    opCount raw.text "cir.add" == 0 &&
+    opCount raw.text "cir.sub" == 0 &&
+    !containsSubstr raw.text "nsw" &&
+    opCount raw.text "cir.alloca" == 7 &&
+    opCount raw.text "cir.load" == 30 &&
+    opCount raw.text "cir.store" == 20 &&
+    opCount raw.text "cir.return" == 3 &&
+    opCount raw.text "cir.yield" == 1 &&
+    opCount raw.text "cir.call @" == 1 &&
+    freeCallCount raw.text == 0 &&
+    opCount raw.text "cir.get_global" == 1 &&
+    opCount raw.text "cir.break" == 0 &&
+    opCount raw.text "cir.continue" == 0 &&
+    !containsSubstr raw.text "cir.switch" &&
+    containsSubstr raw.text "cir.call @malloc" &&
+    !containsSubstr raw.text "cir.call @_Znwm" &&
+    !containsSubstr raw.text "cir.call @_ZdlPvm" &&
+    !containsSubstr raw.text "realloc" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "cir.unreachable"
+  | _ => false
+
 /-- Ordered insert (P1 sixth shape, find + link swing over a
     sorted chain — the `list_sorted_insert` shape): `Node*`
     head + `i32` val in, `Node*` out (possibly-new head after
