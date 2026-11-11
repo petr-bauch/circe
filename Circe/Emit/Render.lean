@@ -1863,6 +1863,43 @@ def emitVecCopyIfText (name : String) : String :=
   ++ "        else loop la lo fuel (r + 1) w\n"
   ++ "    else .ok (r, w, lo)\n"
 
+/-- Render the `vec_unique_copy` entry forward definition:
+    the predecessor-kept squeeze scan over the reified input,
+    writing survivors into the caller-sized record (the
+    `std::unique_copy` idiom: empty input returns `0` up front,
+    otherwise the seed store plants `a[0]` and the `(1, 1)`
+    scan keeps `a[r]` iff it differs from the last recorded
+    survivor; a short record fails loud). Returns the survivor
+    count. -/
+def emitVecUniqueCopyText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (predecessor-kept squeeze over the reified input into the caller-sized record; the `std::unique_copy` idiom: seed the first survivor, keep `a[r]` iff it differs from the last recorded survivor, short record fails loud; returns the survivor count). -/\n"
+  ++ s!"def {name}_fwd (la : List (BitVec 32)) (lo : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match la with\n"
+  ++ "  | [] => .ok 0\n"
+  ++ "  | a0 :: _ =>\n"
+  ++ "    match lo[0]? with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some _ =>\n"
+  ++ "      match loop la (lo.set 0 a0) la.length 1 1 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok (_, w, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, r, w => .ok (r, w, lo)\n"
+  ++ "  | la, lo, fuel + 1, r, w =>\n"
+  ++ "    if r < la.length then\n"
+  ++ "      match la[r]?, lo[w - 1]? with\n"
+  ++ "      | some y, some p =>\n"
+  ++ "        if (y != p) then\n"
+  ++ "          match lo[w]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la (lo.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop la lo fuel (r + 1) w\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (r, w, lo)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=

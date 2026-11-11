@@ -29,6 +29,7 @@ import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecUnique
+import Circe.Emit.VecUniqueCopy
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecDfs
 import Circe.Emit.VecBfs
@@ -188,6 +189,7 @@ def main : IO Unit := do
   let vecPartialSum ← emitOrDie vecPartialSumFunc
   let vecIntersect ← emitOrDie vecIntersectFunc
   let vecCopyIf ← emitOrDie vecCopyIfFunc
+  let vecUniqueCopy ← emitOrDie vecUniqueCopyFunc
   let vecUnion ← emitOrDie vecUnionFunc
   let vecDifference ← emitOrDie vecDifferenceFunc
   let vecMinIndex ← emitOrDie VecSelectionSort.minIndexFunc
@@ -361,6 +363,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartialSum.lean" (emitFileText (.ok vecPartialSum))
   IO.FS.writeFile "out/VecIntersect.lean" (emitFileText (.ok vecIntersect))
   IO.FS.writeFile "out/VecCopyIf.lean" (emitFileText (.ok vecCopyIf))
+  IO.FS.writeFile "out/VecUniqueCopy.lean" (emitFileText (.ok vecUniqueCopy))
   IO.FS.writeFile "out/VecUnion.lean" (emitFileText (.ok vecUnion))
   IO.FS.writeFile "out/VecDifference.lean" (emitFileText (.ok vecDifference))
   IO.FS.writeFile "out/VecMinIndex.lean" (emitFileText (.ok vecMinIndex))
@@ -534,6 +537,7 @@ def main : IO Unit := do
   let vecPartialSumSpec ← specOrDie vecPartialSumFunc
   let vecIntersectSpec ← specOrDie vecIntersectFunc
   let vecCopyIfSpec ← specOrDie vecCopyIfFunc
+  let vecUniqueCopySpec ← specOrDie vecUniqueCopyFunc
   let vecUnionSpec ← specOrDie vecUnionFunc
   let vecDifferenceSpec ← specOrDie vecDifferenceFunc
   let vecMinIndexSpec ← specOrDie VecSelectionSort.minIndexFunc
@@ -707,6 +711,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartialSum_Spec.lean" vecPartialSumSpec
   IO.FS.writeFile "out/VecIntersect_Spec.lean" vecIntersectSpec
   IO.FS.writeFile "out/VecCopyIf_Spec.lean" vecCopyIfSpec
+  IO.FS.writeFile "out/VecUniqueCopy_Spec.lean" vecUniqueCopySpec
   IO.FS.writeFile "out/VecUnion_Spec.lean" vecUnionSpec
   IO.FS.writeFile "out/VecDifference_Spec.lean" vecDifferenceSpec
   IO.FS.writeFile "out/VecMinIndex_Spec.lean" vecMinIndexSpec

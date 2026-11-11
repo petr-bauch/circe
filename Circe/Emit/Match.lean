@@ -54,6 +54,7 @@ import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
 import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecUnique
+import Circe.Emit.VecUniqueCopy
 import Circe.Emit.Vec
 import Circe.Emit.Vec64
 import Circe.Emit.Vec2
@@ -1393,6 +1394,36 @@ def matchFrag : Func → Option FragKind
             (.return_ (.var "w")))))⟩ =>
     some .vecCopyIf
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
+        ⟨"out", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩],
+      .u 64,
+      (.seq (.if_ (.ueq (.stdVecLen "a")
+                      (.lit (.u64 z0)))
+                (.return_ (.lit (.u64 z1)))
+                .skip)
+        (.seq (.if_ (.ult (.lit (.u64 s0)) (.stdVecLen "out"))
+                  (.vecSet "out" (.lit (.u64 s1))
+                    (.stdVecAt "a" (.lit (.u64 s2))))
+                  .fail)
+          (.seq (.let_ "w" (.u 64) (.lit (.u64 o0)))
+            (.seq (.let_ "r" (.u 64) (.lit (.u64 o1)))
+              (.seq (.while_ (.ult (.var "r") (.stdVecLen "a"))
+                      (.seq (.if_ (.une (.stdVecAt "a" (.var "r"))
+                                        (.stdVecAt "out"
+                                          (.usub (.var "w")
+                                            (.lit (.u64 p0)))))
+                                  (.if_ (.ult (.var "w")
+                                          (.stdVecLen "out"))
+                                    (.seq (.vecSet "out" (.var "w")
+                                            (.stdVecAt "a" (.var "r")))
+                                      (.assign "w" (.uadd (.var "w")
+                                        (.lit (.u64 v0)))))
+                                    .fail)
+                                  .skip)
+                        (.assign "r" (.uadd (.var "r")
+                          (.lit (.u64 v1))))))
+                (.return_ (.var "w")))))))⟩ =>
+    some .vecUniqueCopy
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"lo", .u 64, .owned⟩],
       .u 64,
       (.seq (.let_ "m" (.u 64) (.var "lo"))
@@ -2512,6 +2543,8 @@ theorem matchFrag_vecDifference :
     matchFrag vecDifferenceFunc = some .vecDifference := rfl
 theorem matchFrag_vecCopyIf :
     matchFrag vecCopyIfFunc = some .vecCopyIf := rfl
+theorem matchFrag_vecUniqueCopy :
+    matchFrag vecUniqueCopyFunc = some .vecUniqueCopy := rfl
 theorem matchFrag_vecMinIndex :
     matchFrag VecSelectionSort.minIndexFunc = some .vecMinIndex := rfl
 theorem matchFrag_vecSelectionSort :

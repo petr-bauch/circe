@@ -173,3 +173,94 @@ theorem dedupAdj_snoc_drop (D : List (BitVec 32)) (y p : BitVec 32)
   rw [dedupAdj_append_single, hlast]
   simp [heq]
 
+/-- The running prefix's last element is the predecessor read:
+    from `l[w - 1]? = some p`, the taken prefix ends in `p`.
+    Moved here from `Circe.Specs` (P2-M16 pack consolidation):
+    the out-of-place squeeze invariant reads its predecessor
+    from the record prefix, and Emit cannot import Specs. -/
+theorem take_getLast_of_getElem? (l : List (BitVec 32)) (w : Nat)
+    (p : BitVec 32)
+    (hw : 0 < w) (hle : w ≤ l.length)
+    (h : l[w - 1]? = some p) :
+    (l.take w).getLast? = some p := by
+  have htakenN : (l.take w).length = w := by
+    rw [List.length_take, Nat.min_eq_left hle]
+  have hprevTaken : (l.take w)[w - 1]? = some p := by
+    rw [List.getElem?_take_of_lt (by omega : w - 1 < w)]
+    exact h
+  rw [List.getLast?_eq_getElem?, htakenN]
+  exact hprevTaken
+
+/-- Squeeze prefix step, keep leg (P2-M16 boundary): scanning one
+    element further and finding a value that differs from the
+    last survivor extends the squeezed prefix. Packages the
+    `take (r+1)` split with `dedupAdj_snoc_keep`, so the loop
+    proofs never unfold `take` themselves. -/
+theorem dedupAdj_take_succ_keep (la : List (BitVec 32)) (r : Nat)
+    (y p : BitVec 32)
+    (hr : la[r]? = some y)
+    (hlast : (dedupAdj (la.take r)).getLast? = some p)
+    (hne : (y != p) = true) :
+    dedupAdj (la.take (r + 1)) = dedupAdj (la.take r) ++ [y] := by
+  have hsplit : la.take (r + 1) = la.take r ++ [y] := by
+    simp [List.take_add_one, hr]
+  rw [hsplit]
+  exact dedupAdj_snoc_keep _ _ _ hlast hne
+
+/-- Squeeze prefix step, drop leg (P2-M16 boundary): scanning one
+    element further and finding the last survivor again leaves
+    the squeezed prefix unchanged. -/
+theorem dedupAdj_take_succ_drop (la : List (BitVec 32)) (r : Nat)
+    (y p : BitVec 32)
+    (hr : la[r]? = some y)
+    (hlast : (dedupAdj (la.take r)).getLast? = some p)
+    (heq : (y != p) = false) :
+    dedupAdj (la.take (r + 1)) = dedupAdj (la.take r) := by
+  have hsplit : la.take (r + 1) = la.take r ++ [y] := by
+    simp [List.take_add_one, hr]
+  rw [hsplit]
+  exact dedupAdj_snoc_drop _ _ _ hlast heq
+
+/-- Squeeze is append-monotone as a prefix: appending more
+    input can only extend the squeeze at the tail (each snoc
+    either keeps the squeeze or snocs one survivor). -/
+theorem dedupAdj_append_prefix (D E : List (BitVec 32)) :
+    dedupAdj D <+: dedupAdj (D ++ E) := by
+  induction E generalizing D with
+  | nil => simpa using List.prefix_rfl (dedupAdj D)
+  | cons y ys ih =>
+    have hsnoc : dedupAdj D <+: dedupAdj (D ++ [y]) := by
+      rw [dedupAdj_append_single]
+      cases hD : (dedupAdj D).getLast? with
+      | none =>
+        have hnil : dedupAdj D = [] := List.getLast?_eq_none_iff.mp hD
+        rw [hnil]
+        exact List.prefix_append [] [y]
+      | some p =>
+        by_cases hne : (y != p) = true
+        · simp only [hne, ite_true]
+          exact List.prefix_append _ _
+        · simp only [hne, ite_false]
+          exact List.prefix_rfl
+    have htail := ih (D ++ [y])
+    have happend : D ++ y :: ys = (D ++ [y]) ++ ys := by simp
+    rw [happend]
+    exact List.IsPrefix.trans hsnoc htail
+
+/-- Squeezing a scanned prefix yields a prefix of the full
+    squeeze (prefix-monotonicity through `take_append_drop`). -/
+theorem dedupAdj_take_prefix (la : List (BitVec 32)) (k : Nat) :
+    dedupAdj (la.take k) <+: dedupAdj la := by
+  have h := dedupAdj_append_prefix (la.take k) (la.drop k)
+  rwa [List.take_append_drop] at h
+
+/-- Squeeze length is monotone under `take`: the scanned
+    prefix never squeezes longer than the whole input. The
+    load-bearing bound for the caller-debt propagation
+    (every keep step extends the squeezed prefix by exactly
+    one, so the record bound on the full squeeze bounds each
+    step). -/
+theorem dedupAdj_take_length_le (la : List (BitVec 32)) (k : Nat) :
+    (dedupAdj (la.take k)).length ≤ (dedupAdj la).length :=
+  List.IsPrefix.length_le (dedupAdj_take_prefix la k)
+

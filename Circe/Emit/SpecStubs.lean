@@ -3240,6 +3240,58 @@ def emitVecCopyIfSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_unique_copy`. The mirror is the
+    predecessor-kept squeeze over the reified input into the
+    caller-sized record (the `std::unique_copy` idiom); edges
+    carry ground truth (runs collapse, no-dup identity,
+    all-same, empty input, singleton, pair collapse, two-diff,
+    short-record loud, seed-short loud). -/
+def emitVecUniqueCopySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, out)` squeezes adjacent duplicates of `a` into the caller-sized `out` (`std::unique_copy` idiom). Base body reference: the same seed-plus-scan on the reified words (cf. emitted `{name}_fwd`). Returns the survivor count with the squeezed prefix; a short record fails loud. -/\n"
+  ++ s!"def {name}_spec_fwd (la : List (BitVec 32)) (lo : List (BitVec 32)) : Result (Nat × List (BitVec 32)) :=\n"
+  ++ "  match la with\n"
+  ++ "  | [] => .ok (0, lo.take 0)\n"
+  ++ "  | a0 :: _ =>\n"
+  ++ "    match lo[0]? with\n"
+  ++ "    | none => .error .AssertFail\n"
+  ++ "    | some _ =>\n"
+  ++ "      match loop la (lo.set 0 a0) la.length 1 1 with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok (_, w, lo') => .ok (w, lo'.take w)\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, r, w => .ok (r, w, lo)\n"
+  ++ "  | la, lo, fuel + 1, r, w =>\n"
+  ++ "    if r < la.length then\n"
+  ++ "      match la[r]?, lo[w - 1]? with\n"
+  ++ "      | some y, some p =>\n"
+  ++ "        if (y != p) then\n"
+  ++ "          match lo[w]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la (lo.set w y) fuel (r + 1) (w + 1)\n"
+  ++ "        else loop la lo fuel (r + 1) w\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (r, w, lo)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: runs collapse, no-dup identity, all-same, empty input, singleton, pair collapse, two-diff, short-record loud, seed-short loud. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32)) × Result (Nat × List (BitVec 32))) :=\n"
+  ++ "  [(([3, 2, 2, 1, 1], [0, 0, 0, 0, 0]), .ok (3, [3, 2, 1])),\n"
+  ++ "   (([3, 1, 2], [0, 0, 0]), .ok (3, [3, 1, 2])),\n"
+  ++ "   (([5, 5, 5], [0, 0, 0]), .ok (1, [5])),\n"
+  ++ "   (([], [0]), .ok (0, [])),\n"
+  ++ "   (([7], [9]), .ok (1, [7])),\n"
+  ++ "   (([9, 9], [0, 0]), .ok (1, [9])),\n"
+  ++ "   (([9, 8], [0, 0]), .ok (2, [9, 8])),\n"
+  ++ "   (([1, 2], [9]), .error .AssertFail),\n"
+  ++ "   (([4], []), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `min_index`. The mirror is the forward min-scan
     over the reified words; edges carry ground truth (singleton,
     head/tail minima, interior minimum). -/

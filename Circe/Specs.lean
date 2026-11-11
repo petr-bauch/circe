@@ -28,6 +28,7 @@ import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecUnique
+import Circe.Emit.VecUniqueCopy
 import Circe.Tactics
 import Circe.Lemmas.TwoCursor
 
@@ -5626,21 +5627,6 @@ theorem removeFwd_bounds (x : BitVec 32) (l l' : List (BitVec 32))
       obtain ⟨rfl, rfl, rfl⟩ := hpair
       exact ⟨hwle, Nat.le_refl _⟩
 
-/-- The running prefix's last element is the predecessor read:
-    from `l[w - 1]? = some p`, the taken prefix ends in `p`. -/
-theorem take_getLast_of_getElem? (l : List (BitVec 32)) (w : Nat)
-    (p : BitVec 32)
-    (hw : 0 < w) (hle : w ≤ l.length)
-    (h : l[w - 1]? = some p) :
-    (l.take w).getLast? = some p := by
-  have htakenN : (l.take w).length = w := by
-    rw [List.length_take, Nat.min_eq_left hle]
-  have hprevTaken : (l.take w)[w - 1]? = some p := by
-    rw [List.getElem?_take_of_lt (by omega : w - 1 < w)]
-    exact h
-  rw [List.getLast?_eq_getElem?, htakenN]
-  exact hprevTaken
-
 /-- Squeeze loop is total: the scan runs to `l.length` (fuel
     induction threading the predecessor read; the `w - 1` access
     is justified by the `1 ≤ w` seed fact plus `w ≤ r`). -/
@@ -5888,6 +5874,549 @@ theorem vecUniqueFwd_correct (l₀ : List (BitVec 32))
       squeeze_length_eq l' _ w' hpre (by rw [hlen']; exact hbw.1)
     exact ⟨w', l', by rw [List.length_cons] at hfwd; simp [vecUniqueFwd, hfwd],
       hpre, hwlen, hlen'⟩
+
+/-! ## P2-M16: caller-record squeeze (`vec_unique_copy`) forward contract -/
+
+/-- Squeeze forward totality: when the full squeeze fits the
+    record, the scan from any reachable state returns (fuel
+    induction threading the squeezed-prefix invariant, the
+    record reads, and the caller-debt bound — the keep leg
+    derives `w < lo.length` from the take-length law keyed on
+    the last survivor, so the short leg is unreachable). -/
+theorem uniqueCopyFwd_ok (la lo : List (BitVec 32))
+    (fuel r w : Nat)
+    (hle : r ≤ la.length) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hreadLo : ∀ p, p < lo.length → ∃ y, lo[p]? = some y)
+    (hpre : lo.take w = dedupAdj (la.take r))
+    (hwlo : w ≤ lo.length)
+    (hcap : (dedupAdj la).length ≤ lo.length) :
+    ∃ w' lo', uniqueCopyFwd la lo fuel r w = .ok (la.length, w', lo') := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    exact ⟨w, lo, rfl⟩
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      have hw1m : w - 1 < lo.length := by omega
+      obtain ⟨p, hpred⟩ := hreadLo (w - 1) hw1m
+      have hlast : (dedupAdj (la.take r)).getLast? = some p := by
+        rw [← hpre]
+        exact take_getLast_of_getElem? lo w p hw1 hwlo hpred
+      by_cases hkeep : (y != p) = true
+      · have hwlen1 : (dedupAdj (la.take (r + 1))).length
+          = w + 1 := by
+          have h := dedupAdj_take_succ_keep la r y p hy hlast hkeep
+          rw [h, ← hpre, List.length_append]
+          have htw : (lo.take w).length = w := by
+            rw [List.length_take, Nat.min_eq_left hwlo]
+          rw [htw, List.length_singleton]
+        have hmono := dedupAdj_take_length_le la (r + 1)
+        have hwlt : w < lo.length := by omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, lo[w]? = some z :=
+          ⟨lo[w], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have htake_set : (lo.set w y).take (w + 1)
+            = (lo.take w) ++ [y] :=
+          take_set_succ_self lo w y hwlt
+        have hpre' : (lo.set w y).take (w + 1)
+            = dedupAdj (la.take (r + 1)) := by
+          rw [htake_set, hpre,
+            dedupAdj_take_succ_keep la r y p hy hlast hkeep]
+        have hwlo' : w + 1 ≤ (lo.set w y).length := by
+          have hlen : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          omega
+        have hreadLo' : ∀ p, p < (lo.set w y).length →
+            ∃ z, ((lo.set w y)[p]? = some z) := by
+          intro p hp
+          have hplen : p < lo.length := by
+            have hlen : (lo.set w y).length = lo.length := by
+              simp [List.length_set]
+            omega
+          by_cases hpw : p = w
+          · rw [hpw]
+            exact ⟨y, List.getElem?_set_self hwlt⟩
+          · obtain ⟨z, hz⟩ := hreadLo p hplen
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show w ≠ p by omega)]
+              exact hz⟩
+        have hcap' : (dedupAdj la).length ≤
+            (lo.set w y).length := by
+          have hlen : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          rw [hlen]; exact hcap
+        obtain ⟨w', lo', h⟩ := ih (lo := lo.set w y)
+          (r := r + 1) (w := w + 1)
+          (hle := by omega) (hwle := by omega) (hw1 := by omega)
+          (hF := hF') (hreadLo := hreadLo') (hpre := hpre')
+          (hwlo := hwlo') (hcap := hcap')
+        exact ⟨w', lo', by
+          simp only [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hkeep, hwget]
+          exact h⟩
+      · have hdrop : (y != p) = false := by
+          cases h : (y != p) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hpre' : lo.take w = dedupAdj (la.take (r + 1)) := by
+          rw [dedupAdj_take_succ_drop la r y p hy hlast hdrop, hpre]
+        obtain ⟨w', lo', h⟩ := ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hwle := by omega) (hw1 := hw1)
+          (hF := hF') (hreadLo := hreadLo) (hpre := hpre')
+          (hwlo := hwlo) (hcap := hcap)
+        exact ⟨w', lo', by
+          simp only [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hdrop]
+          exact h⟩
+    · have him : r = la.length := by omega
+      subst him
+      exact ⟨w, lo, by simp [uniqueCopyFwd]⟩
+
+/-- Squeeze forward prefix contract, ok leg: the written
+    prefix is the squeeze of the scanned prefix, the count
+    never retreats, the record length is unchanged (fuel
+    induction threading the prefix, suffix, bound, reads, and
+    capacity facts — the M12 `copyIfFwd_prefix` shape on the
+    record list with the M13 squeeze oracle). -/
+theorem uniqueCopyFwd_prefix (la lo₀ : List (BitVec 32))
+    (fuel r w w' : Nat) (lo lo' : List (BitVec 32))
+    (hle : r ≤ la.length) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (hF : la.length - r ≤ fuel)
+    (hlen : lo.length = lo₀.length)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hreadLo : ∀ p, p < lo.length → ∃ y, lo[p]? = some y)
+    (hpre : lo.take w = dedupAdj (la.take r))
+    (hwlo : w ≤ lo.length)
+    (hcap : (dedupAdj la).length ≤ lo₀.length)
+    (hsuf : ∀ j, w ≤ j → lo[j]? = lo₀[j]?)
+    (hfwd : uniqueCopyFwd la lo fuel r w = .ok (la.length, w', lo')) :
+    lo'.take w' = dedupAdj la ∧
+      w ≤ w' ∧ lo'.length = lo₀.length := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have hpair : (r, w, lo) = (la.length, w', lo') := by
+      simpa [uniqueCopyFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    refine ⟨?_, Nat.le_refl _, hlen⟩
+    rw [List.take_length] at hpre
+    exact hpre
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      have hw1m : w - 1 < lo.length := by omega
+      obtain ⟨p, hpred⟩ := hreadLo (w - 1) hw1m
+      have hlast : (dedupAdj (la.take r)).getLast? = some p := by
+        rw [← hpre]
+        exact take_getLast_of_getElem? lo w p hw1 hwlo hpred
+      by_cases hkeep : (y != p) = true
+      · have hwlen1 : (dedupAdj (la.take (r + 1))).length
+          = w + 1 := by
+          have h := dedupAdj_take_succ_keep la r y p hy hlast hkeep
+          rw [h, ← hpre, List.length_append]
+          have htw : (lo.take w).length = w := by
+            rw [List.length_take, Nat.min_eq_left hwlo]
+          rw [htw, List.length_singleton]
+        have hmono := dedupAdj_take_length_le la (r + 1)
+        have hwlt : w < lo.length := by omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, lo[w]? = some z :=
+          ⟨lo[w], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hlen' : (lo.set w y).length = lo₀.length := by
+          simp [List.length_set, hlen]
+        have htake_set : (lo.set w y).take (w + 1)
+            = (lo.take w) ++ [y] :=
+          take_set_succ_self lo w y hwlt
+        have hpre' : (lo.set w y).take (w + 1)
+            = dedupAdj (la.take (r + 1)) := by
+          rw [htake_set, hpre,
+            dedupAdj_take_succ_keep la r y p hy hlast hkeep]
+        have hwlo' : w + 1 ≤ (lo.set w y).length := by
+          have hlenS : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          omega
+        have hreadLo' : ∀ p, p < (lo.set w y).length →
+            ∃ z, ((lo.set w y)[p]? = some z) := by
+          intro p hp
+          have hplen : p < lo.length := by
+            have hlenS : (lo.set w y).length = lo.length := by
+              simp [List.length_set]
+            omega
+          by_cases hpw : p = w
+          · rw [hpw]
+            exact ⟨y, List.getElem?_set_self hwlt⟩
+          · obtain ⟨z, hz⟩ := hreadLo p hplen
+            exact ⟨z, by
+              rw [List.getElem?_set_ne (show w ≠ p by omega)]
+              exact hz⟩
+        have hsuf' : ∀ j, w + 1 ≤ j → (lo.set w y)[j]? = lo₀[j]? := by
+          intro j hj
+          rw [List.getElem?_set_ne (show w ≠ j by omega)]
+          exact hsuf j (by omega)
+        have hfwd' : uniqueCopyFwd la (lo.set w y) n (r + 1)
+            (w + 1) = .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hkeep, hwget] at h
+          exact h
+        obtain ⟨hA, hB, hC⟩ := ih (lo := lo.set w y)
+          (r := r + 1) (w := w + 1)
+          (hle := by omega) (hwle := by omega) (hw1 := by omega)
+          (hF := hF') (hlen := hlen')
+          (hreadLo := hreadLo') (hpre := hpre') (hwlo := hwlo')
+          (hsuf := hsuf') (hfwd := hfwd')
+        exact ⟨hA, by omega, hC⟩
+      · have hdrop : (y != p) = false := by
+          cases h : (y != p) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hpre' : lo.take w = dedupAdj (la.take (r + 1)) := by
+          rw [dedupAdj_take_succ_drop la r y p hy hlast hdrop, hpre]
+        have hfwd' : uniqueCopyFwd la lo n (r + 1) w =
+            .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hdrop] at h
+          exact h
+        obtain ⟨hA, hB, hC⟩ := ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hwle := by omega) (hw1 := hw1)
+          (hF := hF') (hlen := hlen)
+          (hreadLo := hreadLo) (hpre := hpre') (hwlo := hwlo)
+          (hsuf := hsuf) (hfwd := hfwd')
+        exact ⟨hA, by omega, hC⟩
+    · have him : r = la.length := by omega
+      subst him
+      have hpair : (la.length, w, lo) = (la.length, w', lo') := by
+        cases n with
+        | zero => simpa [uniqueCopyFwd] using hfwd
+        | succ n =>
+          have hneg : ¬ la.length < la.length := by omega
+          simpa [uniqueCopyFwd, dite_eq_right hneg] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      refine ⟨?_, Nat.le_refl _, hlen⟩
+      rw [List.take_length] at hpre
+      exact hpre
+
+/-- Squeeze survivor-count bound: the returned count never
+    exceeds the record length while the scan fits (fuel
+    induction threading the prefix and capacity facts — the
+    ok-leg write rule). -/
+theorem uniqueCopyFwd_le (la lo : List (BitVec 32))
+    (fuel r w w' : Nat) (lo' : List (BitVec 32))
+    (hle : r ≤ la.length) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hreadLo : ∀ p, p < lo.length → ∃ y, lo[p]? = some y)
+    (hpre : lo.take w = dedupAdj (la.take r))
+    (hwlo : w ≤ lo.length)
+    (hcap : (dedupAdj la).length ≤ lo.length)
+    (hfwd : uniqueCopyFwd la lo fuel r w = .ok (la.length, w', lo')) :
+    w' ≤ lo.length := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have hpair : (r, w, lo) = (la.length, w', lo') := by
+      simpa [uniqueCopyFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl⟩ := hpair
+    exact hwlo
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      have hw1m : w - 1 < lo.length := by omega
+      obtain ⟨p, hpred⟩ := hreadLo (w - 1) hw1m
+      have hlast : (dedupAdj (la.take r)).getLast? = some p := by
+        rw [← hpre]
+        exact take_getLast_of_getElem? lo w p hw1 hwlo hpred
+      by_cases hkeep : (y != p) = true
+      · have hwlen1 : (dedupAdj (la.take (r + 1))).length
+          = w + 1 := by
+          have h := dedupAdj_take_succ_keep la r y p hy hlast hkeep
+          rw [h, ← hpre, List.length_append]
+          have htw : (lo.take w).length = w := by
+            rw [List.length_take, Nat.min_eq_left hwlo]
+          rw [htw, List.length_singleton]
+        have hmono := dedupAdj_take_length_le la (r + 1)
+        have hwlt : w < lo.length := by omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, lo[w]? = some z :=
+          ⟨lo[w], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have htake_set : (lo.set w y).take (w + 1)
+            = (lo.take w) ++ [y] :=
+          take_set_succ_self lo w y hwlt
+        have hpre' : (lo.set w y).take (w + 1)
+            = dedupAdj (la.take (r + 1)) := by
+          rw [htake_set, hpre,
+            dedupAdj_take_succ_keep la r y p hy hlast hkeep]
+        have hwlo' : w + 1 ≤ (lo.set w y).length := by
+          have hlenS : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          omega
+        have hcap' : (dedupAdj la).length ≤
+            (lo.set w y).length := by
+          have hlenS : (lo.set w y).length = lo.length := by
+            simp [List.length_set]
+          rw [hlenS]; exact hcap
+        have hfwd' : uniqueCopyFwd la (lo.set w y) n (r + 1)
+            (w + 1) = .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hkeep, hwget] at h
+          exact h
+        have h := ih (lo := lo.set w y)
+          (r := r + 1) (w := w + 1)
+          (hle := by omega) (hwle := by omega) (hw1 := by omega)
+          (hF := hF')
+          (hreadLo := by
+            intro p hp
+            have hplen : p < lo.length := by
+              have hlenS : (lo.set w y).length = lo.length := by
+                simp [List.length_set]
+              omega
+            by_cases hpw : p = w
+            · rw [hpw]
+              exact ⟨y, List.getElem?_set_self hwlt⟩
+            · obtain ⟨z, hz⟩ := hreadLo p hplen
+              exact ⟨z, by
+                rw [List.getElem?_set_ne (show w ≠ p by omega)]
+                exact hz⟩)
+          (hpre := hpre') (hwlo := hwlo') (hcap := hcap')
+          (hfwd := hfwd')
+        have hlenS : (lo.set w y).length = lo.length := by
+          simp [List.length_set]
+        omega
+      · have hdrop : (y != p) = false := by
+          cases h : (y != p) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hpre' : lo.take w = dedupAdj (la.take (r + 1)) := by
+          rw [dedupAdj_take_succ_drop la r y p hy hlast hdrop, hpre]
+        have hfwd' : uniqueCopyFwd la lo n (r + 1) w =
+            .ok (la.length, w', lo') := by
+          have h := hfwd
+          simp only [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hdrop] at h
+          exact h
+        exact ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hwle := by omega) (hw1 := hw1)
+          (hF := hF')
+          (hreadLo := hreadLo)
+          (hpre := hpre') (hwlo := hwlo) (hcap := hcap)
+          (hfwd := hfwd')
+    · have him : r = la.length := by omega
+      subst him
+      have hpair : (la.length, w, lo) = (la.length, w', lo') := by
+        cases n with
+        | zero => simpa [uniqueCopyFwd] using hfwd
+        | succ n =>
+          have hneg : ¬ la.length < la.length := by omega
+          simpa [uniqueCopyFwd, dite_eq_right hneg] using hfwd
+      obtain ⟨rfl, rfl, rfl⟩ := hpair
+      exact hwlo
+
+/-- Squeeze forward short-`out` error leg: when the scanned
+    prefix fits but the total squeeze overflows the record,
+    the scan fails loudly (fuel induction threading the
+    squeezed prefix and the record bound; the zero/exhausted
+    cases are discharged by the length facts). -/
+theorem uniqueCopyFwd_err_short (la lo : List (BitVec 32))
+    (fuel r w : Nat)
+    (hle : r ≤ la.length) (hwle : w ≤ r) (hw1 : 1 ≤ w)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hreadLo : ∀ p, p < lo.length → ∃ y, lo[p]? = some y)
+    (hpre : lo.take w = dedupAdj (la.take r))
+    (hwlo : w ≤ lo.length)
+    (hmore : lo.length < (dedupAdj la).length) :
+    uniqueCopyFwd la lo fuel r w = .error .AssertFail := by
+  induction fuel generalizing lo r w with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    have htw : (lo.take w).length = w := by
+      rw [List.length_take, Nat.min_eq_left hwlo]
+    rw [List.take_length] at hpre
+    have hde : (dedupAdj la).length = w := by
+      rw [← hpre, htw]
+    omega
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      have hw1m : w - 1 < lo.length := by omega
+      obtain ⟨p, hpred⟩ := hreadLo (w - 1) hw1m
+      have hlast : (dedupAdj (la.take r)).getLast? = some p := by
+        rw [← hpre]
+        exact take_getLast_of_getElem? lo w p hw1 hwlo hpred
+      by_cases hkeep : (y != p) = true
+      · by_cases hmiss : lo[w]? = none
+        · simpa [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hkeep, hmiss]
+        · have hsome : ∃ z, lo[w]? = some z := by
+            match h : lo[w]? with
+            | none => exact absurd h hmiss
+            | some z => exact ⟨z, rfl⟩
+          obtain ⟨wOld, hwget⟩ := hsome
+          have hwlt : w < lo.length :=
+            transformRead_lt lo w wOld hwget
+          have hF' : la.length - (r + 1) ≤ n := by omega
+          have htake_set : (lo.set w y).take (w + 1)
+              = (lo.take w) ++ [y] :=
+            take_set_succ_self lo w y hwlt
+          have hpre' : (lo.set w y).take (w + 1)
+              = dedupAdj (la.take (r + 1)) := by
+            rw [htake_set, hpre,
+              dedupAdj_take_succ_keep la r y p hy hlast hkeep]
+          have hwlo' : w + 1 ≤ (lo.set w y).length := by
+            have hlenS : (lo.set w y).length = lo.length := by
+              simp [List.length_set]
+            omega
+          have hmore' : (lo.set w y).length <
+              (dedupAdj la).length := by
+            have hlenS : (lo.set w y).length = lo.length := by
+              simp [List.length_set]
+            rw [hlenS]; exact hmore
+          have h := ih (lo := lo.set w y)
+            (r := r + 1) (w := w + 1)
+            (hle := by omega) (hwle := by omega) (hw1 := by omega)
+            (hF := hF')
+            (hreadLo := by
+              intro p hp
+              have hplen : p < lo.length := by
+                have hlenS : (lo.set w y).length = lo.length := by
+                  simp [List.length_set]
+                omega
+              by_cases hpw : p = w
+              · rw [hpw]
+                exact ⟨y, List.getElem?_set_self hwlt⟩
+              · obtain ⟨z, hz⟩ := hreadLo p hplen
+                exact ⟨z, by
+                  rw [List.getElem?_set_ne (show w ≠ p by omega)]
+                  exact hz⟩)
+            (hpre := hpre') (hwlo := hwlo') (hmore := hmore')
+          simpa [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+            hkeep, hwget] using h
+      · have hdrop : (y != p) = false := by
+          cases h : (y != p) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hpre' : lo.take w = dedupAdj (la.take (r + 1)) := by
+          rw [dedupAdj_take_succ_drop la r y p hy hlast hdrop, hpre]
+        have h := ih (lo := lo)
+          (r := r + 1) (w := w)
+          (hle := by omega) (hwle := by omega) (hw1 := hw1)
+          (hF := hF')
+          (hreadLo := hreadLo)
+          (hpre := hpre') (hwlo := hwlo) (hmore := hmore)
+        simpa [uniqueCopyFwd, dite_eq_left hlt, hy, hpred,
+          hdrop] using h
+    · have him : r = la.length := by omega
+      subst him
+      have htw : (lo.take w).length = w := by
+        rw [List.length_take, Nat.min_eq_left hwlo]
+      rw [List.take_length] at hpre
+      have hde : (dedupAdj la).length = w := by
+        rw [← hpre, htw]
+      omega
+
+/-- Short record fires loudly from the seeded state: more
+    squeeze than record words means the forward scan errors. -/
+theorem uniqueCopyFwd_err_of_overflow (la : List (BitVec 32))
+    (lo₁ : List (BitVec 32))
+    (hle : 1 ≤ la.length)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hreadLo₁ : ∀ p, p < lo₁.length → ∃ y, lo₁[p]? = some y)
+    (hpre₁ : lo₁.take 1 = dedupAdj (la.take 1))
+    (hwlo₁ : 1 ≤ lo₁.length)
+    (hmore : lo₁.length < (dedupAdj la).length) :
+    uniqueCopyFwd la lo₁ la.length 1 1 = .error .AssertFail :=
+  uniqueCopyFwd_err_short la lo₁ la.length 1 1 hle (Nat.le_refl _)
+    (Nat.le_refl _) (by omega) hread hreadLo₁ hpre₁ hwlo₁ hmore
+
+/-- Closed caller-record squeeze contract: when the squeeze
+    fits, the forward returns the squeeze count over the
+    squeeze prefix, record length unchanged. -/
+theorem vecUniqueCopyFwd_correct (la lo : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hcap : (dedupAdj la).length ≤ lo.length) :
+    ∃ (w' : Nat) (lo' : List (BitVec 32)),
+      vecUniqueCopyFwd la lo = .ok (.u64 (BitVec.ofNat 64 w')) ∧
+      lo'.take w' = dedupAdj la ∧
+      w' = (dedupAdj la).length ∧
+      lo'.length = lo.length := by
+  cases la with
+  | nil => exact ⟨0, lo, by simp [vecUniqueCopyFwd], by simp [dedupAdj],
+      rfl, rfl⟩
+  | cons a0 xs =>
+    have hlen1 : 1 ≤ (a0 :: xs).length := by simp
+    have hcap1 : 0 < lo.length := by
+      have hnn := dedupAdj_nonempty (show (a0 :: xs) ≠ [] by simp)
+      have hpos : 0 < (dedupAdj (a0 :: xs)).length :=
+        List.length_pos_iff.mpr hnn
+      omega
+    obtain ⟨o0, ho0⟩ : ∃ z, lo[0]? = some z :=
+      ⟨lo[0], List.getElem?_eq_getElem (by omega : 0 < lo.length)⟩
+    have hreadLo : ∀ p, p < lo.length → ∃ y, lo[p]? = some y := by
+      intro p hp
+      exact ⟨lo[p], List.getElem?_eq_getElem hp⟩
+    have h0lt : 0 < lo.length := by omega
+    have hpre₁ : (lo.set 0 a0).take 1
+        = dedupAdj ((a0 :: xs).take 1) := by
+      rw [show (1 : Nat) = 0 + 1 from rfl,
+        take_set_succ_self lo 0 a0 h0lt]
+      simp [dedupAdj]
+    have hreadLo₁ : ∀ p, p < (lo.set 0 a0).length →
+        ∃ y, ((lo.set 0 a0)[p]? = some y) := by
+      intro p hp
+      have hplen : p < lo.length := by
+        have hlenS : (lo.set 0 a0).length = lo.length := by
+          simp [List.length_set]
+        omega
+      by_cases hpw : p = 0
+      · rw [hpw]
+        exact ⟨a0, List.getElem?_set_self h0lt⟩
+      · obtain ⟨z, hz⟩ := hreadLo p hplen
+        exact ⟨z, by
+          rw [List.getElem?_set_ne (by omega : (0 : Nat) ≠ p)]
+          exact hz⟩
+    have hcapS : (dedupAdj (a0 :: xs)).length ≤
+        (lo.set 0 a0).length := by
+      have hlenS : (lo.set 0 a0).length = lo.length := by
+        simp [List.length_set]
+      rw [hlenS]; exact hcap
+    obtain ⟨w', lo', hfwd⟩ := uniqueCopyFwd_ok (a0 :: xs)
+      (lo.set 0 a0) ((a0 :: xs).length) 1 1 hlen1 (Nat.le_refl _)
+      (Nat.le_refl _) (Nat.sub_le _ _) hread hreadLo₁ hpre₁
+      (by simp [List.length_set]; omega) hcapS
+    have hsuf : ∀ j, 1 ≤ j → ((lo.set 0 a0)[j]? = lo[j]?) := by
+      intro j hj
+      rw [List.getElem?_set_ne (show (0 : Nat) ≠ j by omega)]
+    obtain ⟨hpref, hleW, hlen'⟩ := uniqueCopyFwd_prefix (a0 :: xs) lo
+      ((a0 :: xs).length) 1 1 w' (lo.set 0 a0) lo' hlen1
+      (Nat.le_refl _) (Nat.le_refl _) (Nat.sub_le _ _)
+      (by simp [List.length_set]) hread hreadLo₁ hpre₁
+      (by simp [List.length_set]; omega) hcap hsuf hfwd
+    have hb := uniqueCopyFwd_le (a0 :: xs) (lo.set 0 a0)
+      ((a0 :: xs).length) 1 1 w' lo' (hle := hlen1)
+      (hwle := Nat.le_refl _) (hw1 := Nat.le_refl _)
+      (hF := Nat.sub_le _ _) (hread := hread) (hreadLo := hreadLo₁)
+      (hpre := hpre₁)
+      (hwlo := by simp [List.length_set]; omega) (hcap := hcapS)
+      (hfwd := hfwd)
+    have hlenS : (lo.set 0 a0).length = lo.length := by
+      simp [List.length_set]
+    have hwlen : w' = (dedupAdj (a0 :: xs)).length :=
+      squeeze_length_eq lo' _ w' hpref (by
+        rw [hlen', ← hlenS]; exact hb)
+    refine ⟨w', lo', by simp only [vecUniqueCopyFwd, ho0, hfwd], hpref,
+      hwlen, hlen'⟩
 
 /-! ## P2-M11: sorted-range intersection (`vec_intersect`) forward contract -/
 

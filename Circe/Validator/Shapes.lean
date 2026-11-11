@@ -3099,6 +3099,55 @@ def isVecUniqueShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text raw.name
   | _ => false
 
+/-- `vec_unique_copy` entry shape (caller-record squeeze, P2-M16):
+    read-only input vector + caller-sized record in, `u64` survivor
+    count out, exactly eight calls (two `size` + three const `at()`
+    — the seed read + the squeeze-test pair — + three non-const
+    `at()` — the seed store + the predecessor read + the keep
+    store), one `cir.while` (the scan from index 1), two `cir.if`
+    (the empty-check early exit + the keep test), three compares
+    (`eq` empty check, `lt` guard, `ne` squeeze test against the
+    `w - 1` predecessor in `out`), one plain `u64` subtraction
+    (the predecessor index), two plain `u64` bumps, two returns
+    (empty-0 + tail-`w`). No ternary, no `nsw` arithmetic; the
+    eight-call count plus the two-vector two-param signature
+    separates it from `vec_copy_if` (owned scalar, four calls, one
+    `if`, one return) and from `vec_unique` (single vector, six
+    calls), and the seed store plus `ne`-against-`out` plus `sub`
+    from any plain copy. -/
+def isVecUniqueCopyShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, out] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType out.ctype && out.singleRef && isStdVectorType out.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 8 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 2 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.cmp eq" == 1 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.const" == 18 &&
+    opCount raw.text "cir.return" == 2 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 22 &&
+    opCount raw.text "cir.store" == 10 &&
+    opCount raw.text "cir.add " == 2 &&
+    opCount raw.text "cir.sub " == 1 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName
+  | _ => false
+
 /-- `vec_binary_search` entry shape (V1): single-ref vector + `i32`
     target, returns `u64`, one `cir.while` loop over exactly two `size`
     + one `at()` call with two `lt` guards (loop + go-left) and one
