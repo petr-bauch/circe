@@ -2324,6 +2324,67 @@ def emitListFindSpecText (name : String) : String :=
   ++ "    | .error _, none => true\n"
   ++ "    | _, _ => false\n"
 
+/-- Spec stub for `bst_search`. The mirror is the read-only
+    BST descent over `Mem` (signed key test; left link at
+    index 1, right link at index 2); the entry leg maps hit to
+    `1` and miss to `0`. Edges carry ground truth
+    (root/left/right hits, left/right misses, empty input,
+    singleton hit/miss, missing root). -/
+def emitBstSearchSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Mem.BinaryTree\n\n"
+  ++ s!"/-- C signature: `{name}(root, key)` returns 1 iff `key` occurs in the `root`-rooted BST (signed key order), else 0; the tree is never modified. Base body reference: the same read-cursor descent on the reified three-word nodes (cf. emitted `{name}_fwd`). Dangling links abort loudly; cyclic trees exhaust fuel. -/\n"
+  ++ s!"def {name}_spec_search (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (key : BitVec 32) : Result (Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok none\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          if w == key then .ok (some a)\n"
+  ++ "          else if key.slt w then\n"
+  ++ "            match memLoad m a b.tag 1 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ s!"            | .ok w' => {name}_spec_search F m (addrOfWord w') key\n"
+  ++ "          else\n"
+  ++ "            match memLoad m a b.tag 2 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ s!"            | .ok w' => {name}_spec_search F m (addrOfWord w') key\n"
+  ++ "\n"
+  ++ s!"def {name}_spec_fwd (F : Nat) (m : Mem) (root : Option Addr)\n"
+  ++ "    (key : BitVec 32) : Result Nat :=\n"
+  ++ s!"  match {name}_spec_search F m root key with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (some _) => .ok 1\n"
+  ++ "  | .ok none => .ok 0\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: root/left/right hits, left/right misses, empty input, singleton hit/miss, missing root. -/\n"
+  ++ s!"def {name}_spec_edges : List (Nat × Mem × Option Addr × BitVec 32 × Result Nat) :=\n"
+  ++ "  [(10, (memAllocData (memAllocData (memAllocData emptyMem [(3 : BitVec 32), 0, 0]).1 [(7 : BitVec 32), 0, 0]).1 [(5 : BitVec 32), 1, 2]).1, some 2, (5 : BitVec 32), .ok 1),\n"
+  ++ "   (10, (memAllocData (memAllocData (memAllocData emptyMem [(3 : BitVec 32), 0, 0]).1 [(7 : BitVec 32), 0, 0]).1 [(5 : BitVec 32), 1, 2]).1, some 2, (3 : BitVec 32), .ok 1),\n"
+  ++ "   (10, (memAllocData (memAllocData (memAllocData emptyMem [(3 : BitVec 32), 0, 0]).1 [(7 : BitVec 32), 0, 0]).1 [(5 : BitVec 32), 1, 2]).1, some 2, (7 : BitVec 32), .ok 1),\n"
+  ++ "   (10, (memAllocData (memAllocData (memAllocData emptyMem [(3 : BitVec 32), 0, 0]).1 [(7 : BitVec 32), 0, 0]).1 [(5 : BitVec 32), 1, 2]).1, some 2, (9 : BitVec 32), .ok 0),\n"
+  ++ "   (10, (memAllocData (memAllocData (memAllocData emptyMem [(3 : BitVec 32), 0, 0]).1 [(7 : BitVec 32), 0, 0]).1 [(5 : BitVec 32), 1, 2]).1, some 2, (1 : BitVec 32), .ok 0),\n"
+  ++ "   (10, emptyMem, none, (5 : BitVec 32), .ok 0),\n"
+  ++ "   (10, (memAllocData emptyMem [(7 : BitVec 32), 0, 0]).1, some 0, (7 : BitVec 32), .ok 1),\n"
+  ++ "   (10, (memAllocData emptyMem [(7 : BitVec 32), 0, 0]).1, some 0, (5 : BitVec 32), .ok 0),\n"
+  ++ "   (10, emptyMem, some 5, (5 : BitVec 32), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge (hit returns 1, miss returns 0, missing root fails loud). -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    match {name}_spec_fwd t.1 t.2.1 t.2.2.1 t.2.2.2.1, t.2.2.2.2 with\n"
+  ++ "    | .ok n, .ok m => n == m\n"
+  ++ "    | .error _, .error _ => true\n"
+  ++ "    | _, _ => false\n"
+
 /-- Spec stub for the `list_copy` entry. The mirror allocates
     one fresh cell per node (cf. emitted `{name}_fwd`); edges pin
     the payload order on the fresh chain AND on the untouched

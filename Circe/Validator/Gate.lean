@@ -34,6 +34,7 @@ import Circe.Emit.ListErase
 import Circe.Emit.ListFilter
 import Circe.Emit.ListUnique
 import Circe.Emit.ListFind
+import Circe.Emit.BstSearch
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
@@ -1975,6 +1976,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { listUniqueFunc with name := raw.name }
       else if isListFindShape raw then
         .ok { listFindFunc with name := raw.name }
+      else if isBstSearchShape raw then
+        .ok { bstSearchFunc with name := raw.name }
       else if isListCopyShape raw then
         .ok { listCopyFunc with name := raw.name }
       else if isListMergeShape raw then

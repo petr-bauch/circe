@@ -761,6 +761,17 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
         | .error e => .error e
     | .ok _ => .error .AssertFail
     | .error err => .error err
+  | .pgetRight e, ρ, m, π =>
+    match memEvalExpr e ρ m π with
+    | .ok (.ptrVal (some a)) =>
+      match memFind m a with
+      | none => .error .AssertFail
+      | some b =>
+        match memLoad m a b.tag 2 with
+        | .ok w => .ok (.ptrVal (addrOfWord w))
+        | .error e => .error e
+    | .ok _ => .error .AssertFail
+    | .error err => .error err
   | .stdVecLen s, ρ, m, π =>
     match layoutLookup π s with
     | none => .error .AssertFail
@@ -1204,6 +1215,46 @@ theorem memEvalExpr_pgetVal_hit (e : CExpr) (ρ : Env)
     (hfind : memFind m a = some b)
     (hmem : memLoad m a b.tag 0 = .ok w) :
     memEvalExpr (.pgetVal e) ρ m π = .ok (.i32 w) := by
+  simp only [memEvalExpr, he, hfind, hmem]
+
+/-- `pgetRight` on a live node reads the right-link word at
+    index 2 and decodes it (P1 tree kit: same discipline as
+    `pgetNext`, one cell over). -/
+theorem memEvalExpr_pgetRight_hit (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr) (w : BitVec 32)
+    (b : Block)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hmem : memLoad m a b.tag 2 = .ok w) :
+    memEvalExpr (.pgetRight e) ρ m π =
+      .ok (.ptrVal (addrOfWord w)) := by
+  simp only [memEvalExpr, he, hfind, hmem]
+
+/-- `pgetRight` on null is loud (dereferencing `nullptr` is
+    `AssertFail`, as for `pgetNext`). -/
+theorem memEvalExpr_pgetRight_null (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal none)) :
+    memEvalExpr (.pgetRight e) ρ m π = .error .AssertFail := by
+  simp only [memEvalExpr, he]
+
+/-- `pgetRight` on a missing block is loud. -/
+theorem memEvalExpr_pgetRight_miss (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = none) :
+    memEvalExpr (.pgetRight e) ρ m π = .error .AssertFail := by
+  simp only [memEvalExpr, he, hfind]
+
+/-- `pgetRight` propagates `memLoad` errors (dead block, short
+    read). -/
+theorem memEvalExpr_pgetRight_err (e : CExpr) (ρ : Env)
+    (m : Mem) (π : Layout) (a : Addr)
+    (b : Block) (werr : Panic)
+    (he : memEvalExpr e ρ m π = .ok (.ptrVal (some a)))
+    (hfind : memFind m a = some b)
+    (hmem : memLoad m a b.tag 2 = .error werr) :
+    memEvalExpr (.pgetRight e) ρ m π = .error werr := by
   simp only [memEvalExpr, he, hfind, hmem]
 
 /-- `pgetVal` on null is loud (dereferencing `nullptr` is

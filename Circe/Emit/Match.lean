@@ -32,6 +32,7 @@ import Circe.Emit.ListErase
 import Circe.Emit.ListFilter
 import Circe.Emit.ListUnique
 import Circe.Emit.ListFind
+import Circe.Emit.BstSearch
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
@@ -1087,6 +1088,18 @@ def matchFrag : Func → Option FragKind
                   (.assign "cur" (.pgetNext (.var "cur")))))
           (.return_ (.lit .nullptr))))⟩ =>
     some .listFind
+  | ⟨_, [⟨"root", .struct "Node" [.i 32, .u 32], .owned⟩,
+        ⟨"key", .i 32, .owned⟩],
+      .i 32,
+      (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32]) (.var "root"))
+        (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+                (.if_ (.ueq (.pgetVal (.var "cur")) (.var "key"))
+                  (.return_ (.lit (.i32 1)))
+                  (.if_ (.slt (.var "key") (.pgetVal (.var "cur")))
+                    (.assign "cur" (.pgetNext (.var "cur")))
+                    (.assign "cur" (.pgetRight (.var "cur"))))))
+          (.return_ (.lit (.i32 0)))))⟩ =>
+    some .bstSearch
   | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
       .struct "Node" [.i 32, .u 32],
       (.seq (.let_ "new_head" (.struct "Node" [.i 32, .u 32])
@@ -2565,6 +2578,8 @@ theorem matchFrag_listUnique :
     matchFrag listUniqueFunc = some .listUnique := rfl
 theorem matchFrag_listFind :
     matchFrag listFindFunc = some .listFind := rfl
+theorem matchFrag_bstSearch :
+    matchFrag bstSearchFunc = some .bstSearch := rfl
 theorem matchFrag_listCopy :
     matchFrag listCopyFunc = some .listCopy := rfl
 theorem matchFrag_listMerge :

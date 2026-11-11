@@ -143,7 +143,10 @@ inductive CLit : Type
     `e` must evaluate to a `ptrVal` (the block's own tag is used,
     so no layout pin is needed; null, missing, dead, or short
     block is loud). The pure evaluator reports `AssertFail` (no
-    value mirror, as `mload`).
+    value mirror, as `mload`). `pgetRight e` (P1 tree kit) is the
+    index-2 twin of `pgetNext` (the right link of a 3-word
+    tree node); same loudness discipline, same lack of value
+    mirror.
     `boxNew e` is `new Box{…}` (`cir.call @_Znwm` + bitcast + field
     store fused: `e` must be an `i32`); `boxGet b` is `p->x`
     (`cir.get_member` + `cir.load` fused: `b` must be a `boxVal`;
@@ -206,6 +209,7 @@ inductive CExpr : Type
   | mload : String → CExpr → CExpr
   | pgetNext : CExpr → CExpr
   | pgetVal : CExpr → CExpr
+  | pgetRight : CExpr → CExpr
   deriving DecidableEq, Repr
 
 /-- Minimal statement language. `let_`/`assign` bind pure expressions and

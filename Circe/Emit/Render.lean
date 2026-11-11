@@ -1170,6 +1170,45 @@ def emitListFindText (name : String) : String :=
   ++ "    (v : BitVec 32) : Result (Option Addr) :=\n"
   ++ s!"  {name}_find_fwd F m head v\n"
 
+/-- Render the `bst_search` entry forward definition: the
+    read-only BST descent over `Mem` (signed key test, left
+    link at index 1, right link at index 2); the entry leg maps
+    hit to `1` and miss to `0`. -/
+def emitBstSearchText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.BinaryTree\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative BST membership query over `Mem`; the tree is never modified). -/\n"
+  ++ s!"def {name}_bstSearch_fwd (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (key : BitVec 32) : Result (Option Addr) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok none\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          if w == key then .ok (some a)\n"
+  ++ "          else if key.slt w then\n"
+  ++ "            match memLoad m a b.tag 1 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ s!"            | .ok w' => {name}_bstSearch_fwd F m (addrOfWord w') key\n"
+  ++ "          else\n"
+  ++ "            match memLoad m a b.tag 2 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ s!"            | .ok w' => {name}_bstSearch_fwd F m (addrOfWord w') key\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (root : Option Addr)\n"
+  ++ "    (key : BitVec 32) : Result Nat :=\n"
+  ++ s!"  match {name}_bstSearch_fwd F m root key with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (some _) => .ok 1\n"
+  ++ "  | .ok none => .ok 0\n"
+
 /-- Render the `list_copy` entry forward definition: the
     allocating deep copy over `Mem` (one fresh 2-word cell per
     node, payload copied, fresh link cleared, appended to the
