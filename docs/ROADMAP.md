@@ -102,7 +102,15 @@ caller-debt) — and caller-record squeeze (P2-M16) — the M13
 predecessor-kept scan writing into a caller-sized record
 (`vec_unique_copy`, the `std::unique_copy` idiom: seed store
 plants the first survivor, `(1, 1)` cursors, short record
-fails loud); earlier: STL-free
+fails loud), caller-record reverse (P2-M17) — the M12
+countdown reversal writing into a caller-sized record
+(`vec_reverse_copy`: `j` from `a.size()` down, `w` from 0 up,
+short record fails loud), and dual-record partition (P2-M18)
+— the Lomuto predicate split writing keepers and droppers
+into two caller-sized records (`vec_partition_copy`, the
+`std::partition_copy` idiom: `r` from 0, `wYes`/`wNo`
+independent, either short record fails loud, keeper count
+returned); earlier: STL-free
 C++-lite admission (M2a–M2c), proved transfer (M3d),
 `string_view`-ended loop + `ElementRef` family composers (N7),
 insertion sort over `std::array` (N9), binary search (V1),
@@ -131,22 +139,19 @@ erase-compress endpoint (P2-M9), the prefix-sum scan
 out-of-place filter (P2-M12), the adjacent-duplicate
 squeeze (P2-M13), the sorted-range union (P2-M14), the
 sorted-range difference (P2-M15), the caller-record squeeze
-(P2-M16), the caller-record reverse (P2-M17), and the
+(P2-M16), the caller-record reverse (P2-M17), the
+dual-record partition (P2-M18), and the
 G-track (G1/G1b/G2/G3/G5a/G4); see `DELIVERED.md` §§
-P2-M5–P2-M17, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
+P2-M5–P2-M18, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
 refactor (the G-track slice labels are distinct from the
 Gate rule G-labels cited under N12–N14)
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Dual-record partition (`partition_copy`):
-   the Lomuto predicate split writing keepers and droppers
-   into two caller-sized records — first dual-record write,
-   composes P2-M3 partition with M12 out-borrow twice, two
-   survivor counts returned (or packed — corpus call).
-2. Dual-read mismatch query (`vec_mismatch`): first-index-
-   of-difference over two read-only vectors — first dual-read
-   query returning a position, no writes, loud on neither
-   (shorter input bounds the scan, caller-debt).
+1. (Recommended) Dual-read mismatch query (`vec_mismatch`):
+   first-index-of-difference over two read-only vectors —
+   first dual-read query returning a position, no writes,
+   loud on neither (shorter input bounds the scan,
+   caller-debt).
 
 ## Pillar 3 — Human-readable/writable proofs
 

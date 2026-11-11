@@ -31,6 +31,7 @@ import Circe.Emit.VecSelectionSort
 import Circe.Emit.VecUnique
 import Circe.Emit.VecUniqueCopy
 import Circe.Emit.VecReverseCopy
+import Circe.Emit.VecPartitionCopy
 import Circe.Emit.VecMergeSort
 import Circe.Emit.VecDfs
 import Circe.Emit.VecBfs
@@ -192,6 +193,7 @@ def main : IO Unit := do
   let vecCopyIf ← emitOrDie vecCopyIfFunc
   let vecUniqueCopy ← emitOrDie vecUniqueCopyFunc
   let vecReverseCopy ← emitOrDie vecReverseCopyFunc
+  let vecPartitionCopy ← emitOrDie vecPartitionCopyFunc
   let vecUnion ← emitOrDie vecUnionFunc
   let vecDifference ← emitOrDie vecDifferenceFunc
   let vecMinIndex ← emitOrDie VecSelectionSort.minIndexFunc
@@ -367,6 +369,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecCopyIf.lean" (emitFileText (.ok vecCopyIf))
   IO.FS.writeFile "out/VecUniqueCopy.lean" (emitFileText (.ok vecUniqueCopy))
   IO.FS.writeFile "out/VecReverseCopy.lean" (emitFileText (.ok vecReverseCopy))
+  IO.FS.writeFile "out/VecPartitionCopy.lean" (emitFileText (.ok vecPartitionCopy))
   IO.FS.writeFile "out/VecUnion.lean" (emitFileText (.ok vecUnion))
   IO.FS.writeFile "out/VecDifference.lean" (emitFileText (.ok vecDifference))
   IO.FS.writeFile "out/VecMinIndex.lean" (emitFileText (.ok vecMinIndex))
@@ -542,6 +545,7 @@ def main : IO Unit := do
   let vecCopyIfSpec ← specOrDie vecCopyIfFunc
   let vecUniqueCopySpec ← specOrDie vecUniqueCopyFunc
   let vecReverseCopySpec ← specOrDie vecReverseCopyFunc
+  let vecPartitionCopySpec ← specOrDie vecPartitionCopyFunc
   let vecUnionSpec ← specOrDie vecUnionFunc
   let vecDifferenceSpec ← specOrDie vecDifferenceFunc
   let vecMinIndexSpec ← specOrDie VecSelectionSort.minIndexFunc
@@ -717,6 +721,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecCopyIf_Spec.lean" vecCopyIfSpec
   IO.FS.writeFile "out/VecUniqueCopy_Spec.lean" vecUniqueCopySpec
   IO.FS.writeFile "out/VecReverseCopy_Spec.lean" vecReverseCopySpec
+  IO.FS.writeFile "out/VecPartitionCopy_Spec.lean" vecPartitionCopySpec
   IO.FS.writeFile "out/VecUnion_Spec.lean" vecUnionSpec
   IO.FS.writeFile "out/VecDifference_Spec.lean" vecDifferenceSpec
   IO.FS.writeFile "out/VecMinIndex_Spec.lean" vecMinIndexSpec

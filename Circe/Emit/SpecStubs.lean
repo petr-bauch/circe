@@ -3292,6 +3292,55 @@ def emitVecUniqueCopySpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_partition_copy`. The mirror is the
+    read-cursor partition over the reified words: keepers
+    (`a[r] < pivot`, signed) into one caller-sized record,
+    droppers into a second; edges carry ground truth (mixed
+    split, all-keep with empty dropper record, all-drop with
+    empty keeper record, empty input, singleton hit/miss,
+    short-record loud on either side). -/
+def emitVecPartitionCopySpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, yes, no, pivot)` records the elements of `a` below `pivot` (signed) into the caller-sized `yes` and the rest into the caller-sized `no` (`std::partition_copy` idiom). Base body reference: the same read-cursor scan on the reified words (cf. emitted `{name}_fwd`). Returns the keeper count; a short record on either side fails loud. -/\n"
+  ++ s!"def {name}_spec_fwd (la yes no : List (BitVec 32)) (pivot : BitVec 32) : Result Nat :=\n"
+  ++ "  match loop la yes no la.length 0 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, wYes, _, _, _) => .ok wYes\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32) × List (BitVec 32))\n"
+  ++ "  | la, yes, no, 0, r, wYes, wNo => .ok (r, wYes, wNo, yes, no)\n"
+  ++ "  | la, yes, no, fuel + 1, r, wYes, wNo =>\n"
+  ++ "    if r < la.length then\n"
+  ++ "      match la[r]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some y =>\n"
+  ++ "        if y.slt pivot then\n"
+  ++ "          match yes[wYes]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la (yes.set wYes y) no fuel (r + 1) (wYes + 1) wNo\n"
+  ++ "        else\n"
+  ++ "          match no[wNo]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la yes (no.set wNo y) fuel (r + 1) wYes (wNo + 1)\n"
+  ++ "    else .ok (r, wYes, wNo, yes, no)\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: mixed split, all-keep, all-drop, empty input, singleton hit/miss, short-record loud on either side. -/\n"
+  ++ s!"def {name}_spec_edges : List ((((List (BitVec 32) × List (BitVec 32)) × List (BitVec 32)) × BitVec 32) × Result Nat) :=\n"
+  ++ "  [(((([3, 1, 2], [0, 0, 0]), [0, 0, 0]), 2), .ok 1),\n"
+  ++ "   (((([1, 1], [0, 0]), []), 9), .ok 2),\n"
+  ++ "   (((([5, 5], []), [0, 0]), 0), .ok 0),\n"
+  ++ "   (((([], [0]), [0]), 1), .ok 0),\n"
+  ++ "   (((([7], [9]), [9]), 8), .ok 1),\n"
+  ++ "   (((([7], [9]), [9]), 7), .ok 0),\n"
+  ++ "   (((([1, 2], [0]), [0, 0]), 9), .error .AssertFail),\n"
+  ++ "   (((([1, 2], [0, 0]), [0]), 0), .error .AssertFail)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1.1.1 t.1.1.1.2 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `vec_reverse_copy`. The mirror is the
     countdown reverse scan over the reified words into the
     caller-sized record; edges carry ground truth (reversal,

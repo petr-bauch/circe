@@ -1925,6 +1925,38 @@ def emitVecReverseCopyText (name : String) : String :=
   ++ "      | _, _ => .error .AssertFail\n"
   ++ "    else .ok (w, j, lo)\n"
 
+/-- Render the `vec_partition_copy` entry forward definition: the
+    read-cursor scan over the reified words, recording keepers
+    (`a[r] < pivot`, signed) into one caller-sized record and
+    droppers into a second (the `std::partition_copy` idiom);
+    returns the keeper count (the dropper count is implied).
+    A short record on either side fails loud. -/
+def emitVecPartitionCopyText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (read-cursor partition over the reified words; the `std::partition_copy` idiom with predicate `a[r] < pivot` (signed); caller-sized keeper and dropper records; returns the keeper count). -/\n"
+  ++ s!"def {name}_fwd (la yes no : List (BitVec 32)) (pivot : BitVec 32) : Result Nat :=\n"
+  ++ "  match loop la yes no la.length 0 0 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok (_, wYes, _, _, _) => .ok wYes\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Nat → Result (Nat × Nat × Nat × List (BitVec 32) × List (BitVec 32))\n"
+  ++ "  | la, yes, no, 0, r, wYes, wNo => .ok (r, wYes, wNo, yes, no)\n"
+  ++ "  | la, yes, no, fuel + 1, r, wYes, wNo =>\n"
+  ++ "    if r < la.length then\n"
+  ++ "      match la[r]? with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some y =>\n"
+  ++ "        if y.slt pivot then\n"
+  ++ "          match yes[wYes]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la (yes.set wYes y) no fuel (r + 1) (wYes + 1) wNo\n"
+  ++ "        else\n"
+  ++ "          match no[wNo]? with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some _ => loop la yes (no.set wNo y) fuel (r + 1) wYes (wNo + 1)\n"
+  ++ "    else .ok (r, wYes, wNo, yes, no)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=

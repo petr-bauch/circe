@@ -30,6 +30,7 @@ import Circe.Emit.VecPartialSum
 import Circe.Emit.VecUnique
 import Circe.Emit.VecUniqueCopy
 import Circe.Emit.VecReverseCopy
+import Circe.Emit.VecPartitionCopy
 import Circe.Tactics
 import Circe.Lemmas.TwoCursor
 
@@ -9036,3 +9037,562 @@ theorem vecCopyIfFwd_correct (x : BitVec 32)
   have hflen : (lo'.take w').length =
       (la.filter (fun y => (y != x))).length := by rw [hpref]
   omega
+
+/-! ## Dual-record partition (`partition_copy`) forward contract -/
+
+/-- Partition forward totality, ok leg: the scan runs to
+    `la.length` with full reads and fitting writes on both
+    records (fuel induction threading both keep counts and
+    both capacity bounds). -/
+theorem partitionCopyFwd_ok (pivot : BitVec 32)
+    (la yes no : List (BitVec 32))
+    (fuel r wYes wNo : Nat)
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcntYes : ((la.take r).filter (fun z => z.slt pivot)).length
+      = wYes)
+    (hwcntNo : ((la.take r).filter
+      (fun z => !(z.slt pivot))).length = wNo)
+    (hcapYes : (la.filter (fun y => y.slt pivot)).length ≤ yes.length)
+    (hcapNo : (la.filter (fun y => !(y.slt pivot))).length
+      ≤ no.length) :
+    ∃ wYes' wNo' yes' no',
+      partitionCopyFwd pivot la yes no fuel r wYes wNo =
+        .ok (la.length, wYes', wNo', yes', no') ∧
+      ((la.take la.length).filter (fun z => z.slt pivot)).length
+        = wYes' ∧
+      ((la.take la.length).filter
+        (fun z => !(z.slt pivot))).length = wNo' := by
+  induction fuel generalizing yes no r wYes wNo with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    exact ⟨wYes, wNo, yes, no, by simp [partitionCopyFwd],
+      hwcntYes, hwcntNo⟩
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y.slt pivot) = true
+      · have hstepY :=
+          partFilterYes_take_succ pivot la r y hy hkeep
+        have hkeeps1 := congrArg List.length hstepY
+        rw [List.length_append, hwcntYes,
+          List.length_singleton] at hkeeps1
+        have hwlt : wYes < yes.length := by
+          have hsplit := partFilterYes_split pivot la r (by omega)
+          omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, yes[wYes]? = some z :=
+          ⟨yes[wYes], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hwcntYes' := hkeeps1
+        have hdropNo : (!(y.slt pivot)) = false := by
+          simp [hkeep]
+        have hstepNo :=
+          partFilterNo_take_succ_drop pivot la r y hy hdropNo
+        have hwcntNo' := congrArg List.length hstepNo
+        rw [hwcntNo] at hwcntNo'
+        have hlenS : (yes.set wYes y).length = yes.length := by
+          simp [List.length_set]
+        have hcapYes' : (la.filter (fun y => y.slt pivot)).length ≤
+            (yes.set wYes y).length := by
+          rw [hlenS]; exact hcapYes
+        obtain ⟨wYes', wNo', yes', no', h, hcntYes, hcntNo⟩ :=
+          ih (yes := yes.set wYes y)
+            (r := r + 1) (wYes := wYes + 1) (wNo := wNo)
+            (hle := by omega) (hF := hF')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hcapYes := hcapYes') (hcapNo := hcapNo)
+        exact ⟨wYes', wNo', yes', no', by
+          simp only [partitionCopyFwd, dite_eq_left hlt, hy, hkeep,
+            hwget]
+          exact h, hcntYes, hcntNo⟩
+      · have hdrop : (y.slt pivot) = false := by
+          cases h : (y.slt pivot) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hkeepNo : (!(y.slt pivot)) = true := by simp [hdrop]
+        have hstepN :=
+          partFilterNo_take_succ pivot la r y hy hkeepNo
+        have hkeeps1 := congrArg List.length hstepN
+        rw [List.length_append, hwcntNo,
+          List.length_singleton] at hkeeps1
+        have hwlt : wNo < no.length := by
+          have hsplit := partFilterNo_split pivot la r (by omega)
+          omega
+        obtain ⟨wOld, hwget⟩ : ∃ z, no[wNo]? = some z :=
+          ⟨no[wNo], List.getElem?_eq_getElem hwlt⟩
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hwcntNo' := hkeeps1
+        have hstepY :=
+          partFilterYes_take_succ_drop pivot la r y hy hdrop
+        have hwcntYes' := congrArg List.length hstepY
+        rw [hwcntYes] at hwcntYes'
+        have hlenS : (no.set wNo y).length = no.length := by
+          simp [List.length_set]
+        have hcapNo' : (la.filter (fun y => !(y.slt pivot))).length ≤
+            (no.set wNo y).length := by
+          rw [hlenS]; exact hcapNo
+        obtain ⟨wYes', wNo', yes', no', h, hcntYes, hcntNo⟩ :=
+          ih (no := no.set wNo y)
+            (r := r + 1) (wYes := wYes) (wNo := wNo + 1)
+            (hle := by omega) (hF := hF')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hcapYes := hcapYes) (hcapNo := hcapNo')
+        exact ⟨wYes', wNo', yes', no', by
+          simp only [partitionCopyFwd, dite_eq_left hlt, hy, hdrop,
+            hwget]
+          exact h, hcntYes, hcntNo⟩
+    · have him : r = la.length := by omega
+      subst him
+      exact ⟨wYes, wNo, yes, no, by simp [partitionCopyFwd],
+        hwcntYes, hwcntNo⟩
+
+/-- Partition forward prefix contract, ok leg: both written
+    prefixes are the filters of the scanned prefix, neither
+    count retreats, both record lengths are unchanged (fuel
+    induction threading both prefixes, suffixes, keep-counts
+    and capacity facts). -/
+theorem partitionCopyFwd_prefix (pivot : BitVec 32)
+    (la yes₀ no₀ : List (BitVec 32))
+    (fuel r wYes wNo wYes' wNo' : Nat)
+    (yes no yes' no' : List (BitVec 32))
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hlenYes : yes.length = yes₀.length)
+    (hlenNo : no.length = no₀.length)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcntYes : ((la.take r).filter (fun z => z.slt pivot)).length
+      = wYes)
+    (hwcntNo : ((la.take r).filter
+      (fun z => !(z.slt pivot))).length = wNo)
+    (hcapYes : (la.filter (fun y => y.slt pivot)).length
+      ≤ yes₀.length)
+    (hcapNo : (la.filter (fun y => !(y.slt pivot))).length
+      ≤ no₀.length)
+    (hpreYes : yes.take wYes =
+      ((la.take r).filter (fun z => z.slt pivot)))
+    (hpreNo : no.take wNo =
+      ((la.take r).filter (fun z => !(z.slt pivot))))
+    (hsufYes : ∀ j, wYes ≤ j → yes[j]? = yes₀[j]?)
+    (hsufNo : ∀ j, wNo ≤ j → no[j]? = no₀[j]?)
+    (hfwd : partitionCopyFwd pivot la yes no fuel r wYes wNo =
+      .ok (la.length, wYes', wNo', yes', no')) :
+    yes'.take wYes' = la.filter (fun y => y.slt pivot) ∧
+      no'.take wNo' = la.filter (fun y => !(y.slt pivot)) ∧
+      wYes ≤ wYes' ∧ wNo ≤ wNo' ∧
+      yes'.length = yes₀.length ∧ no'.length = no₀.length := by
+  induction fuel generalizing yes no r wYes wNo with
+  | zero =>
+    have hpair : (r, wYes, wNo, yes, no) =
+        (la.length, wYes', wNo', yes', no') := by
+      simpa [partitionCopyFwd] using hfwd
+    obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hpair
+    refine ⟨?_, ?_, Nat.le_refl _, Nat.le_refl _, hlenYes,
+      hlenNo⟩
+    · rw [List.take_length] at hpreYes
+      exact hpreYes
+    · rw [List.take_length] at hpreNo
+      exact hpreNo
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y.slt pivot) = true
+      · have hstepY :=
+          partFilterYes_take_succ pivot la r y hy hkeep
+        have hkeeps1 := congrArg List.length hstepY
+        rw [List.length_append, hwcntYes,
+          List.length_singleton] at hkeeps1
+        have hwlt : wYes < yes.length := by
+          have hsplit := partFilterYes_split pivot la r (by omega)
+          have hcapYes' : (la.filter
+              (fun y => y.slt pivot)).length ≤ yes.length := by
+            rw [hlenYes]; exact hcapYes
+          omega
+        have hwget : yes[wYes]? = some yes[wYes] :=
+          List.getElem?_eq_getElem hwlt
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hlenYes' : (yes.set wYes y).length = yes₀.length := by
+          simp [List.length_set, hlenYes]
+        have hwcntYes' := hkeeps1
+        have hdropNo : (!(y.slt pivot)) = false := by
+          simp [hkeep]
+        have hstepNo :=
+          partFilterNo_take_succ_drop pivot la r y hy hdropNo
+        have hwcntNo' := congrArg List.length hstepNo
+        rw [hwcntNo] at hwcntNo'
+        have hpreYes' : (yes.set wYes y).take (wYes + 1) =
+            ((la.take (r + 1)).filter
+              (fun z => z.slt pivot)) := by
+          rw [take_set_succ_self yes wYes y hwlt, hpreYes, hstepY]
+        have hpreNo' : no.take wNo =
+            ((la.take (r + 1)).filter
+              (fun z => !(z.slt pivot))) := by
+          rw [partFilterNo_take_succ_drop pivot la r y hy hdropNo,
+            hpreNo]
+        have hsufYes' : ∀ j, wYes + 1 ≤ j →
+            (yes.set wYes y)[j]? = yes₀[j]? := by
+          intro j hj
+          rw [List.getElem?_set_ne (show wYes ≠ j by omega)]
+          exact hsufYes j (by omega)
+        have hfwd' : partitionCopyFwd pivot la (yes.set wYes y)
+            no n (r + 1) (wYes + 1) wNo =
+            .ok (la.length, wYes', wNo', yes', no') := by
+          have h := hfwd
+          simp only [partitionCopyFwd, dite_eq_left hlt, hy,
+            hkeep, hwget] at h
+          exact h
+        obtain ⟨hprefYes, hprefNo, hleW, hleN, hlenY, hlenN⟩ :=
+          ih (yes := yes.set wYes y) (no := no)
+            (r := r + 1) (wYes := wYes + 1) (wNo := wNo)
+            (hle := by omega) (hF := hF')
+            (hlenYes := hlenYes') (hlenNo := hlenNo)
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hpreYes := hpreYes') (hpreNo := hpreNo')
+            (hsufYes := hsufYes') (hsufNo := hsufNo)
+            (hfwd := hfwd')
+        exact ⟨hprefYes, hprefNo, by omega, by omega, hlenY,
+          hlenN⟩
+      · have hdrop : (y.slt pivot) = false := by
+          cases h : (y.slt pivot) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        have hkeepNo : (!(y.slt pivot)) = true := by simp [hdrop]
+        have hstepN :=
+          partFilterNo_take_succ pivot la r y hy hkeepNo
+        have hkeeps1 := congrArg List.length hstepN
+        rw [List.length_append, hwcntNo,
+          List.length_singleton] at hkeeps1
+        have hwlt : wNo < no.length := by
+          have hsplit := partFilterNo_split pivot la r (by omega)
+          have hcapNo' : (la.filter
+              (fun y => !(y.slt pivot))).length ≤ no.length := by
+            rw [hlenNo]; exact hcapNo
+          omega
+        have hwget : no[wNo]? = some no[wNo] :=
+          List.getElem?_eq_getElem hwlt
+        have hF' : la.length - (r + 1) ≤ n := by omega
+        have hlenNo' : (no.set wNo y).length = no₀.length := by
+          simp [List.length_set, hlenNo]
+        have hwcntNo' := hkeeps1
+        have hstepY :=
+          partFilterYes_take_succ_drop pivot la r y hy hdrop
+        have hwcntYes' := congrArg List.length hstepY
+        rw [hwcntYes] at hwcntYes'
+        have hpreNo' : (no.set wNo y).take (wNo + 1) =
+            ((la.take (r + 1)).filter
+              (fun z => !(z.slt pivot))) := by
+          rw [take_set_succ_self no wNo y hwlt, hpreNo, hstepN]
+        have hpreYes' : yes.take wYes =
+            ((la.take (r + 1)).filter
+              (fun z => z.slt pivot)) := by
+          rw [partFilterYes_take_succ_drop pivot la r y hy hdrop,
+            hpreYes]
+        have hsufNo' : ∀ j, wNo + 1 ≤ j →
+            (no.set wNo y)[j]? = no₀[j]? := by
+          intro j hj
+          rw [List.getElem?_set_ne (show wNo ≠ j by omega)]
+          exact hsufNo j (by omega)
+        have hfwd' : partitionCopyFwd pivot la yes
+            (no.set wNo y) n (r + 1) wYes (wNo + 1) =
+            .ok (la.length, wYes', wNo', yes', no') := by
+          have h := hfwd
+          simp only [partitionCopyFwd, dite_eq_left hlt, hy,
+            hdrop, hwget] at h
+          exact h
+        obtain ⟨hprefYes, hprefNo, hleW, hleN, hlenY, hlenN⟩ :=
+          ih (yes := yes) (no := no.set wNo y)
+            (r := r + 1) (wYes := wYes) (wNo := wNo + 1)
+            (hle := by omega) (hF := hF')
+            (hlenYes := hlenYes) (hlenNo := hlenNo')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hpreYes := hpreYes') (hpreNo := hpreNo')
+            (hsufYes := hsufYes) (hsufNo := hsufNo')
+            (hfwd := hfwd')
+        exact ⟨hprefYes, hprefNo, by omega, by omega, hlenY,
+          hlenN⟩
+    · have him : r = la.length := by omega
+      subst him
+      have hpair : (la.length, wYes, wNo, yes, no) =
+          (la.length, wYes', wNo', yes', no') := by
+        cases n with
+        | zero => simpa [partitionCopyFwd] using hfwd
+        | succ n =>
+          have hneg : ¬ la.length < la.length := by omega
+          simpa [partitionCopyFwd, dite_eq_right hneg] using hfwd
+      obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := hpair
+      refine ⟨?_, ?_, Nat.le_refl _, Nat.le_refl _, hlenYes,
+        hlenNo⟩
+      · rw [List.take_length] at hpreYes
+        exact hpreYes
+      · rw [List.take_length] at hpreNo
+        exact hpreNo
+
+/-- Partition forward short-`yes` error leg: when the scanned
+    prefix fits but the total keepers overflow the `yes`
+    record, the scan fails loud (fuel induction; the `no`
+    side needs no capacity facts — a `no` miss fails loud
+    directly, a hit threads untouched). -/
+theorem partitionCopyFwd_err_shortYes (pivot : BitVec 32)
+    (la yes no : List (BitVec 32))
+    (fuel r wYes wNo : Nat)
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcntYes : ((la.take r).filter (fun z => z.slt pivot)).length
+      = wYes)
+    (hwcntNo : ((la.take r).filter
+      (fun z => !(z.slt pivot))).length = wNo)
+    (hwloYes : wYes ≤ yes.length)
+    (hmoreYes : yes.length <
+      (la.filter (fun y => y.slt pivot)).length) :
+    partitionCopyFwd pivot la yes no fuel r wYes wNo =
+      .error .AssertFail := by
+  induction fuel generalizing yes no r wYes wNo with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    have htakeL : la.take la.length = la := List.take_length
+    rw [htakeL] at hwcntYes
+    omega
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y.slt pivot) = true
+      · by_cases hmiss : yes[wYes]? = none
+        · simp [partitionCopyFwd, dite_eq_left hlt, hy, hkeep,
+            hmiss]
+        · have hsome : ∃ z, yes[wYes]? = some z := by
+            match h : yes[wYes]? with
+            | none => exact absurd h hmiss
+            | some z => exact ⟨z, rfl⟩
+          obtain ⟨wOld, hwget⟩ := hsome
+          have hwltYes : wYes < yes.length :=
+            transformRead_lt yes wYes wOld hwget
+          have hstepY :=
+            partFilterYes_take_succ pivot la r y hy hkeep
+          have hkeeps1 := congrArg List.length hstepY
+          rw [List.length_append, hwcntYes,
+            List.length_singleton] at hkeeps1
+          have hwcntYes' := hkeeps1
+          have hdropNo : (!(y.slt pivot)) = false := by
+            simp [hkeep]
+          have hstepNo :=
+            partFilterNo_take_succ_drop pivot la r y hy hdropNo
+          have hwcntNo' := congrArg List.length hstepNo
+          rw [hwcntNo] at hwcntNo'
+          have hlenS : (yes.set wYes y).length = yes.length := by
+            simp [List.length_set]
+          have hwloYes' : wYes + 1 ≤ (yes.set wYes y).length := by
+            omega
+          have hmoreYes' : (yes.set wYes y).length <
+              (la.filter (fun y => y.slt pivot)).length := by
+            rw [hlenS]; exact hmoreYes
+          have hF' : la.length - (r + 1) ≤ n := by omega
+          have h := ih (yes := yes.set wYes y) (no := no)
+            (r := r + 1) (wYes := wYes + 1) (wNo := wNo)
+            (hle := by omega) (hF := hF')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hwloYes := hwloYes') (hmoreYes := hmoreYes')
+          simpa [partitionCopyFwd, dite_eq_left hlt, hy, hkeep,
+            hwget] using h
+      · have hdrop : (y.slt pivot) = false := by
+          cases h : (y.slt pivot) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        by_cases hmiss : no[wNo]? = none
+        · simp [partitionCopyFwd, dite_eq_left hlt, hy, hdrop,
+            hmiss]
+        · have hsome : ∃ z, no[wNo]? = some z := by
+            match h : no[wNo]? with
+            | none => exact absurd h hmiss
+            | some z => exact ⟨z, rfl⟩
+          obtain ⟨wOld, hwget⟩ := hsome
+          have hkeepNo : (!(y.slt pivot)) = true := by
+            simp [hdrop]
+          have hstepN :=
+            partFilterNo_take_succ pivot la r y hy hkeepNo
+          have hkeeps1 := congrArg List.length hstepN
+          rw [List.length_append, hwcntNo,
+            List.length_singleton] at hkeeps1
+          have hwcntNo' := hkeeps1
+          have hstepY :=
+            partFilterYes_take_succ_drop pivot la r y hy hdrop
+          have hwcntYes' := congrArg List.length hstepY
+          rw [hwcntYes] at hwcntYes'
+          have hF' : la.length - (r + 1) ≤ n := by omega
+          have h := ih (yes := yes) (no := no.set wNo y)
+            (r := r + 1) (wYes := wYes) (wNo := wNo + 1)
+            (hle := by omega) (hF := hF')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hwloYes := hwloYes) (hmoreYes := hmoreYes)
+          simpa [partitionCopyFwd, dite_eq_left hlt, hy, hdrop,
+            hwget] using h
+    · have him : r = la.length := by omega
+      subst him
+      have htakeL : la.take la.length = la := List.take_length
+      rw [htakeL] at hwcntYes
+      omega
+
+/-- Partition forward short-`no` error leg: mirror image —
+    when the total droppers overflow the `no` record, the
+    scan fails loud. -/
+theorem partitionCopyFwd_err_shortNo (pivot : BitVec 32)
+    (la yes no : List (BitVec 32))
+    (fuel r wYes wNo : Nat)
+    (hle : r ≤ la.length)
+    (hF : la.length - r ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hwcntYes : ((la.take r).filter (fun z => z.slt pivot)).length
+      = wYes)
+    (hwcntNo : ((la.take r).filter
+      (fun z => !(z.slt pivot))).length = wNo)
+    (hwloNo : wNo ≤ no.length)
+    (hmoreNo : no.length <
+      (la.filter (fun y => !(y.slt pivot))).length) :
+    partitionCopyFwd pivot la yes no fuel r wYes wNo =
+      .error .AssertFail := by
+  induction fuel generalizing yes no r wYes wNo with
+  | zero =>
+    have him : r = la.length := by omega
+    subst him
+    have htakeL : la.take la.length = la := List.take_length
+    rw [htakeL] at hwcntNo
+    omega
+  | succ n ih =>
+    by_cases hlt : r < la.length
+    · obtain ⟨y, hy⟩ := hread r hlt
+      by_cases hkeep : (y.slt pivot) = true
+      · by_cases hmiss : yes[wYes]? = none
+        · simp [partitionCopyFwd, dite_eq_left hlt, hy, hkeep,
+            hmiss]
+        · have hsome : ∃ z, yes[wYes]? = some z := by
+            match h : yes[wYes]? with
+            | none => exact absurd h hmiss
+            | some z => exact ⟨z, rfl⟩
+          obtain ⟨wOld, hwget⟩ := hsome
+          have hstepY :=
+            partFilterYes_take_succ pivot la r y hy hkeep
+          have hkeeps1 := congrArg List.length hstepY
+          rw [List.length_append, hwcntYes,
+            List.length_singleton] at hkeeps1
+          have hwcntYes' := hkeeps1
+          have hdropNo : (!(y.slt pivot)) = false := by
+            simp [hkeep]
+          have hstepNo :=
+            partFilterNo_take_succ_drop pivot la r y hy hdropNo
+          have hwcntNo' := congrArg List.length hstepNo
+          rw [hwcntNo] at hwcntNo'
+          have hlenS : (yes.set wYes y).length = yes.length := by
+            simp [List.length_set]
+          have hF' : la.length - (r + 1) ≤ n := by omega
+          have h := ih (yes := yes.set wYes y) (no := no)
+            (r := r + 1) (wYes := wYes + 1) (wNo := wNo)
+            (hle := by omega) (hF := hF')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hwloNo := hwloNo) (hmoreNo := hmoreNo)
+          simpa [partitionCopyFwd, dite_eq_left hlt, hy, hkeep,
+            hwget] using h
+      · have hdrop : (y.slt pivot) = false := by
+          cases h : (y.slt pivot) with
+          | true => exact absurd h hkeep
+          | false => rfl
+        by_cases hmiss : no[wNo]? = none
+        · simp [partitionCopyFwd, dite_eq_left hlt, hy, hdrop,
+            hmiss]
+        · have hsome : ∃ z, no[wNo]? = some z := by
+            match h : no[wNo]? with
+            | none => exact absurd h hmiss
+            | some z => exact ⟨z, rfl⟩
+          obtain ⟨wOld, hwget⟩ := hsome
+          have hwltNo : wNo < no.length :=
+            transformRead_lt no wNo wOld hwget
+          have hkeepNo : (!(y.slt pivot)) = true := by
+            simp [hdrop]
+          have hstepN :=
+            partFilterNo_take_succ pivot la r y hy hkeepNo
+          have hkeeps1 := congrArg List.length hstepN
+          rw [List.length_append, hwcntNo,
+            List.length_singleton] at hkeeps1
+          have hwcntNo' := hkeeps1
+          have hstepY :=
+            partFilterYes_take_succ_drop pivot la r y hy hdrop
+          have hwcntYes' := congrArg List.length hstepY
+          rw [hwcntYes] at hwcntYes'
+          have hlenS : (no.set wNo y).length = no.length := by
+            simp [List.length_set]
+          have hwloNo' : wNo + 1 ≤ (no.set wNo y).length := by
+            omega
+          have hmoreNo' : (no.set wNo y).length <
+              (la.filter (fun y => !(y.slt pivot))).length := by
+            rw [hlenS]; exact hmoreNo
+          have hF' : la.length - (r + 1) ≤ n := by omega
+          have h := ih (yes := yes) (no := no.set wNo y)
+            (r := r + 1) (wYes := wYes) (wNo := wNo + 1)
+            (hle := by omega) (hF := hF')
+            (hwcntYes := hwcntYes') (hwcntNo := hwcntNo')
+            (hwloNo := hwloNo') (hmoreNo := hmoreNo')
+          simpa [partitionCopyFwd, dite_eq_left hlt, hy, hdrop,
+            hwget] using h
+    · have him : r = la.length := by omega
+      subst him
+      have htakeL : la.take la.length = la := List.take_length
+      rw [htakeL] at hwcntNo
+      omega
+
+/-- Short `yes` record fires loudly from the entry state. -/
+theorem partitionCopyFwd_err_of_yes_short (pivot : BitVec 32)
+    (la yes no : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hmoreYes : yes.length <
+      (la.filter (fun y => y.slt pivot)).length) :
+    partitionCopyFwd pivot la yes no la.length 0 0 0 =
+      .error .AssertFail :=
+  partitionCopyFwd_err_shortYes pivot la yes no la.length 0 0 0
+    (Nat.zero_le _) (Nat.le_refl _)
+    hread (by simp) (by simp) (Nat.zero_le _) hmoreYes
+
+/-- Short `no` record fires loudly from the entry state. -/
+theorem partitionCopyFwd_err_of_no_short (pivot : BitVec 32)
+    (la yes no : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hmoreNo : no.length <
+      (la.filter (fun y => !(y.slt pivot))).length) :
+    partitionCopyFwd pivot la yes no la.length 0 0 0 =
+      .error .AssertFail :=
+  partitionCopyFwd_err_shortNo pivot la yes no la.length 0 0 0
+    (Nat.zero_le _) (Nat.le_refl _)
+    hread (by simp) (by simp) (Nat.zero_le _) hmoreNo
+
+/-- Closed dual-record partition contract: when both records
+    fit, the forward returns the keeper count over the keeper
+    prefix and the dropper prefix, both record lengths
+    unchanged. -/
+theorem vecPartitionCopyFwd_correct (pivot : BitVec 32)
+    (la yes no : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hcapYes : (la.filter (fun y => y.slt pivot)).length
+      ≤ yes.length)
+    (hcapNo : (la.filter (fun y => !(y.slt pivot))).length
+      ≤ no.length) :
+    ∃ (wYes' : Nat) (wNo' : Nat) (yes' no' : List (BitVec 32)),
+      vecPartitionCopyFwd la yes no pivot =
+        .ok (.u64 (BitVec.ofNat 64 wYes')) ∧
+      yes'.take wYes' = la.filter (fun y => y.slt pivot) ∧
+      no'.take wNo' = la.filter (fun y => !(y.slt pivot)) ∧
+      wYes' = (la.filter (fun y => y.slt pivot)).length ∧
+      wNo' = (la.filter (fun y => !(y.slt pivot))).length ∧
+      yes'.length = yes.length ∧ no'.length = no.length := by
+  obtain ⟨wYes', wNo', yes', no', hfwd, hcntYes, hcntNo⟩ :=
+    partitionCopyFwd_ok pivot la yes no la.length 0 0 0
+      (Nat.zero_le _) (Nat.le_refl _) hread (by simp) (by simp)
+      hcapYes hcapNo
+  obtain ⟨hprefYes, hprefNo, -, -, hlenYes, hlenNo⟩ :=
+    partitionCopyFwd_prefix pivot la yes no la.length 0 0 0
+      wYes' wNo' yes no yes' no' (Nat.zero_le _) (Nat.le_refl _)
+      rfl rfl hread (by simp) (by simp) hcapYes hcapNo
+      (by simp) (by simp) (fun j _ => rfl) (fun j _ => rfl) hfwd
+  rw [List.take_length] at hcntYes hcntNo
+  refine ⟨wYes', wNo', yes', no', ?_, hprefYes, hprefNo,
+    hcntYes.symm, hcntNo.symm, hlenYes, hlenNo⟩
+  simp only [vecPartitionCopyFwd, hfwd]

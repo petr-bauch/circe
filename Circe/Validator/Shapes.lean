@@ -3144,6 +3144,51 @@ def isVecReverseCopyShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text stdVecIndexMutName
   | _ => false
 
+/-- Dual-record partition entry shape (`partition_copy`,
+    first dual-record write): read-only input vector + two
+    caller-sized records + owned `i32` pivot in, `u64` keeper
+    count out, exactly six calls (one `size` + three const
+    `at()` — the scan read plus one per branch re-read — + two
+    non-const `at()` — one store per record), one `cir.while`
+    (the scan from index 0), one `cir.if` (the
+    keeper/dropper split, then/else regions), two `cir.cmp`
+    (`lt` loop guard + `lt` signed predicate on `!s32i`) with
+    no `sub`, three plain `u64` adds (two write-cursor
+    advances + the read advance). No ternary, no `nsw`, no
+    self-call, no `operator[]`. -/
+def isVecPartitionCopyShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, yes, no, piv] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType yes.ctype && yes.singleRef && isStdVectorType yes.ctype &&
+    isPtrType no.ctype && no.singleRef && isStdVectorType no.ctype &&
+    isI32 piv.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 6 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.cmp lt" == 2 &&
+    opCount raw.text "cir.const" == 12 &&
+    opCount raw.text "cir.return" == 1 &&
+    opCount raw.text "cir.alloca" == 8 &&
+    opCount raw.text "cir.load" == 21 &&
+    opCount raw.text "cir.store" == 13 &&
+    opCount raw.text "cir.add " == 3 &&
+    !containsSubstr raw.text "cir.sub " &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName
+  | _ => false
+
 /-- `vec_unique_copy` entry shape (caller-record squeeze, P2-M16):
     read-only input vector + caller-sized record in, `u64` survivor
     count out, exactly eight calls (two `size` + three const `at()`
