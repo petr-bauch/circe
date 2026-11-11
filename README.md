@@ -8,12 +8,55 @@ Circe Invidiosa, John William Waterhouse, 1892
 
 CIR → Lean 4 verification pipeline for C and STL-free C++-lite, Aeneas-style:
 source → ClangIR (CIR, raw `CIRGen` output) → pure, memory-free Lean 4
-via a verified emitter, with functional-correctness proofs as pure equations.
-No memory model, no separation logic in the common case; a proved memory
-transfer (`Circe.Mem` / `Circe.Transfer`, ROADMAP.md M3) backs the value
-semantics on the admitted C fragment, so trust is CIRGen text +
-Lean/Mathlib, not oracle verdicts or differential fuzz.
-See `docs/OVERVIEW.md` for the current state.
+via a verified emitter, with functional-correctness proofs as pure
+equations. No memory model, no separation logic in the common case; a
+proved memory transfer (`Circe.Mem` / `Circe.Transfer`, ROADMAP M3)
+backs the value semantics on the admitted fragment, so trust is
+CIRGen text + Lean/Mathlib, not oracle verdicts or differential fuzz.
+See `docs/OVERVIEW.md` for the current state and
+`docs/ROADMAP.md` for the four-pillar plan.
+
+## Where it stands
+
+The project is organized into four pillars; 95 delivered slices are
+recorded in `docs/DELIVERED.md` (the gate is green at 607/607 jobs).
+
+- **Pillar 1 — C completeness + raw pointers.** Complete within the
+  standing non-goals, including one-pointer linked-list shapes
+  (length chase, append, push-front/erase/find/copy/clear,
+  sorted insert, sorted merge, remove-if `list_filter`,
+  adjacent-duplicate squeeze `list_unique`) over a bump-region
+  memory with loud faults, plus `list_reverse` / `list_rotate_left`
+  as the current proposed next slices.
+- **Pillar 2 — STD for C++ (vector algorithms).** The `std::vector`
+  algorithm run is closed through P2-M16: checked `at()` reads/writes,
+  transform, partition, selection sort, merge runs / merge sort /
+  quicksort / heapsort, erase-compress, prefix-sum scan, sorted-range
+  intersect/union/difference, out-of-place filter (`vec_copy_if`),
+  in-place squeeze (`vec_unique`), and the caller-record squeeze
+  (`vec_unique_copy`, `std::unique_copy`), each with equality- and
+  memory-transfer contracts against independent oracles.
+- **Pillar 3 — human-readable/writable proofs.** Thin Hoare sugar
+  over first-order helpers (no grand abstractions), `cir_fuel` /
+  `cir_eval_closed` / fold-end tactics, contract facades
+  (`Circe.Contracts.*`), lemma packs (`Circe.Lemmas.*`), proof
+  galleries (19+ counted instances), and the `examples/hello/`
+  external-user loop below.
+- **Pillar 4 — Iris (MoSeL) separation logic, fallback only.**
+  Standing policy: **native first, Iris on fallback.** Every problem
+  gets the simple no-Iris solution attempted first; Iris is attempted
+  only when that fails. Iris-lean (MoSeL only — not the oracle, not
+  the `Mem` tags) is vendored on the pinned `v4.34.0` tag and
+  provides a reusable frame rule (`frame_memStore_cells` /
+  `frame_memStore_cellAtI`, `store_frame_cellAtI`) over reified
+  `Mem`, with the first hypothesis-free CondDemo discharges landed
+  (P4/P4-2). The escalation trigger stays armed — a second
+  conditional shape that resists the bespoke `condPost` treatment
+  escalates to the Iris frame rule instead of paying a third bespoke
+  proof. Concurrency is a standing non-goal; it is the one use case
+  with no native answer, and the Iris revisit becomes mandatory if
+  it enters scope. See ROADMAP pillar 4 for the full history
+  (2026-10-12 spike → defer → 2026-10-23 vendoring).
 
 ## Requirements
 
@@ -39,12 +82,12 @@ for f in tests/c/*.c; do clang -O0 "$f" -o "/tmp/$(basename $f .c)"; done
 # re-capture CIR goldens (requires the CIR-enabled clang, see docs/PINS.md)
 tools/emit-cir.sh  # writes tests/cir/*.cir
 
-# End-to-end (single entry point): the full pipeline — C/C++ corpora through
-# N9 (incl. N8 closed-eval adoption and the N9 insertion-sort golden + diff
-# stages) — plus golden diffs, native drivers, differential fuzz vs native
-# (default 1000 trials), rejection suites, spec stubs, and tactic-adoption
-# checks
-tools/check.sh [trials]
+# End-to-end (single entry point): regenerates `out/`, then the full
+# gate — golden byte-diffs, typechecks, golden suites, differential
+# fuzz vs native (default 1000 trials), rejection suites, spec
+# stubs (174, each `#eval`'d `true`), and tactic-adoption checks.
+# Current head: 607/607 TEST-OK.
+lake exe circe-test [trials]
 ```
 
 ## For users (prove things about your own C++)
@@ -105,19 +148,28 @@ compose callers from callee contracts — see `docs/VERIFYING.md`
 Coming later: modular-proof harnesses and reusable lemma packs
 (ROADMAP frontend follow-ups).
 
-Layout: `Circe/Base.lean` (value model + checked ops + evaluator vocabulary),
-`Circe/Emit/{Vec,Flow,M2,Sum,Grow}Fwd.lean` (per-family program translations),
-`Circe/CoreIR.lean`
-(verified IR), `Circe/Eval.lean` (loan-based value semantics + `cir_fuel` + `cir_eval_closed`),
-`Circe/Mem.lean` (addressful block-map model + lockstep bridges),
-`Circe/Validator.lean` (verified gate + `derivedNoalias`),
-`Circe/Emit*.lean` (emitter + per-shape proofs), `Circe/Derived.lean`
-(per-shape noalias footprints), `Circe/Transfer.lean` (memory transfer),
-`Circe/Tactics.lean` (`cir_simp`), `Circe/Specs.lean` (user specs),
-`Circe/Hoare/` (Hoare triple rules), `Circe/CondFrame.lean`
-(framing assertions), `Circe/ReadOnly.lean` (read-only sharing discipline),
-`Circe/Scope.lean` (scope/alloca lifetime evidence),
-`Circe/Parser/` + `Circe/Oracle/` (trusted front ends).
+## Layout
+
+- `Circe/Base.lean` — value model + checked ops + evaluator vocabulary
+- `Circe/CoreIR.lean` — verified IR
+- `Circe/Eval/` — loan-based value semantics (+ `cir_fuel`, `cir_eval_closed`)
+- `Circe/Mem/` — addressful block-map model (`Agree`, `Model`)
+  + lockstep bridges
+- `Circe/Emit/` — emitter: per-shape program translations + proofs,
+  matcher (`Match.lean`), renderers (`Render`, `SpecStubs`)
+- `Circe/Transfer/` — memory transfer, per-shape lockstep twins
+- `Circe/Validator/` — verified gate + derived no-alias footprints
+- `Circe/Specs.lean` — user specs and per-shape forward contracts
+- `Circe/Tactics.lean`, `Circe/LeafTactics.lean` — tactic pack
+- `Circe/Hoare/` — Hoare triple rules (thin sugar, first-order helpers)
+- `Circe/Contracts/` — stable contract facades
+- `Circe/Lemmas/` — reusable lemma packs (`TwoCursor`, `CheckedIx`, …)
+- `Circe/Iris/` — MoSeL points-to + frame rules (fallback-only, P4)
+- `Circe/CondFrame.lean`, `Circe/ReadOnly.lean`, `Circe/Scope.lean`
+  — framing, sharing discipline, lifetime evidence
+- `Circe/Parser.lean`, `Circe/Oracle.lean` — trusted front ends
+
 Docs: `docs/OVERVIEW.md`, `docs/SUBSET.md`, `docs/PIPELINE.md`,
-`docs/VERIFYING.md`, `docs/ROADMAP.md`, `docs/PINS.md`
-(`docs/archive/` holds the superseded phase-history docs).
+`docs/VERIFYING.md`, `docs/ROADMAP.md`, `docs/DELIVERED.md`,
+`docs/PINS.md` (`docs/archive/` holds the superseded
+phase-history docs).
