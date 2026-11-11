@@ -1900,6 +1900,31 @@ def emitVecUniqueCopyText (name : String) : String :=
   ++ "      | _, _ => .error .AssertFail\n"
   ++ "    else .ok (r, w, lo)\n"
 
+/-- Render the `vec_reverse_copy` entry forward definition: the
+    countdown scan over the reified words into the caller-sized
+    record (empty short-circuits; the guard is the per-step
+    `w < out.size()` check; returns the copied count). -/
+def emitVecReverseCopyText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (countdown reverse over the reified input into the caller-sized record: read `a[j - 1]`, store at `out[w]`, short record fails loud; returns the copied count). -/\n"
+  ++ s!"def {name}_fwd (la : List (BitVec 32)) (lo : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match la with\n"
+  ++ "  | [] => .ok 0\n"
+  ++ "  | _ :: _ =>\n"
+  ++ "    match loop la lo la.length 0 la.length with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok (w, _, _) => .ok w\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Nat → Result (Nat × Nat × List (BitVec 32))\n"
+  ++ "  | la, lo, 0, w, j => .ok (w, j, lo)\n"
+  ++ "  | la, lo, fuel + 1, w, j =>\n"
+  ++ "    if 0 < j then\n"
+  ++ "      match la[j - 1]?, lo[w]? with\n"
+  ++ "      | some y, some _ => loop la (lo.set w y) fuel (w + 1) (j - 1)\n"
+  ++ "      | _, _ => .error .AssertFail\n"
+  ++ "    else .ok (w, j, lo)\n"
+
 /-- Render the `min_index` leaf forward definition: the forward
     min-scan over the reified words (guard-justified, total). -/
 def emitVecMinIndexText (name : String) : String :=

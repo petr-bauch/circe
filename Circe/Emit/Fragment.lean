@@ -172,6 +172,7 @@ inductive FragKind : Type
   | vecIntersect
   | vecCopyIf
   | vecUniqueCopy
+  | vecReverseCopy
   | vecUnion
   | vecDifference
   | vecMinIndex

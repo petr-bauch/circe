@@ -681,22 +681,6 @@ theorem valUniqueCopyBody_drop (prog : Prog) (F : Nat)
 
 /-! ## Value loop (bridges `evalProgStmt` to `uniqueCopyFwd`) -/
 
-/-- Take-set at the write head: storing at `w` then taking
-    `w + 1` is the old `w`-prefix with the new word snocced.
-    (No core lemma packages both steps; the two rewrites below
-    are the only use.) -/
-theorem take_set_succ_self (lo : List (BitVec 32)) (w : Nat)
-    (y : BitVec 32) (hwlt : w < lo.length) :
-    (lo.set w y).take (w + 1) = (lo.take w) ++ [y] := by
-  have h1 : (lo.set w y).take w = lo.take w :=
-    List.take_set_of_le (Nat.le_refl w)
-  have h2 : ((lo.set w y)[w]?.toList) = [y] :=
-    congrArg Option.toList (List.getElem?_set_self hwlt)
-  have h3 : (lo.set w y).take (w + 1)
-      = (lo.set w y).take w ++ ((lo.set w y)[w]?.toList) :=
-    List.take_add_one
-  rw [h3, h1, h2]
-
 /-- Value loop, ok leg: the scan runs to `la.length` and the
     record is the forward-model result (fuel induction threading
     the body hits; the forward equation unfolds one step per

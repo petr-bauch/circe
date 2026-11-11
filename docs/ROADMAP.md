@@ -131,24 +131,19 @@ erase-compress endpoint (P2-M9), the prefix-sum scan
 out-of-place filter (P2-M12), the adjacent-duplicate
 squeeze (P2-M13), the sorted-range union (P2-M14), the
 sorted-range difference (P2-M15), the caller-record squeeze
-(P2-M16), and the
+(P2-M16), the caller-record reverse (P2-M17), and the
 G-track (G1/G1b/G2/G3/G5a/G4); see `DELIVERED.md` §§
-P2-M5–P2-M16, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
+P2-M5–P2-M17, H, J, B, Kadane, G1, G1b, G2, G3, G5a, G4, G4
 refactor (the G-track slice labels are distinct from the
 Gate rule G-labels cited under N12–N14)
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) Out-of-place reverse (`reverse_copy`): the
-   delivered `vec_reverse` scan writing into a caller-sized
-   record instead of in place — composes the reverse scan
-   with the M12 out-borrow, no new mechanism, first
-   out-of-place spine permutation with no oracle and no drops.
-2. Dual-record partition (`partition_copy`): the Lomuto
-   predicate split writing keepers and droppers into two
-   caller-sized records — first dual-record write, composes
-   P2-M3 partition with M12 out-borrow twice, two survivor
-   counts returned (or packed — corpus call).
-3. Dual-read mismatch query (`vec_mismatch`): first-index-
+1. (Recommended) Dual-record partition (`partition_copy`):
+   the Lomuto predicate split writing keepers and droppers
+   into two caller-sized records — first dual-record write,
+   composes P2-M3 partition with M12 out-borrow twice, two
+   survivor counts returned (or packed — corpus call).
+2. Dual-read mismatch query (`vec_mismatch`): first-index-
    of-difference over two read-only vectors — first dual-read
    query returning a position, no writes, loud on neither
    (shorter input bounds the scan, caller-debt).

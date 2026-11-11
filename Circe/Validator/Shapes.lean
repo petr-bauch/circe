@@ -3099,6 +3099,51 @@ def isVecUniqueShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text raw.name
   | _ => false
 
+/-- `vec_reverse_copy` entry shape (out-of-place reverse,
+    P2-M17): read-only input vector + caller-sized record in,
+    `u64` element-count out, exactly four calls (two `size` +
+    one const `at()` + one non-const `at()`), one `cir.while`
+    (the countdown scan from `a.size()`), one `cir.if` (the
+    empty-check early exit), two compares (`eq` empty check +
+    `lt` `0 < j` countdown guard), one plain `u64` addition
+    (the `w` bump), one plain `u64` subtraction (the `j - 1`
+    read index), two returns (empty-0 + tail-`w`). No ternary,
+    no `nsw` arithmetic; the four-call count plus the exact
+    op table separates it from the in-place `vec_reverse`
+    (single vector, swaps, two `at()` pairs) and from any
+    squeeze/filter (kept-element test, eight/four calls). -/
+def isVecReverseCopyShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, out] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType out.ctype && out.singleRef && isStdVectorType out.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 2 &&
+    opCount raw.text "cir.cmp lt" == 1 &&
+    opCount raw.text "cir.cmp eq" == 1 &&
+    opCount raw.text "cir.const" == 12 &&
+    opCount raw.text "cir.return" == 2 &&
+    opCount raw.text "cir.alloca" == 5 &&
+    opCount raw.text "cir.load" == 13 &&
+    opCount raw.text "cir.store" == 9 &&
+    opCount raw.text "cir.add " == 1 &&
+    opCount raw.text "cir.sub " == 1 &&
+    !containsSubstr raw.text "cir.ternary" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !callsFunc raw.text raw.name &&
+    !callsFunc raw.text stdVecIndexName &&
+    !callsFunc raw.text stdVecIndexMutName
+  | _ => false
+
 /-- `vec_unique_copy` entry shape (caller-record squeeze, P2-M16):
     read-only input vector + caller-sized record in, `u64` survivor
     count out, exactly eight calls (two `size` + three const `at()`

@@ -221,6 +221,37 @@ theorem dedupAdj_take_succ_drop (la : List (BitVec 32)) (r : Nat)
   rw [hsplit]
   exact dedupAdj_snoc_drop _ _ _ hlast heq
 
+/-- Reverse-countdown step (P2-M17 boundary): dropping one
+    fewer element from the front extends the reversed suffix by
+    the scanned element. Packages the `drop (j-1)` split with
+    `reverse_append`, so the loop proof never unfolds `drop`
+    itself. -/
+theorem drop_reverse_succ (la : List (BitVec 32)) (j : Nat)
+    (y : BitVec 32)
+    (hj : 1 ≤ j) (hy : la[j - 1]? = some y) :
+    (la.drop (j - 1)).reverse = (la.drop j).reverse ++ [y] := by
+  have hsplit : la.drop (j - 1) = [y] ++ la.drop j := by
+    have h := List.drop_sub_one (l := la) (i := j) (by omega)
+    simpa [hy] using h
+  simp [hsplit, List.reverse_append]
+
+/-- Take-set at the write head: storing at `w` then taking
+    `w + 1` is the old `w`-prefix with the new word snocced
+    (moved here from `Circe.Emit.VecUniqueCopy`, which uses it
+    for the shared record discipline; no core lemma packages
+    both steps). -/
+theorem take_set_succ_self (lo : List (BitVec 32)) (w : Nat)
+    (y : BitVec 32) (hwlt : w < lo.length) :
+    (lo.set w y).take (w + 1) = (lo.take w) ++ [y] := by
+  have h1 : (lo.set w y).take w = lo.take w :=
+    List.take_set_of_le (Nat.le_refl w)
+  have h2 : ((lo.set w y)[w]?.toList) = [y] :=
+    congrArg Option.toList (List.getElem?_set_self hwlt)
+  have h3 : (lo.set w y).take (w + 1)
+      = (lo.set w y).take w ++ ((lo.set w y)[w]?.toList) :=
+    List.take_add_one
+  rw [h3, h1, h2]
+
 /-- Squeeze is append-monotone as a prefix: appending more
     input can only extend the squeeze at the tail (each snoc
     either keeps the squeeze or snocs one survivor). -/

@@ -47,6 +47,7 @@ import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecUniqueCopy
+import Circe.Emit.VecReverseCopy
 import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
 import Circe.Emit.VecSelectionSort
@@ -1929,6 +1930,8 @@ def validate (raw : RawFunc) (oracle : OracleFact) : Validation :=
         .ok { vecCopyIfFunc with name := raw.name }
       else if isVecUniqueCopyShape raw then
         .ok { vecUniqueCopyFunc with name := raw.name }
+      else if isVecReverseCopyShape raw then
+        .ok { vecReverseCopyFunc with name := raw.name }
       else if isVecUnionShape raw then
         .ok { vecUnionFunc with name := raw.name }
       else if isVecDifferenceShape raw then

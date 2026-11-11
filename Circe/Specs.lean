@@ -29,6 +29,7 @@ import Circe.Emit.VecDifference
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecUnique
 import Circe.Emit.VecUniqueCopy
+import Circe.Emit.VecReverseCopy
 import Circe.Tactics
 import Circe.Lemmas.TwoCursor
 
@@ -6417,6 +6418,165 @@ theorem vecUniqueCopyFwd_correct (la lo : List (BitVec 32))
         rw [hlen', ← hlenS]; exact hb)
     refine ⟨w', lo', by simp only [vecUniqueCopyFwd, ho0, hfwd], hpref,
       hwlen, hlen'⟩
+
+/-! ## P2-M17: out-of-place reverse (`vec_reverse_copy`) forward contract -/
+
+/-- Reverse-copy forward ok leg: when the record fits, the
+    countdown scan succeeds, filling the record prefix with
+    `la.reverse` (the `w + j = la.length` coupling plus the
+    take-prefix invariant pin the exit: `j = 0` forces
+    `w = la.length` and the prefix becomes the full reverse). -/
+theorem reverseCopyFwd_ok (la lo : List (BitVec 32))
+    (fuel w j : Nat)
+    (hwj : w + j = la.length) (hle : j ≤ la.length)
+    (hF : j ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hpre : lo.take w = (la.drop j).reverse)
+    (hwlo : w ≤ lo.length)
+    (hcap : la.length ≤ lo.length) :
+    ∃ w' lo', reverseCopyFwd la lo fuel w j = .ok (w', 0, lo') ∧
+      lo'.take w' = la.reverse ∧
+      w' = la.length ∧ lo'.length = lo.length := by
+  induction fuel generalizing lo w j with
+  | zero =>
+    have hj0 : j = 0 := by omega
+    subst hj0
+    have hwlen : w = la.length := by omega
+    subst hwlen
+    refine ⟨la.length, lo, rfl, ?_, rfl, rfl⟩
+    simpa using hpre
+  | succ n ih =>
+    by_cases hj0 : 0 < j
+    · obtain ⟨y, hy⟩ := hread (j - 1) (by omega)
+      have hwlt : w < lo.length := by omega
+      have hwget : lo[w]? = some lo[w] :=
+        List.getElem?_eq_getElem hwlt
+      have hF' : j - 1 ≤ n := by omega
+      have htake_set : (lo.set w y).take (w + 1)
+          = (lo.take w) ++ [y] :=
+        take_set_succ_self lo w y hwlt
+      have hpre' : (lo.set w y).take (w + 1)
+          = ((la.drop (j - 1))).reverse := by
+        rw [htake_set, hpre,
+          drop_reverse_succ la j y (by omega) hy]
+      have hlenS : (lo.set w y).length = lo.length := by
+        simp [List.length_set]
+      have hwlo' : w + 1 ≤ (lo.set w y).length := by omega
+      have hcap' : la.length ≤ (lo.set w y).length := by
+        rw [hlenS]; exact hcap
+      obtain ⟨w', lo', hfwd, hpref, hwlen, hlen'⟩ :=
+        ih (lo := lo.set w y)
+        (w := w + 1) (j := j - 1)
+        (hwj := by omega) (hle := by omega)
+        (hF := hF')
+        (hpre := hpre') (hwlo := hwlo') (hcap := hcap')
+      refine ⟨w', lo', ?_, hpref, hwlen, ?_⟩
+      · simp only [reverseCopyFwd, dite_eq_left hj0, hy, hwget]
+        exact hfwd
+      · rw [hlen', hlenS]
+    · have hj0' : j = 0 := by omega
+      subst hj0'
+      have hwlen : w = la.length := by omega
+      subst hwlen
+      refine ⟨la.length, lo, ?_, ?_, rfl, rfl⟩
+      · simp [reverseCopyFwd]
+      · simpa using hpre
+
+/-- Reverse-copy forward short-`out` error leg: when the scanned
+    prefix fits but the total reverse overflows the record, the
+    scan fails loudly (fuel induction threading the reversed
+    prefix and the record bound; the zero/exhausted cases are
+    discharged by the length facts). -/
+theorem reverseCopyFwd_err_short (la lo : List (BitVec 32))
+    (fuel w j : Nat)
+    (hwj : w + j = la.length) (hle : j ≤ la.length)
+    (hF : j ≤ fuel)
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hpre : lo.take w = (la.drop j).reverse)
+    (hwlo : w ≤ lo.length)
+    (hmore : lo.length < la.length) :
+    reverseCopyFwd la lo fuel w j = .error .AssertFail := by
+  induction fuel generalizing lo w j with
+  | zero =>
+    have hj0 : j = 0 := by omega
+    subst hj0
+    have hwlen : w = la.length := by omega
+    have h := congrArg List.length hpre
+    simp only [List.length_take, List.length_reverse,
+      List.length_drop] at h
+    omega
+  | succ n ih =>
+    by_cases hj0 : 0 < j
+    · obtain ⟨y, hy⟩ := hread (j - 1) (by omega)
+      by_cases hmiss : lo[w]? = none
+      · simp [reverseCopyFwd, dite_eq_left hj0, hy, hmiss]
+      · have hsome : ∃ z, lo[w]? = some z := by
+          match h : lo[w]? with
+          | none => exact absurd h hmiss
+          | some z => exact ⟨z, rfl⟩
+        obtain ⟨wOld, hwget⟩ := hsome
+        have hwlt : w < lo.length :=
+          transformRead_lt lo w wOld hwget
+        have hF' : j - 1 ≤ n := by omega
+        have htake_set : (lo.set w y).take (w + 1)
+            = (lo.take w) ++ [y] :=
+          take_set_succ_self lo w y hwlt
+        have hpre' : (lo.set w y).take (w + 1)
+            = ((la.drop (j - 1))).reverse := by
+          rw [htake_set, hpre,
+            drop_reverse_succ la j y (by omega) hy]
+        have hlenS : (lo.set w y).length = lo.length := by
+          simp [List.length_set]
+        have hwlo' : w + 1 ≤ (lo.set w y).length := by omega
+        have hmore' : (lo.set w y).length < la.length := by
+          rw [hlenS]; exact hmore
+        have h := ih (lo := lo.set w y)
+          (w := w + 1) (j := j - 1)
+          (hwj := by omega) (hle := by omega)
+          (hF := hF')
+          (hpre := hpre') (hwlo := hwlo') (hmore := hmore')
+        simpa [reverseCopyFwd, dite_eq_left hj0, hy, hwget] using h
+    · have hj0' : j = 0 := by omega
+      subst hj0'
+      have hwlen : w = la.length := by omega
+      have h := congrArg List.length hpre
+      simp only [List.length_take, List.length_reverse,
+        List.length_drop] at h
+      omega
+
+/-- Short record fires loudly from the entry state: more source
+    than record words means the forward scan errors. -/
+theorem reverseCopyFwd_err_of_overflow (la : List (BitVec 32))
+    (lo₁ : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hmore : lo₁.length < la.length) :
+    reverseCopyFwd la lo₁ la.length 0 la.length = .error .AssertFail :=
+  reverseCopyFwd_err_short la lo₁ la.length 0 la.length
+    (by omega) (Nat.le_refl _) (Nat.le_refl _)
+    hread (by simp) (Nat.zero_le _) hmore
+
+/-- Closed caller-record reverse contract: when the reverse fits,
+    the forward returns the source length over the reversed
+    prefix, record length unchanged. -/
+theorem vecReverseCopyFwd_correct (la lo : List (BitVec 32))
+    (hread : ∀ p, p < la.length → ∃ y, la[p]? = some y)
+    (hcap : la.length ≤ lo.length) :
+    ∃ (w' : Nat) (lo' : List (BitVec 32)),
+      vecReverseCopyFwd la lo = .ok (.u64 (BitVec.ofNat 64 w')) ∧
+      lo'.take w' = la.reverse ∧
+      w' = la.length ∧
+      lo'.length = lo.length := by
+  cases la with
+  | nil =>
+    exact ⟨0, lo, by simp [vecReverseCopyFwd], by simp, rfl, rfl⟩
+  | cons a0 xs =>
+    have hlen : 0 + (a0 :: xs).length = (a0 :: xs).length := by omega
+    obtain ⟨w', lo', hfwd, hpref, hwlen, hlen'⟩ :=
+      reverseCopyFwd_ok (a0 :: xs) lo ((a0 :: xs).length) 0
+        ((a0 :: xs).length) hlen (Nat.le_refl _)
+        (Nat.le_refl _) hread (by simp) (Nat.zero_le _) hcap
+    refine ⟨w', lo', ?_, hpref, hwlen, hlen'⟩
+    simp only [vecReverseCopyFwd, hfwd]
 
 /-! ## P2-M11: sorted-range intersection (`vec_intersect`) forward contract -/
 
