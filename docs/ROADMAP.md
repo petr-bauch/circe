@@ -4,7 +4,7 @@ Long-term goal: a viable verification platform for modern C++ —
 the subset of C++ amenable to Aeneas-style translation to Lean,
 with tactic and spec support for proving properties of the emitted code.
 
-State (2026-10-28): all delivered milestones live in `DELIVERED.md`.
+State (2026-11-11): all delivered milestones live in `DELIVERED.md`.
 Work going forward is organized under four pillars; each slice
 still follows the standing convention below.
 
@@ -26,7 +26,7 @@ the first two-live-pointer shape admitted by exact listing
 rather than exemption (L-ptr2; label note — this reuses
 the L1–L4 slice labels of the lifetime track for a
 different subject, see `DELIVERED.md` "L-ptr."). The C
-core is complete within the standing non-goals, plus ten
+core is complete within the standing non-goals, plus eleven
 dynamic shapes (read-only traversal, caller-node writer,
 caller-allocated writer, first deallocating shape,
 read-only query, allocating deep copy with per-element
@@ -47,7 +47,8 @@ oracle equation over the kept prefix plus the scanned ghost
 history with P1-clear-style dropped tracking).
 
 Next: nothing open — the single-pointer exemption
-(`a393fa6`), the L-ptr2 slice, and the P1-push, P1-erase,
+(`a393fa6`), the L-ptr raw-pointer reversal (`list_reverse`,
+2026-10-31), the L-ptr2 slice, and the P1-push, P1-erase,
 P1-find, P1-copy, P1-clear, P1-sortedinsert, P1-merge,
 P1-filter, and P1-unique slices are all closed. Iris policy
 stays at pillar 4 (native first, Iris on fallback). See
@@ -57,16 +58,19 @@ P1-sortedinsert, P1-merge, P1-filter, P1-unique, O1/O2,
 Iris, P4, K6.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) In-place reversal (`list_reverse`): swing
-   every link in one chase with two cursors, no allocation or
-   free — reuses the chase + link-decode kit with no new
-   mechanism, the read-only-traversal dual. First shape whose
-   result equation is a pure spine permutation with no
-   oracle, no drops, and no payload reads.
-2. In-place rotation (`list_rotate_left`): three `list_reverse`
-   passes over the two segments and the whole chain — first
-   composing slice, reusing the reverse chase plus the length
-   kit for the split point, still no allocation or free.
+1. (Recommended) In-place rotation (`list_rotate_left`): three
+   `list_reverse` passes over the two segments and the whole
+   chain — first composing slice, reusing the delivered L-ptr
+   reverse chase plus the length kit for the split point,
+   still no allocation or free.
+2. Two-speed middle query (`list_middle`): slow/fast chase
+   returning the middle node — first multi-speed chase
+   (the fast cursor advances two links per slow step), a
+   read-only query with a spine-ratio invariant and no writes.
+3. Allocating reverse copy (`list_reverse_copy`): build the
+   reversed chain with per-element `malloc` in push-front
+   order — composes the P1-copy allocation kit with the
+   reversal spine equation, caller owns the new chain.
 
 ## Pillar 2 — STD for C++ (leet-code sized algorithms)
 
@@ -135,14 +139,19 @@ Gate rule G-labels cited under N12–N14)
 
 Proposed (toward the platform goal — for approval, in order):
 1. (Recommended) Out-of-place reverse (`reverse_copy`): the
-   pillar-1 two-cursor reverse chase writing into a
-   caller-sized record — composes the reverse scan with the
-   M12 out-borrow, no new mechanism, first out-of-place
-   spine permutation with no oracle and no drops.
-2. Out-of-place sorted merge (`merge`): the P2-M14 union
-   drains writing into a caller-sized record instead of
-   compacting in place — composes the merge drains with the
-   M12 out-borrow, caller owes the combined length.
+   delivered `vec_reverse` scan writing into a caller-sized
+   record instead of in place — composes the reverse scan
+   with the M12 out-borrow, no new mechanism, first
+   out-of-place spine permutation with no oracle and no drops.
+2. Dual-record partition (`partition_copy`): the Lomuto
+   predicate split writing keepers and droppers into two
+   caller-sized records — first dual-record write, composes
+   P2-M3 partition with M12 out-borrow twice, two survivor
+   counts returned (or packed — corpus call).
+3. Dual-read mismatch query (`vec_mismatch`): first-index-
+   of-difference over two read-only vectors — first dual-read
+   query returning a position, no writes, loud on neither
+   (shorter input bounds the scan, caller-debt).
 
 ## Pillar 3 — Human-readable/writable proofs
 
@@ -156,7 +165,7 @@ adopted `fuel_step_down` at 14 `VecHeapSort` sites, retiring
 the `exists_eq_succ_of_ne_zero` collision), proof
 scale-down (N8: `cir_eval_closed`), Hoare rule library +
 galleries (H1–H3 incl. cond-pair, A, R/S/T swap-step, J
-rewire/chase, H sift/entry/dup-entry, L-ptr linkedrev — 19
+rewire/chase, H sift/entry/dup-entry, L-ptr linkedrev — 20
 counted `hoare-gallery` passes, two
 iterating over both cond arms), program-level while
 rule (P3a: `HTripleProg` + `htripleProg_while_at`, R countdown
@@ -203,7 +212,16 @@ further store-heavy triples compose over
 A gallery per new admitted shape, as always.
 
 Proposed (toward the platform goal — for approval, in order):
-1. (Recommended) R/S program-level threading decision: still prose at two
+1. (Recommended) Caller-record contract facade
+   (`Circe.Contracts.VecUniqueCopy`): the P3-N treatment for
+   the M16 squeeze — a stable user-facing contract (fits →
+   squeeze count + prefix; short → loud) delegating to the
+   Transfer specs, so users never name lockstep internals.
+2. Two-block Hoare gallery instance: the M16 seed store +
+   one keep step as a closed gallery triple — first
+   two-block (read-only + record) gallery, executable shadow
+   of the seed/short discipline.
+3. R/S program-level threading decision: still prose at two
    uses (`revMemStore_ok` + per-file bridges). The third
    use forces the call — package like the store leg, or keep
    prose; no tactic without three user-goal uses (rule of
@@ -329,7 +347,14 @@ Proposed (toward the platform goal — for approval, in order):
    treatment, escalate to `frame_memStore` (now backed by the
    `store_frame_cellAtI` write leg) instead of paying
    a third bespoke proof.
-2. No concurrency work (non-goal reaffirmed); no new Iris
+2. Frame-rule cost-comparison spike (report-only): re-prove
+   one already-delivered native framing leg (an M16 body
+   keep leg's `a`-block frame, currently
+   `memFind_memStore_other`) through `frame_memStore_cells`
+   and record the proof-size delta — the first measured
+   native-vs-Iris comparison on a real slice, informing
+   trigger 1 without migrating anything.
+3. No concurrency work (non-goal reaffirmed); no new Iris
    imports until trigger 1 fires. (The S0 discharge proposed
    item landed as DELIVERED P4: one equation, `h1` of
    `condPost_disjoint_star`; the rest stay hypotheses.)
