@@ -230,6 +230,11 @@ def evalStmtWith (wh : CExpr → CStmt → Env → Result (Env × Outcome)) :
     | .ok _, .ok _ => .error .AssertFail
     | .error e, _ => .error e
     | _, .error e => .error e
+  | .psetRight dst link, ρ =>
+    match evalExpr dst ρ, evalExpr link ρ with
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
   | .psetVal dst val, ρ =>
     match evalExpr dst ρ, evalExpr val ρ with
     | .ok _, .ok _ => .error .AssertFail
@@ -512,6 +517,16 @@ theorem evalStmtFuel_psetNext (f : Nat) (dst link : CExpr)
     (hd : evalExpr dst ρ = .ok d)
     (hl : evalExpr link ρ = .ok l) :
     evalStmtFuel f (.psetNext dst link) ρ = .error .AssertFail := by
+  cases f <;>
+    simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd, hl]
+
+/-- `psetRight` has no value mirror (P1 tree kit: right-link stores
+    are `Mem`-space, like `psetNext`). -/
+theorem evalStmtFuel_psetRight (f : Nat) (dst link : CExpr)
+    (ρ : Env) (d l : Value)
+    (hd : evalExpr dst ρ = .ok d)
+    (hl : evalExpr link ρ = .ok l) :
+    evalStmtFuel f (.psetRight dst link) ρ = .error .AssertFail := by
   cases f <;>
     simp [evalStmtFuel, evalStmtZero, evalStmtWith, hd, hl]
 

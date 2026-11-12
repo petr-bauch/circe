@@ -265,7 +265,12 @@ theorem memEvalStmtFuel_seq_return (f : Nat) (a b : CStmt) (ρ : Env)
     the allocating arm instead — see `memEvalStmtFuel_let_vnew`;
     `boxNew` takes its own allocating arm — see
     `memEvalStmtFuel_let_boxNew`; `nnew` takes its own allocating
-    arm — see `memEvalStmtFuel_let_nnew`). -/
+    arm — see `memEvalStmtFuel_let_nnew`). `nnew3` needs no
+    exclusion hypothesis: it errors in the pure evaluator always,
+    so `hv` derives `e ≠ .nnew3` internally (the `hN3` below, which
+    also discharges the catch-all equation's side condition —
+    contrast `memEvalStmtFuel_let_err`, where the error hypothesis
+    IS satisfiable for `.nnew3` and `hnotN3` is load-bearing). -/
 theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
     (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (v : Value)
     (hnot : ∀ se, e ≠ .vnew se)
@@ -276,30 +281,40 @@ theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
     (hv : evalExpr e ρ = .ok v) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π =
       .ok ((((x, v) :: ρ, m, π)), .fellThrough) := by
+  have hN3 : e ≠ .nnew3 := by
+    intro hcon; subst hcon; simp [evalExpr] at hv
   match e with
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
   | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
   | .nnew => exact absurd rfl hnotN
+  | .nnew3 => exact absurd rfl hN3
   | _ =>
-    cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv]
+    cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv, hN3]
 
 /-- Pure `let_` propagates expression errors (any fuel; mirrors
     `evalStmtFuel_let_err`; allocating arms are excluded as in
-    `memEvalStmtFuel_let_pure`). -/
+    `memEvalStmtFuel_let_pure`). `hnotN3` is load-bearing here
+    (unlike the ok-path): the error hypothesis IS satisfiable for
+    `.nnew3`, so the exclusion must be stated. It defaults to
+    `decide` — call-site `e` is always a closed constructor once
+    elaboration unifies it, and an accidental `.nnew3` fails loudly
+    instead of masking. -/
 theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
     (e : CExpr) (ρ : Env) (m : Mem) (π : Layout) (err : Panic)
     (hnot : ∀ se, e ≠ .vnew se)
     (hnotBox : ∀ se, e ≠ .boxNew se)
     (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
     (hnotN : e ≠ .nnew)
-    (h : memEvalExpr e ρ m π = .error err) :
+    (h : memEvalExpr e ρ m π = .error err)
+    (hnotN3 : e ≠ .nnew3 := by decide) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π = .error err := by
   match e with
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
   | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
   | .nnew => exact absurd rfl hnotN
+  | .nnew3 => exact absurd rfl hnotN3
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
 
@@ -377,6 +392,35 @@ theorem memEvalStmtFuel_psetNext_err (f : Nat) (dst link : CExpr)
     (hfind : memFind m a = some b)
     (hstore : memStore m a b.tag 1 (linkWord n) = .error e) :
     memEvalStmtFuel f (.psetNext dst link) ρ m π = .error e := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hl, hfind, hstore]
+
+/-- `psetRight` stores the encoded link at index 2 (P1 tree kit:
+    the index-2 twin of `psetNext_ok` — the value env and layout
+    are untouched; any fuel). -/
+theorem memEvalStmtFuel_psetRight_ok (f : Nat) (dst link : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (n : Option Addr) (b : Block) (m' : Mem)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hl : memEvalExpr link ρ m π = .ok (.ptrVal n))
+    (hfind : memFind m a = some b)
+    (hstore : memStore m a b.tag 2 (linkWord n) = .ok m') :
+    memEvalStmtFuel f (.psetRight dst link) ρ m π =
+      .ok (((ρ, m', π)), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
+      hd, hl, hfind, hstore]
+
+/-- `psetRight` propagates `memStore` errors (any fuel). -/
+theorem memEvalStmtFuel_psetRight_err (f : Nat) (dst link : CExpr)
+    (ρ : Env) (m : Mem) (π : Layout)
+    (a : Addr) (n : Option Addr) (b : Block) (e : Panic)
+    (hd : memEvalExpr dst ρ m π = .ok (.ptrVal (some a)))
+    (hl : memEvalExpr link ρ m π = .ok (.ptrVal n))
+    (hfind : memFind m a = some b)
+    (hstore : memStore m a b.tag 2 (linkWord n) = .error e) :
+    memEvalStmtFuel f (.psetRight dst link) ρ m π = .error e := by
   cases f <;>
     simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith,
       hd, hl, hfind, hstore]
@@ -491,6 +535,18 @@ theorem memEvalStmtFuel_let_nnew (f : Nat) (x : String) (ty : CType)
     (ρ : Env) (m : Mem) (π : Layout) :
     memEvalStmtFuel f (.let_ x ty .nnew) ρ m π =
       let (m', a) := memAlloc m 2
+      .ok (((x, .ptrVal (some a)) :: ρ, m', π), .fellThrough) := by
+  cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
+
+/-- Allocating `let_` (`nnew3`: the raw 3-word `malloc` tree node
+    cell — the `nnew` twin for `Node{key,left,right}`): the memory
+    side pins a fresh zeroed 3-word block and binds the fresh
+    address as a raw pointer; the layout is untouched (there is no
+    value mirror for raw pointers). -/
+theorem memEvalStmtFuel_let_nnew3 (f : Nat) (x : String) (ty : CType)
+    (ρ : Env) (m : Mem) (π : Layout) :
+    memEvalStmtFuel f (.let_ x ty .nnew3) ρ m π =
+      let (m', a) := memAlloc m 3
       .ok (((x, .ptrVal (some a)) :: ρ, m', π), .fellThrough) := by
   cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
 

@@ -884,6 +884,7 @@ def memEvalExpr : CExpr → Env → Mem → Layout → Result Value
       | .ok _, _ => .error .AssertFail
       | .error e, _ => .error e
   | .nnew, _, _, _ => .error .AssertFail
+  | .nnew3, _, _, _ => .error .AssertFail
   | .boxNew se, ρ, m, π =>
     match memEvalExpr se ρ m π with
     | .error e => .error e
@@ -1754,6 +1755,9 @@ def memEvalStmtWith
   | .let_ x _ .nnew, ρ, m, π =>
     let (m', a) := memAlloc m 2
     .ok (((x, .ptrVal (some a)) :: ρ, m', π), .fellThrough)
+  | .let_ x _ .nnew3, ρ, m, π =>
+    let (m', a) := memAlloc m 3
+    .ok (((x, .ptrVal (some a)) :: ρ, m', π), .fellThrough)
   | .let_ x _ (.vgrowNew ce), ρ, m, π =>
     match memEvalExpr ce ρ m π with
     | .error err => .error err
@@ -1907,6 +1911,18 @@ def memEvalStmtWith
       | none => .error .AssertFail
       | some b =>
         match memStore m a b.tag 1 (linkWord n) with
+        | .error e => .error e
+        | .ok m' => .ok ((ρ, m', π), .fellThrough)
+    | .ok _, .ok _ => .error .AssertFail
+    | .error e, _ => .error e
+    | _, .error e => .error e
+  | .psetRight dst link, ρ, m, π =>
+    match memEvalExpr dst ρ m π, memEvalExpr link ρ m π with
+    | .ok (.ptrVal (some a)), .ok (.ptrVal n) =>
+      match memFind m a with
+      | none => .error .AssertFail
+      | some b =>
+        match memStore m a b.tag 2 (linkWord n) with
         | .error e => .error e
         | .ok m' => .ok ((ρ, m', π), .fellThrough)
     | .ok _, .ok _ => .error .AssertFail

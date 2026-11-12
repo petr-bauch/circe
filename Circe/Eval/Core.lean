@@ -663,6 +663,7 @@ def evalExpr : CExpr → Env → Result Value
     | .ok (.i64 d) => .ok (.u64 d)
     | .ok _ => .error .AssertFail
   | .nnew, _ => .error .AssertFail
+  | .nnew3, _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
     | .error e => .error e

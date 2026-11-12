@@ -154,6 +154,7 @@ inductive FragKind : Type
   | listUnique
   | listFind
   | bstSearch
+  | bstInsert
   | listCopy
   | listClear
   | listSortedInsert

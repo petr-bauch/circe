@@ -33,6 +33,7 @@ import Circe.Emit.ListFilter
 import Circe.Emit.ListUnique
 import Circe.Emit.ListFind
 import Circe.Emit.BstSearch
+import Circe.Emit.BstInsert
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
@@ -1100,6 +1101,34 @@ def matchFrag : Func → Option FragKind
                     (.assign "cur" (.pgetRight (.var "cur"))))))
           (.return_ (.lit (.i32 0)))))⟩ =>
     some .bstSearch
+  | ⟨_, [⟨"root", .struct "Node" [.i 32, .u 32], .owned⟩,
+        ⟨"key", .i 32, .owned⟩],
+      .struct "Node" [.i 32, .u 32],
+      (.seq (.let_ "parent" (.struct "Node" [.i 32, .u 32])
+              (.lit .nullptr))
+      (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32]) (.var "root"))
+      (.seq (.let_ "went_left" (.i 32) (.lit (.i32 0)))
+      (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+              (.if_ (.ueq (.pgetVal (.var "cur")) (.var "key"))
+                (.return_ (.var "root"))
+                (.if_ (.slt (.var "key") (.pgetVal (.var "cur")))
+                  (.seq (.assign "parent" (.var "cur"))
+                  (.seq (.assign "cur" (.pgetNext (.var "cur")))
+                        (.assign "went_left" (.lit (.i32 1)))))
+                  (.seq (.assign "parent" (.var "cur"))
+                  (.seq (.assign "cur" (.pgetRight (.var "cur")))
+                        (.assign "went_left" (.lit (.i32 0))))))))
+      (.seq (.seq (.let_ "nd" (.struct "Node" [.i 32, .u 32]) .nnew3)
+            (.seq (.psetVal (.var "nd") (.var "key"))
+            (.seq (.psetNext (.var "nd") (.lit .nullptr))
+            (.seq (.psetRight (.var "nd") (.lit .nullptr))
+            (.if_ (.ueq (.var "parent") (.lit .nullptr))
+              (.return_ (.var "nd"))
+              (.if_ (.une (.var "went_left") (.lit (.i32 0)))
+                (.psetNext (.var "parent") (.var "nd"))
+                (.psetRight (.var "parent") (.var "nd"))))))))
+            (.return_ (.var "root")))))))⟩ =>
+    some .bstInsert
   | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
       .struct "Node" [.i 32, .u 32],
       (.seq (.let_ "new_head" (.struct "Node" [.i 32, .u 32])
@@ -2580,6 +2609,8 @@ theorem matchFrag_listFind :
     matchFrag listFindFunc = some .listFind := rfl
 theorem matchFrag_bstSearch :
     matchFrag bstSearchFunc = some .bstSearch := rfl
+theorem matchFrag_bstInsert :
+    matchFrag bstInsertFunc = some .bstInsert := rfl
 theorem matchFrag_listCopy :
     matchFrag listCopyFunc = some .listCopy := rfl
 theorem matchFrag_listMerge :

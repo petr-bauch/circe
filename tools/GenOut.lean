@@ -51,6 +51,7 @@ import Circe.Emit.ListFilter
 import Circe.Emit.ListUnique
 import Circe.Emit.ListFind
 import Circe.Emit.BstSearch
+import Circe.Emit.BstInsert
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
@@ -220,6 +221,7 @@ def main : IO Unit := do
   let listUnique ← emitOrDie listUniqueFunc
   let listFind ← emitOrDie listFindFunc
   let bstSearch ← emitOrDie bstSearchFunc
+  let bstInsert ← emitOrDie bstInsertFunc
   let listCopy ← emitOrDie listCopyFunc
   let listMerge ← emitOrDie listMergeFunc
   let listClear ← emitOrDie listClearFunc
@@ -397,6 +399,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListUnique.lean" (emitFileText (.ok listUnique))
   IO.FS.writeFile "out/ListFind.lean" (emitFileText (.ok listFind))
   IO.FS.writeFile "out/BstSearch.lean" (emitFileText (.ok bstSearch))
+  IO.FS.writeFile "out/BstInsert.lean" (emitFileText (.ok bstInsert))
   IO.FS.writeFile "out/ListCopy.lean" (emitFileText (.ok listCopy))
   IO.FS.writeFile "out/ListMerge.lean" (emitFileText (.ok listMerge))
   IO.FS.writeFile "out/ListClear.lean" (emitFileText (.ok listClear))
@@ -574,6 +577,7 @@ def main : IO Unit := do
   let listUniqueSpec ← specOrDie listUniqueFunc
   let listFindSpec ← specOrDie listFindFunc
   let bstSearchSpec ← specOrDie bstSearchFunc
+  let bstInsertSpec ← specOrDie bstInsertFunc
   let listCopySpec ← specOrDie listCopyFunc
   let listMergeSpec ← specOrDie listMergeFunc
   let listClearSpec ← specOrDie listClearFunc
@@ -751,6 +755,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/ListUnique_Spec.lean" listUniqueSpec
   IO.FS.writeFile "out/ListFind_Spec.lean" listFindSpec
   IO.FS.writeFile "out/BstSearch_Spec.lean" bstSearchSpec
+  IO.FS.writeFile "out/BstInsert_Spec.lean" bstInsertSpec
   IO.FS.writeFile "out/ListCopy_Spec.lean" listCopySpec
   IO.FS.writeFile "out/ListMerge_Spec.lean" listMergeSpec
   IO.FS.writeFile "out/ListClear_Spec.lean" listClearSpec

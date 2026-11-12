@@ -1209,6 +1209,68 @@ def emitBstSearchText (name : String) : String :=
   ++ "  | .ok (some _) => .ok 1\n"
   ++ "  | .ok none => .ok 0\n"
 
+/-- Render the `bst_insert` entry forward definition: the
+    descend-and-attach write leg over `Mem` (signed key test,
+    left link at index 1, right link at index 2); a duplicate
+    key returns the old root untouched, an empty tree returns
+    the fresh node. The chase outcome is `none` for dup,
+    `some (parent, side)` otherwise. -/
+def emitBstInsertText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.BinaryTree\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative BST insert over `Mem`: descend on signed key order, attach one fresh 3-word node at the empty child link; duplicates return the old root). -/\n"
+  ++ s!"def {name}_bstInsert_fwd (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (key : BitVec 32) (parent : Option Addr)\n"
+  ++ "    (wentLeft : Bool) : Result (Option (Option Addr × Bool)) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok (some (parent, wentLeft))\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      match memFind m a with\n"
+  ++ "      | none => .error .AssertFail\n"
+  ++ "      | some b =>\n"
+  ++ "        match memLoad m a b.tag 0 with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok w =>\n"
+  ++ "          if w == key then .ok none\n"
+  ++ "          else if key.slt w then\n"
+  ++ "            match memLoad m a b.tag 1 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ s!"            | .ok w' => {name}_bstInsert_fwd F m (addrOfWord w') key (some a) true\n"
+  ++ "          else\n"
+  ++ "            match memLoad m a b.tag 2 with\n"
+  ++ "            | .error e => .error e\n"
+  ++ s!"            | .ok w' => {name}_bstInsert_fwd F m (addrOfWord w') key (some a) false\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (root : Option Addr)\n"
+  ++ "    (key : BitVec 32) : Result (Option Addr × Mem) :=\n"
+  ++ s!"  match {name}_bstInsert_fwd F m root key none false with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok none => .ok (root, m)\n"
+  ++ "  | .ok (some (parent, side)) =>\n"
+  ++ "    let (m1, a) := memAlloc m 3\n"
+  ++ "    match memStore m1 a a 0 key with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok m2 =>\n"
+  ++ "      match memStore m2 a a 1 (linkWord none) with\n"
+  ++ "      | .error e => .error e\n"
+  ++ "      | .ok m3 =>\n"
+  ++ "        match memStore m3 a a 2 (linkWord none) with\n"
+  ++ "        | .error e => .error e\n"
+  ++ "        | .ok m4 =>\n"
+  ++ "          match parent with\n"
+  ++ "          | none => .ok (some a, m4)\n"
+  ++ "          | some p =>\n"
+  ++ "            match memFind m4 p with\n"
+  ++ "            | none => .error .AssertFail\n"
+  ++ "            | some b =>\n"
+  ++ "              match memStore m4 p b.tag (if side then 1 else 2)\n"
+  ++ "                  (linkWord (some a)) with\n"
+  ++ "              | .error e => .error e\n"
+  ++ "              | .ok m5 => .ok (root, m5)\n"
+
 /-- Render the `list_copy` entry forward definition: the
     allocating deep copy over `Mem` (one fresh 2-word cell per
     node, payload copied, fresh link cleared, appended to the

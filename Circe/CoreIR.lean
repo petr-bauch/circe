@@ -157,6 +157,10 @@ inductive CLit : Type
     bytes (`ie` must be a `u64`, `OOB` off the end, mirroring
     `spanAt` — the `s8i` load + `s8i -> s32i` sext fuse into the
     read, delivered as a sign-extended `i32`).
+    `nnew` is the raw 2-word `malloc` node cell (key/link);
+    `nnew3` (P1 tree kit) is its 3-word twin for `Node{key,left,right}`
+    (zeroed via `memAlloc m 3`). Both report `AssertFail` in the pure
+    evaluator (allocation has no value mirror).
     Each constructor requires per-op `Eval`/`Emit` lemmas before admission
     (see docs/PIPELINE.md). -/
 inductive CExpr : Type
@@ -198,6 +202,7 @@ inductive CExpr : Type
   | idxu : String → CExpr → CExpr
   | vnew : CExpr → CExpr
   | nnew : CExpr
+  | nnew3 : CExpr
   | vget : String → CExpr → CExpr
   | boxNew : CExpr → CExpr
   | boxGet : String → CExpr
@@ -271,7 +276,10 @@ inductive CExpr : Type
     `dst` points to (`dst` must be a live `ptrVal`; the block's own
     tag is used, so no layout pin is needed; null destination,
     missing, dead, or short block is loud). The pure evaluator
-    reports `AssertFail` (value-only by design, as `mstore`). -/
+    reports `AssertFail` (value-only by design, as `mstore`).
+    `psetRight dst link` (P1 tree kit) is the index-2 twin of
+    `psetNext` (the right link of a 3-word tree node); same tag,
+    encoding, loudness, and lack of value mirror. -/
 inductive CStmt : Type
   | skip
   | seq (a b : CStmt)
@@ -288,6 +296,7 @@ inductive CStmt : Type
   | vecSet (s : String) (idx val : CExpr)
   | mstore (slot : String) (idx val : CExpr)
   | psetNext (dst link : CExpr)
+  | psetRight (dst link : CExpr)
   | psetVal (dst val : CExpr)
   | nfree (dst : CExpr)
   | fail
