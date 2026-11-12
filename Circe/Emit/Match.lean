@@ -34,6 +34,7 @@ import Circe.Emit.ListUnique
 import Circe.Emit.ListFind
 import Circe.Emit.BstSearch
 import Circe.Emit.BstInsert
+import Circe.Emit.BstInorder
 import Circe.Emit.ListCopy
 import Circe.Emit.ListMerge
 import Circe.Emit.ListClear
@@ -1129,6 +1130,46 @@ def matchFrag : Func → Option FragKind
                 (.psetRight (.var "parent") (.var "nd"))))))))
             (.return_ (.var "root")))))))⟩ =>
     some .bstInsert
+  | ⟨_, [⟨"root", .struct "Node" [.i 32, .u 32], .owned⟩,
+        ⟨"out", .struct "Node" [.i 32, .u 32], .owned⟩,
+        ⟨"cap", .i 32, .owned⟩],
+      .i 32,
+      (.seq (.let_ "st" (.array (.u 32) 64)
+              (.arrNew (.lit (.u64 (BitVec.ofNat 64 64)))))
+      (.seq (.let_ "top" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      (.seq (.let_ "cur" (.struct "Node" [.i 32, .u 32]) (.var "root"))
+      (.seq (.let_ "n" (.u 64) (.lit (.u64 (BitVec.ofNat 64 0))))
+      (.seq (.let_ "capU" (.u 64) (.u64ofI32 (.var "cap")))
+        (.seq (.while_
+          (.tif (.une (.var "cur") (.lit .nullptr))
+            (.lit (.b true))
+            (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.var "top")))
+          (.seq (.while_ (.une (.var "cur") (.lit .nullptr))
+              (.if_ (.ult (.var "top")
+                      (.lit (.u64 (BitVec.ofNat 64 64))))
+                (.seq (.arrSet "st" (.var "top")
+                        (.linkOf (.var "cur")))
+                (.seq (.assign "top" (.uadd (.var "top")
+                        (.lit (.u64 (BitVec.ofNat 64 1)))))
+                      (.assign "cur" (.pgetNext (.var "cur")))))
+                (.return_ (.lit (.i32
+                  (BitVec.ofNat 32 4294967295))))))
+            (.seq (.assign "top" (.usub (.var "top")
+                    (.lit (.u64 (BitVec.ofNat 64 1)))))
+            (.seq (.assign "cur" (.ptrOf
+                    (.idxu "st" (.var "top"))))
+            (.seq (.if_ (.ult (.var "n") (.var "capU"))
+              (.seq (.mstore "out" (.var "n")
+                      (.pgetVal (.var "cur")))
+              (.seq (.assign "n" (.uadd (.var "n")
+                      (.lit (.u64 (BitVec.ofNat 64 1)))))
+                    (.assign "cur"
+                      (.pgetRight (.var "cur")))))
+              (.return_ (.lit (.i32
+                (BitVec.ofNat 32 4294967295)))))
+              .skip)))))
+          (.return_ (.i32ofU64 (.var "n")))))))))⟩ =>
+    some .bstInorder
   | ⟨_, [⟨"head", .struct "Node" [.i 32, .u 32], .owned⟩],
       .struct "Node" [.i 32, .u 32],
       (.seq (.let_ "new_head" (.struct "Node" [.i 32, .u 32])
@@ -2611,6 +2652,8 @@ theorem matchFrag_bstSearch :
     matchFrag bstSearchFunc = some .bstSearch := rfl
 theorem matchFrag_bstInsert :
     matchFrag bstInsertFunc = some .bstInsert := rfl
+theorem matchFrag_bstInorder :
+    matchFrag bstInorderFunc = some .bstInorder := rfl
 theorem matchFrag_listCopy :
     matchFrag listCopyFunc = some .listCopy := rfl
 theorem matchFrag_listMerge :

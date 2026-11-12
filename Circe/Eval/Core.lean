@@ -664,6 +664,17 @@ def evalExpr : CExpr → Env → Result Value
     | .ok _ => .error .AssertFail
   | .nnew, _ => .error .AssertFail
   | .nnew3, _ => .error .AssertFail
+  | .arrNew _, _ => .error .AssertFail
+  | .linkOf e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok (.ptrVal (some a)) => .ok (.u32 (linkWord (some a)))
+    | .ok _ => .error .AssertFail
+  | .ptrOf e, ρ =>
+    match evalExpr e ρ with
+    | .error err => .error err
+    | .ok (.u32 w) => .ok (.ptrVal (addrOfWord w))
+    | .ok _ => .error .AssertFail
   | .vnew se, ρ =>
     match evalExpr se ρ with
     | .error e => .error e
@@ -905,6 +916,14 @@ theorem evalExpr_u64_usub (x y : BitVec 64) (e : CExpr) (ρ : Env)
     evalExpr (.usub e (.lit (.u64 y))) ρ = .ok (.u64 (x - y)) := by
   simp [evalExpr, litVal, h]
 
+/-- `uadd` on two `u64`-valued expressions wraps (the `top`/`n`
+    bumps). -/
+theorem evalExpr_u64_uadd (e₁ e₂ : CExpr) (ρ : Env) (x y : BitVec 64)
+    (h₁ : evalExpr e₁ ρ = .ok (.u64 x))
+    (h₂ : evalExpr e₂ ρ = .ok (.u64 y)) :
+    evalExpr (.uadd e₁ e₂) ρ = .ok (.u64 (x + y)) := by
+  simp [evalExpr, h₁, h₂]
+
 /-- `usub` on two `u32` literals wraps (N4d-iv-b1). -/
 theorem evalExpr_usub_lit (x y : BitVec 32) (ρ : Env) :
     evalExpr (.usub (.lit (.u32 x)) (.lit (.u32 y))) ρ =
@@ -956,6 +975,20 @@ example : evalExpr (.bshr (.lit (.u64 7)) (.lit (.u64 1))) [] =
 theorem evalExpr_i32ofU64_ok (e : CExpr) (ρ : Env) (x : BitVec 64)
     (h : evalExpr e ρ = .ok (.u64 x)) :
     evalExpr (.i32ofU64 e) ρ = .ok (.i32 (BitVec.ofNat 32 x.toNat)) := by
+  simp [evalExpr, h]
+
+/-- `linkOf` on a live-pointer-valued expression encodes the
+    link word (P1 inorder stack kit: pushing the cursor). -/
+theorem evalExpr_linkOf_hit (e : CExpr) (ρ : Env) (a : Addr)
+    (h : evalExpr e ρ = .ok (.ptrVal (some a))) :
+    evalExpr (.linkOf e) ρ = .ok (.u32 (linkWord (some a))) := by
+  simp [evalExpr, h]
+
+/-- `ptrOf` on a word-valued expression decodes the pointer
+    (P1 inorder stack kit: popping the cursor). -/
+theorem evalExpr_ptrOf_hit (e : CExpr) (ρ : Env) (w : BitVec 32)
+    (h : evalExpr e ρ = .ok (.u32 w)) :
+    evalExpr (.ptrOf e) ρ = .ok (.ptrVal (addrOfWord w)) := by
   simp [evalExpr, h]
 
 /-- `u64ofI32` on an `i32`-valued expression sign-extends

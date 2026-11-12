@@ -4,7 +4,9 @@
 // `Node *left`, `Node *right`); the entry takes the root pointer
 // (caller-owned, possibly null), a caller-owned output buffer
 // `out` with capacity `cap`, and writes the keys in inorder,
-// returning the count. The traversal uses an explicit local
+// returning the count. Both pointers are `__restrict__` (the
+// tree and the out buffer are disjoint — a proof hypothesis).
+// The traversal uses an explicit local
 // stack (no recursion): push the left spine, pop, emit, swing
 // right. The stack holds at most 64 ancestors (deeper trees
 // are out of contract, a proof hypothesis like the BST
@@ -21,7 +23,7 @@ struct Node {
   struct Node *right;
 };
 
-int bst_inorder(struct Node *root, int *out, int cap) {
+int bst_inorder(struct Node *__restrict__ root, int *__restrict__ out, int cap) {
   struct Node *st[64];
   int top = 0;
   struct Node *cur = root;

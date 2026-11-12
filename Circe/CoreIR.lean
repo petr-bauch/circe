@@ -161,6 +161,14 @@ inductive CLit : Type
     `nnew3` (P1 tree kit) is its 3-word twin for `Node{key,left,right}`
     (zeroed via `memAlloc m 3`). Both report `AssertFail` in the pure
     evaluator (allocation has no value mirror).
+    `linkOf` encodes a live node pointer as its `linkWord` word
+    (delivered as `u32`; null is `AssertFail` — the stack never
+    holds null); `ptrOf` decodes a `u32` word back to a pointer
+    via `addrOfWord` (both are pure computations, P1 inorder
+    stack kit). `arrNew se` allocates a zeroed `se`-word `arr32`
+    block (`u64` size; the local fixed-stack `alloca`, pinned
+    like `vnew`) and reports `AssertFail` in the pure evaluator
+    (like `nnew3`).
     Each constructor requires per-op `Eval`/`Emit` lemmas before admission
     (see docs/PIPELINE.md). -/
 inductive CExpr : Type
@@ -203,6 +211,9 @@ inductive CExpr : Type
   | vnew : CExpr → CExpr
   | nnew : CExpr
   | nnew3 : CExpr
+  | linkOf : CExpr → CExpr
+  | ptrOf : CExpr → CExpr
+  | arrNew : CExpr → CExpr
   | vget : String → CExpr → CExpr
   | boxNew : CExpr → CExpr
   | boxGet : String → CExpr
@@ -316,3 +327,91 @@ structure Func : Type where
   args : List Param
   ret : CType
   body : CStmt
+
+/-! ## Link-word codec (L-slice node links) -/
+
+/-- Link encoding: null is the zero word; a live link `a` is the
+    word `a + 1` (so every live link word is nonzero below
+    `2 ^ 32). Exactness (`a + 1 < 2 ^ 32`) is an explicit side
+    condition on every consumer. -/
+def linkWord : Option Addr → BitVec 32
+  | none => 0
+  | some a => BitVec.ofNat 32 (a + 1)
+
+theorem linkWord_none : linkWord none = 0 := rfl
+
+theorem linkWord_some (a : Addr) :
+    linkWord (some a) = BitVec.ofNat 32 (a + 1) := rfl
+
+/-- A live link word is nonzero (exactness side condition). -/
+theorem linkWord_some_ne_zero {a : Addr} (h : a + 1 < 2 ^ 32) :
+    linkWord (some a) ≠ 0 := by
+  rw [linkWord_some]
+  intro heq
+  have hto := congrArg BitVec.toNat heq
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h] at hto
+  have hz : BitVec.toNat (0 : BitVec 32) = 0 := by decide
+  rw [hz] at hto
+  omega
+
+/-- Link words are injective on in-range addresses. -/
+theorem linkWord_some_inj {a b : Addr}
+    (ha : a + 1 < 2 ^ 32) (hb : b + 1 < 2 ^ 32)
+    (h : linkWord (some a) = linkWord (some b)) : a = b := by
+  rw [linkWord_some, linkWord_some] at h
+  have hto := congrArg BitVec.toNat h
+  rw [BitVec.toNat_ofNat, BitVec.toNat_ofNat, Nat.mod_eq_of_lt ha,
+    Nat.mod_eq_of_lt hb] at hto
+  exact Nat.add_right_cancel hto
+
+/-- Null never collides with a live link. -/
+theorem linkWord_none_ne_some {a : Addr} (h : a + 1 < 2 ^ 32) :
+    linkWord none ≠ linkWord (some a) := by
+  rw [linkWord_none]
+  exact Ne.symm (linkWord_some_ne_zero h)
+
+/-- Link decoding: the zero word is null, anything else is the
+    address one below the word value (total; the inverse of
+    `linkWord` only under the exactness side condition). -/
+def addrOfWord (w : BitVec 32) : Option Addr :=
+  if w = 0 then none else some (w.toNat - 1)
+
+/-- Decoding inverts encoding on in-range addresses. -/
+theorem addrOfWord_linkWord_some {a : Addr} (h : a + 1 < 2 ^ 32) :
+    addrOfWord (linkWord (some a)) = some a := by
+  have hne : BitVec.ofNat 32 (a + 1) ≠ 0 :=
+    linkWord_some_ne_zero h
+  have hto : (BitVec.ofNat 32 (a + 1)).toNat = a + 1 := by
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
+  rw [linkWord_some, addrOfWord, ite_eq_right hne, hto,
+    Nat.add_sub_cancel]
+
+/-- Decoding inverts encoding on null, unconditionally. -/
+theorem addrOfWord_linkWord_none :
+    addrOfWord (linkWord none) = none := by
+  rw [linkWord_none, addrOfWord]
+  exact ite_eq_left rfl
+
+/-- Encoding inverts decoding on every word (re-encoding a
+    decoded link is the identity — the unlink store writes back
+    exactly the loaded word). -/
+theorem linkWord_addrOfWord (w : BitVec 32) :
+    linkWord (addrOfWord w) = w := by
+  rw [addrOfWord]
+  split
+  · next heq =>
+    rw [heq]
+    exact linkWord_none
+  · next hne =>
+    have hto : w.toNat ≠ 0 := by
+      intro hz
+      apply hne
+      have hz0 : w.toNat = (0 : BitVec 32).toNat := by simpa using hz
+      have heq0 := BitVec.eq_of_toNat_eq hz0
+      simpa using heq0
+    have hpos : 0 < w.toNat := Nat.pos_of_ne_zero hto
+    have hsub : w.toNat - 1 + 1 = w.toNat := Nat.sub_add_cancel hpos
+    rw [linkWord_some, hsub]
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt w.isLt

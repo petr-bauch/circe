@@ -1271,6 +1271,78 @@ def emitBstInsertText (name : String) : String :=
   ++ "              | .error e => .error e\n"
   ++ "              | .ok m5 => .ok (root, m5)\n"
 
+/-- Render the `bst_inorder` entry forward definition: the
+    explicit-stack inorder traversal over `Mem` (left-spine pushes
+    onto a 64-word stack, pop-emit-swing-right; the out buffer
+    receives the keys in order). The spine outcome is `none`
+    for stack overflow, `some` (descended cursor, grown stack)
+    otherwise; the outer outcome is `some` count on finish,
+    `none` on overflow (either leg returns `-1`). -/
+def emitBstInorderText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Mem.BinaryTree\n\n"
+  ++ s!"/-- Pure translation of `{name}` (iterative inorder flatten over `Mem`: push the left spine onto an explicit 64-word stack, pop the top, emit its key, swing right; the out buffer receives exactly the inorder keys). -/\n"
+  ++ s!"def {name}_bstInorder_spine (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (stk : List Addr) (stA : Addr) (stT : Nat) :\n"
+  ++ "    Result (Option (Option Addr × List Addr × Mem)) :=\n"
+  ++ "  match cur with\n"
+  ++ "  | none => .ok (some (none, stk, m))\n"
+  ++ "  | some a =>\n"
+  ++ "    match F with\n"
+  ++ "    | 0 => .error .AssertFail\n"
+  ++ "    | F + 1 =>\n"
+  ++ "      if stk.length >= 64 then .ok none\n"
+  ++ "      else\n"
+  ++ "        match memFind m a with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some b =>\n"
+  ++ "          match memLoad m a b.tag 1 with\n"
+  ++ "          | .error e => .error e\n"
+  ++ "          | .ok l =>\n"
+  ++ "            match memStore m stA stT stk.length\n"
+  ++ "                (linkWord (some a)) with\n"
+  ++ "            | .error e => .error e\n"
+  ++ "            | .ok m' =>\n"
+  ++ s!"              {name}_bstInorder_spine F m' (addrOfWord l)\n"
+  ++ "                (stk ++ [a]) stA stT\n"
+  ++ "\n"
+  ++ s!"def {name}_bstInorder_outer (F : Nat) (m : Mem) (cur : Option Addr)\n"
+  ++ "    (stk : List Addr) (stA : Addr) (stT : Nat)\n"
+  ++ "    (outA : Addr) (outT : Nat) (cap : BitVec 32) (n : BitVec 64) :\n"
+  ++ "    Result (Option (BitVec 64) × Mem) :=\n"
+  ++ "  match F with\n"
+  ++ "  | 0 => .error .AssertFail\n"
+  ++ "  | F + 1 =>\n"
+  ++ s!"    match {name}_bstInorder_spine F m cur stk stA stT with\n"
+  ++ "    | .error e => .error e\n"
+  ++ "    | .ok none => .ok (none, m)\n"
+  ++ "    | .ok (some (cur', stk', m')) =>\n"
+  ++ "      match cur', stk' with\n"
+  ++ "      | none, [] => .ok (some n, m')\n"
+  ++ "      | _, _ =>\n"
+  ++ "        match stk'.getLast? with\n"
+  ++ "        | none => .error .AssertFail\n"
+  ++ "        | some a =>\n"
+  ++ "          match memFind m' a with\n"
+  ++ "          | none => .error .AssertFail\n"
+  ++ "          | some b =>\n"
+  ++ "            match memLoad m' a b.tag 0, memLoad m' a b.tag 2 with\n"
+  ++ "            | .ok k, .ok r =>\n"
+  ++ "              if n.toNat < (cap.signExtend 64).toNat then\n"
+  ++ "                match memStore m' outA outT n.toNat k with\n"
+  ++ "                | .error e => .error e\n"
+  ++ "                | .ok m'' =>\n"
+  ++ s!"                  {name}_bstInorder_outer F m'' (addrOfWord r)\n"
+  ++ "                    stk'.dropLast stA stT outA outT cap (n + 1)\n"
+  ++ "              else .ok (none, m')\n"
+  ++ "            | .error e, _ => .error e\n"
+  ++ "            | _, .error e => .error e\n"
+  ++ "\n"
+  ++ s!"def {name}_fwd (F : Nat) (m : Mem) (root : Option Addr)\n"
+  ++ "    (stA : Addr) (stT : Nat) (outA : Addr) (outT : Nat)\n"
+  ++ "    (cap : BitVec 32) : Result (Option (BitVec 64) × Mem) :=\n"
+  ++ s!"  {name}_bstInorder_outer F m root [] stA stT outA outT cap 0\n"
+
 /-- Render the `list_copy` entry forward definition: the
     allocating deep copy over `Mem` (one fresh 2-word cell per
     node, payload copied, fresh link cleared, appended to the

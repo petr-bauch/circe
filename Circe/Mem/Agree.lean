@@ -283,14 +283,17 @@ theorem memEvalStmtFuel_let_pure (f : Nat) (x : String) (ty : CType)
       .ok ((((x, v) :: ρ, m, π)), .fellThrough) := by
   have hN3 : e ≠ .nnew3 := by
     intro hcon; subst hcon; simp [evalExpr] at hv
+  have hNArr : ∀ se, e ≠ .arrNew se := by
+    intro se hcon; subst hcon; simp [evalExpr] at hv
   match e with
   | .vnew se => exact absurd rfl (hnot se)
   | .boxNew se => exact absurd rfl (hnotBox se)
   | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
   | .nnew => exact absurd rfl hnotN
   | .nnew3 => exact absurd rfl hN3
+  | .arrNew se => exact absurd rfl (hNArr se)
   | _ =>
-    cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv, hN3]
+    cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hv, hN3, hNArr]
 
 /-- Pure `let_` propagates expression errors (any fuel; mirrors
     `evalStmtFuel_let_err`; allocating arms are excluded as in
@@ -307,7 +310,8 @@ theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
     (hnotGrow : ∀ ce, e ≠ .vgrowNew ce)
     (hnotN : e ≠ .nnew)
     (h : memEvalExpr e ρ m π = .error err)
-    (hnotN3 : e ≠ .nnew3 := by decide) :
+    (hnotN3 : e ≠ .nnew3 := by decide)
+    (hnotArr : ∀ se, e ≠ .arrNew se := by intro _ h; cases h) :
     memEvalStmtFuel f (.let_ x ty e) ρ m π = .error err := by
   match e with
   | .vnew se => exact absurd rfl (hnot se)
@@ -315,6 +319,7 @@ theorem memEvalStmtFuel_let_err (f : Nat) (x : String) (ty : CType)
   | .vgrowNew ce => exact absurd rfl (hnotGrow ce)
   | .nnew => exact absurd rfl hnotN
   | .nnew3 => exact absurd rfl hnotN3
+  | .arrNew se => exact absurd rfl (hnotArr se)
   | _ =>
     cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h]
 
@@ -549,6 +554,22 @@ theorem memEvalStmtFuel_let_nnew3 (f : Nat) (x : String) (ty : CType)
       let (m', a) := memAlloc m 3
       .ok (((x, .ptrVal (some a)) :: ρ, m', π), .fellThrough) := by
   cases f <;> simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith]
+
+/-- Allocating `let_` (`arrNew` over a `u64` size: the local
+    fixed-stack `alloca`): the memory side pins a fresh zeroed
+    block and binds it as an `arr32` value with a fresh layout
+    pin (P1 inorder stack kit; mirrors `memEvalStmtFuel_let_vnew`
+    with plain zeros instead of a `Vec32`). -/
+theorem memEvalStmtFuel_let_arrNew (f : Nat) (x : String) (ty : CType)
+    (se : CExpr) (ρ : Env) (m : Mem) (π : Layout) (n : BitVec 64)
+    (h : memEvalExpr se ρ m π = evalExpr se ρ)
+    (hse : evalExpr se ρ = .ok (.u64 n)) :
+    memEvalStmtFuel f (.let_ x ty (.arrNew se)) ρ m π =
+      let (m', a) := memAllocData m (List.replicate n.toNat 0)
+      .ok (((x, .arr32 (List.replicate n.toNat 0)) :: ρ, m',
+        (x, a, a) :: π), .fellThrough) := by
+  cases f <;>
+    simp [memEvalStmtFuel, memEvalStmtZero, memEvalStmtWith, h, hse]
 
 /-- Allocating `let_` (`vgrowNew` over a `u64` capacity): the value
     side builds the empty triple over fresh zeroed storage, the memory

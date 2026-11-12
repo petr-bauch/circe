@@ -509,3 +509,76 @@ theorem TreeSeg.store_other {m : Mem} {s : Option Addr}
         (hout _ (.here hnode))).trans hnode
     · exact ihl hstore (fun b hb => hout b (.left hnode hb))
     · exact ihr hstore (fun b hb => hout b (.right hnode hb))
+
+/-! ## Pure explicit-stack inorder (step-5 oracle algebra) -/
+
+/-- Pending-right frame of the explicit inorder stack: the
+    popped node's key plus its still-unvisited right subtree
+    (the C loop pushes addresses; the memory layer maps each
+    frame to its `TreeSeg` subtree). -/
+abbrev InorderFrame := BitVec 32 × BTree
+
+/-- Push the left spine of `t` onto `s` (the inner `while`:
+    descend left, pushing each ancestor). -/
+def pushSpine : BTree → List InorderFrame → List InorderFrame
+  | .leaf, s => s
+  | .node k l r, s => pushSpine l ((k, r) :: s)
+
+/-- Stack cost: pending nodes including their right subtrees.
+    Popping drops the frame's own slot, so the cost strictly
+    decreases across a pop-push step. -/
+def stackCost : List InorderFrame → Nat
+  | [] => 0
+  | (_, r) :: s => r.bsize + 1 + stackCost s
+
+/-- Pushing a spine adds exactly the subtree's node count. -/
+theorem pushSpine_cost (t : BTree) (s : List InorderFrame) :
+    stackCost (pushSpine t s) = t.bsize + stackCost s := by
+  induction t generalizing s with
+  | leaf =>
+    simp [pushSpine, BTree.bsize, stackCost]
+  | node k l r ihl _ =>
+    simp only [pushSpine, BTree.bsize]
+    rw [ihl]
+    simp only [stackCost]
+    omega
+
+/-- Pop-and-emit drain with pop fuel (structural on `F`, so no
+    termination proof): pop the key, push its right spine,
+    repeat. Fuel counts pops; pushes are free. -/
+def drainF : Nat → List InorderFrame → List (BitVec 32)
+  | _, [] => []
+  | 0, _ :: _ => []
+  | F + 1, (k, r) :: s => k :: drainF F (pushSpine r s)
+
+/-- The drain at exactly its stack cost (the canonical
+    unfueled reading). -/
+def drain (s : List InorderFrame) : List (BitVec 32) :=
+  drainF (stackCost s) s
+
+/-- Pop equation for `drain` (the outer-loop step). -/
+theorem drain_cons (k : BitVec 32) (r : BTree) (s : List InorderFrame) :
+    drain ((k, r) :: s) = k :: drain (pushSpine r s) := by
+  have hcost : stackCost ((k, r) :: s) = (r.bsize + stackCost s) + 1 := by
+    simp only [stackCost]
+    omega
+  simp only [drain, hcost, drainF, pushSpine_cost]
+
+/-- Draining a pushed spine emits the subtree flatten first
+    (the inorder stack invariant, pure half). -/
+theorem drain_pushSpine (t : BTree) (s : List InorderFrame) :
+    drain (pushSpine t s) = t.flatten ++ drain s := by
+  induction t generalizing s with
+  | leaf =>
+    simp [pushSpine, BTree.flatten]
+  | node k l r ihl ihr =>
+    simp only [pushSpine]
+    rw [ihl, drain_cons, ihr, BTree.flatten]
+    simp only [List.append_assoc, List.cons_append, List.nil_append]
+
+/-- Whole-tree traversal: draining the pushed spine of `t`
+    over the empty stack is exactly the flatten. -/
+theorem drain_pushSpine_nil (t : BTree) :
+    drain (pushSpine t []) = t.flatten := by
+  rw [drain_pushSpine]
+  simp [drain, drainF, stackCost]
