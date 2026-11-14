@@ -25,6 +25,7 @@ import Circe.Emit.PushFront
 import Circe.Emit.ListErase
 import Circe.Emit.ListFind
 import Circe.Emit.VecUnique
+import Circe.Emit.VecUniqueCopy
 
 namespace HoareGallery
 
@@ -1327,6 +1328,38 @@ def main : IO Unit := do
   | .error e =>
     throw (IO.userError
       s!"hoare-gallery: unique prelude failed: {(repr e).pretty}")
+  -- M16 seed + keep: `a=[5,7]`, `out=[0,0]` → the seed plants
+  -- `a[0]`, the keep step records `a[1]` (it differs from the
+  -- seeded survivor): `out=[5,7]`, `r=w=2` (executable shadow of
+  -- `hoare_uniqueCopySeedKeep`, over the real seed + body).
+  let (mA, aA) := memAllocData emptyMem
+    [(BitVec.ofNat 32 2), 5, 7]
+  let (mAB, aB) := memAllocData mA
+    [(BitVec.ofNat 32 2), 0, 0]
+  let πsk : Layout := [("a", aA, aA), ("out", aB, aB)]
+  let ρsk : Env := [("a", .stdVecVal [5, 7]),
+    ("out", .stdVecVal [0, 0]),
+    ("r", .u64 (BitVec.ofNat 64 1)),
+    ("w", .u64 (BitVec.ofNat 64 1))]
+  match memEvalStmtFuel 20
+      (.seq vecUniqueCopySeed vecUniqueCopyBody) ρsk mAB πsk with
+  | .ok ((ρ', m', _), .fellThrough) =>
+    match envLookup ρ' "out", envLookup ρ' "r", envLookup ρ' "w",
+        memFind m' aB with
+    | some (.stdVecVal got), some (.u64 br), some (.u64 bw),
+        some bb =>
+      if got != [5, 7] || br.toNat != 2 || bw.toNat != 2 ||
+          bb.data != [(BitVec.ofNat 32 2), 5, 7] then
+        throw (IO.userError
+          s!"hoare-gallery: seed+keep got={got.map (·.toInt)}, cursors={(br.toNat, bw.toNat)}, block={bb.data.map (·.toNat)}, want ([5,7], (2,2), [2,5,7])")
+      else passed := passed + 1
+    | _, _, _, _ =>
+      throw (IO.userError "hoare-gallery: seed+keep lost state")
+  | .ok _ =>
+    throw (IO.userError "hoare-gallery: seed+keep want fellThrough")
+  | .error e =>
+    throw (IO.userError
+      s!"hoare-gallery: seed+keep failed: {(repr e).pretty}")
   IO.println s!"HOAREGALLERY-OK passed={passed}"
 
 /-- Fuel-indexed sum invariant: index `iv` with checked prefix
@@ -2058,5 +2091,500 @@ theorem hoare_segSwap (F : Nat)
       segFindAt
   exact ⟨ρ', m', π₀, .fellThrough, heval, rfl,
     ρ', m', π₀, rfl, hv', hi', hj', hlay, hmem', hinv'⟩
+
+/-- Two-block M16 gallery triple: the seed store plants `a[0]`
+    at record index 0, then one keep step records `a[1]` (it
+    differs from the seeded survivor) and both cursors advance —
+    thin sugar over `memEvalStmtFuel_vecSet` plus the `uadd`
+    cursor bumps, composed with `htriple_seq` (first two-block
+    (read-only + record) gallery; executable shadow of the
+    seed/short discipline). -/
+theorem hoare_uniqueCopySeedKeep
+    (ρ : Env) (m : Mem) (π : Layout)
+    (la lo : List (BitVec 32)) (a0 y o0 wOld : BitVec 32)
+    (rB wB : BitVec 64)
+    (aa ao : Nat) (ta to : Nat) (na no : BitVec 32)
+    (hlay_a : layoutLookup π "a" = some (aa, ta))
+    (hlay_o : layoutLookup π "out" = some (ao, to))
+    (hmem_a : memFind m aa = some ⟨ta, true, na :: la⟩)
+    (hmem_o : memFind m ao = some ⟨to, true, no :: lo⟩)
+    (hna : na = BitVec.ofNat 32 la.length)
+    (hno : no = BitVec.ofNat 32 lo.length)
+    (haa : aa ≠ ao)
+    (hlo64 : lo.length < 2 ^ 64)
+    (ha : envLookup ρ "a" = some (.stdVecVal la))
+    (hout : envLookup ρ "out" = some (.stdVecVal lo))
+    (hr : envLookup ρ "r" = some (.u64 rB))
+    (hw : envLookup ρ "w" = some (.u64 wB))
+    (hrN : rB.toNat = 1) (hwN : wB.toNat = 1)
+    (ha0 : la[0]? = some a0) (ho0 : lo[0]? = some o0)
+    (hy : la[1]? = some y) (hwOld : lo[1]? = some wOld)
+    (hkeep : (y != a0) = true) :
+    HTriple (fun st => st = (ρ, m, π))
+      (.seq vecUniqueCopySeed vecUniqueCopyBody)
+      (fun st o => o = .fellThrough ∧
+        ∃ ρ' m', st = (ρ', m', π) ∧
+          envLookup ρ' "out" =
+            some (.stdVecVal ((lo.set 0 a0).set 1 y)) ∧
+          envLookup ρ' "a" = some (.stdVecVal la) ∧
+          envLookup ρ' "r" = some (.u64 (rB + 1)) ∧
+          envLookup ρ' "w" = some (.u64 (wB + 1)) ∧
+          (rB + 1).toNat = 2 ∧ (wB + 1).toNat = 2 ∧
+          memFind m' ao =
+            some ⟨to, true, no :: ((lo.set 0 a0).set 1 y)⟩ ∧
+          memFind m' aa = some ⟨ta, true, na :: la⟩) := by
+  have h0lt : 0 < lo.length := by
+    cases lo with
+    | nil => simp at ho0
+    | cons _ _ => simp
+  have h1ltA : 1 < la.length := by
+    cases la with
+    | nil => simp at hy
+    | cons _ t =>
+      cases t with
+      | nil => simp at hy
+      | cons _ _ => simp
+  have h1ltO : 1 < lo.length := by
+    cases lo with
+    | nil => simp at hwOld
+    | cons _ t =>
+      cases t with
+      | nil => simp at hwOld
+      | cons _ _ => simp
+  have h0N : (BitVec.ofNat 64 0).toNat = 0 := by
+    simp [BitVec.toNat_ofNat]
+  have hlitV0 : evalExpr (.lit (.u64 (BitVec.ofNat 64 0))) ρ =
+      .ok (.u64 (BitVec.ofNat 64 0)) := by simp [evalExpr, litVal]
+  have hlitM0 : memEvalExpr (.lit (.u64 (BitVec.ofNat 64 0))) ρ m π =
+      .ok (.u64 (BitVec.ofNat 64 0)) :=
+    (memEvalExpr_lit _ _ _ _).trans hlitV0
+  have hmemLenO : memLoad m ao to 0 =
+      .ok (BitVec.ofNat 32 lo.length) := by
+    rw [← hno]
+    exact memLoad_cellsAt m ao to 0 (no :: lo) no hmem_o (by simp)
+  have hlenM : memEvalExpr (.stdVecLen "out") ρ m π =
+      evalExpr (.stdVecLen "out") ρ :=
+    memEvalExpr_stdVecLen_hit "out" ρ m π lo ao to
+      hlay_o hout hmemLenO
+  have hlenV : evalExpr (.stdVecLen "out") ρ =
+      .ok (.u64 (BitVec.ofNat 64 lo.length)) :=
+    evalExpr_stdVecLen_some _ _ _ hout
+  have hguardSeedV : evalExpr
+      (.ult (.lit (.u64 (BitVec.ofNat 64 0))) (.stdVecLen "out")) ρ =
+      .ok (.b true) := by
+    have hult := evalExpr_ult_u64lit (BitVec.ofNat 64 0)
+      (BitVec.ofNat 64 lo.length) (.stdVecLen "out") ρ hlenV
+    have htb : ((BitVec.ofNat 64 0).ult
+        (BitVec.ofNat 64 lo.length)) = true := by
+      have hlenN : (BitVec.ofNat 64 lo.length).toNat = lo.length := by
+        rw [BitVec.toNat_ofNat]
+        exact Nat.mod_eq_of_lt hlo64
+      rw [BitVec.ult_eq_decide, h0N, hlenN]
+      exact decide_eq_true h0lt
+    rwa [htb] at hult
+  have hguardSeedM : memEvalExpr
+      (.ult (.lit (.u64 (BitVec.ofNat 64 0)))
+        (.stdVecLen "out")) ρ m π = .ok (.b true) :=
+    (memEvalExpr_ult_agree _ _ _ _ _
+      (memEvalExpr_lit _ _ _ _) hlenM).trans hguardSeedV
+  have hgetA0 : la[(BitVec.ofNat 64 0).toNat]? = some a0 := by
+    rw [h0N]; exact ha0
+  have hgetO : lo[(BitVec.ofNat 64 0).toNat]? = some o0 := by
+    rw [h0N]; exact ho0
+  have hmemA0 : memLoad m aa ta ((BitVec.ofNat 64 0).toNat + 1)
+      = .ok a0 :=
+    memLoad_cellsAt m aa ta ((BitVec.ofNat 64 0).toNat + 1)
+      (na :: la) a0 hmem_a
+      (by rw [List.getElem?_cons_succ]; exact hgetA0)
+  have hatA : evalExpr
+      (.stdVecAt "a" (.lit (.u64 (BitVec.ofNat 64 0)))) ρ =
+      .ok (.i32 a0) :=
+    evalExpr_stdVecAt_some _ _ _ _ _ _ ha hlitV0 hgetA0
+  have hatM : memEvalExpr
+      (.stdVecAt "a" (.lit (.u64 (BitVec.ofNat 64 0)))) ρ m π =
+      .ok (.i32 a0) := by
+    have hag := memEvalExpr_stdVecAt_hit "a"
+      (.lit (.u64 (BitVec.ofNat 64 0))) ρ m π la
+      (BitVec.ofNat 64 0) a0 aa ta
+      hlay_a ha (memEvalExpr_lit _ _ _ _) hlitV0
+      hmemA0 hgetA0
+    rw [hag]; exact hatA
+  have hlt₁ : (BitVec.ofNat 64 0).toNat + 1 < (no :: lo).length := by
+    simp only [List.length_cons]
+    omega
+  obtain ⟨m₁, hmstore, hmem₁⟩ :=
+    memStore_cellsAt_pin m ao to a0 hmem_o hlt₁
+  have hsetB : lo.set (BitVec.ofNat 64 0).toNat a0
+      = lo.set 0 a0 := by rw [h0N]
+  rw [hsetB] at hmem₁
+  obtain ⟨ρ₁, hu₁⟩ := envUpdate_some_of_lookup ρ "out"
+    (.stdVecVal lo)
+    (.stdVecVal (lo.set (BitVec.ofNat 64 0).toNat a0)) hout
+  have hstepSeed : ∀ F',
+      memEvalStmtFuel F' (.vecSet "out"
+        (.lit (.u64 (BitVec.ofNat 64 0)))
+        (.stdVecAt "a" (.lit (.u64 (BitVec.ofNat 64 0)))))
+        ρ m π = .ok ((ρ₁, m₁, π), .fellThrough) :=
+    fun F' => memEvalStmtFuel_vecSet F' "out" _ _ ρ m π
+      (BitVec.ofNat 64 0) a0 ao to lo o0 m₁ ρ₁
+      hlitM0 hatM hout hlay_o hgetO hmstore hu₁
+  have hout₁ : envLookup ρ₁ "out" =
+      some (.stdVecVal (lo.set 0 a0)) := by
+    have hupd := envLookup_update_hit ρ "out" _ ρ₁ hu₁
+    rwa [hsetB] at hupd
+  have ha₁ : envLookup ρ₁ "a" = some (.stdVecVal la) := by
+    have h := envLookup_update_miss ρ "a" "out" _ ρ₁
+      (show ("a" : String) ≠ "out" by decide) hu₁
+    rw [h]; exact ha
+  have hr₁ : envLookup ρ₁ "r" = some (.u64 rB) := by
+    have h := envLookup_update_miss ρ "r" "out" _ ρ₁
+      (show ("r" : String) ≠ "out" by decide) hu₁
+    rw [h]; exact hr
+  have hw₁ : envLookup ρ₁ "w" = some (.u64 wB) := by
+    have h := envLookup_update_miss ρ "w" "out" _ ρ₁
+      (show ("w" : String) ≠ "out" by decide) hu₁
+    rw [h]; exact hw
+  have hmem_a₁ : memFind m₁ aa = some ⟨ta, true, na :: la⟩ := by
+    have h := memFind_memStore_other m m₁ ao aa to
+      ((BitVec.ofNat 64 0).toNat + 1) a0 hmstore haa
+    rw [h]; exact hmem_a
+  have hseedTriple : HTriple (fun st => st = (ρ, m, π))
+      vecUniqueCopySeed
+      (fun st o => o = .fellThrough ∧ st = (ρ₁, m₁, π)) := by
+    have hif : HTriple (fun st => st = (ρ, m, π))
+        (.if_ (.ult (.lit (.u64 (BitVec.ofNat 64 0)))
+                (.stdVecLen "out"))
+          (.vecSet "out" (.lit (.u64 (BitVec.ofNat 64 0)))
+            (.stdVecAt "a" (.lit (.u64 (BitVec.ofNat 64 0)))))
+          .fail)
+        (fun st o => o = .fellThrough ∧ st = (ρ₁, m₁, π)) :=
+      htriple_if_true _ _ _ _ _
+        (fun _ _ _ hP => hoare_guard_of _ _ _ _ _ hguardSeedM _ _ _ hP)
+        (by intro F' ρ' m' π' hP
+            simp only [Prod.mk.injEq] at hP
+            rw [hP.1, hP.2.1, hP.2.2]
+            exact ⟨ρ₁, m₁, π, .fellThrough, hstepSeed F', rfl, rfl⟩)
+    have hseed : vecUniqueCopySeed =
+        (.if_ (.ult (.lit (.u64 (BitVec.ofNat 64 0)))
+                (.stdVecLen "out"))
+          (.vecSet "out" (.lit (.u64 (BitVec.ofNat 64 0)))
+            (.stdVecAt "a" (.lit (.u64 (BitVec.ofNat 64 0)))))
+          .fail) := rfl
+    rw [hseed]; exact hif
+  -- Keep-step reads at ρ₁/m₁.
+  have hrVar : evalExpr (.var "r") ρ₁ = .ok (.u64 rB) :=
+    evalExpr_var_hit _ _ _ hr₁
+  have hwVar : evalExpr (.var "w") ρ₁ = .ok (.u64 wB) :=
+    evalExpr_var_hit _ _ _ hw₁
+  have hrVarA : memEvalExpr (.var "r") ρ₁ m₁ π =
+      evalExpr (.var "r") ρ₁ :=
+    memEvalExpr_var _ _ _ _
+  have hwVarA : memEvalExpr (.var "w") ρ₁ m₁ π =
+      evalExpr (.var "w") ρ₁ :=
+    memEvalExpr_var _ _ _ _
+  have hgetR : la[rB.toNat]? = some y := by rw [hrN]; exact hy
+  have hgetW : ((lo.set 0 a0)[wB.toNat]? = some wOld) := by
+    rw [hwN, List.getElem?_set_ne (by decide : 0 ≠ 1)]
+    exact hwOld
+  have hmemA1 : memLoad m₁ aa ta (rB.toNat + 1) = .ok y :=
+    memLoad_cellsAt m₁ aa ta (rB.toNat + 1) (na :: la) y hmem_a₁
+      (by rw [List.getElem?_cons_succ]; exact hgetR)
+  have hatA1 : evalExpr (.stdVecAt "a" (.var "r")) ρ₁ =
+      .ok (.i32 y) :=
+    evalExpr_stdVecAt_some _ _ _ _ _ _ ha₁ hrVar hgetR
+  have hagA1 : memEvalExpr (.stdVecAt "a" (.var "r")) ρ₁ m₁ π =
+      evalExpr (.stdVecAt "a" (.var "r")) ρ₁ :=
+    memEvalExpr_stdVecAt_hit "a" (.var "r") ρ₁ m₁ π la rB y aa ta
+      hlay_a ha₁ hrVarA hrVar hmemA1 hgetR
+  -- Predecessor index `w - 1 = 0`.
+  have hevSubV : evalExpr
+      (.usub (.var "w") (.lit (.u64 (1 : BitVec 64)))) ρ₁ =
+      .ok (.u64 (wB - 1)) :=
+    evalExpr_usub_u64_rr _ _ _ _ _
+      hwVar (by simp [evalExpr, litVal])
+  have hevSubA : memEvalExpr
+      (.usub (.var "w") (.lit (.u64 (1 : BitVec 64)))) ρ₁ m₁ π =
+      evalExpr
+        (.usub (.var "w") (.lit (.u64 (1 : BitVec 64)))) ρ₁ :=
+    memEvalExpr_usub_agree _ _ _ _ _ hwVarA
+      (memEvalExpr_lit _ _ _ _)
+  have hsub0 : (wB - 1).toNat = 0 := by
+    have h1 : (1 : BitVec 64).toNat = 1 := rfl
+    rw [BitVec.toNat_sub_of_le (by omega : (1 : BitVec 64).toNat ≤ wB.toNat),
+      h1, hwN]
+  have hgetPrev : ((lo.set 0 a0)[(wB - 1).toNat]? = some a0) := by
+    rw [hsub0, List.getElem?_set_self (by omega)]
+  have hmemPrev : memLoad m₁ ao to ((wB - 1).toNat + 1) = .ok a0 :=
+    memLoad_cellsAt m₁ ao to ((wB - 1).toNat + 1)
+      (no :: (lo.set 0 a0)) a0 hmem₁
+      (by rw [List.getElem?_cons_succ]; exact hgetPrev)
+  have hatPrevV : evalExpr
+      (.stdVecAt "out" (.usub (.var "w")
+        (.lit (.u64 (1 : BitVec 64))))) ρ₁ =
+      .ok (.i32 a0) :=
+    evalExpr_stdVecAt_some _ _ _ _ _ _ hout₁ hevSubV hgetPrev
+  have hagPrev : memEvalExpr
+      (.stdVecAt "out" (.usub (.var "w")
+        (.lit (.u64 (1 : BitVec 64))))) ρ₁ m₁ π =
+      evalExpr
+        (.stdVecAt "out" (.usub (.var "w")
+          (.lit (.u64 (1 : BitVec 64))))) ρ₁ :=
+    memEvalExpr_stdVecAt_hit "out"
+      (.usub (.var "w") (.lit (.u64 (1 : BitVec 64)))) ρ₁ m₁ π
+      (lo.set 0 a0) (wB - 1) a0 ao to
+      hlay_o hout₁ hevSubA hevSubV hmemPrev hgetPrev
+  have hprev : vecUniqueCopyPrev =
+      (.stdVecAt "out" (.usub (.var "w")
+        (.lit (.u64 (1 : BitVec 64))))) := rfl
+  have huneV : evalExpr
+      (.une (.stdVecAt "a" (.var "r")) vecUniqueCopyPrev) ρ₁ =
+      .ok (.b true) := by
+    have e := evalExpr_une_i32 _ _ _ _ _ hatA1 hatPrevV
+    simpa [hprev, hkeep] using e
+  have huneM : memEvalExpr
+      (.une (.stdVecAt "a" (.var "r")) vecUniqueCopyPrev) ρ₁ m₁ π =
+      .ok (.b true) := by
+    have hag := memEvalExpr_une_agree _ _ _ _ _ hagA1 hagPrev
+    simpa [hprev] using hag.trans huneV
+  -- Keep-step `w < len` guard at ρ₁/m₁.
+  have hlen10 : (lo.set 0 a0).length = lo.length :=
+    List.length_set
+  have hmemLenO₁ : memLoad m₁ ao to 0 =
+      .ok (BitVec.ofNat 32 ((lo.set 0 a0).length)) := by
+    have h := memLoad_cellsAt m₁ ao to 0
+      (no :: (lo.set 0 a0)) no hmem₁ (by simp)
+    rw [hlen10, ← hno]
+    exact h
+  have hlenM₁ : memEvalExpr (.stdVecLen "out") ρ₁ m₁ π =
+      evalExpr (.stdVecLen "out") ρ₁ :=
+    memEvalExpr_stdVecLen_hit "out" ρ₁ m₁ π (lo.set 0 a0) ao to
+      hlay_o hout₁ hmemLenO₁
+  have hlenV₁ : evalExpr (.stdVecLen "out") ρ₁ =
+      .ok (.u64 (BitVec.ofNat 64 ((lo.set 0 a0).length))) :=
+    evalExpr_stdVecLen_some _ _ _ hout₁
+  have hguardUltV : evalExpr
+      (.ult (.var "w") (.stdVecLen "out")) ρ₁ =
+      .ok (.b true) := by
+    have hult := evalExpr_ult_u64 (.var "w") (.stdVecLen "out") ρ₁ wB
+      (BitVec.ofNat 64 ((lo.set 0 a0).length))
+      (evalExpr_var_hit _ _ _ hw₁) hlenV₁
+    have hlenN : (BitVec.ofNat 64 ((lo.set 0 a0).length)).toNat =
+        (lo.set 0 a0).length := by
+      rw [BitVec.toNat_ofNat]
+      apply Nat.mod_eq_of_lt
+      rw [List.length_set]
+      exact hlo64
+    have hlen1 : (lo.set 0 a0).length = lo.length :=
+      List.length_set
+    have htb : (wB.ult
+        (BitVec.ofNat 64 ((lo.set 0 a0).length))) = true := by
+      rw [BitVec.ult_eq_decide, hwN, hlenN, hlen1]
+      exact decide_eq_true h1ltO
+    rwa [htb] at hult
+  have hguardUltM : memEvalExpr
+      (.ult (.var "w") (.stdVecLen "out")) ρ₁ m₁ π =
+      .ok (.b true) :=
+    (memEvalExpr_ult_agree _ _ _ _ _ hwVarA hlenM₁).trans hguardUltV
+  -- Keep store equation pair (existential, Transfer-style).
+  have hlt₂ : wB.toNat + 1 < (no :: (lo.set 0 a0)).length := by
+    simp only [List.length_cons]
+    have hlen1 : (lo.set 0 a0).length = lo.length :=
+      List.length_set
+    omega
+  obtain ⟨m₂, hmstore₂, hmem₂⟩ :=
+    memStore_cellsAt_pin m₁ ao to y hmem₁ hlt₂
+  have hsetW : (lo.set 0 a0).set wB.toNat y
+      = (lo.set 0 a0).set 1 y := by rw [hwN]
+  rw [hsetW] at hmem₂
+  obtain ⟨ρ₂, hu₂⟩ := envUpdate_some_of_lookup ρ₁ "out"
+    (.stdVecVal (lo.set 0 a0))
+    (.stdVecVal ((lo.set 0 a0).set wB.toNat y)) hout₁
+  have hout₂ : envLookup ρ₂ "out" =
+      some (.stdVecVal ((lo.set 0 a0).set 1 y)) := by
+    have hupd := envLookup_update_hit ρ₁ "out" _ ρ₂ hu₂
+    rwa [hsetW] at hupd
+  have hr₂ : envLookup ρ₂ "r" = some (.u64 rB) := by
+    have h := envLookup_update_miss ρ₁ "r" "out" _ ρ₂
+      (show ("r" : String) ≠ "out" by decide) hu₂
+    rw [h]; exact hr₁
+  have hw₂ : envLookup ρ₂ "w" = some (.u64 wB) := by
+    have h := envLookup_update_miss ρ₁ "w" "out" _ ρ₂
+      (show ("w" : String) ≠ "out" by decide) hu₂
+    rw [h]; exact hw₁
+  have ha₂ : envLookup ρ₂ "a" = some (.stdVecVal la) := by
+    have h := envLookup_update_miss ρ₁ "a" "out" _ ρ₂
+      (show ("a" : String) ≠ "out" by decide) hu₂
+    rw [h]; exact ha₁
+  have hmem_a₂ : memFind m₂ aa = some ⟨ta, true, na :: la⟩ := by
+    have h := memFind_memStore_other m₁ m₂ ao aa to
+      (wB.toNat + 1) y hmstore₂ haa
+    rw [h]; exact hmem_a₁
+  -- Cursor bumps.
+  have hevRU : evalExpr (.uadd (.var "w")
+      (.lit (.u64 (1 : BitVec 64)))) ρ₂ = .ok (.u64 (wB + 1)) :=
+    evalExpr_uadd_u64 _ _ _ _ _
+      (evalExpr_var_hit _ _ _ hw₂) (by simp [evalExpr, litVal])
+  have hevWUA : memEvalExpr (.uadd (.var "w")
+      (.lit (.u64 (1 : BitVec 64)))) ρ₂ m₂ π =
+      evalExpr (.uadd (.var "w")
+        (.lit (.u64 (1 : BitVec 64)))) ρ₂ :=
+    memEvalExpr_uadd_agree (.var "w") (.lit (.u64 (1 : BitVec 64)))
+      ρ₂ m₂ π (memEvalExpr_var _ _ _ _)
+      (memEvalExpr_lit _ _ _ _)
+  obtain ⟨ρ₃, hu_w⟩ := envUpdate_some_of_lookup ρ₂ "w"
+    (.u64 wB) (.u64 (wB + 1)) hw₂
+  have hevRU' : evalExpr (.uadd (.var "r")
+      (.lit (.u64 (1 : BitVec 64)))) ρ₃ = .ok (.u64 (rB + 1)) := by
+    have hr₃ : envLookup ρ₃ "r" = some (.u64 rB) := by
+      have h := envLookup_update_miss ρ₂ "r" "w" _ ρ₃
+        (show ("r" : String) ≠ "w" by decide) hu_w
+      rw [h]; exact hr₂
+    exact evalExpr_uadd_u64 _ _ _ _ _
+      (evalExpr_var_hit _ _ _ hr₃) (by simp [evalExpr, litVal])
+  have hevRUA : memEvalExpr (.uadd (.var "r")
+      (.lit (.u64 (1 : BitVec 64)))) ρ₃ m₂ π =
+      evalExpr (.uadd (.var "r")
+        (.lit (.u64 (1 : BitVec 64)))) ρ₃ :=
+    memEvalExpr_uadd_agree (.var "r")
+      (.lit (.u64 (1 : BitVec 64))) ρ₃ m₂ π
+      (memEvalExpr_var _ _ _ _)
+      (memEvalExpr_lit _ _ _ _)
+  obtain ⟨ρ₄, hu_r⟩ := envUpdate_some_of_lookup ρ₃ "r"
+    (.u64 rB) (.u64 (rB + 1)) (by
+      have h := envLookup_update_miss ρ₂ "r" "w" _ ρ₃
+        (show ("r" : String) ≠ "w" by decide) hu_w
+      rw [h]; exact hr₂)
+  have hrN' : (rB + 1).toNat = 2 := by
+    have h1 : (1 : BitVec 64).toNat = 1 := rfl
+    rw [BitVec.toNat_add, h1, hrN]
+  have hwN' : (wB + 1).toNat = 2 := by
+    have h1 : (1 : BitVec 64).toNat = 1 := rfl
+    rw [BitVec.toNat_add, h1, hwN]
+  -- Post-state facts.
+  have hout₄ : envLookup ρ₄ "out" =
+      some (.stdVecVal ((lo.set 0 a0).set 1 y)) := by
+    have h3 : envLookup ρ₃ "out" =
+        some (.stdVecVal ((lo.set 0 a0).set 1 y)) := by
+      have h := envLookup_update_miss ρ₂ "out" "w" _ ρ₃
+        (show ("out" : String) ≠ "w" by decide) hu_w
+      rw [h]; exact hout₂
+    have h := envLookup_update_miss ρ₃ "out" "r" _ ρ₄
+      (show ("out" : String) ≠ "r" by decide) hu_r
+    rw [h]; exact h3
+  have ha₄ : envLookup ρ₄ "a" = some (.stdVecVal la) := by
+    have h3 : envLookup ρ₃ "a" = some (.stdVecVal la) := by
+      have h := envLookup_update_miss ρ₂ "a" "w" _ ρ₃
+        (show ("a" : String) ≠ "w" by decide) hu_w
+      rw [h]; exact ha₂
+    have h := envLookup_update_miss ρ₃ "a" "r" _ ρ₄
+      (show ("a" : String) ≠ "r" by decide) hu_r
+    rw [h]; exact h3
+  have hr₄ : envLookup ρ₄ "r" = some (.u64 (rB + 1)) :=
+    envLookup_update_hit _ _ _ _ hu_r
+  have hw₄ : envLookup ρ₄ "w" = some (.u64 (wB + 1)) := by
+    have h3 : envLookup ρ₃ "w" = some (.u64 (wB + 1)) :=
+      envLookup_update_hit _ _ _ _ hu_w
+    have h := envLookup_update_miss ρ₃ "w" "r" _ ρ₄
+      (show ("w" : String) ≠ "r" by decide) hu_r
+    rw [h]; exact h3
+  -- Keep body triple.
+  have hkeepTriple : HTriple (fun st => st = (ρ₁, m₁, π))
+      vecUniqueCopyBody
+      (fun st o => o = .fellThrough ∧
+        ∃ ρ' m', st = (ρ', m', π) ∧
+          envLookup ρ' "out" =
+            some (.stdVecVal ((lo.set 0 a0).set 1 y)) ∧
+          envLookup ρ' "a" = some (.stdVecVal la) ∧
+          envLookup ρ' "r" = some (.u64 (rB + 1)) ∧
+          envLookup ρ' "w" = some (.u64 (wB + 1)) ∧
+          (rB + 1).toNat = 2 ∧ (wB + 1).toNat = 2 ∧
+          memFind m' ao =
+            some ⟨to, true, no :: ((lo.set 0 a0).set 1 y)⟩ ∧
+          memFind m' aa = some ⟨ta, true, na :: la⟩) := by
+    have hbody : vecUniqueCopyBody =
+        (.seq (.if_ (.une (.stdVecAt "a" (.var "r"))
+                      vecUniqueCopyPrev)
+                (.if_ (.ult (.var "w") (.stdVecLen "out"))
+                  (.seq (.vecSet "out" (.var "w")
+                          (.stdVecAt "a" (.var "r")))
+                    (.assign "w" (.uadd (.var "w")
+                      (.lit (.u64 (1 : BitVec 64))))))
+                  .fail)
+                .skip)
+          (.assign "r" (.uadd (.var "r")
+            (.lit (.u64 (1 : BitVec 64)))))) := rfl
+    have hevW : memEvalExpr (.var "w") ρ₁ m₁ π = .ok (.u64 wB) :=
+      hwVarA.trans hwVar
+    have hevY : memEvalExpr (.stdVecAt "a" (.var "r")) ρ₁ m₁ π =
+        .ok (.i32 y) :=
+      hagA1.trans hatA1
+    have hvecSetKeep : ∀ F',
+        memEvalStmtFuel F' (.vecSet "out" (.var "w")
+          (.stdVecAt "a" (.var "r"))) ρ₁ m₁ π =
+          .ok ((ρ₂, m₂, π), .fellThrough) :=
+      fun F' => memEvalStmtFuel_vecSet F' "out" _ _ ρ₁ m₁ π
+        wB y ao to (lo.set 0 a0) wOld m₂ ρ₂
+        hevW hevY hout₁ hlay_o hgetW hmstore₂ hu₂
+    have hassignW : ∀ F',
+        memEvalStmtFuel F' (.assign "w" (.uadd (.var "w")
+          (.lit (.u64 (1 : BitVec 64))))) ρ₂ m₂ π =
+          .ok ((ρ₃, m₂, π), .fellThrough) :=
+      fun F' => memEvalStmtFuel_assign F' "w" _ ρ₂ m₂ π
+        (.u64 (wB + 1)) ρ₃ hevWUA hevRU hu_w
+    have hifInner : ∀ F',
+        memEvalStmtFuel F' (.if_ (.ult (.var "w") (.stdVecLen "out"))
+          (.seq (.vecSet "out" (.var "w")
+                  (.stdVecAt "a" (.var "r")))
+            (.assign "w" (.uadd (.var "w")
+              (.lit (.u64 (1 : BitVec 64))))))
+          .fail) ρ₁ m₁ π = .ok ((ρ₃, m₂, π), .fellThrough) := by
+      intro F'
+      rw [memEvalStmtFuel_if_true F' _ _ _ _ _ _ hguardUltM]
+      exact memEvalStmtFuel_seq F' _ _ ρ₁ m₁ π ρ₂ m₂ π ρ₃ m₂ π _
+        (hvecSetKeep F') (hassignW F')
+    have hassignR : ∀ F',
+        memEvalStmtFuel F' (.assign "r" (.uadd (.var "r")
+          (.lit (.u64 (1 : BitVec 64))))) ρ₃ m₂ π =
+          .ok ((ρ₄, m₂, π), .fellThrough) :=
+      fun F' => memEvalStmtFuel_assign F' "r" _ ρ₃ m₂ π
+        (.u64 (rB + 1)) ρ₄ hevRUA hevRU' hu_r
+    have hbodyEval : ∀ F',
+        memEvalStmtFuel F'
+          (.seq (.if_ (.une (.stdVecAt "a" (.var "r"))
+                        vecUniqueCopyPrev)
+                  (.if_ (.ult (.var "w") (.stdVecLen "out"))
+                    (.seq (.vecSet "out" (.var "w")
+                            (.stdVecAt "a" (.var "r")))
+                      (.assign "w" (.uadd (.var "w")
+                        (.lit (.u64 (1 : BitVec 64))))))
+                    .fail)
+                  .skip)
+            (.assign "r" (.uadd (.var "r")
+              (.lit (.u64 (1 : BitVec 64)))))) ρ₁ m₁ π =
+          .ok ((ρ₄, m₂, π), .fellThrough) := by
+      intro F'
+      have hifOuter : memEvalStmtFuel F'
+          (.if_ (.une (.stdVecAt "a" (.var "r"))
+                  vecUniqueCopyPrev)
+            (.if_ (.ult (.var "w") (.stdVecLen "out"))
+              (.seq (.vecSet "out" (.var "w")
+                      (.stdVecAt "a" (.var "r")))
+                (.assign "w" (.uadd (.var "w")
+                  (.lit (.u64 (1 : BitVec 64))))))
+              .fail)
+            .skip) ρ₁ m₁ π = .ok ((ρ₃, m₂, π), .fellThrough) := by
+        rw [memEvalStmtFuel_if_true F' _ _ _ _ _ _ huneM]
+        exact hifInner F'
+      exact memEvalStmtFuel_seq F' _ _ ρ₁ m₁ π ρ₃ m₂ π ρ₄ m₂ π _
+        hifOuter (hassignR F')
+    rw [hbody]
+    intro F' ρ' m' π' hP
+    simp only [Prod.mk.injEq] at hP
+    rw [hP.1, hP.2.1, hP.2.2]
+    exact ⟨ρ₄, m₂, π, .fellThrough, hbodyEval F', rfl,
+      ρ₄, m₂, rfl, hout₄, ha₄, hr₄, hw₄, hrN', hwN', hmem₂, hmem_a₂⟩
+  -- Top-level composition.
+  have htop := htriple_seq _ _ _ _ _ hseedTriple hkeepTriple
+  exact htop
 
 end HoareGallery

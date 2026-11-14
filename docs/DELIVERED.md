@@ -1269,6 +1269,32 @@ frame (`b = a`) leaves `hne` unprovable (`decide` refutes
 - Acceptance: Hoare files warning-free, gallery sorry-free,
 591 jobs TEST-OK (`HOAREGALLERY-OK passed=19`).
 
+### H5. Two-block M16 gallery (seed + keep) — DONE (2026-11-14)
+
+Roadmap P3 proposed goal #1. `hoare_uniqueCopySeedKeep` in
+`tests/lean/HoareGallery.lean`: the `vecUniqueCopySeed` store
+plus one `vecUniqueCopyBody` keep step as a closed
+two-block triple — first gallery combining a read-only input
+with a caller record. Stmt-level `HTriple` throughout (the
+prog level has no if/assign rules, and the seed/keep bodies
+are call-free): each block is built from
+`memEvalStmtFuel_vecSet` plus `uadd` cursor bumps via
+`htriple_if_true` / `htriple_seq`, composed with
+`htriple_seq`; store/update equations are derived internally
+(`memStore_cellsAt_pin` + `envUpdate_some_of_lookup`), so
+the statement carries state facts only — no equation-hyp
+debt in the vecSetSwap style. Mid-state threads the seeded
+record with cursors still at 1; the keep leg discharges the
+`w - 1 = 0` predecessor and `w < len` guard from the seed
+post plus `List.set` getElem facts. Closed instance runs
+`a=[5,7]`, `out=[0,0]` → `out=[5,7]`, `r=w=2`; driver
+`hoare-gallery` grows to 21 counted passes. Proof-engineering
+note: `obtain ⟨rfl,…⟩` on a tuple equation eliminates the
+RHS (the theorem binders here) — rewrite with the
+`.1`/`.2.1`/`.2.2` projections instead.
+- Acceptance: Hoare files warning-free, gallery sorry-free,
+633 jobs TEST-OK (`HOAREGALLERY-OK passed=21`).
+
 ### A. Whole-list assertions + read-only sum loop — DONE (2026-10-14)
 
 A1: `cellsAt m a t l := memFind m a = some ⟨t, true, l⟩` in
