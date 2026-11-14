@@ -52,6 +52,7 @@ import Circe.Emit.VecPartition
 import Circe.Emit.VecRemove
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
+import Circe.Emit.VecMismatch
 import Circe.Emit.VecCopyIf
 import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
@@ -1479,6 +1480,21 @@ def matchFrag : Func → Option FragKind
             (.return_ (.var "w")))))⟩ =>
     some .vecCopyIf
   | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
+        ⟨"b", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩],
+      .u 64,
+      (.seq (.let_ "i" (.u 64) (.lit (.u64 z0)))
+        (.seq (.while_ (.tif (.ult (.var "i") (.stdVecLen "a"))
+                          (.ult (.var "i") (.stdVecLen "b"))
+                          (.lit (.b false)))
+                (.seq (.if_ (.une (.stdVecAt "a" (.var "i"))
+                              (.stdVecAt "b" (.var "i")))
+                        (.return_ (.var "i"))
+                        .skip)
+                  (.assign "i" (.uadd (.var "i")
+                    (.lit (.u64 v0))))))
+          (.return_ (.var "i"))))⟩ =>
+    some .vecMismatch
+  | ⟨_, [⟨"a", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .sharedBorrow⟩,
         ⟨"yes", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
         ⟨"no", .struct "std::vector<int>" [.u 64, .u 64, .u 64], .mutBorrow _⟩,
         ⟨"pivot", .i 32, .owned⟩],
@@ -2682,6 +2698,8 @@ theorem matchFrag_vecDifference :
     matchFrag vecDifferenceFunc = some .vecDifference := rfl
 theorem matchFrag_vecCopyIf :
     matchFrag vecCopyIfFunc = some .vecCopyIf := rfl
+theorem matchFrag_vecMismatch :
+    matchFrag vecMismatchFunc = some .vecMismatch := rfl
 theorem matchFrag_vecPartitionCopy :
     matchFrag vecPartitionCopyFunc = some .vecPartitionCopy := rfl
 theorem matchFrag_vecUniqueCopy :

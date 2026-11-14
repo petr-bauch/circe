@@ -23,6 +23,7 @@ ok/err sides. `cir_simp` (`Circe.Tactics`) is used throughout.
 import Circe.Base
 import Circe.Emit
 import Circe.Emit.VecCopyIf
+import Circe.Emit.VecMismatch
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
@@ -9596,3 +9597,78 @@ theorem vecPartitionCopyFwd_correct (pivot : BitVec 32)
   refine ⟨wYes', wNo', yes', no', ?_, hprefYes, hprefNo,
     hcntYes.symm, hcntNo.symm, hlenYes, hlenNo⟩
   simp only [vecPartitionCopyFwd, hfwd]
+
+/-! ## P2-M19: first-difference query (`vec_mismatch`) oracle contract -/
+
+/-- Below the first difference, reads agree (as `getElem?`): the
+    scan only reports the first position where the heads differ. -/
+theorem firstDiff_mem_eq (la lb : List (BitVec 32)) (k : Nat)
+    (hk : k < firstDiff la lb) : la[k]? = lb[k]? := by
+  induction la generalizing lb k with
+  | nil =>
+    rw [firstDiff_nil_left] at hk
+    omega
+  | cons x xs ih =>
+    cases lb with
+    | nil =>
+      rw [firstDiff_nil_right] at hk
+      omega
+    | cons y ys =>
+      rw [firstDiff_cons] at hk
+      by_cases hne : x != y
+      · rw [ite_eq_left hne] at hk
+        omega
+      · rw [ite_eq_right hne] at hk
+        cases k with
+        | zero =>
+          have hxy : x = y :=
+            Classical.byContradiction (fun h => hne (bne_iff_ne.mpr h))
+          subst hxy
+          rfl
+        | succ j =>
+          simp only [List.getElem?_cons_succ]
+          exact ih ys j (by omega)
+
+/-- The first-difference position is either an exhaustion side or a
+    genuine unequal pair at that position. -/
+theorem firstDiff_first (la lb : List (BitVec 32)) :
+    firstDiff la lb = la.length ∨ firstDiff la lb = lb.length ∨
+      (∃ x y, la[firstDiff la lb]? = some x ∧
+        lb[firstDiff la lb]? = some y ∧ x ≠ y) := by
+  induction la generalizing lb with
+  | nil =>
+    rw [firstDiff_nil_left]
+    exact Or.inl rfl
+  | cons x xs ih =>
+    cases lb with
+    | nil =>
+      rw [firstDiff_nil_right]
+      exact Or.inr (Or.inl rfl)
+    | cons y ys =>
+      by_cases hne : x != y
+      · rw [firstDiff_cons, ite_eq_left hne]
+        exact Or.inr (Or.inr ⟨x, y, rfl, rfl, bne_iff_ne.mp hne⟩)
+      · have heq : firstDiff (x :: xs) (y :: ys) =
+            firstDiff xs ys + 1 := by
+          rw [firstDiff_cons, ite_eq_right hne]
+          omega
+        rw [heq]
+        cases ih ys with
+        | inl h =>
+          refine Or.inl ?_
+          simp only [List.length_cons] at h ⊢
+          omega
+        | inr h =>
+          cases h with
+          | inl h =>
+            refine Or.inr (Or.inl ?_)
+            simp only [List.length_cons] at h ⊢
+            omega
+          | inr h =>
+            refine Or.inr (Or.inr ?_)
+            obtain ⟨x', y', hx', hy', hne'⟩ := h
+            refine ⟨x', y', ?_, ?_, hne'⟩
+            · simp only [List.getElem?_cons_succ]
+              exact hx'
+            · simp only [List.getElem?_cons_succ]
+              exact hy'

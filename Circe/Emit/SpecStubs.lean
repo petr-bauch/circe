@@ -3488,6 +3488,45 @@ def emitVecCopyIfSpecText (name : String) : String :=
   ++ s!"  {name}_spec_edges.all fun t =>\n"
   ++ s!"    (repr ({name}_spec_fwd t.1.1.1 t.1.1.2 t.1.2)).pretty == (repr t.2).pretty\n"
 
+/-- Spec stub for `vec_mismatch`. The mirror is the single-cursor
+    first-difference scan over two read-only inputs; edges cover
+    equal inputs, early difference, late difference, prefix, and
+    empty. -/
+def emitVecMismatchSpecText (name : String) : String :=
+  emitSpecHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- C++ signature: `{name}(a, b)` returns the first index where `a` and `b` differ, or the shorter length when one is a prefix of the other (`std::mismatch` idiom). Base body reference: the same scan on the reified words (cf. emitted `{name}_fwd`). -/\n"
+  ++ s!"def {name}_spec_fwd (la lb : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match loop la lb (la.length + lb.length + 1) 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok r => .ok r\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Result Nat\n"
+  ++ "  | _, _, 0, i => .ok i\n"
+  ++ "  | la, lb, fuel + 1, i =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      if i < lb.length then\n"
+  ++ "        match la[i]?, lb[i]? with\n"
+  ++ "        | some x, some y =>\n"
+  ++ "          if x != y then .ok i else loop la lb fuel (i + 1)\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "      else .ok i\n"
+  ++ "    else .ok i\n"
+  ++ "\n"
+  ++ s!"/-- Edge cases: all-equal, early difference, late difference, prefix, empty, singleton hit/miss. -/\n"
+  ++ s!"def {name}_spec_edges : List ((List (BitVec 32) × List (BitVec 32)) × Result Nat) :=\n"
+  ++ "  [(([1, 2, 3], [1, 2, 3]), .ok 3),\n"
+  ++ "   (([1, 2, 3], [1, 9, 3]), .ok 1),\n"
+  ++ "   (([1, 2, 3], [1, 2]), .ok 2),\n"
+  ++ "   (([], [1]), .ok 0),\n"
+  ++ "   (([7], [9]), .ok 0),\n"
+  ++ "   (([7], [7]), .ok 1)]\n"
+  ++ "\n"
+  ++ s!"/-- Prop-test entry: the mirror agrees with ground truth on every edge. -/\n"
+  ++ s!"def {name}_spec_check : Bool :=\n"
+  ++ s!"  {name}_spec_edges.all fun t =>\n"
+  ++ s!"    (repr ({name}_spec_fwd t.1.1 t.1.2)).pretty == (repr t.2).pretty\n"
+
 /-- Spec stub for `vec_unique_copy`. The mirror is the
     predecessor-kept squeeze over the reified input into the
     caller-sized record (the `std::unique_copy` idiom); edges

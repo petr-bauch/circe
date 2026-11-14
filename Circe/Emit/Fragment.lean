@@ -174,6 +174,7 @@ inductive FragKind : Type
   | vecPartialSum
   | vecIntersect
   | vecCopyIf
+  | vecMismatch
   | vecUniqueCopy
   | vecReverseCopy
   | vecPartitionCopy

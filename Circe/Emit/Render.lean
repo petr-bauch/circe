@@ -2036,6 +2036,31 @@ def emitVecCopyIfText (name : String) : String :=
   ++ "        else loop la lo fuel (r + 1) w\n"
   ++ "    else .ok (r, w, lo)\n"
 
+/-- Render the `vec_mismatch` entry forward definition: the
+    single-cursor first-difference scan over two read-only reified
+    inputs (the `std::mismatch` idiom: the first unequal `at()` pair
+    returns its position, exhaustion returns the shorter length). -/
+def emitVecMismatchText (name : String) : String :=
+  emitHeader
+  ++ "\nimport Circe.Base\n\n"
+  ++ s!"/-- Pure translation of `{name}` (single-cursor first-difference scan over the reified words; the `std::mismatch` idiom: the first unequal pair returns its position, exhaustion returns the shorter length). -/\n"
+  ++ s!"def {name}_fwd (la lb : List (BitVec 32)) : Result Nat :=\n"
+  ++ "  match loop la lb (la.length + lb.length + 1) 0 with\n"
+  ++ "  | .error e => .error e\n"
+  ++ "  | .ok r => .ok r\n"
+  ++ "where\n"
+  ++ "  loop : List (BitVec 32) → List (BitVec 32) → Nat → Nat → Result Nat\n"
+  ++ "  | _, _, 0, i => .ok i\n"
+  ++ "  | la, lb, fuel + 1, i =>\n"
+  ++ "    if i < la.length then\n"
+  ++ "      if i < lb.length then\n"
+  ++ "        match la[i]?, lb[i]? with\n"
+  ++ "        | some x, some y =>\n"
+  ++ "          if x != y then .ok i else loop la lb fuel (i + 1)\n"
+  ++ "        | _, _ => .error .AssertFail\n"
+  ++ "      else .ok i\n"
+  ++ "    else .ok i\n"
+
 /-- Render the `vec_unique_copy` entry forward definition:
     the predecessor-kept squeeze scan over the reified input,
     writing survivors into the caller-sized record (the

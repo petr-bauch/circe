@@ -3100,6 +3100,57 @@ def isVecIntersectShape (raw : RawFunc) : Bool :=
     !callsFunc raw.text raw.name
   | _ => false
 
+/-- `vec_mismatch` entry shape (dual-read first-difference query,
+    P2-M19): two single-ref read-only vectors in, `u64` position
+    out, exactly four calls (two const `size` + two const `at()`
+    — the paired reads, no mutating traffic), one `cir.while`
+    (the single-cursor scan), one `cir.if` (the differ leg with
+    its early return), one `cir.ternary` over the `&&` guard,
+    three compares (two `lt` bound checks + one `ne` element
+    test), one plain `u64` add (the cursor bump), five `cir.const`
+    including the two `#cir.int<1>` seeds, two returns (early
+    mismatch + tail), no `sub`/`nsw`/`mul`/`for`/`unreachable`/
+    `switch`/`try`/`operator[]`/`cast`/self-call. The read-only
+    pair with no writer separates it from the two-record writers
+    (`vec_partition_copy`: six calls, thirteen stores). -/
+def isVecMismatchShape (raw : RawFunc) : Bool :=
+  match raw.params with
+  | [a, b] =>
+    noBreakContinueSwitch raw.text &&
+    isPtrType a.ctype && a.singleRef && isStdVectorType a.ctype &&
+    isPtrType b.ctype && b.singleRef && isStdVectorType b.ctype &&
+    isU64 raw.ret &&
+    callsFunc raw.text stdVecSizeName &&
+    callsFunc raw.text stdVecAtName &&
+    !callsFunc raw.text stdVecAtMutName &&
+    opCount raw.text "cir.call @" == 4 &&
+    opCount raw.text "cir.while" == 1 &&
+    opCount raw.text "cir.if" == 1 &&
+    opCount raw.text "cir.cmp" == 3 &&
+    opCount raw.text "cir.cmp lt" == 2 &&
+    opCount raw.text "cir.cmp ne" == 1 &&
+    opCount raw.text "cir.cmp ult" == 0 &&
+    opCount raw.text "cir.cmp eq" == 0 &&
+    opCount raw.text "cir.ternary" == 1 &&
+    opCount raw.text "cir.const" == 5 &&
+    opCount raw.text "cir.return" == 2 &&
+    opCount raw.text "cir.alloca" == 4 &&
+    opCount raw.text "cir.load" == 15 &&
+    opCount raw.text "cir.store" == 6 &&
+    opCount raw.text "cir.yield" == 3 &&
+    containsSubstr raw.text "#cir.int<1>" &&
+    !containsSubstr raw.text "cir.add nsw" &&
+    !containsSubstr raw.text "cir.sub" &&
+    !containsSubstr raw.text "cir.mul" &&
+    !containsSubstr raw.text "cir.for" &&
+    !containsSubstr raw.text "cir.unreachable" &&
+    !containsSubstr raw.text "cir.switch" &&
+    !containsSubstr raw.text "cir.try" &&
+    !containsSubstr raw.text "operator[]" &&
+    !containsSubstr raw.text "cir.cast" &&
+    !callsFunc raw.text raw.name
+  | _ => false
+
 /-- `vec_union` entry shape (two-cursor sorted-range union, P2-M14):
     two single-ref vectors plus one single-ref output vector in,
     `u64` count out, exactly eighteen calls (four `size` + fourteen

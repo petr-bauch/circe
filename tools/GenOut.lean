@@ -25,6 +25,7 @@ import Circe.Emit.VecRemove
 import Circe.Emit.VecPartialSum
 import Circe.Emit.VecIntersect
 import Circe.Emit.VecCopyIf
+import Circe.Emit.VecMismatch
 import Circe.Emit.VecUnion
 import Circe.Emit.VecDifference
 import Circe.Emit.VecSelectionSort
@@ -194,6 +195,7 @@ def main : IO Unit := do
   let vecPartialSum ← emitOrDie vecPartialSumFunc
   let vecIntersect ← emitOrDie vecIntersectFunc
   let vecCopyIf ← emitOrDie vecCopyIfFunc
+  let vecMismatch ← emitOrDie vecMismatchFunc
   let vecUniqueCopy ← emitOrDie vecUniqueCopyFunc
   let vecReverseCopy ← emitOrDie vecReverseCopyFunc
   let vecPartitionCopy ← emitOrDie vecPartitionCopyFunc
@@ -373,6 +375,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartialSum.lean" (emitFileText (.ok vecPartialSum))
   IO.FS.writeFile "out/VecIntersect.lean" (emitFileText (.ok vecIntersect))
   IO.FS.writeFile "out/VecCopyIf.lean" (emitFileText (.ok vecCopyIf))
+  IO.FS.writeFile "out/VecMismatch.lean" (emitFileText (.ok vecMismatch))
   IO.FS.writeFile "out/VecUniqueCopy.lean" (emitFileText (.ok vecUniqueCopy))
   IO.FS.writeFile "out/VecReverseCopy.lean" (emitFileText (.ok vecReverseCopy))
   IO.FS.writeFile "out/VecPartitionCopy.lean" (emitFileText (.ok vecPartitionCopy))
@@ -552,6 +555,7 @@ def main : IO Unit := do
   let vecPartialSumSpec ← specOrDie vecPartialSumFunc
   let vecIntersectSpec ← specOrDie vecIntersectFunc
   let vecCopyIfSpec ← specOrDie vecCopyIfFunc
+  let vecMismatchSpec ← specOrDie vecMismatchFunc
   let vecUniqueCopySpec ← specOrDie vecUniqueCopyFunc
   let vecReverseCopySpec ← specOrDie vecReverseCopyFunc
   let vecPartitionCopySpec ← specOrDie vecPartitionCopyFunc
@@ -731,6 +735,7 @@ def main : IO Unit := do
   IO.FS.writeFile "out/VecPartialSum_Spec.lean" vecPartialSumSpec
   IO.FS.writeFile "out/VecIntersect_Spec.lean" vecIntersectSpec
   IO.FS.writeFile "out/VecCopyIf_Spec.lean" vecCopyIfSpec
+  IO.FS.writeFile "out/VecMismatch_Spec.lean" vecMismatchSpec
   IO.FS.writeFile "out/VecUniqueCopy_Spec.lean" vecUniqueCopySpec
   IO.FS.writeFile "out/VecReverseCopy_Spec.lean" vecReverseCopySpec
   IO.FS.writeFile "out/VecPartitionCopy_Spec.lean" vecPartitionCopySpec
